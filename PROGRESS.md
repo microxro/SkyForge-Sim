@@ -3,8 +3,8 @@
 Legend: [x] done and verified, [ ] not done. Unchecked items are not available in the app.
 
 ## CURRENT
-- CURRENT: P1.8 input bindings (actions, axes, curves, profiles)
-- Next 3: P1.3 visual passes toward 8/10 · P1.6b airport snapshot + runway visuals · P1.11 scripted flight integration
+- CURRENT: P1.11 scripted flight integration (sim orchestrator + autopilot basics)
+- Next 3: P1.3 visual passes toward 8/10 · P1.6b airport snapshot + runway visuals · P1.9 gauges
 
 ## P0 Bootstrap
 - [x] P0.1 Save master prompt to docs/MASTER_PROMPT.md
@@ -29,7 +29,8 @@ Legend: [x] done and verified, [ ] not done. Unchecked items are not available i
 - [ ] P1.6b Bundled compact OurAirports snapshot + "Update airport database" action + visual runway generation
 - [x] P1.7 METAR parser (230 real fixtures + edge cases + 5k-case fuzz), METAR → WeatherState (wind NED, QNH, ISA deviation, clouds, power-law wind profile), offline procedural presets
 - [ ] P1.7b Live METAR fetch (aviationweather.gov, 10-min cache, stale-on-failure, injectable transport)
-- [ ] P1.8 Input: touch, keyboard, gamepad bindings
+- [x] P1.8a SFInput: axes/actions, bindings with modifiers/context/aircraft, dead zones, calibration, curves (linear/exponential/monotone spline), smoothing, layered profiles, conflict detection, schema-versioned JSON; GameController gamepad + keyboard adapter (compile-checked in CI)
+- [ ] P1.8b Touch yoke/throttle UI and CoreMotion tilt adapter; press-to-bind UI
 - [ ] P1.9 Basic PFD / steam gauges
 - [ ] P1.10 Offscreen Metal visual-regression harness
 - [ ] P1.11 Scripted flight integration test

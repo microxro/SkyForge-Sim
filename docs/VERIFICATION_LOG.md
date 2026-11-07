@@ -21,3 +21,5 @@ Every gate run, CI run and manual verification. Newest at the bottom.
 - 2026-11-07 GitHub Actions run 42421809423 (f5fe3da): linux PASS; apple PASS — macOS swift test, xcodebuild iOS Simulator (generic) and macOS app builds all succeeded with the hand-written project.
 - 2026-11-07 Linux: Vincenty geodesic tests (Flinders Peak reference within 1 cm; 500 direct/inverse round trips < 1 mm) and NavData tests 6/6 PASS.
 - 2026-11-07T22:50:03Z gate fast on Linux x86_64: PASS (HEAD 00b1324)
+- 2026-11-07 Linux: SFInput tests 7/7 PASS.
+- 2026-11-07T22:53:15Z gate fast on Linux x86_64: PASS (HEAD 85fef52)
