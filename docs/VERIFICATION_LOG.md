@@ -18,3 +18,6 @@ Every gate run, CI run and manual verification. Newest at the bottom.
 - 2026-11-07T22:41:29Z gate fast on Linux x86_64: PASS (HEAD 0dc207a)
 - 2026-11-07 Linux: METAR tests 9/9 (230 real fixtures; 5,000 fuzzed mutations) and WeatherState tests 2/2 PASS.
 - 2026-11-07T22:46:06Z gate fast on Linux x86_64: PASS (HEAD f5fe3da)
+- 2026-11-07 GitHub Actions run 42421809423 (f5fe3da): linux PASS; apple PASS — macOS swift test, xcodebuild iOS Simulator (generic) and macOS app builds all succeeded with the hand-written project.
+- 2026-11-07 Linux: Vincenty geodesic tests (Flinders Peak reference within 1 cm; 500 direct/inverse round trips < 1 mm) and NavData tests 6/6 PASS.
+- 2026-11-07T22:50:03Z gate fast on Linux x86_64: PASS (HEAD 00b1324)

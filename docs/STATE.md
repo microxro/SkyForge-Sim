@@ -1,9 +1,9 @@
-LAST_UPDATE: 2026-11-07T22:40:20Z
+LAST_UPDATE: 2026-11-07T22:48:55Z
 
 # SKYFORGE state
 
 ## Phase
-P0 accepted except macOS CI green (fix pushed). P1 in progress: P1.1 flight model done on Linux.
+P0 accepted (CI fully green). P1 in progress: P1.1, P1.2, P1.4, P1.6a, P1.7 done; P1.3 renderer done with visuals below target.
 
 ## Environment facts (recorded at session start)
 - Host: Linux x86_64, Ubuntu 24.04.5 LTS, 4 CPUs, 15 GB RAM (Claude Code on the web sandbox).
@@ -31,10 +31,10 @@ P0 accepted except macOS CI green (fix pushed). P1 in progress: P1.1 flight mode
 - SFWorldGen + SFPreview: procedural regions and a parallel CPU renderer; previews of scenes (a)(d)(e)(f) in docs/previews (reviewed, avg 6.1/10).
 
 ## What is unverified
-- Everything Apple-only: SFRender (sky pipeline), SFUI, SFPlatform, the Xcode project, Info.plist, asset catalog. First compile happens in CI (if readable) or on Mac day.
+- Apple-only code now COMPILES in CI (iOS Simulator + macOS, Xcode 26.6) but has never RUN: the Metal sky renderer, SwiftUI menu and device tiers need a simulator/device run (no Metal device on CI runners) or Mac day.
 
 ## Broken
-- macOS CI run 42420061164: package tests PASS on macOS; all package modules (including SFRender Metal and SFUI SwiftUI code) compiled for the iOS Simulator; the app target failed only on `import SkyforgeUI` (the module is `SFUI`). Fixed; awaiting the next run.
+- Nothing known. Last CI run 42421809423 green on all jobs.
 
 ## Last green SHA
-- (updated after each green commit)
+- f5fe3da (CI run 42421809423, all jobs green)

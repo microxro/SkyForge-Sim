@@ -9,10 +9,15 @@ SKYFORGE bootstrap (Phase 0): auto-resume hooks, a Swift 6 package with all 17 m
 - SHA-256 content store with atomic install and corruption detection.
 - Pure-Swift PNG encoder and procedurally generated app icon.
 - SF-1 Trainer flight model: 6-DOF at 120 Hz with trim, stall, energy, determinism and 1-hour fuzz tests.
+- Terrain core (pure-Swift PNG/inflate, Terrarium tiles, CDLOD), first SkyWorld layers and a CPU preview renderer (`docs/previews/`).
+- METAR decoder (230 real reports), weather presets; OurAirports parsing, runway checks and labelled synthetic ILS.
 - Xcode project passes a Linux structural lint.
 
+## CI
+Green on all jobs: Linux tests, macOS package tests, and the Xcode app build for the iOS Simulator and macOS.
+
 ## Not done / unverified
-- Apple-only code (Metal sky renderer, SwiftUI menu, device tiers, Xcode project, asset catalog) has never been compiled. It will be checked by the macOS CI job if it runs, otherwise on Mac day (`docs/MAC_DAY.md`).
+- Apple-only code (Metal sky renderer, SwiftUI menu, device tiers) compiles in CI but has not run yet (CI runners have no Metal device); first run is on a simulator/device or Mac day (`docs/MAC_DAY.md`).
 - Terrain core, first SkyWorld layers and the CPU preview renderer exist; previews of four scenes are in `docs/previews/` (self-review average 6.1/10, target 8).
 
 ## Test evidence

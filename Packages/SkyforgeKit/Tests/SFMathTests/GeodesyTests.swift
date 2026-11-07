@@ -58,3 +58,26 @@ import Testing
         #expect(lo > -1.5 && hi < 1.5 && hi - lo > 0.3)
     }
 }
+
+@Suite struct GeodesicTests {
+    @Test func flindersPeakToBuninyong() {
+        // Vincenty (1975) reference example on the GRS80/WGS84 ellipsoid.
+        let p1 = Geodetic(latitudeDegrees: -(37 + 57.0 / 60 + 3.72030 / 3600), longitudeDegrees: 144 + 25.0 / 60 + 29.52440 / 3600, height: 0)
+        let p2 = Geodetic(latitudeDegrees: -(37 + 39.0 / 60 + 10.15610 / 3600), longitudeDegrees: 143 + 55.0 / 60 + 35.38390 / 3600, height: 0)
+        let r = Geodesic.inverse(p1, p2)
+        #expect(abs(r.distance - 54_972.271) < 0.01)
+        let brgDeg = r.initialBearing * 180 / .pi
+        #expect(abs(brgDeg - (306 + 52.0 / 60 + 5.37 / 3600)) < 1e-4)
+    }
+
+    @Test func directInverseRoundTrip() {
+        var rng = Xoshiro256(seed: 9)
+        for _ in 0..<500 {
+            let p = Geodetic(latitude: rng.range(-1.4, 1.4), longitude: rng.range(-3.1, 3.1), height: 0)
+            let brg = rng.range(0, 2 * .pi), dist = rng.range(10, 2_000_000)
+            let q = Geodesic.direct(p, bearing: brg, distance: dist)
+            let inv = Geodesic.inverse(p, q)
+            #expect(abs(inv.distance - dist) < 0.001)
+        }
+    }
+}
