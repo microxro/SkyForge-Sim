@@ -1,9 +1,9 @@
-LAST_UPDATE: 2026-11-07T22:52:06Z
+LAST_UPDATE: 2026-11-07T22:55:24Z
 
 # SKYFORGE state
 
 ## Phase
-P0 accepted (CI fully green). P1 in progress: P1.1, P1.2, P1.4, P1.6a, P1.7, P1.8a done; P1.3 renderer done with visuals below target.
+P0 accepted (CI fully green). P1 in progress: P1.1, P1.2, P1.4, P1.6a, P1.7, P1.8a, P1.11 done; P1.3 renderer done with visuals below target.
 
 ## Environment facts (recorded at session start)
 - Host: Linux x86_64, Ubuntu 24.04.5 LTS, 4 CPUs, 15 GB RAM (Claude Code on the web sandbox).
@@ -25,6 +25,7 @@ P0 accepted (CI fully green). P1 in progress: P1.1, P1.2, P1.4, P1.6a, P1.7, P1.
 - SFSim: fixed-step clock (1/120 s, 8 substep cap), triple buffer.
 - SFContent: SHA-256 content store with atomic install and corruption detection.
 - SFPreview: PNG encoder; procedural app icon.
+- SFSystems/SFSim: cascaded PID autopilot (roll/heading/track, pitch/VS/altitude, autothrottle) and a scripted autoland circuit (integration test).
 - SFFlightModel: SF-1 Trainer 6-DOF RK4 at 120 Hz (480 Hz near ground), aero build-up with soft stall and post-stall, ground effect, piston/fixed-pitch thrust, spring-damper gear with brakes and nose steering, Newton trim. Tests: trim at 100 KTAS/3,000 ft (|VS| < 50 fpm over 10 s), stall speed within 3 kt of design, energy drift < 0.1 % / 60 s, stability signs, control sense, 10-min determinism hash, 1-hour fuzz finite, rest on ground, takeoff roll.
 - Xcode project passes the Linux lint (`tools/lint_pbxproj.py`); Xcode 26.6 resolved the project and the local package in CI.
 - SFTerrainCore: inflate/PNG decode, Terrarium, tile math, CDLOD.

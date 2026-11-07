@@ -3,8 +3,8 @@
 Legend: [x] done and verified, [ ] not done. Unchecked items are not available in the app.
 
 ## CURRENT
-- CURRENT: P1.11 scripted flight integration (sim orchestrator + autopilot basics)
-- Next 3: P1.3 visual passes toward 8/10 · P1.6b airport snapshot + runway visuals · P1.9 gauges
+- CURRENT: P1.3 visual passes toward 8/10 (aircraft in frame, ground detail)
+- Next 3: P1.6b airport snapshot + runway visuals · P1.9 gauges · P1.2b bundled DEM
 
 ## P0 Bootstrap
 - [x] P0.1 Save master prompt to docs/MASTER_PROMPT.md
@@ -33,7 +33,7 @@ Legend: [x] done and verified, [ ] not done. Unchecked items are not available i
 - [ ] P1.8b Touch yoke/throttle UI and CoreMotion tilt adapter; press-to-bind UI
 - [ ] P1.9 Basic PFD / steam gauges
 - [ ] P1.10 Offscreen Metal visual-regression harness
-- [ ] P1.11 Scripted flight integration test
+- [x] P1.11 Scripted flight integration test: autopilot-flown 10-minute circuit (takeoff, climb, circuit, 3° approach, flare, landing, rollout) in calm air and an 8 kt crosswind; touchdown −252 fpm, stops on the centre-line
 
 ## P2–P5
 See docs/MASTER_PROMPT.md §16. Not started.
