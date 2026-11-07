@@ -27,6 +27,8 @@ fi
 note "swift test"
 swift test --package-path "$PKG" > "$ROOT/.skyforge/test.log" 2>&1 || { grep -E "✘|error:" "$ROOT/.skyforge/test.log" | head -n 40; fail "swift test"; }
 grep -E "Test run with" "$ROOT/.skyforge/test.log" | tail -n 1
+note "path case check"
+python3 tools/check_paths.py || fail "path case collision"
 note "pbxproj lint"
 python3 tools/lint_pbxproj.py || fail "pbxproj lint"
 for f in App/Info.plist App/SKYFORGE.entitlements App/PrivacyInfo.xcprivacy; do

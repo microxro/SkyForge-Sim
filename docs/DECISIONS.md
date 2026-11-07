@@ -34,3 +34,10 @@
 
 ## ADR-0009 Free / non-commercial
 - Decision: SKYFORGE stays free with no ads, in-app purchases or subscriptions, which keeps Open-Meteo's free non-commercial terms applicable (§9.6).
+
+## ADR-0010 Flight model frame and thrust
+- Decision: the FDM integrates in a local NED tangent plane (flat Earth); the orchestrator re-anchors the origin (≤ 10 km) and converts to ECEF for rendering. Thrust uses T = ηP/√(V²+V0²) with V0 = η/k_static (smooth static-to-cruise transition) until the BEM propeller table lands.
+- Consequences: Earth curvature and rotation are ignored inside a 10 km cell (error well below other model uncertainty for GA speeds).
+
+## ADR-0011 CLI target name
+- Decision: the preview CLI target is `SFPreviewCLI` (product `sfpreview`), because `sfpreview` and `SFPreview` collide on case-insensitive macOS file systems. `tools/check_paths.py` guards against case-only collisions.

@@ -8,7 +8,7 @@ let package = Package(
     products: [
         .library(name: "SkyforgeUI", targets: ["SFUI"]),
         .library(name: "SkyforgeCore", targets: ["SFMath", "SFAtmosphere", "SFFlightModel", "SFSim"]),
-        .executable(name: "sfpreview", targets: ["sfpreview"]),
+        .executable(name: "sfpreview", targets: ["SFPreviewCLI"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-crypto.git", "3.0.0"..<"5.0.0"),
@@ -33,7 +33,7 @@ let package = Package(
         .target(name: "SFAudio", dependencies: ["SFSim"]),
         .target(name: "SFPlatform", dependencies: ["SFSim", "SFInput"]),
         .target(name: "SFUI", dependencies: ["SFSim", "SFRender", "SFAudio", "SFPlatform", "SFNavData", "SFContent"]),
-        .executableTarget(name: "sfpreview", dependencies: ["SFPreview", "SFWorldGen", "SFTerrainCore", "SFMath"]),
+        .executableTarget(name: "SFPreviewCLI", dependencies: ["SFPreview", "SFWorldGen", "SFTerrainCore", "SFMath"]),
         // Tests (Swift Testing)
         .testTarget(name: "SFMathTests", dependencies: ["SFMath"]),
         .testTarget(name: "SFAtmosphereTests", dependencies: ["SFAtmosphere"]),

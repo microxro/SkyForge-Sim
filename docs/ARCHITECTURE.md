@@ -16,4 +16,5 @@ See docs/MASTER_PROMPT.md §18; rows are updated here as features land.
 | ISA atmosphere | SFAtmosphere | done | ISATests |
 | Fixed-step clock | SFSim | done | ClockTests |
 | Content store | SFContent | partial (no quota/LRU yet) | ContentStoreTests |
+| Flight dynamics | SFFlightModel | done (P1.1) | FlightModelTests, ControlSenseTests |
 | Sky render | SFRender | authored, unverified | — (macOS CI) |

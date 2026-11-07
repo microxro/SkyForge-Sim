@@ -6,3 +6,8 @@ Every gate run, CI run and manual verification. Newest at the bottom.
 - 2026-11-07 Linux: PNG encoder output decoded by Python zlib with valid CRCs.
 - 2026-11-07 Linux: `tools/lint_pbxproj.py` OK (19 objects).
 - 2026-11-07T22:07:26Z gate ci on Linux x86_64: PASS (HEAD 496a206)
+- 2026-11-07T22:17:15Z gate fast on Linux x86_64: PASS (HEAD 8e8e74b)
+- 2026-11-07 GitHub Actions run 42419165830 (PR #1, 8e8e74b): linux PASS; apple FAIL at `swift test` (macOS): link error, SFPreview/sfpreview case collision. Fix: rename CLI target to SFPreviewCLI.
+- 2026-11-07 Linux: gate fast PASS, 30 tests / 8 suites (includes 1-hour fuzz, ~60 s in debug).
+- 2026-11-07 Found and fixed during P1.1: elevator/rudder sign convention inverted; thrust model too weak at cruise; stall blend too wide. Each now covered by a test (ControlSenseTests, trim throttle bounds, stall speed).
+- 2026-11-07T22:19:16Z gate fast on Linux x86_64: PASS (HEAD 8e8e74b)

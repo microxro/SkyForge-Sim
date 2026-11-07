@@ -3,8 +3,8 @@
 Legend: [x] done and verified, [ ] not done. Unchecked items are not available in the app.
 
 ## CURRENT
-- CURRENT: P0.9 Open the pull request and record CI status
-- Next 3: P1.1 SF-1 Trainer FDM core (6-DOF RK4, aero build-up) · P1.2 Terrain core (Terrarium decode, height query, CDLOD) · P1.3 CPU preview renderer scenes (a)(d)(e)(f)
+- CURRENT: P1.2 Terrain core (Terrarium decode, height query, CDLOD); watching macOS CI for P0.9
+- Next 3: P1.3 CPU preview renderer scenes (a)(d)(e)(f) · P1.4 biome model + first SkyWorld layers · P1.7 METAR parser
 
 ## P0 Bootstrap
 - [x] P0.1 Save master prompt to docs/MASTER_PROMPT.md
@@ -15,10 +15,11 @@ Legend: [x] done and verified, [ ] not done. Unchecked items are not available i
 - [x] P0.6 Minimal hand-written SKYFORGE.xcodeproj (objectVersion 77, synchronized App folder, local package) + Linux lint
 - [x] P0.7 CI workflow (or docs/ci.yml.template)
 - [x] P0.8 MAC_DAY.md, APPLE_API_LEDGER.md and remaining docs stubs
-- [ ] P0.9 Pull request open; CI `apple` status recorded (green if readable)
+- [ ] P0.9 Pull request open (done: #1, draft); CI `linux` green; CI `apple` failing on case collision, fix pushed
 
 ## P1 Vertical slice with a visual foundation
-- [ ] P1.1 SF-1 Trainer FDM at 120 Hz (trim, stall, energy, stability-sign, determinism, fuzz tests)
+- [x] P1.1 SF-1 Trainer FDM at 120 Hz (trim, stall, energy, stability-sign, determinism, fuzz tests) — Linux verified; JSBSim oracle comparison still to do (P1.1b)
+- [ ] P1.1b Optional JSBSim offline oracle comparison in tools/jsbsim_oracle/
 - [ ] P1.2 Terrain core: Terrarium decode, bundled global DEM baseline, height queries, CDLOD quadtree
 - [ ] P1.3 CPU preview renderer (§8.6) with scenes (a) suburban golden hour, (d) forest and river, (e) coastline, (f) mountain valley
 - [ ] P1.4 Biome model and first SkyWorld layers (roads, trees, simple buildings) in a test region
