@@ -15,3 +15,5 @@ Every network host the app (or tooling) contacts must be listed here. `tools/che
 Tooling hosts (not used by the app): download.swift.org, swift.org, github.com (toolchain and SwiftPM).
 
 Excluded: tile.openstreetmap.org, vector.openstreetmap.org, Google Photorealistic 3D Tiles, Cesium ion, Bing/Apple/Mapbox imagery, Microsoft assets, Navigraph, OpenAIP, live OpenSky.
+
+Test fixture: `Packages/SkyforgeKit/Tests/Fixtures/terrarium/rainier_10_165_360.png` (AWS Terrain Tiles, Terrarium tile 10/165/360, Mount Rainier; fetched 2026-11-07; attribution per tilezen/joerd docs/attribution.md, USGS NED/SRTM sources in this area).

@@ -3,8 +3,8 @@
 Legend: [x] done and verified, [ ] not done. Unchecked items are not available in the app.
 
 ## CURRENT
-- CURRENT: P1.2 Terrain core (Terrarium decode, height query, CDLOD); watching macOS CI for P0.9
-- Next 3: P1.3 CPU preview renderer scenes (a)(d)(e)(f) · P1.4 biome model + first SkyWorld layers · P1.7 METAR parser
+- CURRENT: P1.3 CPU preview renderer; watching macOS CI for P0.9
+- Next 3: P1.4 biome model + first SkyWorld layers · P1.2b bundled DEM · P1.7 METAR parser
 
 ## P0 Bootstrap
 - [x] P0.1 Save master prompt to docs/MASTER_PROMPT.md
@@ -20,7 +20,8 @@ Legend: [x] done and verified, [ ] not done. Unchecked items are not available i
 ## P1 Vertical slice with a visual foundation
 - [x] P1.1 SF-1 Trainer FDM at 120 Hz (trim, stall, energy, stability-sign, determinism, fuzz tests) — Linux verified; JSBSim oracle comparison still to do (P1.1b)
 - [ ] P1.1b Optional JSBSim offline oracle comparison in tools/jsbsim_oracle/
-- [ ] P1.2 Terrain core: Terrarium decode, bundled global DEM baseline, height queries, CDLOD quadtree
+- [x] P1.2 Terrain core: pure-Swift inflate + PNG decoder, Terrarium decode (verified on a real tile), Web Mercator tile math, bilinear height queries, CDLOD quadtree selection with morph ranges
+- [ ] P1.2b Bundled global DEM baseline (≤ 25 MB, from Terrarium z4–z5) + tile streaming/cache
 - [ ] P1.3 CPU preview renderer (§8.6) with scenes (a) suburban golden hour, (d) forest and river, (e) coastline, (f) mountain valley
 - [ ] P1.4 Biome model and first SkyWorld layers (roads, trees, simple buildings) in a test region
 - [ ] P1.5 Hillaire sky LUTs (Metal) + cascaded shadows + PBR aircraft

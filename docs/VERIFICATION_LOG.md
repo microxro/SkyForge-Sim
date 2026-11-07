@@ -11,3 +11,5 @@ Every gate run, CI run and manual verification. Newest at the bottom.
 - 2026-11-07 Linux: gate fast PASS, 30 tests / 8 suites (includes 1-hour fuzz, ~60 s in debug).
 - 2026-11-07 Found and fixed during P1.1: elevator/rudder sign convention inverted; thrust model too weak at cruise; stall blend too wide. Each now covered by a test (ControlSenseTests, trim throttle bounds, stall speed).
 - 2026-11-07T22:19:16Z gate fast on Linux x86_64: PASS (HEAD 8e8e74b)
+- 2026-11-07 Linux: SFTerrainCore tests 9/9 PASS (inflate stored/fixed/dynamic, Terrarium Rainier fixture max 4370 m matches Python reference, tile math, CDLOD coverage and neighbour LOD ≤ 1).
+- 2026-11-07T22:23:31Z gate fast on Linux x86_64: PASS (HEAD 7006d81)
