@@ -70,3 +70,47 @@ import SFMath
         #expect(Self.db.nearestAirportWithRunwayGeometry(to: nearLondon)?.ident == "EGLL")
     }
 }
+
+@Suite struct SnapshotTests {
+    @Test func bundledSnapshotLoads() throws {
+        let m = try BundledNavData.manifest()
+        let db = try BundledNavData.load()
+        #expect(db.airports.count == m.files["airports"]?.rows)
+        #expect(db.navaids.count == m.files["navaids"]?.rows)
+        #expect(db.runways(at: "KSFO").count == 4)
+        #expect(db.airport("EGLL")?.name.contains("Heathrow") == true)
+        #expect(db.runways(at: "EGLL").contains { $0.hasGeometry })
+    }
+
+    struct FixtureTransport: HTTPTransport {
+        let files: [String: Data]
+        func get(_ url: URL) async throws -> Data {
+            guard let d = files[url.deletingPathExtension().lastPathComponent] else { throw SnapshotError.transport("404") }
+            return d
+        }
+    }
+
+    @Test func updaterRejectsImplausibleDownloads() async throws {
+        // The fixture subset has only a handful of rows, far outside ±20 % of the bundled baseline.
+        let files = ["airports", "runways", "navaids"].reduce(into: [String: Data]()) { $0[$1] = Data(NavDataTests.load($1).utf8) }
+        let updater = AirportDatabaseUpdater(transport: FixtureTransport(files: files), baseline: try BundledNavData.manifest())
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("sfnav-\(UUID().uuidString)")
+        await #expect(throws: SnapshotError.self) { _ = try await updater.update(into: dir) }
+        #expect(!FileManager.default.fileExists(atPath: dir.path))
+    }
+
+    @Test func updaterInstallsPlausibleDownloadsAtomically() async throws {
+        let files = ["airports", "runways", "navaids"].reduce(into: [String: Data]()) { $0[$1] = Data(NavDataTests.load($1).utf8) }
+        // Baseline matching the fixture's own filtered counts.
+        let fixtureDB = NavDataTests.db
+        let baseline = SnapshotManifest(source: "test", built: "test", files: [
+            "airports": .init(rows: fixtureDB.airports.values.filter { !["closed", "heliport", "balloonport"].contains($0.type) }.count, rawBytes: 0, compressedBytes: 0),
+            "runways": .init(rows: fixtureDB.runwaysByAirport.values.reduce(0) { $0 + $1.filter { !$0.closed }.count }, rawBytes: 0, compressedBytes: 0),
+            "navaids": .init(rows: fixtureDB.navaids.count, rawBytes: 0, compressedBytes: 0),
+        ])
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("sfnav-\(UUID().uuidString)")
+        let db = try await AirportDatabaseUpdater(transport: FixtureTransport(files: files), baseline: baseline).update(into: dir)
+        #expect(db.airport("KSFO") != nil)
+        #expect(FileManager.default.fileExists(atPath: dir.appendingPathComponent("runways.csv").path))
+    }
+}

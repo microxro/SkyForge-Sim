@@ -19,7 +19,7 @@ let package = Package(
         .target(name: "SFAtmosphere", dependencies: ["SFMath"]),
         .target(name: "SFFlightModel", dependencies: ["SFMath", "SFAtmosphere"]),
         .target(name: "SFSystems", dependencies: ["SFMath"]),
-        .target(name: "SFNavData", dependencies: ["SFMath"]),
+        .target(name: "SFNavData", dependencies: ["SFMath", "SFTerrainCore"], resources: [.copy("Resources")]),
         .target(name: "SFWeather", dependencies: ["SFMath", "SFAtmosphere"]),
         .target(name: "SFTerrainCore", dependencies: ["SFMath"]),
         .target(name: "SFWorldGen", dependencies: ["SFMath", "SFTerrainCore"]),

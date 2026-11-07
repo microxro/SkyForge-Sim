@@ -4,7 +4,7 @@ Legend: [x] done and verified, [ ] not done. Unchecked items are not available i
 
 ## CURRENT
 - CURRENT: P1.3 visual passes toward 8/10 (aircraft in frame, ground detail)
-- Next 3: P1.6b-2 airport snapshot · P1.9 gauges · P1.2b bundled DEM
+- Next 3: P1.2b bundled DEM · P1.9 gauges · P1.7b live METAR fetch
 
 ## P0 Bootstrap
 - [x] P0.1 Save master prompt to docs/MASTER_PROMPT.md
@@ -27,7 +27,7 @@ Legend: [x] done and verified, [ ] not done. Unchecked items are not available i
 - [ ] P1.5 Hillaire sky LUTs (Metal) + cascaded shadows + PBR aircraft
 - [x] P1.6a OurAirports parsing (RFC 4180 CSV), airports/runways/navaids model, runway geometry checks, labelled synthetic 3° ILS, nearest airport, bearing/distance (Vincenty)
 - [x] P1.6b-1 Visual runway generation (surface, shoulders, Annex 14 markings, designators) + terrain flattening; preview scene (j)
-- [ ] P1.6b-2 Bundled compact OurAirports snapshot + "Update airport database" action
+- [x] P1.6b-2 Bundled compact OurAirports snapshot (2.6 MB, pure-Swift inflate) + validated atomic updater with injectable transport (UI button pending P1.9 UI work)
 - [x] P1.7 METAR parser (230 real fixtures + edge cases + 5k-case fuzz), METAR → WeatherState (wind NED, QNH, ISA deviation, clouds, power-law wind profile), offline procedural presets
 - [ ] P1.7b Live METAR fetch (aviationweather.gov, 10-min cache, stale-on-failure, injectable transport)
 - [x] P1.8a SFInput: axes/actions, bindings with modifiers/context/aircraft, dead zones, calibration, curves (linear/exponential/monotone spline), smoothing, layered profiles, conflict detection, schema-versioned JSON; GameController gamepad + keyboard adapter (compile-checked in CI)

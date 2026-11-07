@@ -1,9 +1,9 @@
-LAST_UPDATE: 2026-11-07T23:03:11Z
+LAST_UPDATE: 2026-11-07T23:06:28Z
 
 # SKYFORGE state
 
 ## Phase
-P0 accepted (CI fully green). P1 in progress: P1.1, P1.2, P1.4, P1.6a, P1.7, P1.8a, P1.11 done; P1.3 renderer done with visuals below target.
+P0 accepted (CI fully green). P1 in progress: P1.1, P1.2, P1.4, P1.6a, P1.6b, P1.7, P1.8a, P1.11 done; P1.3 renderer done with visuals below target.
 
 ## Environment facts (recorded at session start)
 - Host: Linux x86_64, Ubuntu 24.04.5 LTS, 4 CPUs, 15 GB RAM (Claude Code on the web sandbox).
