@@ -1,0 +1,11 @@
+.skyforge/*
+!.skyforge/.keep
+.build/
+.swiftpm/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+.DS_Store
+docs/reference/
+*.xcresult
+__pycache__/

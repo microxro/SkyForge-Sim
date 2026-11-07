@@ -1,0 +1,41 @@
+LAST_UPDATE: 2026-11-07T23:09:49Z
+
+# SKYFORGE state
+
+## Phase
+P0 accepted (CI fully green). P1 in progress: P1.1, P1.2, P1.4, P1.6a, P1.2b-1, P1.6b, P1.7, P1.8a, P1.11 done; P1.3 renderer done with visuals below target.
+
+## Environment facts (recorded at session start)
+- Host: Linux x86_64, Ubuntu 24.04.5 LTS, 4 CPUs, 15 GB RAM (Claude Code on the web sandbox).
+- Swift: 6.3.3-RELEASE installed by `tools/setup_env.sh` into `~/.skyforge-toolchain` (download.swift.org reachable).
+- No Mac, no Xcode, no Metal device. Apple-only code is author-only until CI or Mac day.
+- GitHub: `gh` CLI present but GitHub access goes through the session's GitHub tools; the GitHub MCP plugin failed to connect at session start (proxy 403). Pushing over git works through the session proxy.
+- Workflow push permission: allowed (ci.yml pushed). CI results are readable through the session's GitHub tools. PR: https://github.com/microxro/SkyForge-Sim/pull/1 (draft).
+- Branch: work happens on `claude/ecstatic-davinci-tjahz4` (the branch this session is required to use), not `skyforge/main-build`. See ADR-0001.
+
+## Auto-resume
+- Project hooks installed in `.claude/settings.json` (SessionStart, Stop guard, StopFailure, PreCompact).
+- `autoContinueAtUsageLimit: true` is set in the session's user settings (`~/.claude/settings.json`); the user asked for this instead of a scheduled task, so no "SKYFORGE resume" scheduled task was created (ADR-0002).
+- Fallback: send the message "continue" to resume.
+
+## What works (verified on Linux)
+- `swift build` and `swift test` for SkyforgeKit (see VERIFICATION_LOG.md).
+- SFMath: WGS84 geodetic/ECEF/ENU (<1 mm round trip over 10k points), quaternions, Xoshiro256/SplitMix64, gradient noise.
+- SFAtmosphere: USSA-76 to 86 km within 0.1% of tables; CAS/TAS/EAS.
+- SFSim: fixed-step clock (1/120 s, 8 substep cap), triple buffer.
+- SFContent: SHA-256 content store with atomic install and corruption detection.
+- SFPreview: PNG encoder; procedural app icon.
+- SFSystems/SFSim: cascaded PID autopilot (roll/heading/track, pitch/VS/altitude, autothrottle) and a scripted autoland circuit (integration test).
+- SFFlightModel: SF-1 Trainer 6-DOF RK4 at 120 Hz (480 Hz near ground), aero build-up with soft stall and post-stall, ground effect, piston/fixed-pitch thrust, spring-damper gear with brakes and nose steering, Newton trim. Tests: trim at 100 KTAS/3,000 ft (|VS| < 50 fpm over 10 s), stall speed within 3 kt of design, energy drift < 0.1 % / 60 s, stability signs, control sense, 10-min determinism hash, 1-hour fuzz finite, rest on ground, takeoff roll.
+- Xcode project passes the Linux lint (`tools/lint_pbxproj.py`); Xcode 26.6 resolved the project and the local package in CI.
+- SFTerrainCore: inflate/PNG decode, Terrarium, tile math, CDLOD.
+- SFWorldGen + SFPreview: procedural regions and a parallel CPU renderer; previews of scenes (a)(d)(e)(f) in docs/previews (reviewed, avg 6.1/10).
+
+## What is unverified
+- Apple-only code now COMPILES in CI (iOS Simulator + macOS, Xcode 26.6) but has never RUN: the Metal sky renderer, SwiftUI menu and device tiers need a simulator/device run (no Metal device on CI runners) or Mac day.
+
+## Broken
+- Nothing known. Last CI run 42421809423 green on all jobs.
+
+## Last green SHA
+- f5fe3da (CI run 42421809423, all jobs green)

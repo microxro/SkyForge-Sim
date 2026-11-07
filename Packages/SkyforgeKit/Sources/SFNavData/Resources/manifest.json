@@ -1,0 +1,21 @@
+{
+  "built": "2026-11-07",
+  "files": {
+    "airports": {
+      "compressedBytes": 1507285,
+      "rawBytes": 4157582,
+      "rows": 49345
+    },
+    "navaids": {
+      "compressedBytes": 323240,
+      "rawBytes": 761642,
+      "rows": 11008
+    },
+    "runways": {
+      "compressedBytes": 824423,
+      "rawBytes": 2396015,
+      "rows": 35379
+    }
+  },
+  "source": "OurAirports (public domain) https://davidmegginson.github.io/ourairports-data/"
+}
