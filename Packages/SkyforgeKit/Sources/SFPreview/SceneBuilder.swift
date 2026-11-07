@@ -318,6 +318,23 @@ public struct SceneBuilder {
         soup.addQuad(w(-hx, -hy, z1), w(hx, -hy, z1), w(hx, hy, z1), w(-hx, hy, z1), colour: colour, material: material)
     }
 
+    // MARK: Runways
+
+    public mutating func addRunway(_ spec: RunwaySpec, elevation: Double) {
+        for q in RunwayGeometry.build(spec) {
+            let colour: SIMD3<Float>
+            switch q.paint {
+            case .surface: colour = srgb(62, 62, 64)
+            case .shoulder: colour = srgb(104, 104, 98)
+            case .white: colour = srgb(222, 222, 216)
+            }
+            let z = elevation + (q.paint == .shoulder ? 0.05 : (q.paint == .surface ? 0.10 : 0.15))
+            let c = q.corners.map { SIMD3($0.x, $0.y, z) }
+            soup.addQuad(c[0], c[1], c[2], c[3], colour: colour, material: .road)
+        }
+        stats["runwayQuads", default: 0] += 1
+    }
+
     // MARK: Aircraft
 
     /// Adds the procedural aircraft at a world position (ENU) with heading (rad from north, clockwise), pitch and roll.

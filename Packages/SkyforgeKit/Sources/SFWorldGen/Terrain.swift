@@ -21,6 +21,8 @@ public struct TerrainRecipe: Sendable {
     let detail: GradientNoise2D
     public let seaLevel: Double
     public let river: River?
+    /// Flattened rectangles (airports): centre, half-length along heading, half-width, heading (rad from north), elevation.
+    public var flattenZones: [(centre: SIMD2<Double>, halfLength: Double, halfWidth: Double, heading: Double, elevation: Double)] = []
 
     public init(kind: TerrainKind, seed: UInt64) {
         self.kind = kind
@@ -66,8 +68,23 @@ public struct TerrainRecipe: Sendable {
         return best
     }
 
-    /// Ground elevation (m).
+    /// Ground elevation (m), including flattened airport zones blended over a 150 m embankment.
     public func height(_ x: Double, _ y: Double) -> Double {
+        let natural = naturalHeight(x, y)
+        guard !flattenZones.isEmpty else { return natural }
+        var h = natural
+        for z in flattenZones {
+            let d = SIMD2(x, y) - z.centre
+            let a = SIMD2(sin(z.heading), cos(z.heading))
+            let la = abs((d * a).sum()), lc = abs(d.x * a.y - d.y * a.x)
+            let outside = max(la - z.halfLength, lc - z.halfWidth, 0)
+            let w = 1 - smoothstep(0, 150, outside)
+            h = h + (z.elevation - h) * w
+        }
+        return h
+    }
+
+    func naturalHeight(_ x: Double, _ y: Double) -> Double {
         let fine = detail.fbm(x / 140, y / 140, octaves: 3) * 1.2
         switch kind {
         case .suburbanPlain:
@@ -103,6 +120,16 @@ public struct TerrainRecipe: Sendable {
         let mountains = 690 + ridge * 2_000 * valleyShape + valleyShape * 500
         let floor = 680 + noise.fbm(x / 1_200, y / 1_200, octaves: 3) * 15
         return max(floor, mountains)
+    }
+
+    /// Whether a point lies on (or within `margin` of) a flattened airport zone.
+    public func isAirport(_ x: Double, _ y: Double, margin: Double = 60) -> Bool {
+        for z in flattenZones {
+            let d = SIMD2(x, y) - z.centre
+            let a = SIMD2(sin(z.heading), cos(z.heading))
+            if abs((d * a).sum()) < z.halfLength + margin && abs(d.x * a.y - d.y * a.x) < z.halfWidth + margin { return true }
+        }
+        return false
     }
 
     /// Surface normal from central differences.

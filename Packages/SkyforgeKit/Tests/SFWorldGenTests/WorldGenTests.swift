@@ -90,3 +90,32 @@ import SFMath
         #expect(abs(lowest - 1.25) < 0.05)
     }
 }
+
+@Suite struct RunwayGeometryTests {
+    @Test func markingsInsideRunwayAndDesignators() {
+        let spec = RunwaySpec(threshold: SIMD2(100, 200), heading: 0, length: 1_500, width: 30, lowDesignator: "36", highDesignator: "18")
+        let quads = RunwayGeometry.build(spec)
+        let whites = quads.filter { $0.paint == .white }
+        #expect(whites.count > 40)
+        for q in whites {
+            for c in q.corners {
+                #expect(abs(c.x - 100) <= 15 + 1e-9)            // within the runway width
+                #expect(c.y >= 200 - 1e-9 && c.y <= 1_700 + 1e-9) // within the runway length
+            }
+        }
+        #expect(RunwaySpec.designator(headingDegrees: 2) == "36")
+        #expect(RunwaySpec.designator(headingDegrees: 118) == "12")
+        #expect(RunwaySpec.designator(headingDegrees: 47) == "05")
+    }
+
+    @Test func flattenZoneIsLevelAndBlocksSettlement() {
+        var r = TerrainRecipe(kind: .suburbanPlain, seed: 1)
+        r.flattenZones = [(centre: SIMD2(5_000, 0), halfLength: 800, halfWidth: 80, heading: 0, elevation: 42)]
+        #expect(abs(r.height(5_000, 500) - 42) < 1e-9)
+        #expect(abs(r.height(5_050, -700) - 42) < 1e-9)
+        let g = WorldGenerator(terrain: r)
+        #expect(g.settlementDensity(5_000, 0) == 0)
+        let chunk = g.generateChunk(cx: 5, cy: 0)
+        #expect(chunk.trees.allSatisfy { !r.isAirport($0.position.x, $0.position.y) })
+    }
+}

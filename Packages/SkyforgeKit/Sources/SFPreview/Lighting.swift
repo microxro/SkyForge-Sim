@@ -37,10 +37,12 @@ public struct LightingSetup: Sendable {
             g.skyMid = SIMD3(0.50, 0.50, 0.50)
             return g
         case .sunrise:
-            return LightingSetup(toSun: dir(4, azimuthDegrees - 160), sunColour: SIMD3(3.0, 1.9, 1.2),
-                                 skyZenith: SIMD3(0.20, 0.28, 0.50), skyHorizon: SIMD3(1.0, 0.70, 0.55),
-                                 ambientSky: SIMD3(0.32, 0.36, 0.50), ambientGround: SIMD3(0.18, 0.14, 0.11),
-                                 fogDensity: 0.000_14, fogColour: SIMD3(0.92, 0.76, 0.66), exposure: 1.05, cloudCover: 0.2, sunDisc: true)
+            var s = LightingSetup(toSun: dir(6, azimuthDegrees - 160), sunColour: SIMD3(3.2, 2.1, 1.3),
+                                  skyZenith: SIMD3(0.12, 0.22, 0.46), skyHorizon: SIMD3(0.95, 0.70, 0.52),
+                                  ambientSky: SIMD3(0.30, 0.35, 0.48), ambientGround: SIMD3(0.18, 0.14, 0.11),
+                                  fogDensity: 0.000_08, fogColour: SIMD3(0.80, 0.70, 0.62), exposure: 0.95, cloudCover: 0.2, sunDisc: true)
+            s.skyMid = SIMD3(0.52, 0.55, 0.60)
+            return s
         case .midday:
             return LightingSetup(toSun: dir(55, azimuthDegrees - 70), sunColour: SIMD3(3.1, 2.95, 2.75),
                                  skyZenith: SIMD3(0.12, 0.26, 0.62), skyHorizon: SIMD3(0.62, 0.74, 0.90),

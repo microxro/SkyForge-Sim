@@ -5,7 +5,7 @@ import SFMath
 import SFWorldGen
 
 public enum PreviewScene: String, Sendable, CaseIterable {
-    case suburban, forestRiver = "forest_river", coastline, mountainValley = "mountain_valley"
+    case suburban, forestRiver = "forest_river", coastline, mountainValley = "mountain_valley", airportFinal = "airport_final"
 
     public var defaultTime: TimePreset {
         switch self {
@@ -13,6 +13,7 @@ public enum PreviewScene: String, Sendable, CaseIterable {
         case .forestRiver: return .midday
         case .coastline: return .goldenHour
         case .mountainValley: return .midday
+        case .airportFinal: return .sunrise
         }
     }
 
@@ -22,6 +23,7 @@ public enum PreviewScene: String, Sendable, CaseIterable {
         case .forestRiver: return .forestRiver
         case .coastline: return .coastline
         case .mountainValley: return .mountainValley
+        case .airportFinal: return .suburbanPlain
         }
     }
 }
@@ -38,11 +40,21 @@ public struct SceneSetup {
     public var sunAzimuth: Double
     /// Chase-camera aircraft placement relative to the camera (metres / radians).
     public var aircraft: (ahead: Double, below: Double, right: Double, headingOffset: Double, pitch: Double, roll: Double)? = nil
+    public var runway: RunwaySpec? = nil
+    public var runwayElevation = 0.0
 }
 
 public enum PreviewScenes {
     public static func setup(_ scene: PreviewScene, seed: UInt64) -> SceneSetup {
-        let recipe = TerrainRecipe(kind: scene.terrainKind, seed: seed)
+        var recipe = TerrainRecipe(kind: scene.terrainKind, seed: seed)
+        // Scene (j): a 1,500 x 30 m runway east of the suburbs on flattened ground.
+        let rwyHeading = 20 * Double.pi / 180
+        let rwyThreshold = SIMD2(3_300.0, -3_000.0)
+        let rwyDir = SIMD2(sin(rwyHeading), cos(rwyHeading))
+        let rwyElevation = recipe.height(rwyThreshold.x + rwyDir.x * 750, rwyThreshold.y + rwyDir.y * 750)
+        if scene == .airportFinal {
+            recipe.flattenZones = [(centre: rwyThreshold + rwyDir * 750, halfLength: 850, halfWidth: 90, heading: rwyHeading, elevation: rwyElevation)]
+        }
         let gen = WorldGenerator(terrain: recipe, latitude: 47, season: .autumn)
         func cam(_ x: Double, _ y: Double, agl: Double, lookX: Double, lookY: Double, lookAGL: Double, fov: Double = 70) -> PreviewCamera {
             let z = recipe.height(x, y) + agl
@@ -68,6 +80,19 @@ public enum PreviewScenes {
             return SceneSetup(camera: cam(-150, -3_200, agl: 260, lookX: -150, lookY: 1_800, lookAGL: 300, fov: 72),
                               generator: gen, nearHalfExtent: 3_000, nearStep: 8, farHalfExtent: 22_000, farStep: 90,
                               objectRadius: 2_600, treeDetailRadius: 600, sunAzimuth: 160)
+        case .airportFinal:
+            // On a 3° final, 1.5 km from the threshold, camera behind and above the aircraft.
+            let camGround = rwyThreshold - rwyDir * 720
+            let target = rwyThreshold + rwyDir * 380
+            let camPos = SIMD3(camGround.x, camGround.y, rwyElevation + 720 * tan(3 * Double.pi / 180) + 9)
+            var sf = SceneSetup(camera: PreviewCamera(position: camPos, lookAt: SIMD3(target.x, target.y, rwyElevation), horizontalFOV: 58 * .pi / 180),
+                                generator: gen, nearHalfExtent: 2_400, nearStep: 6, farHalfExtent: 16_000, farStep: 80,
+                                objectRadius: 2_600, treeDetailRadius: 700, sunAzimuth: 255)
+            sf.aircraft = (ahead: 24, below: 5.5, right: 0, headingOffset: 0, pitch: -0.01, roll: 0.03)
+            sf.runway = RunwaySpec(threshold: rwyThreshold, heading: rwyHeading, length: 1_500, width: 30,
+                                   lowDesignator: RunwaySpec.designator(headingDegrees: 20), highDesignator: RunwaySpec.designator(headingDegrees: 200))
+            sf.runwayElevation = rwyElevation
+            return sf
         }
     }
 
@@ -115,6 +140,7 @@ public enum PreviewScenes {
                 }
             }
         }
+        if let rwy = s.runway { b.addRunway(rwy, elevation: s.runwayElevation) }
         if let rig = s.aircraft {
             let fwdH = normalize(SIMD3(cam.forward.x, cam.forward.y, 0))
             let pos = cam.position + fwdH * rig.ahead - SIMD3(0, 0, rig.below) + SIMD3(fwdH.y, -fwdH.x, 0) * rig.right

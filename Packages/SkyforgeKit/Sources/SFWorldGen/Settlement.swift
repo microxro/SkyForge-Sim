@@ -128,6 +128,7 @@ public struct WorldGenerator: Sendable {
 
     /// Urban/suburban density 0…1.
     public func settlementDensity(_ x: Double, _ y: Double) -> Double {
+        if terrain.isAirport(x, y, margin: 250) { return 0 }
         let n = densityNoise.fbm(x / 1_400, y / 1_400, octaves: 3) * 0.25
         switch terrain.kind {
         case .suburbanPlain:
@@ -370,7 +371,7 @@ public struct WorldGenerator: Sendable {
 
     func placeFarms(_ chunk: inout WorldChunk, inChunk: (SIMD2<Double>) -> Bool) {
         for r in ruralRoads() {
-            for (i, p) in r.points.enumerated() where i % 9 == 4 && inChunk(p) {
+            for (i, p) in r.points.enumerated() where i % 9 == 4 && inChunk(p) && !terrain.isAirport(p.x, p.y, margin: 300) {
                 var rng = Xoshiro256(seed: Hash.combine(terrain.seed, UInt64(i), 0xFA2))
                 guard rng.unit() < 0.45, settlementDensity(p.x, p.y) < 0.32 else { continue }
                 let a = r.points[max(0, i - 1)], b = r.points[min(r.points.count - 1, i + 1)]
@@ -415,7 +416,7 @@ public struct WorldGenerator: Sendable {
                 let jx = Hash.unit(rng.next()), jy = Hash.unit(rng.next())
                 let x = x0 + (Double(i) + jx) * cell, y = y0 + (Double(j) + jy) * cell
                 let z = terrain.height(x, y)
-                if terrain.isWater(x, y) { continue }
+                if terrain.isWater(x, y) || terrain.isAirport(x, y) { continue }
                 let nrm = terrain.normal(x, y)
                 let slope = acos(min(1, nrm.z))
                 let moisture = clamp(0.55 + moistureNoise.fbm(x / 700, y / 700, octaves: 3) * 0.6

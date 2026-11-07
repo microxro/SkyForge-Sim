@@ -43,3 +43,8 @@ Open defects (next passes): near-field ground is flat colour (needs detail textu
 - Added the procedural SF-1 Trainer (lofted fuselage, NACA 0012 wing with dihedral, struts, tail, fixed gear) as a chase-view subject; two-sided shading so mesh winding can never darken faces.
 - Scene (a) now matches the reference composition (low chase over suburbs at golden hour). Scores: sharpness 6, lighting 7, colour 6, variety 6, depth 7, cleanliness 7 → **6.5** (was 6.2).
 - Open: prop disc not drawn (needs transparency); no aircraft shadow visible at 150 m AGL; horizon band still flat; no cockpit/HUD yet.
+
+### 2026-11-07 Scene (j) airport final approach (sunrise)
+- File: docs/previews/j_airport_final.png (20 s). New: runway geometry with simplified ICAO Annex 14 markings (threshold stripes, seven-segment designators, centre-line, aiming point, touchdown zone, edges), flattened airfield with 150 m embankment blend, chase aircraft on a 3° final, sunrise three-stop sky.
+- Scores: sharpness 6, lighting 6, colour 6, variety 5, depth 6, cleanliness 6 → **5.8**.
+- Defects: near trees are visibly low-poly at 37 m AGL; trees fill the approach corridor (real approaches are cleared); no approach/runway lights; no terminal/hangars yet.
