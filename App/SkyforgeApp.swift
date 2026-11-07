@@ -1,6 +1,6 @@
 // SKYFORGE — Apache-2.0
 import SwiftUI
-import SkyforgeUI
+import SFUI
 
 @main
 struct SkyforgeApp: App {

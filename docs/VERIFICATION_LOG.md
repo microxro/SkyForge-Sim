@@ -13,3 +13,6 @@ Every gate run, CI run and manual verification. Newest at the bottom.
 - 2026-11-07T22:19:16Z gate fast on Linux x86_64: PASS (HEAD 8e8e74b)
 - 2026-11-07 Linux: SFTerrainCore tests 9/9 PASS (inflate stored/fixed/dynamic, Terrarium Rainier fixture max 4370 m matches Python reference, tile math, CDLOD coverage and neighbour LOD ≤ 1).
 - 2026-11-07T22:23:31Z gate fast on Linux x86_64: PASS (HEAD 7006d81)
+- 2026-11-07 GitHub Actions run 42420061164 (7006d81): linux PASS; apple: macOS `swift test` PASS, iOS Simulator xcodebuild FAIL only at `import SkyforgeUI` in App (module name is SFUI). All SkyforgeKit modules compiled for iOS Simulator (arm64 + x86_64), including SFRender and SFUI.
+- 2026-11-07 Linux: WorldGen tests (determinism, placement, river bed below water) and renderer tests PASS.
+- 2026-11-07T22:41:29Z gate fast on Linux x86_64: PASS (HEAD 0dc207a)

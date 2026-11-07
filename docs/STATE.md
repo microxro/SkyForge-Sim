@@ -1,4 +1,4 @@
-LAST_UPDATE: 2026-11-07T22:18:08Z
+LAST_UPDATE: 2026-11-07T22:40:20Z
 
 # SKYFORGE state
 
@@ -26,13 +26,15 @@ P0 accepted except macOS CI green (fix pushed). P1 in progress: P1.1 flight mode
 - SFContent: SHA-256 content store with atomic install and corruption detection.
 - SFPreview: PNG encoder; procedural app icon.
 - SFFlightModel: SF-1 Trainer 6-DOF RK4 at 120 Hz (480 Hz near ground), aero build-up with soft stall and post-stall, ground effect, piston/fixed-pitch thrust, spring-damper gear with brakes and nose steering, Newton trim. Tests: trim at 100 KTAS/3,000 ft (|VS| < 50 fpm over 10 s), stall speed within 3 kt of design, energy drift < 0.1 % / 60 s, stability signs, control sense, 10-min determinism hash, 1-hour fuzz finite, rest on ground, takeoff roll.
-- Xcode project passes the Linux lint (`tools/lint_pbxproj.py`).
+- Xcode project passes the Linux lint (`tools/lint_pbxproj.py`); Xcode 26.6 resolved the project and the local package in CI.
+- SFTerrainCore: inflate/PNG decode, Terrarium, tile math, CDLOD.
+- SFWorldGen + SFPreview: procedural regions and a parallel CPU renderer; previews of scenes (a)(d)(e)(f) in docs/previews (reviewed, avg 6.1/10).
 
 ## What is unverified
 - Everything Apple-only: SFRender (sky pipeline), SFUI, SFPlatform, the Xcode project, Info.plist, asset catalog. First compile happens in CI (if readable) or on Mac day.
 
 ## Broken
-- macOS CI run 42419165830 failed: `Sources/sfpreview` and `Sources/SFPreview` collide on case-insensitive macOS. Fixed by renaming the CLI target to SFPreviewCLI; a case-collision check now runs in tools/gate.sh. Awaiting the next CI run.
+- macOS CI run 42420061164: package tests PASS on macOS; all package modules (including SFRender Metal and SFUI SwiftUI code) compiled for the iOS Simulator; the app target failed only on `import SkyforgeUI` (the module is `SFUI`). Fixed; awaiting the next run.
 
 ## Last green SHA
 - (updated after each green commit)

@@ -3,8 +3,8 @@
 Legend: [x] done and verified, [ ] not done. Unchecked items are not available in the app.
 
 ## CURRENT
-- CURRENT: P1.3 CPU preview renderer; watching macOS CI for P0.9
-- Next 3: P1.4 biome model + first SkyWorld layers · P1.2b bundled DEM · P1.7 METAR parser
+- CURRENT: P0.9 macOS CI green (app import fix pushed); then P1.3 visual passes
+- Next 3: P1.7 METAR parser · P1.6 OurAirports + runways · P1.2b bundled DEM
 
 ## P0 Bootstrap
 - [x] P0.1 Save master prompt to docs/MASTER_PROMPT.md
@@ -22,8 +22,8 @@ Legend: [x] done and verified, [ ] not done. Unchecked items are not available i
 - [ ] P1.1b Optional JSBSim offline oracle comparison in tools/jsbsim_oracle/
 - [x] P1.2 Terrain core: pure-Swift inflate + PNG decoder, Terrarium decode (verified on a real tile), Web Mercator tile math, bilinear height queries, CDLOD quadtree selection with morph ranges
 - [ ] P1.2b Bundled global DEM baseline (≤ 25 MB, from Terrarium z4–z5) + tile streaming/cache
-- [ ] P1.3 CPU preview renderer (§8.6) with scenes (a) suburban golden hour, (d) forest and river, (e) coastline, (f) mountain valley
-- [ ] P1.4 Biome model and first SkyWorld layers (roads, trees, simple buildings) in a test region
+- [ ] P1.3 CPU preview renderer (§8.6) with scenes (a) suburban golden hour, (d) forest and river, (e) coastline, (f) mountain valley — renderer done, 4 scenes rendered and reviewed (avg 6.1/10); open until avg ≥ 8
+- [x] P1.4 Biome model and first SkyWorld layers (procedural terrain recipes, rivers, street grid + rural roads, parcels, houses/warehouses/strip malls/farms, parking lots, Poisson-like vegetation) with determinism and placement tests
 - [ ] P1.5 Hillaire sky LUTs (Metal) + cascaded shadows + PBR aircraft
 - [ ] P1.6 OurAirports snapshot, runway generation
 - [ ] P1.7 METAR parser (≥200 fixtures), wind/QNH, procedural weather fallback

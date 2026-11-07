@@ -2,7 +2,7 @@
 SKYFORGE bootstrap (Phase 0): auto-resume hooks, a Swift 6 package with all 17 modules, a hand-written multiplatform Xcode project, CI, and the documentation set. Built and tested on Linux; Apple-only code has not been compiled yet.
 
 ## What works (verified on Linux, Swift 6.3.3)
-- `swift build` with no warnings in our sources; `swift test`: 30 tests pass.
+- `swift build` with no warnings in our sources; `swift test`: all tests pass (see VERIFICATION_LOG).
 - WGS84 geodesy (<1 mm round trip over 10,000 random points), quaternions, deterministic PRNG and noise.
 - US Standard Atmosphere 1976 within 0.1% of reference tables; CAS/TAS/EAS conversions.
 - Fixed 120 Hz simulation clock and triple buffer.
@@ -13,7 +13,7 @@ SKYFORGE bootstrap (Phase 0): auto-resume hooks, a Swift 6 package with all 17 m
 
 ## Not done / unverified
 - Apple-only code (Metal sky renderer, SwiftUI menu, device tiers, Xcode project, asset catalog) has never been compiled. It will be checked by the macOS CI job if it runs, otherwise on Mac day (`docs/MAC_DAY.md`).
-- No flight model, terrain or SkyWorld yet (Phase 1).
+- Terrain core, first SkyWorld layers and the CPU preview renderer exist; previews of four scenes are in `docs/previews/` (self-review average 6.1/10, target 8).
 
 ## Test evidence
 `docs/VERIFICATION_LOG.md`.
