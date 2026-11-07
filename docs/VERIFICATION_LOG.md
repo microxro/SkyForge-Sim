@@ -29,3 +29,5 @@ Every gate run, CI run and manual verification. Newest at the bottom.
 - 2026-11-07T23:04:21Z gate fast on Linux x86_64: PASS (HEAD ba272ae)
 - 2026-11-07 Linux: bundled OurAirports snapshot loads (counts match manifest), updater rejects ±20 % mismatches and installs atomically; runway geometry tests PASS. CI run 42423187878: linux PASS, apple package tests + iOS Simulator build PASS (GameController adapter compiled).
 - 2026-11-07T23:07:39Z gate ci on Linux x86_64: PASS (HEAD 1a25cce)
+- 2026-11-07 Linux: GlobalDEM tests PASS (SHA-256 matches manifest; Himalaya > 4.5 km, Dead Sea < −200 m, Pacific < −2 km, Denver 1.4–1.9 km).
+- 2026-11-07T23:10:58Z gate fast on Linux x86_64: PASS (HEAD 8890222)

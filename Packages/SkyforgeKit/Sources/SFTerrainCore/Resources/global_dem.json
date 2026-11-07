@@ -1,0 +1,12 @@
+{
+  "attribution": "Elevation: AWS Terrain Tiles (Mapzen/Tilezen joerd); sources include SRTM, GMTED2010, ETOPO1, NED, and others per tilezen/joerd docs/attribution.md",
+  "bytes": 11718979,
+  "file": "global_dem.sfdem",
+  "height": 2048,
+  "max": 6492,
+  "min": -10425,
+  "sha256": "67bf46382b5eae596e799ad5283a718ae20e8ce44ffc3e2a4cf61255dbf8af2a",
+  "source": "AWS Terrain Tiles (Terrarium) zoom 4, https://registry.opendata.aws/terrain-tiles/",
+  "tile": 256,
+  "width": 4096
+}

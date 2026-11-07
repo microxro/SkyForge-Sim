@@ -110,3 +110,28 @@ import Foundation
         #expect(abs(cdlodMorph(distance: 510, node: n) - 0.5) < 1e-9)
     }
 }
+
+import SFContent
+
+@Suite struct GlobalDEMTests {
+    @Test func bundledDEMIntegrityAndReferencePoints() throws {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/SFTerrainCore/Resources")
+        let meta = try JSONSerialization.jsonObject(with: Data(contentsOf: url.appendingPathComponent("global_dem.json"))) as? [String: Any]
+        let bytes = try Data(contentsOf: url.appendingPathComponent("global_dem.sfdem"))
+        #expect(ContentID(data: bytes).hex == meta?["sha256"] as? String)
+        #expect(bytes.count < 25_000_000)
+        let dem = try GlobalDEM.bundled()
+        #expect(dem.width == 4096 && dem.height == 2048)
+        #expect(dem.elevation(latitude: 27.99, longitude: 86.93) > 4_500)    // Himalaya (10 km average)
+        #expect(dem.elevation(latitude: 31.5, longitude: 35.5) < -200)       // Dead Sea basin
+        #expect(dem.elevation(latitude: 0, longitude: -150) < -2_000)        // Pacific
+        let denver = dem.elevation(latitude: 39.74, longitude: -104.99)
+        #expect(denver > 1_400 && denver < 1_900)
+        #expect(dem.elevation(latitude: 89.9, longitude: 0).isFinite && dem.elevation(latitude: -89.9, longitude: 179.99).isFinite)
+    }
+
+    @Test func corruptHeaderRejected() {
+        #expect(throws: GlobalDEMError.badHeader) { try GlobalDEM(data: Data("NOTADEM".utf8)) }
+    }
+}
