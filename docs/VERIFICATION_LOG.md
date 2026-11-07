@@ -16,3 +16,5 @@ Every gate run, CI run and manual verification. Newest at the bottom.
 - 2026-11-07 GitHub Actions run 42420061164 (7006d81): linux PASS; apple: macOS `swift test` PASS, iOS Simulator xcodebuild FAIL only at `import SkyforgeUI` in App (module name is SFUI). All SkyforgeKit modules compiled for iOS Simulator (arm64 + x86_64), including SFRender and SFUI.
 - 2026-11-07 Linux: WorldGen tests (determinism, placement, river bed below water) and renderer tests PASS.
 - 2026-11-07T22:41:29Z gate fast on Linux x86_64: PASS (HEAD 0dc207a)
+- 2026-11-07 Linux: METAR tests 9/9 (230 real fixtures; 5,000 fuzzed mutations) and WeatherState tests 2/2 PASS.
+- 2026-11-07T22:46:06Z gate fast on Linux x86_64: PASS (HEAD f5fe3da)

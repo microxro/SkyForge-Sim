@@ -4,7 +4,7 @@ Legend: [x] done and verified, [ ] not done. Unchecked items are not available i
 
 ## CURRENT
 - CURRENT: P0.9 macOS CI green (app import fix pushed); then P1.3 visual passes
-- Next 3: P1.7 METAR parser · P1.6 OurAirports + runways · P1.2b bundled DEM
+- Next 3: P1.6 OurAirports + runways · P1.8 input bindings · P1.2b bundled DEM
 
 ## P0 Bootstrap
 - [x] P0.1 Save master prompt to docs/MASTER_PROMPT.md
@@ -26,7 +26,8 @@ Legend: [x] done and verified, [ ] not done. Unchecked items are not available i
 - [x] P1.4 Biome model and first SkyWorld layers (procedural terrain recipes, rivers, street grid + rural roads, parcels, houses/warehouses/strip malls/farms, parking lots, Poisson-like vegetation) with determinism and placement tests
 - [ ] P1.5 Hillaire sky LUTs (Metal) + cascaded shadows + PBR aircraft
 - [ ] P1.6 OurAirports snapshot, runway generation
-- [ ] P1.7 METAR parser (≥200 fixtures), wind/QNH, procedural weather fallback
+- [x] P1.7 METAR parser (230 real fixtures + edge cases + 5k-case fuzz), METAR → WeatherState (wind NED, QNH, ISA deviation, clouds, power-law wind profile), offline procedural presets
+- [ ] P1.7b Live METAR fetch (aviationweather.gov, 10-min cache, stale-on-failure, injectable transport)
 - [ ] P1.8 Input: touch, keyboard, gamepad bindings
 - [ ] P1.9 Basic PFD / steam gauges
 - [ ] P1.10 Offscreen Metal visual-regression harness

@@ -43,6 +43,7 @@ let package = Package(
         .testTarget(name: "SFWorldGenTests", dependencies: ["SFWorldGen", "SFTerrainCore"]),
         .testTarget(name: "SFPreviewTests", dependencies: ["SFPreview"]),
         .testTarget(name: "SFTerrainCoreTests", dependencies: ["SFTerrainCore"]),
+        .testTarget(name: "SFWeatherTests", dependencies: ["SFWeather"]),
     ],
     swiftLanguageModes: [.v6]
 )

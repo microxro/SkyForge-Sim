@@ -17,3 +17,4 @@ Tooling hosts (not used by the app): download.swift.org, swift.org, github.com (
 Excluded: tile.openstreetmap.org, vector.openstreetmap.org, Google Photorealistic 3D Tiles, Cesium ion, Bing/Apple/Mapbox imagery, Microsoft assets, Navigraph, OpenAIP, live OpenSky.
 
 Test fixture: `Packages/SkyforgeKit/Tests/Fixtures/terrarium/rainier_10_165_360.png` (AWS Terrain Tiles, Terrarium tile 10/165/360, Mount Rainier; fetched 2026-11-07; attribution per tilezen/joerd docs/attribution.md, USGS NED/SRTM sources in this area).
+Test fixture: `Packages/SkyforgeKit/Tests/Fixtures/metar/metars.txt`: 230 real METAR reports recorded 2026-11-07 from the aviationweather.gov Data API (NOAA/NWS Aviation Weather Center, US government work, public domain), selected for coverage (CAVOK, gusts, VRB, variable sectors, RVR, vertical visibility, inHg/hPa, fractional SM, negative temperatures, TS/SN/FG, MPS, SPECI, missing fields).
