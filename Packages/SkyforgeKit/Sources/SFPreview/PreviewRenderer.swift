@@ -68,6 +68,8 @@ public enum PreviewRenderer {
                     var n = gb.normal[idx]
                     let nl = (n * n).sum().squareRoot()
                     n = nl > 0 ? n / nl : SIMD3(0, 0, 1)
+                    // Two-sided shading: normals always face the viewer (robust to winding).
+                    if fdot(n, dir) > 0 { n = -n }
                     let albedo = gb.albedo[idx]
                     let mat = gb.material[idx]
                     var colour: SIMD3<Float>

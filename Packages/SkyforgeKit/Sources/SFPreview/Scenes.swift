@@ -36,6 +36,8 @@ public struct SceneSetup {
     public var objectRadius: Double
     public var treeDetailRadius: Double
     public var sunAzimuth: Double
+    /// Chase-camera aircraft placement relative to the camera (metres / radians).
+    public var aircraft: (ahead: Double, below: Double, right: Double, headingOffset: Double, pitch: Double, roll: Double)? = nil
 }
 
 public enum PreviewScenes {
@@ -49,9 +51,11 @@ public enum PreviewScenes {
         }
         switch scene {
         case .suburban:
-            return SceneSetup(camera: cam(700, 500, agl: 140, lookX: -500, lookY: -350, lookAGL: 0),
-                              generator: gen, nearHalfExtent: 2_400, nearStep: 6, farHalfExtent: 16_000, farStep: 80,
-                              objectRadius: 2_600, treeDetailRadius: 700, sunAzimuth: 268)
+            var su = SceneSetup(camera: cam(700, 500, agl: 150, lookX: -500, lookY: -350, lookAGL: 0, fov: 62),
+                                generator: gen, nearHalfExtent: 2_400, nearStep: 6, farHalfExtent: 16_000, farStep: 80,
+                                objectRadius: 2_600, treeDetailRadius: 700, sunAzimuth: 268)
+            su.aircraft = (ahead: 26, below: 7, right: 3, headingOffset: -0.12, pitch: 0.02, roll: -0.22)
+            return su
         case .forestRiver:
             return SceneSetup(camera: cam(-260, -1_900, agl: 170, lookX: -150, lookY: -300, lookAGL: 0),
                               generator: gen, nearHalfExtent: 2_400, nearStep: 6, farHalfExtent: 16_000, farStep: 80,
@@ -110,6 +114,11 @@ public enum PreviewScenes {
                     b.addTree(t, detail: dist < s.treeDetailRadius * 1.8 ? 2 : 1)
                 }
             }
+        }
+        if let rig = s.aircraft {
+            let fwdH = normalize(SIMD3(cam.forward.x, cam.forward.y, 0))
+            let pos = cam.position + fwdH * rig.ahead - SIMD3(0, 0, rig.below) + SIMD3(fwdH.y, -fwdH.x, 0) * rig.right
+            b.addAircraft(at: pos, heading: atan2(fwdH.x, fwdH.y) + rig.headingOffset, pitch: rig.pitch, roll: rig.roll, accent: srgb(28, 62, 118))
         }
         stats.buildSeconds = Date().timeIntervalSince(t0)
         let lighting = LightingSetup.preset(time ?? scene.defaultTime, azimuthDegrees: s.sunAzimuth)

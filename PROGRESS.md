@@ -22,7 +22,7 @@ Legend: [x] done and verified, [ ] not done. Unchecked items are not available i
 - [ ] P1.1b Optional JSBSim offline oracle comparison in tools/jsbsim_oracle/
 - [x] P1.2 Terrain core: pure-Swift inflate + PNG decoder, Terrarium decode (verified on a real tile), Web Mercator tile math, bilinear height queries, CDLOD quadtree selection with morph ranges
 - [ ] P1.2b Bundled global DEM baseline (≤ 25 MB, from Terrarium z4–z5) + tile streaming/cache
-- [ ] P1.3 CPU preview renderer (§8.6) with scenes (a) suburban golden hour, (d) forest and river, (e) coastline, (f) mountain valley — renderer done, 4 scenes rendered and reviewed (avg 6.1/10); open until avg ≥ 8
+- [ ] P1.3 CPU preview renderer (§8.6) with scenes (a) suburban golden hour, (d) forest and river, (e) coastline, (f) mountain valley — renderer done, 4 scenes rendered and reviewed (avg 6.2/10 after pass 2, aircraft in scene a); open until avg ≥ 8
 - [x] P1.4 Biome model and first SkyWorld layers (procedural terrain recipes, rivers, street grid + rural roads, parcels, houses/warehouses/strip malls/farms, parking lots, Poisson-like vegetation) with determinism and placement tests
 - [ ] P1.5 Hillaire sky LUTs (Metal) + cascaded shadows + PBR aircraft
 - [x] P1.6a OurAirports parsing (RFC 4180 CSV), airports/runways/navaids model, runway geometry checks, labelled synthetic 3° ILS, nearest airport, bearing/distance (Vincenty)

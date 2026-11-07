@@ -318,6 +318,30 @@ public struct SceneBuilder {
         soup.addQuad(w(-hx, -hy, z1), w(hx, -hy, z1), w(hx, hy, z1), w(-hx, hy, z1), colour: colour, material: material)
     }
 
+    // MARK: Aircraft
+
+    /// Adds the procedural aircraft at a world position (ENU) with heading (rad from north, clockwise), pitch and roll.
+    public mutating func addAircraft(at p: SIMD3<Double>, heading: Double, pitch: Double, roll: Double, accent: SIMD3<Float>) {
+        let q = Quaternion(roll: roll, pitch: pitch, yaw: heading)   // body -> NED
+        func world(_ b: SIMD3<Double>) -> SIMD3<Double> {
+            let ned = q.rotate(b)
+            return p + SIMD3(ned.y, ned.x, -ned.z)                   // NED -> ENU
+        }
+        for t in AircraftMesh.build() {
+            let colour: SIMD3<Float>, mat: Material
+            switch t.part {
+            case .paint: colour = srgb(232, 232, 228); mat = .paint
+            case .accent: colour = accent; mat = .paint
+            case .glass: colour = srgb(28, 34, 42); mat = .glass
+            case .metal: colour = srgb(150, 152, 156); mat = .paint
+            case .tyre: colour = srgb(24, 24, 26); mat = .opaque
+            case .prop: continue // a spinning disc needs transparency; not drawn in the CPU preview
+            }
+            soup.addFlat(world(t.a), world(t.c), world(t.b), colour: colour, material: mat)
+        }
+        stats["aircraft", default: 0] += 1
+    }
+
     // MARK: Trees
 
     public mutating func addTree(_ t: Tree, detail: Int) {

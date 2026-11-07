@@ -70,3 +70,23 @@ import SFMath
         }
     }
 }
+
+@Suite struct AircraftMeshTests {
+    @Test func meshIsFiniteAndMatchesDimensions() {
+        let spec = AircraftMeshSpec()
+        let tris = AircraftMesh.build(spec)
+        #expect(tris.count > 500)
+        var minY = 0.0, maxY = 0.0, minX = 0.0, maxX = 0.0
+        for t in tris {
+            for p in [t.a, t.b, t.c] {
+                #expect(p.x.isFinite && p.y.isFinite && p.z.isFinite)
+                minY = min(minY, p.y); maxY = max(maxY, p.y); minX = min(minX, p.x); maxX = max(maxX, p.x)
+            }
+        }
+        #expect(abs((maxY - minY) - spec.span) < 0.1)                 // wingspan
+        #expect(abs((maxX - minX) - (spec.fuselageLength + 0.45)) < 0.6) // length incl. spinner/prop
+        // Wheels touch down at z ≈ 1.25 below the CG, matching the flight model's gear contact points.
+        let lowest = tris.flatMap { [$0.a.z, $0.b.z, $0.c.z] }.max() ?? 0
+        #expect(abs(lowest - 1.25) < 0.05)
+    }
+}

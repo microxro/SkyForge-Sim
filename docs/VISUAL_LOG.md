@@ -38,3 +38,8 @@ Defects found and fixed in this pass (each by looking at the PNGs):
 9. Mountain river 25 m underground (base term overrode carved floor) → carve from final surface; test `riverSurfaceAboveBed`.
 
 Open defects (next passes): near-field ground is flat colour (needs detail texture/normal variation); conifer and broadleaf crowns are low-poly; building facades lack detail; coast cliffs show grey triangles; no aircraft in frame; water edges follow terrain triangles; field rows only in colour.
+
+### 2026-11-07 P1.3 pass 2: aircraft in frame (scene a)
+- Added the procedural SF-1 Trainer (lofted fuselage, NACA 0012 wing with dihedral, struts, tail, fixed gear) as a chase-view subject; two-sided shading so mesh winding can never darken faces.
+- Scene (a) now matches the reference composition (low chase over suburbs at golden hour). Scores: sharpness 6, lighting 7, colour 6, variety 6, depth 7, cleanliness 7 → **6.5** (was 6.2).
+- Open: prop disc not drawn (needs transparency); no aircraft shadow visible at 150 m AGL; horizon band still flat; no cockpit/HUD yet.

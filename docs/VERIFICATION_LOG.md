@@ -25,3 +25,4 @@ Every gate run, CI run and manual verification. Newest at the bottom.
 - 2026-11-07T22:53:15Z gate fast on Linux x86_64: PASS (HEAD 85fef52)
 - 2026-11-07 Linux: scripted circuit integration PASS (595 s flight; touchdown −252 fpm at 268 m past threshold; stop at 449 m, on centre-line; max bank 28.6°); crosswind 8 kt variant PASS; PID anti-windup PASS.
 - 2026-11-07T22:56:32Z gate fast on Linux x86_64: PASS (HEAD be24179)
+- 2026-11-07T23:00:00Z gate fast on Linux x86_64: PASS (HEAD c0e3a7e)
