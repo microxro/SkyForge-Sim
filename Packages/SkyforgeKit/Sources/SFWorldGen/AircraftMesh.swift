@@ -4,7 +4,7 @@
 import Foundation
 import SFMath
 
-public enum AircraftPart: Int, Sendable { case paint, accent, glass, metal, tyre, prop }
+public enum AircraftPart: Int, Sendable { case paint, accent, glass, metal, tyre, prop, seam }
 
 public struct AircraftTriangle: Sendable {
     public var a: SIMD3<Double>, b: SIMD3<Double>, c: SIMD3<Double>
@@ -60,13 +60,15 @@ public enum AircraftMesh {
             for side in [-1.0, 1.0] {
                 let p0 = SIMD3(a0.x, side * (a0.w + 0.012), a0.z + 0.10), p1 = SIMD3(a1.x, side * (a1.w + 0.012), a1.z + 0.10)
                 let q0 = SIMD3(a0.x, side * (a0.w + 0.012), a0.z + 0.22), q1 = SIMD3(a1.x, side * (a1.w + 0.012), a1.z + 0.22)
-                if side > 0 { quad(p0, p1, q1, q0, .accent) } else { quad(p1, p0, q0, q1, .accent) }
+                if side > 0 { quad(p1, p0, q0, q1, .accent) } else { quad(p0, p1, q1, q0, .accent) }   // outward normals
             }
         }
 
         // Lifting surface with a symmetric 12% airfoil section, swept/tapered between root and tip.
+        // `hinges`: control surfaces (hinge chord fraction, span fraction from, to) outlined by thin dark
+        // seams on both faces, so flaps, ailerons, elevator and rudder read on the plain paint.
         func surface(root: SIMD3<Double>, tip: SIMD3<Double>, rootChord: Double, tipChord: Double, thickness: Double,
-                     vertical: Bool, part: AircraftPart) {
+                     vertical: Bool, part: AircraftPart, hinges: [(u: Double, s0: Double, s1: Double)] = []) {
             let stations: [Double] = [0, 0.05, 0.15, 0.3, 0.5, 0.7, 0.85, 1]
             func thick(_ u: Double) -> Double { // NACA 00xx half-thickness
                 5 * thickness * (0.2969 * u.squareRoot() - 0.126 * u - 0.3516 * u * u + 0.2843 * u * u * u - 0.1036 * u * u * u * u)
@@ -86,6 +88,28 @@ public enum AircraftMesh {
                     if outwardUp { quad(a, d, c, b, part) } else { quad(a, b, c, d, part) }
                 }
             }
+            let d = tip - root, spanLen = (d * d).sum().squareRoot()
+            for side in [1.0, -1.0] {
+                let lift = vertical ? SIMD3(0, 0.004 * side, 0) : SIMD3(0, 0, -0.004 * side)
+                let outwardUp = vertical ? (tip.z < root.z) == (side > 0) : (tip.y > root.y) == (side > 0)
+                func strip(_ s0: Double, _ u0: Double, _ s1: Double, _ u1: Double, chordwise: Bool) {
+                    let hw = 0.012
+                    let a: SIMD3<Double>, b: SIMD3<Double>, c: SIMD3<Double>, e: SIMD3<Double>
+                    if chordwise {   // line along the chord at span s0, from u0 to u1
+                        let ds = hw / spanLen
+                        a = point(s0 - ds, u0, side); b = point(s0 - ds, u1, side); c = point(s0 + ds, u1, side); e = point(s0 + ds, u0, side)
+                    } else {         // line along the span at chord u0, from s0 to s1
+                        let du = hw / (rootChord * 0.5 + tipChord * 0.5)
+                        a = point(s0, u0 - du, side); b = point(s0, u0 + du, side); c = point(s1, u0 + du, side); e = point(s1, u0 - du, side)
+                    }
+                    if outwardUp { quad(a + lift, e + lift, c + lift, b + lift, .seam) } else { quad(a + lift, b + lift, c + lift, e + lift, .seam) }
+                }
+                for h in hinges {
+                    strip(h.s0, h.u, h.s1, h.u, chordwise: false)
+                    strip(h.s0, h.u, h.s0, 0.995, chordwise: true)
+                    strip(h.s1, h.u, h.s1, 0.995, chordwise: true)
+                }
+            }
             // Tip cap
             for k in 0..<(stations.count - 1) {
                 tri(point(1, stations[k], 1), point(1, stations[k + 1], 1), point(1, stations[k + 1], -1), part)
@@ -95,7 +119,8 @@ public enum AircraftMesh {
         let tipRise = s.span / 2 * tan(s.dihedral)
         for side in [-1.0, 1.0] {
             surface(root: SIMD3(s.wingX, 0, s.wingZ), tip: SIMD3(s.wingX - 0.1, side * s.span / 2, s.wingZ - tipRise),
-                    rootChord: s.rootChord, tipChord: s.tipChord, thickness: 0.12, vertical: false, part: .paint)
+                    rootChord: s.rootChord, tipChord: s.tipChord, thickness: 0.12, vertical: false, part: .paint,
+                    hinges: [(0.74, 0.07, 0.55), (0.74, 0.57, 0.90)])   // flap, aileron
             // Accent wing tips
             surface(root: SIMD3(s.wingX - 0.1, side * (s.span / 2 - 0.5), s.wingZ - tipRise * 0.9),
                     tip: SIMD3(s.wingX - 0.1, side * (s.span / 2 + 0.01), s.wingZ - tipRise - 0.002),
@@ -103,7 +128,8 @@ public enum AircraftMesh {
             // Horizontal tail
             let tx = s.noseX - s.fuselageLength + 1.05
             surface(root: SIMD3(tx, 0, -0.60), tip: SIMD3(tx - 0.15, side * s.tailSpan / 2, -0.60),
-                    rootChord: s.tailChord, tipChord: s.tailChord * 0.7, thickness: 0.09, vertical: false, part: .paint)
+                    rootChord: s.tailChord, tipChord: s.tailChord * 0.7, thickness: 0.09, vertical: false, part: .paint,
+                    hinges: [(0.62, 0.06, 0.94)])                       // elevator
             // Wing strut
             let a = SIMD3(s.wingX - 0.5, side * 0.55, 0.05), b = SIMD3(s.wingX - 0.55, side * 2.5, s.wingZ - 2.5 * tan(s.dihedral) + 0.05)
             let o = SIMD3(0.06, 0, 0.0)
@@ -112,7 +138,7 @@ public enum AircraftMesh {
         // Vertical fin (swept)
         let fx = s.noseX - s.fuselageLength + 1.25
         surface(root: SIMD3(fx, 0, -0.85), tip: SIMD3(fx - 0.75, 0, -0.85 - s.finHeight), rootChord: 1.3, tipChord: 0.65,
-                thickness: 0.10, vertical: true, part: .paint)
+                thickness: 0.10, vertical: true, part: .paint, hinges: [(0.58, 0.08, 0.94)])   // rudder
         // Fixed tricycle gear: legs and wheels (octagonal discs).
         func wheel(_ c: SIMD3<Double>, _ r: Double, _ w: Double) {
             let n = 10

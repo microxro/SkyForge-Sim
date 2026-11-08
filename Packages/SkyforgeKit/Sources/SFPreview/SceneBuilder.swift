@@ -11,6 +11,13 @@ public struct SceneBuilder {
     let macroNoise: GradientNoise2D
     let moistureNoise: GradientNoise2D
     public private(set) var stats: [String: Int] = [:]
+    /// Runway whose surroundings are mown airfield grass (set before `addTerrain`).
+    public var airfield: RunwaySpec?
+    /// Beyond this radius around `centre` (where real buildings stop), built-up far terrain carries a
+    /// per-pixel suburb impostor (`FieldPattern.town`) instead of the 25 m vertex mottle. Set before `addTerrain`.
+    public var townImpostor: (centre: SIMD2<Double>, radius: Double)?
+    /// Farmed flag per field parcel, decided once at the parcel centre (filled by `addTerrain`).
+    private var parcelFarmed: [SIMD2<Int32>: Bool] = [:]
 
     public init(generator: WorldGenerator, origin: SIMD3<Double>) {
         self.generator = generator
@@ -18,6 +25,7 @@ public struct SceneBuilder {
         soup = TriangleSoup(origin: origin)
         macroNoise = GradientNoise2D(seed: Hash.combine(generator.terrain.seed, 0x3AC0))
         moistureNoise = GradientNoise2D(seed: Hash.combine(generator.terrain.seed, 0x3015))
+        soup.fieldPattern = fieldPattern
     }
 
     static func f(_ c: LinearRGB) -> SIMD3<Float> { c }
@@ -25,6 +33,20 @@ public struct SceneBuilder {
     // MARK: Ground colour
 
     func groundColour(_ x: Double, _ y: Double, _ z: Double, normal n: SIMD3<Double>, far: Bool = false) -> SIMD3<Float> {
+        groundSample(x, y, z, normal: n, far: far).colour
+    }
+
+    /// Field pattern for this region (drawn per pixel where the terrain's field weight is non-zero).
+    /// 24-bit seed so the Metal uniform carries it exactly as a float.
+    public var fieldPattern: FieldPattern {
+        FieldPattern(seed: UInt32(truncatingIfNeeded: Hash.combine(terrain.seed, 0xF1E1D)) & 0xFF_FFFF, autumn: generator.season == .autumn)
+    }
+
+    /// Vertex albedo and field weight (0…1: how much `FieldPattern` parcels show here; −1…0: suburb impostor).
+    /// `base` is the land-use weight before local clips (rock, snow, sand, river bank, airfield), `clip` their product.
+    func groundSample(_ x: Double, _ y: Double, _ z: Double, normal n: SIMD3<Double>, far: Bool = false)
+        -> (colour: SIMD3<Float>, field: Float, base: Float, clip: Float) {
+        var field: Float = 0, clip: Float = 1
         let slope = acos(min(1, n.z))
         let rd = terrain.riverDistance(x, y)
         let moisture = clamp(0.55 + moistureNoise.fbm(x / 700, y / 700, octaves: 3) * 0.6 + (rd < 300 ? 0.2 : 0), 0, 1)
@@ -33,12 +55,17 @@ public struct SceneBuilder {
                                                            moisture: moisture, distanceToWater: distWater))
         var c = GroundPalette.colour(biome, season: generator.season)
         let settle = generator.settlementDensity(x, y)
-        let forestMask = smoothstep(-0.25, 0.15, moistureNoise.fbm(x / 1_100 + 9, y / 1_100, octaves: 3))
+        // Approach corridors are cleared of trees, so they must not wear the canopy tint either
+        // (art review: the final approach was one uniform canopy-green lawn).
+        let cleared = terrain.isApproachCorridor(x, y) || terrain.isAirport(x, y)
+        let forestMask = cleared ? 0 : smoothstep(-0.25, 0.15, moistureNoise.fbm(x / 1_100 + 9, y / 1_100, octaves: 3))
         if (biome == .temperateForest || biome == .boreal) && settle < 0.32 {
             // Distant forest canopy tint (trees are only instanced near the camera).
             let canopy: LinearRGB = biome == .boreal ? srgb(40, 56, 40) : (generator.season == .autumn ? srgb(92, 84, 50) : srgb(52, 76, 40))
             c = c + (canopy - c) * Float(forestMask * 0.85)
-            if forestMask < 0.4 && slope < 0.12 && terrain.kind != .mountainValley { c = fieldColour(x, y, base: c) }
+            if forestMask < 0.4 && slope < 0.12 && terrain.kind != .mountainValley {
+                field = Float((1 - smoothstep(0.25, 0.4, forestMask)) * (1 - smoothstep(0.09, 0.12, slope)))
+            }
         } else if settle > 0.32 && !far {
             c = srgb(92, 106, 62) * Float(0.92 + 0.08 * macroNoise.fbm(x / 30, y / 30, octaves: 2))   // lawns
         } else if settle > 0.32 {
@@ -52,42 +79,77 @@ public struct SceneBuilder {
             else if pick < 0.42 { c = srgb(96, 96, 98) }
             else if pick < 0.62 { c = generator.season == .autumn ? srgb(118, 92, 52) : srgb(62, 84, 44) }
             else { c = lawn }
+            if let ti = townImpostor {
+                // Field weight < 0 marks the impostor; the vertex keeps the plain lawn it draws on.
+                let d = ((SIMD2(x, y) - ti.centre) * (SIMD2(x, y) - ti.centre)).sum().squareRoot()
+                let w = Float(smoothstep(ti.radius * 0.9, ti.radius * 1.05, d) * smoothstep(0.32, 0.40, settle))
+                c = c + (lawn * Float(0.94 + 0.08 * macroNoise.fbm(x / 120, y / 120, octaves: 2)) - c) * w
+                field = -w
+            }
         } else if slope < 0.12 && (biome == .grassland || biome == .temperateForest) {
-            c = terrain.kind == .mountainValley
-                ? srgb(84, 108, 58) * Float(0.9 + 0.12 * macroNoise.fbm(x / 90, y / 90, octaves: 2))   // alpine meadow
-                : fieldColour(x, y, base: c)
+            if terrain.kind == .mountainValley {
+                c = srgb(84, 108, 58) * Float(0.9 + 0.12 * macroNoise.fbm(x / 90, y / 90, octaves: 2))   // alpine meadow
+            } else {
+                field = Float(1 - smoothstep(0.09, 0.12, slope))
+            }
         }
         // Rock on steep slopes, snow by temperature and slope.
-        let rock = Float(smoothstep(0.55, 0.9, slope))
-        c = c + (GroundPalette.colour(.rock, season: generator.season) - c) * rock
+        let rock = Float(smoothstep(0.42, 0.75, slope))
+        // Rock: darker grey-brown with horizontal strata and patchy lichen tones (art review: pale clay).
+        // Strata warped by noise, uneven spacing and low contrast (art review: even stripes read as contour lines).
+        let warpZ = z + macroNoise.fbm(x / 320, y / 320, octaves: 2) * 60
+        let spacing = 11 + 7 * macroNoise.fbm(x / 900 + 3, y / 900, octaves: 1)
+        let band = sin(warpZ / spacing) * (0.5 + 0.5 * macroNoise.fbm(x / 120, y / 120, octaves: 2))
+        let strata = Float(0.86 + 0.08 * band + 0.10 * macroNoise.fbm(x / 40, y / 40, octaves: 2))
+        let rockCol = srgb(104, 100, 94) * strata   // neutral grey-brown (review: lilac cast)
+        c = c + (rockCol - c) * rock
+        clip *= 1 - rock
         let t = BiomeClassifier.temperature(latitude: generator.latitude, elevation: z + macroNoise.fbm(x / 400, y / 400) * 120)
-        let snow = Float(smoothstep(-1, -4, t) * (1 - smoothstep(0.7, 1.0, slope)))
+        // Snow only holds on gentler slopes; steep faces stay rock (art review: peaks read as clay).
+        let snow = Float(smoothstep(-1, -4, t) * (1 - smoothstep(0.52, 0.72, slope)))   // holds up to ~35°
         c = c + (srgb(236, 240, 246) - c) * snow
-        if terrain.kind == .coastline && z < 4 && z > terrain.seaLevel - 1 { c = srgb(206, 190, 150) }
-        if let r = terrain.river, rd < r.width / 2 + 14 {
-            let bank = Float(1 - smoothstep(r.width / 2, r.width / 2 + 14, rd))
-            c = c + (srgb(112, 100, 78) - c) * bank
+        clip *= 1 - snow
+        if terrain.kind == .coastline && z < 4 && z > terrain.seaLevel - 1 { c = srgb(206, 190, 150); clip = 0 }
+        if let r = terrain.river, rd < r.width / 2 + 26 {
+            // Wider bank with wet mud at the waterline (art review: dark water against grass made the
+            // vertex-spacing waterline read as sawtooth; a low-contrast bank hides it).
+            let bank = Float(1 - smoothstep(r.width / 2 + 4, r.width / 2 + 26, rd))
+            c = c + (srgb(112, 102, 80) - c) * bank
+            let wet = Float(1 - smoothstep(r.width / 2 - 2, r.width / 2 + 9, rd))
+            c = c + (srgb(58, 60, 50) - c) * wet
+            clip *= (1 - bank) * (1 - wet)
+        }
+        if let a = airfield, slope < 0.2 {
+            c = airfieldGrass(x, y, a, current: c)
+            clip *= 1 - airfieldWeight(x, y, a)
         }
         // Macro variation breaks up uniformity (no visible tiling).
         let v = Float(1 + macroNoise.fbm(x / 260, y / 260, octaves: 3) * 0.16)
-        return c * v
+        return (c * v, field * clip, field, clip)
     }
 
-    func fieldColour(_ x: Double, _ y: Double, base: SIMD3<Float>) -> SIMD3<Float> {
-        // Patchwork of fields in rotated 160 x 240 m parcels, colour by crop and season.
-        let a = 0.35, c = cos(a), s = sin(a)
-        let u = c * x + s * y, v = -s * x + c * y
-        let iu = Int((u / 160).rounded(.down)), iv = Int((v / 240).rounded(.down))
-        let h = Hash.int(iu, iv, seed: Hash.combine(terrain.seed, 0xF1E1D))
-        // Muted, art-directed crop palette (stubble, ploughed soil, winter wheat, pasture).
-        let crops: [LinearRGB] = generator.season == .autumn
-            ? [srgb(138, 124, 84), srgb(104, 92, 70), srgb(86, 104, 58), srgb(120, 112, 78), srgb(96, 112, 62), srgb(146, 132, 92), srgb(78, 96, 54)]
-            : [srgb(98, 126, 62), srgb(122, 130, 72), srgb(86, 112, 56), srgb(136, 132, 86), srgb(110, 104, 72)]
-        var col = crops[Int(h % UInt64(crops.count))]
-        // Row texture along the field orientation.
-        let rows = Hash.unit(Hash.mix(h)) < 0.5 ? u : v
-        col *= Float(0.94 + 0.06 * sin(rows * 1.3))
-        return base * 0.25 + col * 0.75
+
+    /// 1 inside the mown runway strip (±90 m, 240 m beyond each end, like a runway strip and end
+    /// safety area), fading to 0 over 40 m (review: the old ±150 m / 500 m lawn hid the fields under
+    /// the approach).
+    func airfieldWeight(_ x: Double, _ y: Double, _ a: RunwaySpec) -> Float {
+        let dir = SIMD2(sin(a.heading), cos(a.heading)), side = SIMD2(dir.y, -dir.x)
+        let d = SIMD2(x, y) - a.threshold
+        let along = (d * dir).sum(), across = abs((d * side).sum())
+        let outside = max(0, -along - 240, along - a.length - 240)
+        return Float((1 - smoothstep(70, 110, across)) * (1 - smoothstep(0, 60, outside)))
+    }
+
+    /// Mown grass in the runway strip with smooth, low-contrast mowing stripes along the runway
+    /// (40 m: wider than any terrain vertex step, so they never alias).
+    func airfieldGrass(_ x: Double, _ y: Double, _ a: RunwaySpec, current c: SIMD3<Float>) -> SIMD3<Float> {
+        let w = airfieldWeight(x, y, a)
+        if w <= 0 { return c }
+        let dir = SIMD2(sin(a.heading), cos(a.heading)), side = SIMD2(dir.y, -dir.x)
+        let across = abs(((SIMD2(x, y) - a.threshold) * side).sum())
+        let stripe = Float(0.965 + 0.035 * sin(across / 40 * Double.pi))
+        let grass = srgb(88, 116, 60) * stripe * Float(0.95 + 0.08 * macroNoise.fbm(x / 60, y / 60, octaves: 2))
+        return c + (grass - c) * w
     }
 
     // MARK: Terrain
@@ -98,6 +160,8 @@ public struct SceneBuilder {
         var heights = [Double](repeating: 0, count: (n + 1) * (n + 1))
         var normals = [SIMD3<Float>](repeating: .zero, count: (n + 1) * (n + 1))
         var colours = [SIMD3<Float>](repeating: .zero, count: (n + 1) * (n + 1))
+        var fields = [Float](repeating: 0, count: (n + 1) * (n + 1))
+        let pattern = fieldPattern
         for j in 0...n {
             for i in 0...n {
                 let x = x0 + Double(i) * step, y = y0 + Double(j) * step
@@ -105,7 +169,23 @@ public struct SceneBuilder {
                 let nn = terrain.normal(x, y, step: max(2, step / 2))
                 heights[j * (n + 1) + i] = z - lower
                 normals[j * (n + 1) + i] = SIMD3(Float(nn.x), Float(nn.y), Float(nn.z))
-                colours[j * (n + 1) + i] = groundColour(x, y, z, normal: nn, far: far)
+                let g = groundSample(x, y, z, normal: nn, far: far)
+                colours[j * (n + 1) + i] = g.colour
+                if g.base < 0 {
+                    fields[j * (n + 1) + i] = g.field                       // suburb impostor stays per vertex
+                } else {
+                    // Fields are decided once per parcel (at its centre), so they end on whole parcels and
+                    // hedgerows; only local clips (river, rock, sand, airfield) cut through a parcel.
+                    // The vertex keeps only the local clip; the per-pixel lookup in `parcelFarmed` decides.
+                    let key = pattern.parcelIndex(Float(x), Float(y))
+                    if parcelFarmed[key] == nil {
+                        let c = pattern.parcelCentre(key)
+                        let cx = Double(c.x), cy = Double(c.y)
+                        let base = groundSample(cx, cy, terrain.height(cx, cy), normal: terrain.normal(cx, cy, step: max(2, step / 2)), far: far).base
+                        parcelFarmed[key] = pattern.farmed(key, base: base)
+                    }
+                    fields[j * (n + 1) + i] = g.clip
+                }
             }
         }
         let cx = (centre.x / step).rounded() * step, cy = (centre.y / step).rounded() * step
@@ -117,14 +197,20 @@ public struct SceneBuilder {
                 let i00 = j * (n + 1) + i, i10 = i00 + 1, i01 = i00 + n + 1, i11 = i01 + 1
                 let p00 = SIMD3(x, y, heights[i00]), p10 = SIMD3(x + step, y, heights[i10])
                 let p01 = SIMD3(x, y + step, heights[i01]), p11 = SIMD3(x + step, y + step, heights[i11])
-                let c1 = (colours[i00] + colours[i10] + colours[i11]) / 3
-                let c2 = (colours[i00] + colours[i11] + colours[i01]) / 3
-                soup.add(p00, p10, p11, na: normals[i00], nb: normals[i10], nc: normals[i11], colour: c1, material: .opaque)
-                soup.add(p00, p11, p01, na: normals[i00], nb: normals[i11], nc: normals[i01], colour: c2, material: .opaque)
+                // Per-vertex colours (art review: per-triangle averages made land-cover borders blocky).
+                soup.add(p00, p10, p11, na: normals[i00], nb: normals[i10], nc: normals[i11],
+                         ca: colours[i00], cb: colours[i10], cc: colours[i11], material: .terrain,
+                         fields: SIMD3(fields[i00], fields[i10], fields[i11]))
+                soup.add(p00, p11, p01, na: normals[i00], nb: normals[i11], nc: normals[i01],
+                         ca: colours[i00], cb: colours[i11], cc: colours[i01], material: .terrain,
+                         fields: SIMD3(fields[i00], fields[i11], fields[i01]))
                 count += 2
             }
         }
         stats["terrain", default: 0] += count
+        var fp = fieldPattern
+        fp.parcels = FieldPattern.ParcelGrid(parcelFarmed)
+        soup.fieldPattern = fp
     }
 
     // MARK: Water
@@ -135,6 +221,36 @@ public struct SceneBuilder {
         if terrain.kind == .coastline {
             let e = halfExtent * 3
             let z = terrain.seaLevel
+            // Near-shore grid with per-vertex colour by depth: foam at the waterline, turquoise
+            // shallows, then the deep colour (art review: the sea cut straight against the land).
+            let n = Int((2 * halfExtent / step).rounded())
+            let x0 = centre.x - halfExtent, y0 = centre.y - halfExtent
+            func depth(_ x: Double, _ y: Double) -> Double { z - terrain.height(x, y) }
+            func colour(_ d: Double) -> SIMD3<Float> {
+                let foam = srgb(196, 206, 204), shallow = srgb(52, 128, 126), mid = srgb(28, 82, 92)
+                if d < 0.6 { return foam + (shallow - foam) * Float(smoothstep(0.0, 0.6, d)) }
+                if d < 6 { return shallow + (mid - shallow) * Float(smoothstep(0.6, 6, d)) }
+                return mid + (deep - mid) * Float(smoothstep(6, 28, d))
+            }
+            var dgrid = [Double](repeating: 0, count: (n + 1) * (n + 1))
+            for j in 0...n { for i in 0...n { dgrid[j * (n + 1) + i] = depth(x0 + Double(i) * step, y0 + Double(j) * step) } }
+            var cells = 0
+            for j in 0..<n {
+                for i in 0..<n {
+                    let d00 = dgrid[j * (n + 1) + i], d10 = dgrid[j * (n + 1) + i + 1]
+                    let d01 = dgrid[(j + 1) * (n + 1) + i], d11 = dgrid[(j + 1) * (n + 1) + i + 1]
+                    let dmax = max(d00, d10, d01, d11), dmin = min(d00, d10, d01, d11)
+                    if dmax < -1.5 || dmin > 30 { continue }      // dry land, or deep water under the big quad
+                    let xa = x0 + Double(i) * step, ya = y0 + Double(j) * step
+                    let p00 = SIMD3(xa, ya, z + 0.02), p10 = SIMD3(xa + step, ya, z + 0.02)
+                    let p01 = SIMD3(xa, ya + step, z + 0.02), p11 = SIMD3(xa + step, ya + step, z + 0.02)
+                    let c00 = colour(d00), c10 = colour(d10), c01 = colour(d01), c11 = colour(d11)
+                    soup.add(p00, p10, p11, na: up, nb: up, nc: up, ca: c00, cb: c10, cc: c11, material: .water)
+                    soup.add(p00, p11, p01, na: up, nb: up, nc: up, ca: c00, cb: c11, cc: c01, material: .water)
+                    cells += 1
+                }
+            }
+            stats["shoreCells", default: 0] += cells
             let a = SIMD3(centre.x - e, centre.y - e, z), b = SIMD3(centre.x + e, centre.y - e, z)
             let c = SIMD3(centre.x + e, centre.y + e, z), d = SIMD3(centre.x - e, centre.y + e, z)
             soup.add(a, b, c, na: up, nb: up, nc: up, colour: deep, material: .water)
@@ -143,8 +259,12 @@ public struct SceneBuilder {
             return
         }
         guard let river = terrain.river else { return }
-        // Smooth ribbon along the centre-line, wider than the channel so banks hide the edge.
-        let w = river.width / 2 + 6
+        // Smooth ribbon along the centre-line, wider than the channel so banks hide the edge. Split at
+        // the centre so the banks get a lighter shallow tint, and the width breathes along the river
+        // (art review: uniform dark canal).
+        let w0 = river.width / 2 + 6
+        let shallow: SIMD3<Float> = srgb(66, 82, 64)
+        func width(_ c: SIMD2<Double>) -> Double { w0 * (0.9 + 0.2 * (macroNoise.fbm(c.x / 380 + 11, c.y / 380, octaves: 2) * 0.5 + 0.5)) }
         for i in 0..<(river.points.count - 1) {
             let a = river.points[i], b = river.points[i + 1]
             if ((a - centre) * (a - centre)).sum() > halfExtent * halfExtent * 4 { continue }
@@ -157,11 +277,15 @@ public struct SceneBuilder {
                 let c0 = a + (b - a) * t0, c1 = a + (b - a) * t1
                 let n0 = normalize2(na + (nb - na) * t0), n1 = normalize2(na + (nb - na) * t1)
                 let z0 = terrain.waterHeight(c0.x, c0.y), z1 = terrain.waterHeight(c1.x, c1.y)
-                let q0 = SIMD3(c0.x - n0.x * w, c0.y - n0.y * w, z0), q1 = SIMD3(c1.x - n1.x * w, c1.y - n1.y * w, z1)
-                let q2 = SIMD3(c1.x + n1.x * w, c1.y + n1.y * w, z1), q3 = SIMD3(c0.x + n0.x * w, c0.y + n0.y * w, z0)
-                soup.add(q0, q1, q2, na: up, nb: up, nc: up, colour: deep, material: .water)
-                soup.add(q0, q2, q3, na: up, nb: up, nc: up, colour: deep, material: .water)
-                stats["water", default: 0] += 2
+                let wa = width(c0), wb = width(c1)
+                let q0 = SIMD3(c0.x - n0.x * wa, c0.y - n0.y * wa, z0), q1 = SIMD3(c1.x - n1.x * wb, c1.y - n1.y * wb, z1)
+                let q2 = SIMD3(c1.x + n1.x * wb, c1.y + n1.y * wb, z1), q3 = SIMD3(c0.x + n0.x * wa, c0.y + n0.y * wa, z0)
+                let m0 = SIMD3(c0.x, c0.y, z0), m1 = SIMD3(c1.x, c1.y, z1)
+                soup.add(q0, q1, m1, na: up, nb: up, nc: up, ca: shallow, cb: shallow, cc: deep, material: .water)
+                soup.add(q0, m1, m0, na: up, nb: up, nc: up, ca: shallow, cb: deep, cc: deep, material: .water)
+                soup.add(m0, m1, q2, na: up, nb: up, nc: up, ca: deep, cb: deep, cc: shallow, material: .water)
+                soup.add(m0, q2, q3, na: up, nb: up, nc: up, ca: deep, cb: shallow, cc: shallow, material: .water)
+                stats["water", default: 0] += 4
             }
         }
         _ = step
@@ -335,24 +459,81 @@ public struct SceneBuilder {
         stats["runwayQuads", default: 0] += 1
     }
 
+    /// Airport furniture around a runway: parallel taxiway with stubs, apron, hangars, approach
+    /// lighting and a PAPI (art review: a lone runway rectangle read as "no sense of place").
+    public mutating func addAirportKit(_ spec: RunwaySpec, elevation: Double) {
+        let dir = SIMD2(sin(spec.heading), cos(spec.heading)), side = SIMD2(dir.y, -dir.x)   // side = right of the runway
+        func p(_ along: Double, _ across: Double, _ dz: Double) -> SIMD3<Double> {
+            let q = spec.threshold + dir * along + side * across
+            return SIMD3(q.x, q.y, elevation + dz)
+        }
+        func slab(_ a0: Double, _ a1: Double, _ c0: Double, _ c1: Double, _ dz: Double, _ col: SIMD3<Float>) {
+            soup.addQuad(p(a0, c0, dz), p(a1, c0, dz), p(a1, c1, dz), p(a0, c1, dz), colour: col, material: .road)
+        }
+        let L = spec.length, hw = spec.width / 2
+        let asphalt = srgb(70, 70, 72), concrete = srgb(150, 148, 140), yellow = srgb(196, 160, 40)
+        // Parallel taxiway (15 m) at 75 m, centre line, and three stubs to the runway edge.
+        slab(-20, L + 20, 67.5, 82.5, 0.08, asphalt)
+        slab(-20, L + 20, 74.7, 75.3, 0.11, yellow)
+        for a in [10.0, L / 2, L - 10] {
+            slab(a - 7.5, a + 7.5, hw, 67.5, 0.07, asphalt)
+            slab(a - 0.3, a + 0.3, hw + 2, 75, 0.10, yellow)
+        }
+        // Apron and hangars.
+        let a0 = L * 0.38, a1 = L * 0.64
+        slab(a0, a1, 82.5, 145, 0.06, concrete)
+        for k in 0..<4 {
+            let ac = a0 + 40 + Double(k) * ((a1 - a0 - 80) / 3)
+            let wall = k % 2 == 0 ? srgb(176, 180, 184) : srgb(150, 158, 170)
+            addBox({ x, y, z in p(ac + x, 170 + y, z) }, hx: 16, hy: 13, z0: -0.5, z1: 8, colour: wall)
+            // Low-pitched dark roof.
+            soup.addQuad(p(ac - 16, 157, 8), p(ac + 16, 157, 8), p(ac + 16, 170, 10), p(ac - 16, 170, 10), colour: srgb(70, 74, 80))
+            soup.addQuad(p(ac - 16, 170, 10), p(ac + 16, 170, 10), p(ac + 16, 183, 8), p(ac - 16, 183, 8), colour: srgb(70, 74, 80))
+        }
+        // Approach lighting: centre-line bars every 30 m to 420 m, crossbar at 300 m.
+        let light = srgb(240, 236, 220)
+        for k in 1...14 {
+            let a = -30.0 * Double(k)
+            for o in [-2.0, 0, 2.0] {
+                addBox({ x, y, z in p(a + x, o + y, z) }, hx: 0.35, hy: 0.35, z0: 0, z1: 0.8 + Double(k) * 0.05, colour: light)
+            }
+        }
+        for o in stride(from: -15.0, through: 15.0, by: 3) where abs(o) > 3 {
+            addBox({ x, y, z in p(-300 + x, o + y, z) }, hx: 0.35, hy: 0.35, z0: 0, z1: 1.4, colour: light)
+        }
+        // PAPI: four units left of the runway at 300 m.
+        for k in 0..<4 {
+            addBox({ x, y, z in p(300 + x, -(hw + 15 + Double(k) * 9) + y, z) }, hx: 0.8, hy: 1.2, z0: 0, z1: 0.9,
+                   colour: k < 2 ? srgb(232, 232, 228) : srgb(210, 40, 36))
+        }
+        stats["airportKit", default: 0] += 1
+    }
+
     // MARK: Aircraft
 
     /// Adds the procedural aircraft at a world position (ENU) with heading (rad from north, clockwise), pitch and roll.
-    public mutating func addAircraft(at p: SIMD3<Double>, heading: Double, pitch: Double, roll: Double, accent: SIMD3<Float>) {
+    /// `propDisc`: include the spinning propeller disc (material `.prop`, drawn translucent by the Metal
+    /// renderer; the CPU preview has no transparency, so it leaves it out).
+    public mutating func addAircraft(at p: SIMD3<Double>, heading: Double, pitch: Double, roll: Double, accent: SIMD3<Float>, propDisc: Bool = false) {
         let q = Quaternion(roll: roll, pitch: pitch, yaw: heading)   // body -> NED
         func world(_ b: SIMD3<Double>) -> SIMD3<Double> {
             let ned = q.rotate(b)
             return p + SIMD3(ned.y, ned.x, -ned.z)                   // NED -> ENU
         }
+        let first = soup.triangleCount
+        defer { soup.smoothNormals(triangles: first..<soup.triangleCount) }
         for t in AircraftMesh.build() {
             let colour: SIMD3<Float>, mat: Material
             switch t.part {
-            case .paint: colour = srgb(232, 232, 228); mat = .paint
+            case .paint: colour = srgb(214, 214, 208); mat = .paint   // albedo ≈ 0.66: white paint keeps visible shading under a midday sun
             case .accent: colour = accent; mat = .paint
             case .glass: colour = srgb(28, 34, 42); mat = .glass
             case .metal: colour = srgb(150, 152, 156); mat = .paint
             case .tyre: colour = srgb(24, 24, 26); mat = .opaque
-            case .prop: continue // a spinning disc needs transparency; not drawn in the CPU preview
+            case .seam: colour = srgb(70, 72, 76); mat = .opaque
+            case .prop:
+                if !propDisc { continue }
+                colour = srgb(34, 34, 36); mat = .prop
             }
             soup.addFlat(world(t.a), world(t.c), world(t.b), colour: colour, material: mat)
         }
@@ -360,6 +541,16 @@ public struct SceneBuilder {
     }
 
     // MARK: Trees
+
+    /// Whether a tree at distance `dist` from the object focus survives the edge fade: density thins
+    /// smoothly over the outer quarter of `radius` (art review: forests stopped at a hard ring).
+    public static func keepTree(_ p: SIMD3<Double>, dist: Double, radius r: Double) -> Bool {
+        if dist > r { return false }
+        let edge = (r - dist) / (0.25 * r)
+        if edge >= 1 { return true }
+        let h = Hash.unit(Hash.combine(UInt64(bitPattern: Int64(p.x * 4)), UInt64(bitPattern: Int64(p.y * 4)) ^ 0x7E3D))
+        return h < edge * edge * (3 - 2 * edge)
+    }
 
     public mutating func addTree(_ t: Tree, detail: Int) {
         let p = t.position
@@ -381,7 +572,20 @@ public struct SceneBuilder {
         } else {
             let cz = p.z + t.height - t.crownRadius * 1.05
             if detail >= 2 { addCone(SIMD3(p.x, p.y, p.z - 0.5), radius: 0.3, top: cz, sides: 4, colour: trunk, material: .opaque) }
-            addBlob(SIMD3(p.x, p.y, cz), rx: t.crownRadius, rz: t.crownRadius * 1.1, detail: detail, colour: col)
+            if detail >= 2 {
+                // Clustered crown: a main mass plus 2–3 offset lobes, so silhouettes break up like real canopies.
+                let h = Hash.combine(UInt64(bitPattern: Int64(p.x * 7)), UInt64(bitPattern: Int64(p.y * 7)))
+                let r = t.crownRadius
+                addBlob(SIMD3(p.x, p.y, cz), rx: r * 0.86, rz: r * 0.95, detail: detail, colour: col)
+                let lobes = 2 + Int(h % 2)
+                for k in 0..<lobes {
+                    let a = Double(k) / Double(lobes) * 2 * .pi + Double(h % 628) / 100
+                    let off = SIMD3(cos(a) * r * 0.5, sin(a) * r * 0.5, r * (0.1 + 0.25 * Double((h >> (8 + k)) & 1)))
+                    addBlob(SIMD3(p.x, p.y, cz) + off, rx: r * 0.58, rz: r * 0.62, detail: 1, colour: col * Float(0.94 + 0.08 * Double(k)))
+                }
+            } else {
+                addBlob(SIMD3(p.x, p.y, cz), rx: t.crownRadius, rz: t.crownRadius * 1.1, detail: detail, colour: col)
+            }
         }
         stats["trees", default: 0] += 1
     }
@@ -422,7 +626,9 @@ public struct SceneBuilder {
         for (a, b, d) in tris {
             func p(_ u: SIMD3<Double>) -> SIMD3<Double> { let l = lump(u); return c + SIMD3(u.x * rx * l, u.y * rx * l, u.z * rz * l) }
             func n(_ u: SIMD3<Double>) -> SIMD3<Float> { SIMD3(Float(u.x), Float(u.y), Float(u.z)) }
-            soup.add(p(a), p(b), p(d), na: n(a), nb: n(b), nc: n(d), colour: colour, material: .foliage)
+            // Darker underside (self-shadowed inner canopy), lighter sunlit top (art review: toy spheres).
+            func col(_ u: SIMD3<Double>) -> SIMD3<Float> { colour * Float(0.72 + 0.34 * (u.z * 0.5 + 0.5)) }
+            soup.add(p(a), p(b), p(d), na: n(a), nb: n(b), nc: n(d), ca: col(a), cb: col(b), cc: col(d), material: .foliage)
         }
     }
 }

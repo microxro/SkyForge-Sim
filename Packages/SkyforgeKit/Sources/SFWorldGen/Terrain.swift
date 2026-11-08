@@ -85,7 +85,7 @@ public struct TerrainRecipe: Sendable {
     }
 
     func naturalHeight(_ x: Double, _ y: Double) -> Double {
-        let fine = detail.fbm(x / 140, y / 140, octaves: 3) * 1.2
+        let fine = detail.fbm(x / 220, y / 220, octaves: 3) * 0.6   // gentler: 1.2 m at 140 m banded under a low sun
         switch kind {
         case .suburbanPlain:
             let rolling = noise.fbm(x / 2_600, y / 2_600, octaves: 4) * 22
@@ -95,7 +95,10 @@ public struct TerrainRecipe: Sendable {
             let d = riverDistance(x, y)
             let valley = smoothstep(0, 700, d)
             let bed = 60.0
-            let channel = river.map { d < $0.width / 2 + 4 ? -4.0 * (1 - d / ($0.width / 2 + 4)) - 2.5 : 0 } ?? 0
+            // Smooth channel that stays below the water surface out past the water ribbon (half-width + 6 m),
+            // so the ribbon's smooth edge is the visible waterline; the old profile stepped 2.5 m at
+            // half-width + 4 m and the step sawtoothed on the terrain grid (art review).
+            let channel = river.map { -6.5 * (1 - smoothstep($0.width / 2 + 4, $0.width / 2 + 16, d)) } ?? 0
             return lerp(bed, hills, valley) + fine * valley + channel
         case .coastline:
             // Land rises inland (to the west); a noisy coastline runs north-south near x = 600.
@@ -107,7 +110,7 @@ public struct TerrainRecipe: Sendable {
             return base + cliffs + fine
         case .mountainValley:
             let d = riverDistance(x, y)
-            let channel = d < 24 ? 3.5 * (1 - d / 24) + 1.5 : 0
+            let channel = 4.5 * (1 - smoothstep(18, 30, d))   // continuous; below the surface under the ribbon
             let bankFade = smoothstep(10, 60, d)   // keep micro-detail out of the river channel
             return mountainBase(x, y) - channel + fine * 2 * bankFade
         }
@@ -132,6 +135,20 @@ public struct TerrainRecipe: Sendable {
         return false
     }
 
+    /// Whether a point lies under a runway approach/departure surface out to `length` metres past
+    /// either end: inner edge 60 m beyond the strip, diverging 15 % each side (ICAO Annex 14 style).
+    /// Obstacles such as trees are kept out so finals look like real, cleared approaches.
+    public func isApproachCorridor(_ x: Double, _ y: Double, length: Double = 1_800) -> Bool {
+        for z in flattenZones {
+            let d = SIMD2(x, y) - z.centre
+            let a = SIMD2(sin(z.heading), cos(z.heading))
+            let along = abs((d * a).sum()) - z.halfLength
+            guard along > 0, along < length else { continue }
+            if abs(d.x * a.y - d.y * a.x) < z.halfWidth + 60 + along * 0.15 { return true }
+        }
+        return false
+    }
+
     /// Surface normal from central differences.
     public func normal(_ x: Double, _ y: Double, step: Double = 4) -> SIMD3<Double> {
         let hx = height(x + step, y) - height(x - step, y)
@@ -142,7 +159,7 @@ public struct TerrainRecipe: Sendable {
     /// Whether a point is open water (sea or river).
     public func isWater(_ x: Double, _ y: Double) -> Bool {
         if height(x, y) < seaLevel { return true }
-        if let r = river, riverDistance(x, y) < r.width / 2 { return true }
+        if let r = river, riverDistance(x, y) < r.width / 2 + 7 { return true }   // the water ribbon's extent
         return false
     }
 

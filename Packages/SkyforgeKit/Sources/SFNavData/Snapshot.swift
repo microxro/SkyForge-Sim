@@ -2,10 +2,8 @@
 // Bundled OurAirports snapshot (zlib-compressed CSV, decoded with the pure-Swift inflater) and a
 // validated, atomic "Update airport database" path with an injectable transport.
 import Foundation
-#if canImport(FoundationNetworking)
-import FoundationNetworking
-#endif
 import SFTerrainCore
+import SFContent
 
 public struct SnapshotManifest: Codable, Sendable, Equatable {
     public struct FileInfo: Codable, Sendable, Equatable {
@@ -50,24 +48,6 @@ public enum BundledNavData {
     /// Loads the full offline database from the app bundle.
     public static func load() throws -> NavDatabase {
         NavDatabase(airportsCSV: try csv("airports"), runwaysCSV: try csv("runways"), navaidsCSV: try csv("navaids"))
-    }
-}
-
-/// Minimal HTTP abstraction so updates are testable without the network.
-public protocol HTTPTransport: Sendable {
-    func get(_ url: URL) async throws -> Data
-}
-
-public struct URLSessionTransport: HTTPTransport {
-    public init() {}
-    public func get(_ url: URL) async throws -> Data {
-        var req = URLRequest(url: url)
-        req.setValue("SKYFORGE/0.1 (+https://github.com/microxro/SkyForge-Sim)", forHTTPHeaderField: "User-Agent")
-        let (data, response) = try await URLSession.shared.data(for: req)
-        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-            throw SnapshotError.transport("HTTP \(http.statusCode) for \(url.lastPathComponent)")
-        }
-        return data
     }
 }
 

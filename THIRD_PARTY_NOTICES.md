@@ -19,3 +19,7 @@ No GPL, LGPL or AGPL code is linked into the app.
 ## Data
 
 See `docs/DATA_SOURCES.md` for every data source, licence and the attribution text shown in the app.
+
+## Data (not linked into the binary; fetched at runtime or used as test fixtures)
+- Sentinel-2 cloudless 2016 by EOX IT Services GmbH (contains modified Copernicus Sentinel data 2016). Licence: Creative Commons Attribution 4.0 International (https://creativecommons.org/licenses/by/4.0/).
+- USGS The National Map orthoimagery (USDA NAIP): US public domain.

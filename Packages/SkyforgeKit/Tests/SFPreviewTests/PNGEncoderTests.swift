@@ -15,3 +15,23 @@ import Foundation
         #expect(d.count > 50)
     }
 }
+
+import SFTerrainCore
+
+@Suite struct PNGRoundTripTests {
+    /// Encoded frames decode back exactly (stored blocks on Linux; Sub filter + DEFLATE on Apple platforms).
+    @Test func encodeDecodeRoundTrip() throws {
+        let w = 97, h = 31
+        var rgb = [UInt8](repeating: 0, count: w * h * 3)
+        for i in 0..<rgb.count { rgb[i] = UInt8((i * 7 + (i / 291) * 13) & 0xFF) }
+        let png = PNGEncoder.encodeRGB(width: w, height: h, rgb: rgb)
+        let d = try PNGDecoder.decode([UInt8](png))
+        #expect(d.width == w && d.height == h && d.channels == 3)
+        #expect(d.pixels == rgb)
+        #if canImport(Darwin)
+        var flat = [UInt8](repeating: 120, count: 640 * 360 * 3)
+        flat[5] = 3
+        #expect(PNGEncoder.encodeRGB(width: 640, height: 360, rgb: flat).count < 20_000, "compressed on Apple platforms")
+        #endif
+    }
+}

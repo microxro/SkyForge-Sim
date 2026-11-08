@@ -2,6 +2,7 @@ import Testing
 import Foundation
 import SFMath
 @testable import SFNavData
+import SFContent
 
 @Suite struct NavDataTests {
     static func load(_ name: String) -> String {
@@ -85,7 +86,7 @@ import SFMath
     struct FixtureTransport: HTTPTransport {
         let files: [String: Data]
         func get(_ url: URL) async throws -> Data {
-            guard let d = files[url.deletingPathExtension().lastPathComponent] else { throw SnapshotError.transport("404") }
+            guard let d = files[url.deletingPathExtension().lastPathComponent] else { throw TransportError.status(404) }
             return d
         }
     }

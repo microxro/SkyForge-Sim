@@ -2,6 +2,7 @@
 // Time-of-day presets, sky model and per-pixel shading for the CPU preview.
 import Foundation
 import SFMath
+import SFAtmosphere
 
 public enum TimePreset: String, Sendable, CaseIterable {
     case sunrise, goldenHour = "golden", midday, overcast, dusk, night, storm
@@ -21,6 +22,47 @@ public struct LightingSetup: Sendable {
     public var exposure: Float
     public var cloudCover: Float          // 0…1
     public var sunDisc: Bool
+    /// Physically based sky and aerial perspective (clear-sky presets); nil = artistic gradient.
+    public var physical: PhysicalSky? = nil
+
+    /// Clear-sky presets get the Hillaire sky, sun colour, ambient and aerial perspective from
+    /// SFAtmosphere; overcast, storm and night keep their hand-tuned look (cloud decks).
+    public static func physicalPreset(_ p: TimePreset, azimuthDegrees: Double = 250, cameraHeightMetres: Double) -> LightingSetup {
+        var L = preset(p, azimuthDegrees: azimuthDegrees)
+        let turbidity: Double
+        switch p {
+        case .midday: turbidity = 2.5
+        case .goldenHour: turbidity = 3.0
+        case .sunrise: turbidity = 3.5
+        case .dusk: turbidity = 2.5
+        case .overcast, .storm, .night: return L
+        }
+        let sky = PhysicalSky(toSun: simd_normalize(L.toSun), viewHeightMetres: cameraHeightMetres, turbidity: turbidity)
+        L.physical = sky
+        L.sunColour = sky.sunColour
+        L.ambientSky = sky.skyAmbient
+        let sinEl = max(0, simd_normalize(L.toSun).z)
+        L.ambientGround = SIMD3<Float>(0.20, 0.18, 0.14) * (sky.sunColour * sinEl + sky.skyAmbient)
+        let side = SIMD3<Float>(-L.toSun.y, L.toSun.x, 0)
+        L.skyHorizon = sky.sky(simd_normalize(side + SIMD3(0, 0, 0.03)), sunDisc: false)
+        L.skyZenith = sky.sky(SIMD3(0, 0, 1), sunDisc: false)
+        L.skyMid = nil
+        let y = luminance(sky.sunColour * max(0.15, sinEl) + sky.skyAmbient)
+        L.exposure = 0.74 * powf(referenceLuminance / max(1e-4, y), 0.45)
+        return L
+    }
+
+    @inline(__always) static func luminance(_ c: SIMD3<Float>) -> Float { 0.2126 * c.x + 0.7152 * c.y + 0.0722 * c.z }
+
+    /// Midday (55°, turbidity 2.5) lighting luminance, the exposure anchor (0.78).
+    static let referenceLuminance: Float = {
+        var p = AtmosphereParameters(); p.turbidity = 2.5
+        let m = SkyModel(sunElevationDeg: 55, viewHeightKm: 0.15, parameters: p)
+        let t = m.sunTransmittance, e = m.skyIrradiance
+        let c = SIMD3<Float>(Float(t.x), Float(t.y), Float(t.z)) * 3.4 * Float(sin(55 * Double.pi / 180))
+            + SIMD3<Float>(Float(e.x), Float(e.y), Float(e.z)) * 3.4
+        return luminance(c)
+    }()
 
     public static func preset(_ p: TimePreset, azimuthDegrees: Double = 250) -> LightingSetup {
         func dir(_ elevationDeg: Double, _ azDeg: Double) -> SIMD3<Float> {
@@ -75,16 +117,20 @@ public struct LightingSetup: Sendable {
     public func sky(_ d: SIMD3<Float>, cloudNoise: GradientNoise2D) -> SIMD3<Float> {
         let h = max(0, d.z)
         var c: SIMD3<Float>
-        if let mid = skyMid {
+        let s = max(0, fdot(d, simd_normalize(toSun)))
+        if let ph = physical {
+            c = ph.sky(SIMD3(d.x, d.y, max(d.z, 0.0005)), sunDisc: sunDisc)
+        } else if let mid = skyMid {
             let t = powf(h, 0.5)
             c = t < 0.35 ? skyHorizon + (mid - skyHorizon) * (t / 0.35) : mid + (skyZenith - mid) * ((t - 0.35) / 0.65)
         } else {
             c = skyHorizon + (skyZenith - skyHorizon) * powf(h, 0.42)
         }
-        if d.z < 0 { c = skyHorizon * (0.8 + 0.2 * (1 + d.z)) }
-        let s = max(0, fdot(d, simd_normalize(toSun)))
-        c += sunColour * (0.06 * powf(s, 6) + 0.25 * powf(s, 60))
-        if sunDisc && s > 0.99985 { c += sunColour * 18 }
+        if physical == nil {
+            if d.z < 0 { c = skyHorizon * (0.8 + 0.2 * (1 + d.z)) }
+            c += sunColour * (0.06 * powf(s, 6) + 0.25 * powf(s, 60))
+            if sunDisc && s > 0.99985 { c += sunColour * 18 }
+        }
         // Cloud layer: project onto a plane 2.5 km up.
         if d.z > 0.02 && cloudCover > 0 {
             let t = 2_500 / Double(d.z)

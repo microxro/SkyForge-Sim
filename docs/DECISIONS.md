@@ -41,3 +41,43 @@
 
 ## ADR-0011 CLI target name
 - Decision: the preview CLI target is `SFPreviewCLI` (product `sfpreview`), because `sfpreview` and `SFPreview` collide on case-insensitive macOS file systems. `tools/check_paths.py` guards against case-only collisions.
+
+## ADR-0012 Five-hourly "continue" pulse
+- Context: the user, on 2026-11-08, asked for a command that sends "continue" every 5 hours, in addition to `autoContinueAtUsageLimit`.
+- Decision: a session-bound scheduled task (`trig_01VkukC5znseCkMfBGwFqndn`, cron `33 */5 * * *` UTC). This supersedes the "no scheduled task" part of ADR-0002 at the user's explicit request.
+- Consequence: an idle session is woken at most every 5 hours; the Stop hook still drives continuation while a turn is running.
+
+## ADR-0013 Physically based sky: CPU reference first
+- Context: §8 asks for Hillaire sky LUTs on Metal; this host has no Metal device and CI's device availability is unknown.
+- Decision: implement the Hillaire 2020 model in Swift (`SFAtmosphere/Scattering.swift`) with the paper's Earth parameters (Rayleigh 5.802/13.558/33.1 ·10⁻³ km⁻¹, H 8 km; Mie 3.996/4.40 ·10⁻³ km⁻¹, H 1.2 km, g 0.8; ozone tent at 25 km), test it on Linux, use it for CPU previews, and treat it as the oracle for the MSL compute port (P1.5b), compared texel-by-texel by the visual-regression harness when a device exists.
+- Consequence: the sky is correct and testable everywhere today; the GPU path cannot drift silently.
+
+## ADR-0014 Real orthoimagery for ground realism
+- Context: the user compared SKYFORGE with MSFS 2024 and asked for realism; procedural colour alone cannot reach that look. MSFS's ground comes from licensed aerial imagery, which is not available to us.
+- Decision: free sources only, without keys or accounts: USGS orthoimagery (public domain, ≈0.3–1 m, US) and Sentinel-2 cloudless 2016 (CC BY 4.0, 10 m, worldwide). Pure-Swift baseline JPEG decoder so previews/tests run on Linux; tiles cached in the content store; land cover (water/forest/built-up) derived from colour drives water shading and 3D tree placement on top of the imagery.
+- Consequence: US regions approach photographic ground detail; elsewhere 10 m imagery plus procedural detail. Attribution is required in the app (Settings → Attributions) for the Sentinel-2 layer.
+
+## ADR-0015 Bold Mode: real-world airports by default, bundled showcase tile packs
+- Context: the user's Bold Mode directive (docs/BOLD_MODE.md) asks for real-world airports as the default start, offline showcase airports, and streaming elsewhere. The bundle limit is 150 MB (MASTER_PROMPT §… bundle ≤ 150 MB).
+- Decision: `TilePack` (SFContent) holds the recorded HTTP responses (imagery JPEG, Terrarium PNG) of a real-world load, content-addressed with a SHA-256 manifest. `TilePackTransport` serves pack hits and falls back to the network, so the loader is unchanged. `sfpreview pack-airport` records a pack at the phone tier.
+- Six showcase airports, 43 MB in total (the bundle is ≈ 57 MB with the DEM and nav data):
+  - KMRY Monterey (US coast, the default start);
+  - KASE Aspen (US mountains);
+  - KBFI Boeing Field (US city);
+  - LSZS Samedan (Alps) and NZQN Queenstown (Southern Alps), Sentinel-2 only;
+  - KCOI Merritt Island.
+- Missing imagery tiles fall back to up to three coarser ancestors, so higher tiers fly offline on the packed zoom and partial caches still cover the ground.
+- Other airports from the bundled OurAirports data stream after an explicit download prompt (Guideline 4.2.3). When a load fails, the app flies the offline SkyWorld airfield and says so on screen.
+
+## ADR-0016 OSM data access from the build environment
+- Context: A3 needs OpenStreetMap buildings and roads (ODbL). The cloud build environment's proxy refuses every OSM host: overpass-api.de, its mirrors, api.openstreetmap.org, planet and Geofabrik. overpass-api.de was added to the allow-list (approved by the user on 2026-11-08), but its TLS handshake is still reset upstream.
+- Decision: the app queries Overpass at runtime (keyless and free, ODbL attribution on screen), and tests use fixtures. Showcase packs gain OSM layers once the build environment can reach an OSM source; until then they carry imagery and elevation only, and buildings fall back to procedural ones. Overture Maps is not used, because its building layer mixes in Microsoft ML footprints, which the directive forbids.
+
+## ADR-0017 Sharp approach imagery from the USGS export endpoint (2026-11-08)
+- Context: the art review found near-ground blur at US airports (KMRY, KBFI, KASE). The cause is the 3 m/px phone-tier mosaic magnified about 6× near the camera. USGS cached tiles (`USGSImageryOnly/MapServer/tile`) stop at z16. The NAIP ImageServer host (imagery.nationalmap.gov) is blocked from the build environment.
+- Decision: `USGSImageryProvider` builds z17/z18 tile URLs from the same public-domain map service's `export` endpoint, using exactly the tile's EPSG:3857 bounds at 256 px. These tiles flow through the normal tile pipeline, cache and packs.
+- Coverage: a third imagery layer, `detail`, covers a 2.4 km square centred 1 km out on the approach. At phone tier it is 2048 px (z17, about 1 m/px); on desktop 4096 px (z18 streamed; offline it falls back to z17 tiles).
+- Grading and rendering: the layer is colour-matched to the near mosaic and feathered over its outer 8 % (Metal shader and CPU `ImageryGround` agree).
+- Scope: US airports only. Sentinel-2 is 10 m native.
+- Packs: KMRY, KASE, KBFI and KCOI re-recorded; showcase total 51 MB.
+- Licence: USGS The National Map imagery is a US Government work (public domain). No key, no account.

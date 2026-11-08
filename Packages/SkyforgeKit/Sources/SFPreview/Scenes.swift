@@ -11,7 +11,7 @@ public enum PreviewScene: String, Sendable, CaseIterable {
         switch self {
         case .suburban: return .goldenHour
         case .forestRiver: return .midday
-        case .coastline: return .goldenHour
+        case .coastline: return .midday      // the committed preview has always been midday
         case .mountainValley: return .midday
         case .airportFinal: return .sunrise
         }
@@ -53,9 +53,9 @@ public enum PreviewScenes {
         let rwyDir = SIMD2(sin(rwyHeading), cos(rwyHeading))
         let rwyElevation = recipe.height(rwyThreshold.x + rwyDir.x * 750, rwyThreshold.y + rwyDir.y * 750)
         if scene == .airportFinal {
-            recipe.flattenZones = [(centre: rwyThreshold + rwyDir * 750, halfLength: 850, halfWidth: 90, heading: rwyHeading, elevation: rwyElevation)]
+            recipe.flattenZones = [(centre: rwyThreshold + rwyDir * 750, halfLength: 850, halfWidth: 200, heading: rwyHeading, elevation: rwyElevation)]
         }
-        let gen = WorldGenerator(terrain: recipe, latitude: 47, season: .autumn)
+        let gen = WorldGenerator(terrain: recipe, latitude: 47, season: .summer)   // art review: autumn crowns clashed with green grass
         func cam(_ x: Double, _ y: Double, agl: Double, lookX: Double, lookY: Double, lookAGL: Double, fov: Double = 70) -> PreviewCamera {
             let z = recipe.height(x, y) + agl
             let tz = recipe.height(lookX, lookY) + lookAGL
@@ -107,6 +107,8 @@ public enum PreviewScenes {
         let focus = SIMD2(cam.position.x + fwd2.x * s.nearHalfExtent * 0.55, cam.position.y + fwd2.y * s.nearHalfExtent * 0.55)
         let origin = SIMD3(cam.position.x, cam.position.y, 0)
         var b = SceneBuilder(generator: s.generator, origin: origin)
+        b.airfield = s.runway
+        b.townImpostor = (focus, s.objectRadius)
         b.addTerrain(centre: focus, halfExtent: s.nearHalfExtent, step: s.nearStep)
         // Mid ring (24 m) out to 8 km, then the far ring; each skips the area the finer ring covers.
         let midHalf = max(s.nearHalfExtent * 2.5, 8_000.0), midStep = 24.0
@@ -135,19 +137,20 @@ public enum PreviewScenes {
                     let along = (d * fwd2.xy).sum()
                     if along < -30 { continue }
                     let dist = (d * d).sum().squareRoot()
-                    if dist > r { continue }
+                    if !SceneBuilder.keepTree(t.position, dist: dist, radius: r) { continue }
                     b.addTree(t, detail: dist < s.treeDetailRadius * 1.8 ? 2 : 1)
                 }
             }
         }
-        if let rwy = s.runway { b.addRunway(rwy, elevation: s.runwayElevation) }
+        if let rwy = s.runway { b.addRunway(rwy, elevation: s.runwayElevation); b.addAirportKit(rwy, elevation: s.runwayElevation) }
         if let rig = s.aircraft {
             let fwdH = normalize(SIMD3(cam.forward.x, cam.forward.y, 0))
             let pos = cam.position + fwdH * rig.ahead - SIMD3(0, 0, rig.below) + SIMD3(fwdH.y, -fwdH.x, 0) * rig.right
             b.addAircraft(at: pos, heading: atan2(fwdH.x, fwdH.y) + rig.headingOffset, pitch: rig.pitch, roll: rig.roll, accent: srgb(28, 62, 118))
         }
         stats.buildSeconds = Date().timeIntervalSince(t0)
-        let lighting = LightingSetup.preset(time ?? scene.defaultTime, azimuthDegrees: s.sunAzimuth)
+        let lighting = LightingSetup.physicalPreset(time ?? scene.defaultTime, azimuthDegrees: s.sunAzimuth,
+                                                    cameraHeightMetres: cam.position.z)
         let shadowCentre = SIMD3(focus.x - fwd2.x * s.nearHalfExtent * 0.25, focus.y - fwd2.y * s.nearHalfExtent * 0.25, cam.position.z - 150)
         let img = PreviewRenderer.render(soup: b.soup, camera: cam, lighting: lighting, width: width, height: height,
                                          supersample: supersample, shadowCentre: shadowCentre,

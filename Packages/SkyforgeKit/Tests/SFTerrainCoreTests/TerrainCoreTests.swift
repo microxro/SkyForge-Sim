@@ -135,3 +135,57 @@ import SFContent
         #expect(throws: GlobalDEMError.badHeader) { try GlobalDEM(data: Data("NOTADEM".utf8)) }
     }
 }
+
+actor CountingTransport: HTTPTransport {
+    let payload: Data?
+    var calls = 0
+    init(payload: Data?) { self.payload = payload }
+    func get(_ url: URL) async throws -> Data {
+        calls += 1
+        guard let p = payload else { throw TransportError.offline }
+        return p
+    }
+}
+
+@Suite struct TerrainStreamerTests {
+    func tempCache() throws -> KeyedCache {
+        try KeyedCache(root: FileManager.default.temporaryDirectory.appendingPathComponent("sfts-\(UUID().uuidString)"))
+    }
+    var rainier: Data { (try? Data(contentsOf: TerrainCoreTests.fixtureDir.appendingPathComponent("rainier_10_165_360.png"))) ?? Data() }
+
+    @Test func networkThenMemoryThenDisk() async throws {
+        let transport = CountingTransport(payload: rainier)
+        let cache = try tempCache()
+        let t = TileCoord(z: 10, x: 165, y: 360)
+        let s1 = TerrainStreamer(transport: transport, cache: cache, baseline: nil)
+        let (g1, src1) = await s1.tile(t)
+        #expect(src1 == .network && g1.minMax.max == 4370)
+        #expect(await s1.tile(t).1 == .memory)
+        // A new streamer (e.g. next launch) finds the tile on disk without touching the network.
+        let s2 = TerrainStreamer(transport: transport, cache: cache, baseline: nil)
+        #expect(await s2.tile(t).1 == .disk)
+        #expect(await transport.calls == 1)
+    }
+
+    @Test func offlineFallsBackToBaseline() async throws {
+        let dem = try GlobalDEM.bundled()
+        let s = TerrainStreamer(transport: CountingTransport(payload: nil), cache: try tempCache(), baseline: dem)
+        let (g, src) = await s.tile(TileCoord(z: 10, x: 165, y: 360))
+        #expect(src == .baseline)
+        #expect(g.minMax.max > 1_000)   // the Cascades are still there, just coarse
+    }
+
+    @Test func corruptedDiskEntryIsRefetched() async throws {
+        let transport = CountingTransport(payload: rainier)
+        let cache = try tempCache()
+        let t = TileCoord(z: 10, x: 165, y: 360)
+        _ = await TerrainStreamer(transport: transport, cache: cache, baseline: nil).tile(t)
+        // Flip a byte in the stored blob.
+        let id = ContentID(data: rainier)
+        let url = cache.store.root.appendingPathComponent(id.relativePath)
+        var d = try Data(contentsOf: url); d[100] ^= 0xFF; try d.write(to: url)
+        let (_, src) = await TerrainStreamer(transport: transport, cache: cache, baseline: nil).tile(t)
+        #expect(src == .network)
+        #expect(await transport.calls == 2)
+    }
+}

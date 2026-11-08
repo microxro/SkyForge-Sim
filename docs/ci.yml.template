@@ -47,7 +47,10 @@ jobs:
         run: xcodebuild -downloadComponent MetalToolchain || true
       - name: plutil lint
         run: plutil -lint SKYFORGE.xcodeproj/project.pbxproj App/Info.plist App/PrivacyInfo.xcprivacy App/SKYFORGE.entitlements
-      - name: Package tests (macOS)
+      - name: Package tests (macOS, incl. offscreen Metal regression when a device exists)
+        env:
+          SKYFORGE_VISUAL_OUT: ${{ github.workspace }}/visual-out
+          SKYFORGE_VISUAL_LOG: "1"
         run: swift test --package-path Packages/SkyforgeKit
       - name: Build iOS Simulator
         run: |
@@ -65,4 +68,11 @@ jobs:
         with:
           name: apple-build-logs
           path: "*-build.log"
+          if-no-files-found: ignore
+      - name: Upload visual regression output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-regression
+          path: visual-out
           if-no-files-found: ignore

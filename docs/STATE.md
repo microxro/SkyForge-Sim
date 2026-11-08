@@ -1,9 +1,25 @@
-LAST_UPDATE: 2026-11-07T23:09:49Z
+LAST_UPDATE: 2026-11-08T22:53:39Z
 
 # SKYFORGE state
 
 ## Phase
-P0 accepted (CI fully green). P1 in progress: P1.1, P1.2, P1.4, P1.6a, P1.2b-1, P1.6b, P1.7, P1.8a, P1.11 done; P1.3 renderer done with visuals below target.
+Bold Mode (docs/BOLD_MODE.md) is in progress.
+- Done (CI-verified unless noted):
+  - A real-world showcase airport (KMRY, offline tile pack) is the default start. Six packs are bundled; any OurAirports airport streams after a prompt; SkyWorld is the fallback.
+  - Imagery grading and a feathered seam.
+  - Near layer centred toward the approach; near/far height blend.
+  - OSM runtime client and meshes. Unit-tested; OSM is unreachable from the build environment, so no showcase pack carries OSM yet (ADR-0016).
+  - HDR scene buffer with bloom, SSAO (CI compile pending), water waves and foam, prop disc (CI pending).
+  - Tier render presets and the CI GPU frame-time test, run alone in its own CI step. All tiers are within budget on the CI virtual GPU (run 42531565329): KMRY high 16.11 ms and SkyWorld high 12.41 ms against 16.7 ms. Device numbers are unverified.
+  - Sharp z17 approach imagery for US airports (ADR-0017); depth-aware FXAA.
+  - Art rounds on Metal frames: 3.83, then 4.08. Review frames now 1280×720.
+  - 30-minute soak test.
+- Fixed 2026-11-08: broken showcase Metal frames. Causes: (1) the CI GPU assembled real-terrain chunks wrongly with `baseVertex`/`baseInstance`; now absolute indices and buffer offsets (debba5b); (2) imagery grading crushed shadows (41a9679); (3) the colour water classifier flagged shadowed slopes, roofs and asphalt (f9824ad: slope, area and runway filters). Frame-time tests now run alone in their own CI step (873eaf5).
+- Open:
+  - Procedural building fallback where OSM is missing; cascades 3–4; aircraft textures; cockpit textures; cloud self-shadow tiers.
+  - Art review of the CI Metal frames (target ≥ 8).
+
+P0 accepted (CI fully green). P1 in progress: P1.1, P1.2, P1.2b-2, P1.4, P1.7b, P1.8b, P1.9, P1.10, P1.12, P1.5, P1.6a, P1.2b-1, P1.6b, P1.7, P1.8a, P1.11 done; P1.3 renderer done with visuals below target (independent art review 6.00/10 vs commercial sims after 11 rounds; open: per-pixel land cover, tree crowns, impostors).
 
 ## Environment facts (recorded at session start)
 - Host: Linux x86_64, Ubuntu 24.04.5 LTS, 4 CPUs, 15 GB RAM (Claude Code on the web sandbox).
@@ -15,7 +31,9 @@ P0 accepted (CI fully green). P1 in progress: P1.1, P1.2, P1.4, P1.6a, P1.2b-1, 
 
 ## Auto-resume
 - Project hooks installed in `.claude/settings.json` (SessionStart, Stop guard, StopFailure, PreCompact).
-- `autoContinueAtUsageLimit: true` is set in the session's user settings (`~/.claude/settings.json`); the user asked for this instead of a scheduled task, so no "SKYFORGE resume" scheduled task was created (ADR-0002).
+- `autoContinueAtUsageLimit: true` is set in the session's user settings (`~/.claude/settings.json`); the user asked for this instead of a scheduled task, (ADR-0002).
+- 2026-11-08: the user then explicitly asked for a scheduled task that sends "continue" every 5 hours; created as `trig_01VkukC5znseCkMfBGwFqndn` ("SKYFORGE continue pulse", cron `33 */5 * * *` UTC, bound to this session).
+- PR #1 was merged by the owner at 2026-11-07T23:13Z (commit 50fdfb9). Follow-up work restarts the branch from main and goes into a new PR.
 - Fallback: send the message "continue" to resume.
 
 ## What works (verified on Linux)
@@ -31,11 +49,28 @@ P0 accepted (CI fully green). P1 in progress: P1.1, P1.2, P1.4, P1.6a, P1.2b-1, 
 - SFTerrainCore: inflate/PNG decode, Terrarium, tile math, CDLOD.
 - SFWorldGen + SFPreview: procedural regions and a parallel CPU renderer; previews of scenes (a)(d)(e)(f) in docs/previews (reviewed, avg 6.1/10).
 
+- SFInstruments: pitot-static system (ASI lag, altimeter with Kollsman, VSI lag, blocked static/pitot), turn/slip from physics; steam six-pack and SF-1000 PFD rendered from the real FDM (docs/previews k, l).
+
+- SFWeather `METARService`: live METAR from aviationweather.gov with memory+disk cache (10 min), stale fallback, coalesced requests (tests use a scripted transport only).
+
+- Visual regression: `VisualRegression.check` against Tests/Fixtures/golden (bless with SKYFORGE_BLESS=1; failures write actual+diff PNGs to SKYFORGE_VISUAL_OUT, uploaded by CI).
+
+- SFAtmosphere `SkyModel`: Hillaire 2020 sky (LUTs in ~0.25 s on 4 cores release), zenith transmittance within 0.6 % of analytic optical depth; previews m_sky_noon/golden/sunset/twilight.
+
+- Quick Flight: `QuickFlightSession` flies headless (rest, touch takeoff, final, crash); Metal `WorldRenderer` frame (sky, terrain, objects, aircraft) verified offscreen in CI.
+
 ## What is unverified
-- Apple-only code now COMPILES in CI (iOS Simulator + macOS, Xcode 26.6) but has never RUN: the Metal sky renderer, SwiftUI menu and device tiers need a simulator/device run (no Metal device on CI runners) or Mac day.
+- Quick Flight interactivity (touch/keyboard/gamepad in the running app), frame time and memory on real devices.
+- RESOLVED 2026-11-08: GitHub's macos-26 runner exposes a Metal device. CI run 42441951368 ran `metalOffscreenSkyMatchesCPUReference` and it passed, so Metal shaders now execute and are verified in CI on every PR.
+- SwiftUI `InstrumentCanvas`/`InstrumentDemoView`, `TouchFlightControls`, `BindingsView` and the CoreMotion `MotionTiltInput` compile only in CI; never run.
+- SwiftUI screens and device tiers compile in CI but have never run interactively (Metal passes do run offscreen in CI).
+
+- Real-world Quick Flight (KCOI): USGS/Sentinel-2 imagery terrain, water mask, instanced trees, culled chunks; Metal frame from fixture imagery in CI.
+- Volumetric cumulus (Metal, half-res, depth-aware) matching the CPU reference in CI; cloud shadows; live METAR cloud cover at real airports.
+- Cockpit view with live PFD texture and banking camera; sky pass rolls and uses the proper ENU→sky rotation.
 
 ## Broken
-- Nothing known. Last CI run 42421809423 green on all jobs.
+- Nothing known. Speckle fixed in f8afa50 (CI frame reviewed).
 
 ## Last green SHA
-- f5fe3da (CI run 42421809423, all jobs green)
+- ee36845 (CI run 42503914209: all jobs green; parcel grid, row relief, triplanar rock)
