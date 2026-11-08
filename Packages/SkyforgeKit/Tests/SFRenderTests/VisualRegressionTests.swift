@@ -82,7 +82,11 @@ func expectGolden(_ name: String, rgb: [UInt8], width: Int, height: Int, toleran
         let top = px(20, 2), bottom = px(20, h - 2)
         #expect(top.2 > top.0)                 // zenith bluer than red
         #expect(bottom.1 > bottom.2 || bottom.0 > bottom.2)  // ground is not sky blue
-        let brightest = (0..<(w * h)).max { (Int(img[3 * $0]) + Int(img[3 * $0 + 1])) < (Int(img[3 * $1]) + Int(img[3 * $1 + 1])) }!
+        var brightest = 0, best = -1
+        for i in 0..<(w * h) {
+            let v: Int = Int(img[3 * i]) + Int(img[3 * i + 1])
+            if v > best { best = v; brightest = i }
+        }
         #expect(brightest % w > w / 2)         // sun is right of centre (sunDirection.x > 0)
     }
 
