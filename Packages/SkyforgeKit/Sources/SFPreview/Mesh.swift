@@ -16,6 +16,11 @@ public struct TriangleSoup: Sendable {
     /// Optional per-vertex albedo (3 per triangle) for smooth colour transitions; empty when every
     /// triangle is flat-coloured. Once used it covers all triangles (flat ones repeat `albedo`).
     public var vertexAlbedo: [SIMD3<Float>] = []
+    /// Optional per-vertex field weight (3 per triangle, 0…1): where `FieldPattern` parcels are drawn
+    /// per pixel on terrain. Empty means no fields; once used it covers all triangles.
+    public var vertexField: [Float] = []
+    /// The parcel pattern `vertexField` refers to (set by SceneBuilder).
+    public var fieldPattern: FieldPattern?
     public let origin: SIMD3<Double>
 
     public init(origin: SIMD3<Double>) { self.origin = origin }
@@ -33,13 +38,17 @@ public struct TriangleSoup: Sendable {
         normals.append(na); normals.append(nb); normals.append(nc)
         albedo.append(colour); material.append(m)
         if !vertexAlbedo.isEmpty { vertexAlbedo.append(colour); vertexAlbedo.append(colour); vertexAlbedo.append(colour) }
+        if !vertexField.isEmpty { vertexField.append(0); vertexField.append(0); vertexField.append(0) }
     }
 
     /// Triangle with per-vertex colours (interpolated by both renderers).
     public mutating func add(_ a: SIMD3<Double>, _ b: SIMD3<Double>, _ c: SIMD3<Double>,
                              na: SIMD3<Float>, nb: SIMD3<Float>, nc: SIMD3<Float>,
-                             ca: SIMD3<Float>, cb: SIMD3<Float>, cc: SIMD3<Float>, material m: Material) {
+                             ca: SIMD3<Float>, cb: SIMD3<Float>, cc: SIMD3<Float>, material m: Material,
+                             fields: SIMD3<Float>? = nil) {
         if vertexAlbedo.isEmpty && !albedo.isEmpty { vertexAlbedo = albedo.flatMap { [$0, $0, $0] } }
+        if let f = fields, f != .zero, vertexField.isEmpty { vertexField = [Float](repeating: 0, count: 3 * material.count) }
+        if !vertexField.isEmpty { let f = fields ?? .zero; vertexField.append(f.x); vertexField.append(f.y); vertexField.append(f.z) }
         positions.append(local(a)); positions.append(local(b)); positions.append(local(c))
         normals.append(na); normals.append(nb); normals.append(nc)
         albedo.append((ca + cb + cc) / 3); material.append(m)
@@ -49,6 +58,11 @@ public struct TriangleSoup: Sendable {
     /// Albedo of vertex `k` (0…2) of triangle `t`.
     @inline(__always) public func colour(_ t: Int, _ k: Int) -> SIMD3<Float> {
         vertexAlbedo.isEmpty ? albedo[t] : vertexAlbedo[3 * t + k]
+    }
+
+    /// Field weight of vertex `k` of triangle `t` (0 when the soup has no fields).
+    @inline(__always) public func field(_ t: Int, _ k: Int) -> Float {
+        vertexField.isEmpty ? 0 : vertexField[3 * t + k]
     }
 
     /// Flat-shaded triangle (normal from winding, counter-clockwise seen from outside).

@@ -143,6 +143,9 @@ public final class WorldRenderer {
     private var cloudRenderer: CloudRenderer?
     private let sky: PhysicalSkyRenderer
     private var environment: (buffer: MTLBuffer, count: Int, origin: SIMD3<Double>, cells: [MeshCell])?
+    /// Field parcels drawn per pixel on the environment's terrain (from the soup; nil = none).
+    public private(set) var fieldPattern: FieldPattern?
+    private let worldLibrary: MTLLibrary
     /// Environment cells drawn in the last main pass (of `environmentCellCount`), for tests and HUD stats.
     public private(set) var lastDrawnEnvironmentCells = 0
     public var environmentCellCount: Int { environment?.cells.count ?? 0 }
@@ -163,6 +166,7 @@ public final class WorldRenderer {
         let lib: MTLLibrary
         do { lib = try device.makeLibrary(source: CloudShaders.common + WorldShaders.source, options: nil) }
         catch { throw RendererError.shaderCompile(String(describing: error)) }
+        worldLibrary = lib
         guard let v = lib.makeFunction(name: "world_vertex"), let f = lib.makeFunction(name: "world_fragment") else {
             throw RendererError.shaderCompile("missing world functions")
         }
@@ -216,6 +220,32 @@ public final class WorldRenderer {
             fd.colorAttachments[0].pixelFormat = colorFormat
             fxaaPipeline = try device.makeRenderPipelineState(descriptor: fd)
         } catch { throw RendererError.pipeline(String(describing: error)) }
+    }
+
+    /// `FieldPattern.factor` evaluated by the world shader's code (CI compares it with the CPU).
+    public func fieldFactors(points: [SIMD3<Float>], pattern: FieldPattern) throws -> [SIMD3<Float>] {
+        let n = points.count
+        guard n > 0 else { return [] }
+        guard let k = worldLibrary.makeFunction(name: "field_factors") else { throw RendererError.shaderCompile("missing field_factors") }
+        let kernel: MTLComputePipelineState
+        do { kernel = try device.makeComputePipelineState(function: k) } catch { throw RendererError.pipeline(String(describing: error)) }
+        let pts = points.map { SIMD4<Float>($0, 0) }
+        var params = SIMD4<Float>(Float(pattern.seed), pattern.autumn ? 1 : 0, 0, 0)
+        guard let ib = device.makeBuffer(bytes: pts, length: n * 16, options: .storageModeShared),
+              let ob = device.makeBuffer(length: n * 16, options: .storageModeShared),
+              let cmd = queue.makeCommandBuffer(), let enc = cmd.makeComputeCommandEncoder() else { throw RendererError.commandQueue }
+        enc.setComputePipelineState(kernel)
+        enc.setBuffer(ib, offset: 0, index: 0)
+        enc.setBuffer(ob, offset: 0, index: 1)
+        enc.setBytes(&params, length: 16, index: 2)
+        enc.dispatchThreads(MTLSize(width: n, height: 1, depth: 1),
+                            threadsPerThreadgroup: MTLSize(width: min(n, kernel.maxTotalThreadsPerThreadgroup), height: 1, depth: 1))
+        enc.endEncoding()
+        cmd.commit()
+        cmd.waitUntilCompleted()
+        if let e = cmd.error { throw RendererError.pipeline(String(describing: e)) }
+        let p = ob.contents().bindMemory(to: SIMD4<Float>.self, capacity: n)
+        return (0..<n).map { SIMD3(p[$0].x, p[$0].y, p[$0].z) }
     }
 
     private func makeDummy() -> MTLTexture {
@@ -354,7 +384,7 @@ public final class WorldRenderer {
             for k in 0..<3 {
                 let a = soup.colour(t, k)
                 let p = soup.positions[3 * t + k], n = soup.normals[3 * t + k]
-                out.append(PackedWorldVertex(px: p.x, py: p.y, pz: p.z, nx: q(n.x), ny: q(n.y), nz: q(n.z), nw: 0,
+                out.append(PackedWorldVertex(px: p.x, py: p.y, pz: p.z, nx: q(n.x), ny: q(n.y), nz: q(n.z), nw: q(soup.field(t, k)),
                                              r: c(a.x), g: c(a.y), b: c(a.z), material: m))
             }
         }
@@ -372,6 +402,7 @@ public final class WorldRenderer {
         precondition(MemoryLayout<PackedWorldVertex>.stride == 20)
         let (order, cells) = SpatialBinning.bin(positions: soup.positions)
         environment = (try makeBuffer(Self.pack(soup, order: order)), soup.triangleCount * 3, soup.origin, cells)
+        fieldPattern = soup.vertexField.isEmpty ? nil : soup.fieldPattern
     }
 
     public func setAircraft(_ soup: TriangleSoup) throws {
@@ -594,8 +625,8 @@ public final class WorldRenderer {
         let dims = tables?.key ?? SIMD4(1, 1, 1, 1000)
         func uniforms(model: simd_float4x4) -> WorldUniforms {
             WorldUniforms(viewProj: viewProj, model: model, sunDir: SIMD4(toSun, sunAz), sunColour: SIMD4(L.sunColour, L.exposure),
-                          ambientSky: SIMD4(L.ambientSky, dims.w), ambientGround: SIMD4(L.ambientGround, 0),
-                          skyHorizon: SIMD4(L.skyHorizon, 0), tableDims: SIMD4(dims.x, dims.y, dims.z, doShadows ? 2 : 0),
+                          ambientSky: SIMD4(L.ambientSky, dims.w), ambientGround: SIMD4(L.ambientGround, Float(fieldPattern?.seed ?? 0)),
+                          skyHorizon: SIMD4(L.skyHorizon, fieldPattern.map { $0.autumn ? 2 : 1 } ?? 0), tableDims: SIMD4(dims.x, dims.y, dims.z, doShadows ? 2 : 0),
                           shadow0: cascades[0], shadow1: cascades[1],
                           cascadeSplits: SIMD4(ShadowCascades.splits[0], ShadowCascades.splits[1],
                                                2 * ShadowCascades.halfExtents[0] / Float(ShadowCascades.size),

@@ -24,6 +24,7 @@ public enum PreviewRenderer {
                               width: Int, height: Int, supersample ss: Int = 2,
                               shadowCentre: SIMD3<Double>, shadowHalfExtent: Double,
                               ground: (any GroundAlbedo)? = nil,
+                              fields: FieldPattern? = nil,
                               stats: inout RenderStats) -> PreviewImage {
         let W = width * ss, H = height * ss
         let origin = soup.origin
@@ -52,6 +53,7 @@ public enum PreviewRenderer {
         let toSun = simd_normalize(L.toSun)
         let camAltitude = Float(camera.position.z)
         let gb = g
+        let fields = fields ?? soup.fieldPattern
         hdr.withUnsafeMutableBufferPointer { hb in
             let out = Shared(hb.baseAddress!)
             DispatchQueue.concurrentPerform(iterations: H) { y in
@@ -79,6 +81,13 @@ public enum PreviewRenderer {
                         albedo = g.albedo
                         imagery = true
                         if g.water > 0.5 { mat = Material.water.rawValue; albedo = g.albedo * 0.7 }
+                    }
+                    if mat == Material.terrain.rawValue && !imagery, let fpat = fields, gb.field[idx] > 0.003 {
+                        // Field parcels and hedgerows per pixel (the vertex grid blurred and stepped them).
+                        let footprint = dist / focal / max(0.15, abs(fdot(dir, n)))
+                        let wx = Float(Double(p.x) + origin.x), wy = Float(Double(p.y) + origin.y)
+                        let f = fpat.factor(wx, wy, footprint: footprint)
+                        albedo *= SIMD3<Float>(repeating: 1) + (f - SIMD3<Float>(repeating: 1)) * min(1, gb.field[idx])
                     }
                     if mat == Material.terrain.rawValue && dist < (imagery ? 350 : 700) {
                         // Per-pixel ground detail the vertex grid cannot carry: clumps (1.5 m), patches

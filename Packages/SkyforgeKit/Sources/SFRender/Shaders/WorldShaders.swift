@@ -10,7 +10,7 @@ public enum WorldShaders {
 
     struct WorldVertex {
         packed_float3 position;   // relative to the mesh origin (m), z up
-        char4 normal;             // snorm8 xyz
+        char4 normal;             // snorm8 xyz, w = field weight (0…127)
         uchar4 colour;            // sqrt-encoded linear albedo rgb, material id in a
     };
 
@@ -20,8 +20,8 @@ public enum WorldShaders {
         float4 sunDir;            // xyz to sun (z up), sun azimuth atan2(y, x)
         float4 sunColour;         // rgb, exposure
         float4 ambientSky;        // rgb, max aerial distance (km)
-        float4 ambientGround;     // rgb, unused
-        float4 skyHorizon;        // rgb (water reflection), unused
+        float4 ambientGround;     // rgb, field pattern seed (24-bit integer as float)
+        float4 skyHorizon;        // rgb (water reflection), field pattern: 0 none, 1 summer, 2 autumn
         float4 tableDims;         // nD, nAz, nEl, cascade count
         float4x4 shadow0;         // camera-relative world → cascade 0 clip (orthographic)
         float4x4 shadow1;
@@ -62,6 +62,7 @@ public enum WorldShaders {
         float3 normal;
         float3 albedo;
         float material;
+        float field;              // FieldPattern weight (terrain mesh only)
     };
 
     vertex WorldVarying world_vertex(const device WorldVertex* v [[buffer(0)]], constant WorldUniforms& u [[buffer(1)]],
@@ -76,6 +77,7 @@ public enum WorldShaders {
         float3 c = float3(w.colour.rgb) / 255.0;
         o.albedo = c * c;
         o.material = float(w.colour.a);
+        o.field = max(0.0, float(w.normal.w)) / 127.0;
         return o;
     }
 
@@ -89,6 +91,7 @@ public enum WorldShaders {
         o.normal = normalize(float3(w.normal.xyz) / 127.0);
         o.albedo = float3(0.15, 0.17, 0.12);
         o.material = 8.0;                       // real terrain: albedo from imagery in the fragment shader
+        o.field = 0.0;
         return o;
     }
 
@@ -105,6 +108,7 @@ public enum WorldShaders {
         // Trunk vertices (marked by a negative normal w) are bark-coloured.
         o.albedo = w.normal.w < 0 ? float3(0.06, 0.045, 0.03) : float3(t.colour) * (0.85 + 0.3 * saturate(local.z));
         o.material = w.normal.w < 0 ? 0.0 : 2.0;
+        o.field = 0.0;
         return o;
     }
 
@@ -170,6 +174,60 @@ public enum WorldShaders {
     }
     static float groundNoise(float2 w, float cell) { return vnoiseP(w / cell, 4096.0 / cell); }
 
+    // Field parcels and hedgerows: operation-for-operation mirror of SFPreview.FieldPattern.
+    static uint fp_hash(int x, int y, uint s) {
+        uint h = as_type<uint>(x) * 0x8DA6B343u;
+        h ^= as_type<uint>(y) * 0xD8163841u;
+        h ^= s * 0xCB1AB31Fu;
+        h ^= h >> 13;
+        h = h * 0x5BD1E995u;
+        h ^= h >> 15;
+        return h;
+    }
+    static float fp_unit(uint h) { return float(h & 0x00FFFFFFu) / 16777216.0; }
+    static float fp_noise(float x, float y, uint s) {
+        float fx = floor(x), fy = floor(y);
+        int ix = int(fx), iy = int(fy);
+        float tx = x - fx, ty = y - fy;
+        tx = tx * tx * (3.0 - 2.0 * tx); ty = ty * ty * (3.0 - 2.0 * ty);
+        float a = fp_unit(fp_hash(ix, iy, s)), b = fp_unit(fp_hash(ix + 1, iy, s));
+        float c = fp_unit(fp_hash(ix, iy + 1, s)), d = fp_unit(fp_hash(ix + 1, iy + 1, s));
+        float v = (a + (b - a) * tx) + ((c + (d - c) * tx) - (a + (b - a) * tx)) * ty;
+        return v * 2.0 - 1.0;
+    }
+    constant float3 fpSummer[7] = { float3(0.74, 0.90, 0.80), float3(1.22, 1.10, 1.28), float3(1.98, 1.41, 1.84),
+        float3(0.95, 0.60, 1.10), float3(1.70, 1.28, 2.05), float3(0.55, 0.70, 0.66), float3(1.32, 0.96, 1.30) };
+    constant float3 fpAutumn[6] = { float3(1.43, 1.03, 1.57), float3(0.78, 0.54, 1.00), float3(0.60, 0.68, 0.82),
+        float3(1.22, 0.89, 1.38), float3(0.76, 0.77, 0.95), float3(1.67, 1.21, 2.00) };
+    static float3 fieldFactor(float x, float y, float footprint, uint seed, bool autumn) {
+        const float PU = 110.0, PV = 170.0, HW = 1.2;
+        float c = cos(0.35f), s = sin(0.35f);
+        float wu = fp_noise(x / 420.0 + 7.3, y / 420.0, seed ^ 0x51u) * 22.0;
+        float wv = fp_noise(x / 420.0, y / 420.0 - 9.1, seed ^ 0xA3u) * 22.0;
+        float u = c * x + s * y + wu, v = -s * x + c * y + wv;
+        float fu = u / PU, fv = v / PV;
+        float iu = floor(fu), iv = floor(fv);
+        uint h = fp_hash(int(iu), int(iv), seed);
+        float3 col = autumn ? fpAutumn[h % 6u] : fpSummer[h % 7u];
+        float tu = fu - iu, tv = fv - iv;
+        float along = ((h >> 24) & 1u) == 0u ? tu : tv;
+        col *= 0.95 + 0.08 * along;
+        float edge = min(min(tu * PU, (1.0 - tu) * PU), min(tv * PV, (1.0 - tv) * PV));
+        float fp = max(0.05, footprint);
+        float cover = 1.0 - min(1.0, max(0.0, (edge - HW) / fp + 0.5));
+        float strength = min(1.0, 2.0 * HW / fp);
+        float gaps = fp_noise(u / 18.0, v / 18.0, seed ^ 0x77u) > -0.55 ? 1.0 : 0.0;
+        float hedgeAmount = cover * strength * gaps;
+        return col + (float3(0.24, 0.30, 0.38) - col) * hedgeAmount;
+    }
+
+    /// CI check: FieldPattern factors on the GPU (in: x, y, footprint; params: seed, autumn).
+    kernel void field_factors(const device float4* pts [[buffer(0)]], device float4* out [[buffer(1)]],
+                              constant float4& params [[buffer(2)]], uint i [[thread_position_in_grid]]) {
+        float4 p = pts[i];
+        out[i] = float4(fieldFactor(p.x, p.y, p.z, uint(params.x), params.y > 0.5), 0.0);
+    }
+
     /// Cook–Torrance GGX for dielectric paint and glass (F0 = 0.04), with a sky-tinted
     /// environment term so the airframe never looks like flat plastic.
     static float3 pbrDielectric(float3 albedo, float3 n, float3 v, float3 l, float rough, float3 sun, float3 env, float vis) {
@@ -221,6 +279,13 @@ public enum WorldShaders {
             float wm = inNear ? waterMask.sample(imgSampler, nuv).r : 0.0;
             if (saturate((wm - 0.35) / 0.25) > 0.5) { imageryWater = true; albedo *= 0.7; }
             m = imageryWater ? 1.0 : 7.0;
+        }
+        float2 fieldW = in.rel.xy + u.cameraLocal.xy;
+        float fieldFp = length(fwidth(fieldW));              // derivatives outside divergent branches
+        if (m == 7.0 && in.material == 7.0 && u.skyHorizon.w > 0.5 && in.field > 0.003) {
+            // Field parcels with crisp hedgerows per pixel (the vertex grid blurred and stepped them).
+            float3 f = fieldFactor(fieldW.x, fieldW.y, fieldFp, uint(u.ambientGround.w), u.skyHorizon.w > 1.5);
+            albedo *= 1.0 + (f - 1.0) * min(1.0, in.field);
         }
         if (m == 7.0 && dist < (in.material == 8.0 ? 350.0 : 1400.0)) {
             // Per-pixel ground detail (as SFPreview). Each octave fades out once its cell shrinks

@@ -1,9 +1,9 @@
-LAST_UPDATE: 2026-11-08T15:48:51Z
+LAST_UPDATE: 2026-11-08T16:10:45Z
 
 # SKYFORGE state
 
 ## Phase
-P0 accepted (CI fully green). P1 in progress: P1.1, P1.2, P1.2b-2, P1.4, P1.7b, P1.8b, P1.9, P1.10, P1.12, P1.5, P1.6a, P1.2b-1, P1.6b, P1.7, P1.8a, P1.11 done; P1.3 renderer done with visuals below target (independent art review 5.40/10 vs commercial sims after 7 rounds; open: per-pixel land cover, tree crowns, impostors).
+P0 accepted (CI fully green). P1 in progress: P1.1, P1.2, P1.2b-2, P1.4, P1.7b, P1.8b, P1.9, P1.10, P1.12, P1.5, P1.6a, P1.2b-1, P1.6b, P1.7, P1.8a, P1.11 done; P1.3 renderer done with visuals below target (independent art review 5.50/10 vs commercial sims after 8 rounds; open: per-pixel land cover, tree crowns, impostors).
 
 ## Environment facts (recorded at session start)
 - Host: Linux x86_64, Ubuntu 24.04.5 LTS, 4 CPUs, 15 GB RAM (Claude Code on the web sandbox).

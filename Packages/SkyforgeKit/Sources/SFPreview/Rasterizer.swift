@@ -25,6 +25,7 @@ public struct GBuffer: Sendable {
     public var normal: [SIMD3<Float>]
     public var albedo: [SIMD3<Float>]
     public var material: [UInt8]
+    public var field: [Float]          // interpolated FieldPattern weight (terrain only)
 
     init(width: Int, height: Int) {
         self.width = width; self.height = height
@@ -32,6 +33,7 @@ public struct GBuffer: Sendable {
         normal = [SIMD3<Float>](repeating: .zero, count: width * height)
         albedo = [SIMD3<Float>](repeating: .zero, count: width * height)
         material = [UInt8](repeating: 0, count: width * height)
+        field = [Float](repeating: 0, count: width * height)
     }
 }
 
@@ -40,6 +42,7 @@ struct ScreenTri {
     var p0: SIMD3<Float>, p1: SIMD3<Float>, p2: SIMD3<Float>   // x, y pixels; z = 1/depth
     var n0: SIMD3<Float>, n1: SIMD3<Float>, n2: SIMD3<Float>
     var c0: SIMD3<Float>, c1: SIMD3<Float>, c2: SIMD3<Float>
+    var f: SIMD3<Float> = .zero   // per-vertex field weights
     var material: UInt8
     var minY: Int32, maxY: Int32
 }
@@ -67,16 +70,17 @@ enum Raster {
             if a.z < near && b.z < near && c.z < near { continue }
             let mat = soup.material[t].rawValue
             let ca = soup.colour(t, 0), cb = soup.colour(t, 1), cc = soup.colour(t, 2)
+            let fa = soup.field(t, 0), fb = soup.field(t, 1), fc = soup.field(t, 2)
             // Clip against the near plane (Sutherland–Hodgman on one plane).
-            var verts: [(SIMD3<Float>, SIMD3<Float>, SIMD3<Float>)] = []
-            let input = [(a, na, ca), (b, nb, cb), (c, nc, cc)]
+            var verts: [(SIMD3<Float>, SIMD3<Float>, SIMD3<Float>, Float)] = []
+            let input = [(a, na, ca, fa), (b, nb, cb, fb), (c, nc, cc, fc)]
             for i in 0..<3 {
-                let (p, pn, pc) = input[i], (q, qn, qc) = input[(i + 1) % 3]
+                let (p, pn, pc, pf) = input[i], (q, qn, qc, qf) = input[(i + 1) % 3]
                 let pin = p.z >= near, qin = q.z >= near
-                if pin { verts.append((p, pn, pc)) }
+                if pin { verts.append((p, pn, pc, pf)) }
                 if pin != qin {
                     let s = (near - p.z) / (q.z - p.z)
-                    verts.append((p + (q - p) * s, pn + (qn - pn) * s, pc + (qc - pc) * s))
+                    verts.append((p + (q - p) * s, pn + (qn - pn) * s, pc + (qc - pc) * s, pf + (qf - pf) * s))
                 }
             }
             guard verts.count >= 3 else { continue }
@@ -88,7 +92,8 @@ enum Raster {
                 let area = (s1.x - s0.x) * (s2.y - s0.y) - (s1.y - s0.y) * (s2.x - s0.x)
                 if abs(area) < 1e-6 { continue }
                 out.append(ScreenTri(p0: s0, p1: s1, p2: s2, n0: verts[0].1, n1: verts[k].1, n2: verts[k + 1].1,
-                                     c0: verts[0].2, c1: verts[k].2, c2: verts[k + 1].2, material: mat,
+                                     c0: verts[0].2, c1: verts[k].2, c2: verts[k + 1].2,
+                                     f: SIMD3(verts[0].3, verts[k].3, verts[k + 1].3), material: mat,
                                      minY: Int32(max(0, Int(minYf.rounded(.down)))), maxY: Int32(min(height - 1, Int(maxYf.rounded(.up))))))
             }
         }
@@ -111,9 +116,11 @@ enum Raster {
         g.normal.withUnsafeMutableBufferPointer { normal in
         g.albedo.withUnsafeMutableBufferPointer { albedo in
         g.material.withUnsafeMutableBufferPointer { material in
+        g.field.withUnsafeMutableBufferPointer { field in
         tris.withUnsafeBufferPointer { tp in
             let dp = Shared(depth.baseAddress!), np = Shared(normal.baseAddress!)
             let ap = Shared(albedo.baseAddress!), mp = Shared(material.baseAddress!)
+            let fp = Shared(field.baseAddress!)
             let tps = SharedRead(tp.baseAddress!)
             let binsCopy = bins
             DispatchQueue.concurrentPerform(iterations: bands) { band in
@@ -148,11 +155,12 @@ enum Raster {
                             np[idx] = n
                             ap[idx] = (t.c0 * (w0 * t.p0.z) + t.c1 * (w1 * t.p1.z) + t.c2 * (w2 * t.p2.z)) / invZ
                             mp[idx] = t.material
+                            fp[idx] = t.f == .zero ? 0 : (t.f.x * (w0 * t.p0.z) + t.f.y * (w1 * t.p1.z) + t.f.z * (w2 * t.p2.z)) / invZ
                         }
                     }
                 }
             }
-        }}}}}
+        }}}}}}
     }
 }
 
