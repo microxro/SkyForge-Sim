@@ -28,7 +28,7 @@ Legend: [x] done and verified, [ ] not done. Unchecked items are not available i
 - [ ] C12 60 fps high / 30 fps low targets documented; device numbers unverified until run on hardware
 ### Phase D — Correctness
 - [ ] D13 Tests for every new feature (unit, GPU-vs-CPU parity, Metal smoke)
-- [ ] D15 30-minute soak test across tile boundaries (no crash, no NaN, bounded memory)
+- [x] D15 30-minute soak test (simulated, KMRY offline pack, 22 km box across mosaics/tiles): no crash, no NaN, memory bounded (Linux: 125 → 114 MB)
 - [ ] D16 Stub/dishonest-code audit at the end of each phase
 - [ ] Done: art ≥ 8 on Metal frames (≥3 real airports + 1 SkyWorld), frame-time + soak pass, attribution + licence audit, PR before/after
 
