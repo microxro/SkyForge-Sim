@@ -65,6 +65,8 @@ actor FixtureImageryTransport: HTTPTransport {
         #expect(bottom.z < bottom.x || bottom.z < bottom.y, "imagery ground at bottom: \(bottom)")
         #expect(r.lastDrawnChunks > 0 && r.lastDrawnChunks < data.chunks.count,
                 "frustum culling drew \(r.lastDrawnChunks) of \(data.chunks.count) chunks")
+        #expect(r.lastDrawnTreeCells > 0 && r.lastDrawnTreeCells < r.treeCellCount,
+                "tree cells culled: drew \(r.lastDrawnTreeCells) of \(r.treeCellCount)")
         // The lower half is textured photo ground, not a flat fill.
         var lo = Int.max, hi = 0
         for y in (h / 2)..<h { for x in 0..<(w / 3) { let s = px(x, y).x + px(x, y).y + px(x, y).z; lo = min(lo, s); hi = max(hi, s) } }

@@ -118,3 +118,14 @@ Every gate run, CI run and manual verification. Newest at the bottom.
 - 2026-11-08T18:08:42Z gate fast on Linux x86_64: PASS (HEAD 8baafbe)
 - 2026-11-08T18:11:29Z gate fast on Linux x86_64: PASS (HEAD 6988cd8)
 - 2026-11-08T18:16:30Z gate fast on Linux x86_64: PASS (HEAD 14442a8)
+
+## 2026-11-08 GPU frame times on the CI Metal device (virtual macOS GPU; not a phone or Mac — device numbers unverified)
+Method: `FrameTimeTests`, 30 frames after 3 warm-up frames; command-buffer GPU timestamps; fixed final-approach camera.
+- Run 42506926611 (before tier presets):
+  - SkyWorld: low 1280×720, median 9.41 ms; high 1920×1080, 22.93 ms.
+  - KMRY: low 10.01 ms; high 31.94 ms.
+- Run 42508494805 (high preset 0.85 scale, third-resolution 56-step clouds):
+  - SkyWorld: low 8.39 ms; high 17.04 ms (clouds 4.63, shadows 2.38, bloom 0.74 ms).
+  - KMRY: low 10.38 ms; high 23.49 ms (shadows 11.83: every tree instance drawn into both cascades).
+- Fix: tree instances are binned into 400 m cells and culled per view and per cascade; terrain chunks are culled per cascade. The high preset is now 0.8 scale with 48 cloud steps.
+- 2026-11-08T20:39:27Z gate fast on Linux x86_64: PASS (HEAD c536a22)

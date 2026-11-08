@@ -129,6 +129,11 @@ public final class WorldRenderer {
     private var real: (vertices: MTLBuffer, indices: MTLBuffer, draws: [(indexOffset: Int, indexCount: Int, baseVertex: Int, min: SIMD3<Float>, max: SIMD3<Float>)],
                        treeMesh: MTLBuffer, coniferCount: Int, oakStart: Int, oakCount: Int,
                        instances: MTLBuffer?, coniferInstances: Int, oakInstances: Int)?
+    /// Tree instances binned into 400 m cells per kind (contiguous ranges), culled per view and cascade.
+    private var treeCells: [(kind: Int, start: Int, count: Int, min: SIMD3<Float>, max: SIMD3<Float>)] = []
+    /// Tree cells drawn in the last main pass (of `treeCellCount`).
+    public private(set) var lastDrawnTreeCells = 0
+    public var treeCellCount: Int { treeCells.count }
     private var imageryNear: (tex: MTLTexture, centre: SIMD2<Double>, half: Double)?
     private var imageryFar: (tex: MTLTexture, centre: SIMD2<Double>, half: Double)?
     private var waterTex: MTLTexture?
@@ -157,7 +162,7 @@ public final class WorldRenderer {
         }
         public static let low = Settings(renderScale: 1, cloudSteps: 40, cloudDownsample: 2, bloomIntensity: 0.04, ssaoStrength: 0.5)
         public static let medium = Settings(renderScale: 1, cloudSteps: 48, cloudDownsample: 2, bloomIntensity: 0.05, ssaoStrength: 0.7)
-        public static let high = Settings(renderScale: 0.85, cloudSteps: 56, cloudDownsample: 3, bloomIntensity: 0.05, ssaoStrength: 0.7)
+        public static let high = Settings(renderScale: 0.8, cloudSteps: 48, cloudDownsample: 3, bloomIntensity: 0.05, ssaoStrength: 0.7)
     }
 
     public func apply(_ s: Settings) {
@@ -388,7 +393,25 @@ public final class WorldRenderer {
         }
         let meshes = Self.treeMeshes()
         let treeVerts = meshes.conifer + meshes.oak
-        let conifers = data.trees.filter(\.conifer), oaks = data.trees.filter { !$0.conifer }
+        // Bin by kind, then 400 m cell, so each cell is one contiguous instance range.
+        func cellKey(_ t: RealWorldRenderData.Tree) -> (Int, Int, Int) {
+            (t.conifer ? 0 : 1, Int((t.position.x / 400).rounded(.down)), Int((t.position.y / 400).rounded(.down)))
+        }
+        let sorted = data.trees.sorted { cellKey($0) < cellKey($1) }
+        var cells: [(kind: Int, start: Int, count: Int, min: SIMD3<Float>, max: SIMD3<Float>)] = []
+        for (i, t) in sorted.enumerated() {
+            let k = cellKey(t)
+            let lo = t.position - SIMD3(8, 8, 1), hi = t.position + SIMD3(8, 8, t.height + 1)
+            if let last = cells.last, cellKey(sorted[last.start]) == k {
+                cells[cells.count - 1].count += 1
+                cells[cells.count - 1].min = SIMD3(min(last.min.x, lo.x), min(last.min.y, lo.y), min(last.min.z, lo.z))
+                cells[cells.count - 1].max = SIMD3(max(last.max.x, hi.x), max(last.max.y, hi.y), max(last.max.z, hi.z))
+            } else {
+                cells.append((k.0, i, 1, lo, hi))
+            }
+        }
+        treeCells = cells
+        let conifers = sorted.filter(\.conifer), oaks = sorted.filter { !$0.conifer }
         let inst = (conifers + oaks).map { PackedTreeInstance(px: $0.position.x, py: $0.position.y, pz: $0.position.z, height: $0.height,
                                                                r: $0.colour.x, g: $0.colour.y, b: $0.colour.z, kind: $0.conifer ? 0 : 1) }
         func buf<T>(_ a: [T]) throws -> MTLBuffer {
@@ -717,7 +740,9 @@ public final class WorldRenderer {
                     se.setRenderPipelineState(shadowTerrainPipeline)
                     se.setVertexBuffer(rw.vertices, offset: 0, index: 0)
                     se.setVertexBytes(&su, length: MemoryLayout<ShadowUniforms>.stride, index: 1)
-                    for d in rw.draws {
+                    // Only chunks and tree cells inside this cascade's light volume can cast into it.
+                    let lp = Self.clipPlanes(cascades[ci] * su.model)
+                    for d in rw.draws where Self.boxVisible(lp, d.min, d.max) {
                         se.drawIndexedPrimitives(type: .triangle, indexCount: d.indexCount, indexType: .uint32, indexBuffer: rw.indices,
                                                  indexBufferOffset: d.indexOffset * 4, instanceCount: 1, baseVertex: d.baseVertex, baseInstance: 0)
                     }
@@ -725,12 +750,10 @@ public final class WorldRenderer {
                         se.setRenderPipelineState(shadowTreePipeline)
                         se.setVertexBuffer(rw.treeMesh, offset: 0, index: 0)
                         se.setVertexBuffer(ib, offset: 0, index: 2)
-                        if rw.coniferInstances > 0 {
-                            se.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: rw.coniferCount, instanceCount: rw.coniferInstances, baseInstance: 0)
-                        }
-                        if rw.oakInstances > 0 {
-                            se.drawPrimitives(type: .triangle, vertexStart: rw.oakStart, vertexCount: rw.oakCount, instanceCount: rw.oakInstances,
-                                              baseInstance: rw.coniferInstances)
+                        for cell in treeCells where Self.boxVisible(lp, cell.min, cell.max) {
+                            se.drawPrimitives(type: .triangle, vertexStart: cell.kind == 0 ? 0 : rw.oakStart,
+                                              vertexCount: cell.kind == 0 ? rw.coniferCount : rw.oakCount,
+                                              instanceCount: cell.count, baseInstance: cell.start)
                         }
                     }
                     se.setRenderPipelineState(shadowPipeline)
@@ -845,13 +868,14 @@ public final class WorldRenderer {
                 enc.setRenderPipelineState(treePipeline)
                 enc.setVertexBuffer(rw.treeMesh, offset: 0, index: 0)
                 enc.setVertexBuffer(ib, offset: 0, index: 2)
-                if rw.coniferInstances > 0 {
-                    enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: rw.coniferCount, instanceCount: rw.coniferInstances, baseInstance: 0)
+                var cellsDrawn = 0
+                for cell in treeCells where Self.boxVisible(planes, cell.min + o, cell.max + o) {
+                    enc.drawPrimitives(type: .triangle, vertexStart: cell.kind == 0 ? 0 : rw.oakStart,
+                                       vertexCount: cell.kind == 0 ? rw.coniferCount : rw.oakCount,
+                                       instanceCount: cell.count, baseInstance: cell.start)
+                    cellsDrawn += 1
                 }
-                if rw.oakInstances > 0 {
-                    enc.drawPrimitives(type: .triangle, vertexStart: rw.oakStart, vertexCount: rw.oakCount, instanceCount: rw.oakInstances,
-                                       baseInstance: rw.coniferInstances)
-                }
+                lastDrawnTreeCells = cellsDrawn
             }
             enc.setRenderPipelineState(pipeline)
         }
