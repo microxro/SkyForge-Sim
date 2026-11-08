@@ -4,7 +4,7 @@ Legend: [x] done and verified, [ ] not done. Unchecked items are not available i
 
 ## CURRENT
 - CURRENT: P1.3 visual passes toward 8/10 (aircraft in frame, ground detail)
-- Next 3: P1.3 pass: physically based sky + aerial perspective in the CPU previews · P1.5b MSL LUTs · P1.5c shadows/PBR
+- Next 3: P1.3 pass 4 (foliage palette, near-field ground detail) · P1.5b MSL LUTs · P1.5c shadows/PBR
 
 ## P0 Bootstrap
 - [x] P0.1 Save master prompt to docs/MASTER_PROMPT.md

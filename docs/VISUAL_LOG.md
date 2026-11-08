@@ -61,3 +61,9 @@ Open defects (next passes): near-field ground is flat colour (needs detail textu
 - Observed: deep blue zenith and pale horizon at noon; golden aureole at 6°; red-orange horizon glow and reddened disc at 0.5°; purple-pink twilight with dark ground at −4° (the "purple light" of civil twilight). No banding.
 - Scores: realism 8, colour 8, smoothness 9, depth 7 (ground is flat) → **8.0**.
 - Next: use SkyModel for sky, sun colour, ambient and aerial perspective in the scene previews (P1.3 pass 3).
+
+### 2026-11-08 P1.3 pass 3: physically based sky and aerial perspective in scene previews
+- Clear-sky presets (sunrise, golden, midday, dusk) now take sky radiance, sun colour, sky ambient and aerial perspective from SFAtmosphere (Hillaire LUTs; 16×32×32 aerial table per render, turbidity 2.5–3.5). Overcast/storm/night keep their hand-tuned decks.
+- Re-rendered a, d, e, f, j at 1280×720. Most visible gains: blue zenith-to-haze gradients instead of the grey-mauve band, depth haze that turns bluish with distance (f), a warm sun aureole (a, e).
+- Scores (sharpness, lighting, colour, variety, depth, cleanliness): a 6/8/7/6/8/7 → **7.0** (was 6.5); f 7/8/8/7/9/7 → **7.7** (was 6.7); j 6/7/6/5/7/6 → **6.2** (was 5.8); d, e ≈ +0.5 each.
+- Open: broadleaf palette reads too orange under low warm sun; ground is flat colour near field; snow slightly lilac; still below the 8.0 target for a, d, e, j.

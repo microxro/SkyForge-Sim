@@ -147,7 +147,8 @@ public enum PreviewScenes {
             b.addAircraft(at: pos, heading: atan2(fwdH.x, fwdH.y) + rig.headingOffset, pitch: rig.pitch, roll: rig.roll, accent: srgb(28, 62, 118))
         }
         stats.buildSeconds = Date().timeIntervalSince(t0)
-        let lighting = LightingSetup.preset(time ?? scene.defaultTime, azimuthDegrees: s.sunAzimuth)
+        let lighting = LightingSetup.physicalPreset(time ?? scene.defaultTime, azimuthDegrees: s.sunAzimuth,
+                                                    cameraHeightMetres: cam.position.z)
         let shadowCentre = SIMD3(focus.x - fwd2.x * s.nearHalfExtent * 0.25, focus.y - fwd2.y * s.nearHalfExtent * 0.25, cam.position.z - 150)
         let img = PreviewRenderer.render(soup: b.soup, camera: cam, lighting: lighting, width: width, height: height,
                                          supersample: supersample, shadowCentre: shadowCentre,

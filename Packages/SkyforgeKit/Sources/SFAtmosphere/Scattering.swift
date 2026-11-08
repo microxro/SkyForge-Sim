@@ -358,3 +358,58 @@ public struct SkyModel: Sendable {
         return (L, V3(exp(-od.x), exp(-od.y), exp(-od.z)))
     }
 }
+
+extension SkyModel {
+    /// Cumulative aerial perspective along `d` at increasing distances (km): (in-scattered radiance, transmittance).
+    public func aerialSlices(_ d: V3, distancesKm: [Double], substeps: Int = 4) -> [(V3, V3)] {
+        let p = parameters
+        let r = p.bottomRadius + viewHeightKm
+        let origin = V3(0, r, 0)
+        let cosTheta = (d * sunDirection).sum()
+        let phaseR = SkyAtmosphere.rayleighPhase(cosTheta), phaseM = SkyAtmosphere.miePhase(cosTheta, p.mieG)
+        var L = V3.zero, T = V3(repeating: 1), prev = 0.0
+        var out: [(V3, V3)] = []
+        out.reserveCapacity(distancesKm.count)
+        for target in distancesKm {
+            let seg = max(0, target - prev)
+            let dt = seg / Double(substeps)
+            for k in 0..<substeps where dt > 0 {
+                let s = prev + (Double(k) + 0.5) * dt
+                let pos = origin + d * s
+                let ri = (pos * pos).sum().squareRoot()
+                let h = ri - p.bottomRadius
+                let dens = p.densities(h)
+                let scatR = p.rayleighScattering * dens.rayleigh, scatM = p.mieScattering * dens.mie
+                let ext = p.extinction(h)
+                let up = pos / ri
+                let sunMu = (up * sunDirection).sum()
+                let sunT = SkyAtmosphere.transmittance(transmittance, r: ri, mu: sunMu, p)
+                let visible = SkyAtmosphere.rayToSphere(r: ri, mu: sunMu, radius: p.bottomRadius) == nil ? 1.0 : 0.0
+                let psi = multiScattering.sample(sunMu * 0.5 + 0.5, max(0, h) / (p.topRadius - p.bottomRadius))
+                let S = (sunT * visible * (scatR * phaseR + scatM * phaseM) + psi * (scatR + scatM)) * p.solarIrradiance
+                let stepT = V3(exp(-ext.x * dt), exp(-ext.y * dt), exp(-ext.z * dt))
+                let safeExt = V3(max(ext.x, 1e-12), max(ext.y, 1e-12), max(ext.z, 1e-12))
+                L += T * (S - S * stepT) / safeExt
+                T *= stepT
+            }
+            prev = max(prev, target)
+            out.append((L, T))
+        }
+        return out
+    }
+
+    /// Cosine-weighted sky irradiance on an upward-facing surface (no sun disc).
+    public var skyIrradiance: V3 {
+        var e = V3.zero
+        let n = 12
+        for j in 0..<n {
+            for i in 0..<(2 * n) {
+                let ct = (Double(j) + 0.5) / Double(n)      // uniform in cos θ ⇒ cosine weight below
+                let st = (1 - ct * ct).squareRoot()
+                let az = (Double(i) + 0.5) / Double(2 * n) * 2 * .pi
+                e += radiance(V3(st * cos(az), ct, st * sin(az)), includeSun: false) * ct
+            }
+        }
+        return e * (2 * .pi / Double(n * 2 * n))
+    }
+}

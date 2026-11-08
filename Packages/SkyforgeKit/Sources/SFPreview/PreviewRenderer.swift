@@ -110,6 +110,11 @@ public enum PreviewRenderer {
                             colour += L.sunColour * spec * vis
                         }
                     }
+                    if let ph = L.physical {
+                        let (ins, tr) = ph.aerial(dir, distanceMetres: dist)
+                        out[idx] = colour * tr + ins
+                        continue
+                    }
                     // Aerial perspective: height-dependent extinction plus in-scattering toward the sun.
                     let avgH = max(0, (camAltitude + p.z + Float(origin.z)) * 0.5)
                     let ext = L.fogDensity * expf(-avgH / 1_400)
