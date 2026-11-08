@@ -166,7 +166,7 @@ let time = value("--time").map { name -> TimePreset in
 let seed = value("--seed").flatMap(UInt64.init) ?? 1
 let width = value("--width").flatMap(Int.init) ?? 1280
 let height = value("--height").flatMap(Int.init) ?? 720
-let ss = value("--ss").flatMap(Int.init) ?? 2
+let ss = value("--ss").flatMap(Int.init) ?? 3
 guard let out = value("--out") else { fail("sfpreview: --out <file.png> is required") }
 
 let start = Date()

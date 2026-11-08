@@ -105,3 +105,8 @@ Open defects (next passes): near-field ground is flat colour (needs detail textu
 ### 2026-11-08 Airfield grass (j and Quick Flight)
 - The Metal Quick Flight final and preview (j) showed the approach as brown autumn stubble. `SceneBuilder.airfield` now paints the runway strip (±150 m) and 500 m extensions as mown grass with 40 m mowing stripes (wider than any vertex step), blended out over 50 m.
 - j: approach reads as an airfield instead of a ploughed field. Score j 7.0 → **7.4**; average a 7.5, d 7.3, e 7.2, f 7.8, j 7.4 → **7.4**.
+
+### 2026-11-08 Independent art-director review (subagent, benchmark = current commercial sims at 9–10)
+- Scores: a 4.67, d 4.50, e 4.33, f 5.17, j 3.50 → **4.43**; r (real imagery) 5.50; n (clouds) 5.17. My own earlier scores (7.4 average) were measured against our previous frames, not against the real bar; this review is the honest baseline.
+- Common defects: aliasing on aircraft, river banks and runway; loud high-frequency ground mottle; checkerboard dither in clouds; hard draw-distance cut-offs for trees and towns; faceted coast cliffs; no shoreline foam or shallow water; snow covering rock in (f); no airport furniture in (j); autumn trees clash with summer grass.
+- Fixes in this pass: FXAA on the Metal frame; tent-filtered cloud upsample; CPU previews at 3×3 supersampling; ground detail amplitudes calmed (0.16/0.12 → 0.07/0.08, micro-normals 0.9 → 0.3, fade 1.4 km → 0.7 km); cloud preview at 192 steps. Previews re-rendered.

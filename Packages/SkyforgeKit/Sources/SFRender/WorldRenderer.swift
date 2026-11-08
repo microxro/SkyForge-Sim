@@ -121,6 +121,10 @@ public final class WorldRenderer {
     private var cockpitScreen: MTLTexture?
     /// Draw from inside the cockpit: interior mesh, PFD screen, airframe back faces skipped.
     public var cockpitView = false
+    /// FXAA on the final frame (the scene renders into an internal texture first).
+    public var antialiasing = true
+    private let fxaaPipeline: MTLRenderPipelineState
+    private var sceneTarget: MTLTexture?
     private var real: (vertices: MTLBuffer, indices: MTLBuffer, draws: [(indexOffset: Int, indexCount: Int, baseVertex: Int, min: SIMD3<Float>, max: SIMD3<Float>)],
                        treeMesh: MTLBuffer, coniferCount: Int, oakStart: Int, oakCount: Int,
                        instances: MTLBuffer?, coniferInstances: Int, oakInstances: Int)?
@@ -203,6 +207,15 @@ public final class WorldRenderer {
         shadowTerrainPipeline = try pso("shadow_terrain_vertex", nil, label: "ShadowTerrain", colour: false)
         shadowTreePipeline = try pso("shadow_tree_vertex", nil, label: "ShadowTrees", colour: false)
         screenPipeline = try pso("screen_vertex", "screen_fragment", label: "CockpitScreen", colour: true)
+        do {
+            let plib = try device.makeLibrary(source: PostShaders.source, options: nil)
+            let fd = MTLRenderPipelineDescriptor()
+            fd.label = "FXAA"
+            fd.vertexFunction = plib.makeFunction(name: "post_vertex")
+            fd.fragmentFunction = plib.makeFunction(name: "fxaa_fragment")
+            fd.colorAttachments[0].pixelFormat = colorFormat
+            fxaaPipeline = try device.makeRenderPipelineState(descriptor: fd)
+        } catch { throw RendererError.pipeline(String(describing: error)) }
     }
 
     private func makeDummy() -> MTLTexture {
@@ -438,6 +451,32 @@ public final class WorldRenderer {
     /// Encodes sky + world + aircraft into a pass whose colour attachment is already set.
     public func encode(cmd: MTLCommandBuffer, colour: MTLTexture, depth: MTLTexture, camera c: WorldCamera,
                        aircraftPosition: SIMD3<Double>?, aircraftBodyToENU: simd_double3x3?) throws {
+        guard antialiasing else {
+            try encodeScene(cmd: cmd, colour: colour, depth: depth, camera: c, aircraftPosition: aircraftPosition, aircraftBodyToENU: aircraftBodyToENU)
+            return
+        }
+        if sceneTarget?.width != colour.width || sceneTarget?.height != colour.height {
+            let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: colorFormat, width: colour.width, height: colour.height, mipmapped: false)
+            d.usage = [.renderTarget, .shaderRead]
+            d.storageMode = .private
+            sceneTarget = device.makeTexture(descriptor: d)
+        }
+        guard let scene = sceneTarget else { throw RendererError.commandQueue }
+        try encodeScene(cmd: cmd, colour: scene, depth: depth, camera: c, aircraftPosition: aircraftPosition, aircraftBodyToENU: aircraftBodyToENU)
+        let pp = MTLRenderPassDescriptor()
+        pp.colorAttachments[0].texture = colour
+        pp.colorAttachments[0].loadAction = .dontCare
+        pp.colorAttachments[0].storeAction = .store
+        guard let pe = cmd.makeRenderCommandEncoder(descriptor: pp) else { throw RendererError.commandQueue }
+        pe.label = "FXAA"
+        pe.setRenderPipelineState(fxaaPipeline)
+        pe.setFragmentTexture(scene, index: 0)
+        pe.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+        pe.endEncoding()
+    }
+
+    private func encodeScene(cmd: MTLCommandBuffer, colour: MTLTexture, depth: MTLTexture, camera c: WorldCamera,
+                             aircraftPosition: SIMD3<Double>?, aircraftBodyToENU: simd_double3x3?) throws {
         let aspect = Double(colour.width) / Double(max(1, colour.height))
         let fwdD = simd_normalize(c.target - c.position)
         let fwd = SIMD3<Float>(Float(fwdD.x), Float(fwdD.y), Float(fwdD.z))

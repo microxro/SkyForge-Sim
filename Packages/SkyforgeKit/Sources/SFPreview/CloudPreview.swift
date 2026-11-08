@@ -7,7 +7,7 @@ import SFAtmosphere
 extension SkyPreview {
     /// RGB8 view from `viewHeightKm` of `model`, toward `yawDeg` from the sun azimuth, with `layer` clouds.
     public static func renderClouds(_ m: SkyModel, layer: CloudLayer, width: Int, height: Int, fovDeg: Double = 90,
-                                    pitchDeg: Double = 10, yawDeg: Double = 0, steps: Int = 96, exposure: Double? = nil) -> [UInt8] {
+                                    pitchDeg: Double = 10, yawDeg: Double = 0, steps: Int = 192, exposure: Double? = nil) -> [UInt8] {
         let ex = exposure ?? autoExposure(m)
         let sd = m.sunDirection
         let sunAz = atan2(sd.z, sd.x)

@@ -80,22 +80,22 @@ public enum PreviewRenderer {
                         imagery = true
                         if g.water > 0.5 { mat = Material.water.rawValue; albedo = g.albedo * 0.7 }
                     }
-                    if mat == Material.terrain.rawValue && dist < (imagery ? 350 : 1_400) {
+                    if mat == Material.terrain.rawValue && dist < (imagery ? 350 : 700) {
                         // Per-pixel ground detail the vertex grid cannot carry: clumps (1.5 m), patches
                         // (6 m), dry/lush variation (40 m), and micro-relief shading; faded with distance
                         // so it never aliases.
-                        let fade = (1 - dist / (imagery ? 350 : 1_400)) * (imagery ? 0.5 : 1)
+                        let fade = (1 - dist / (imagery ? 350 : 700)) * (imagery ? 0.5 : 1)
                         let wx = Double(p.x) + origin.x, wy = Double(p.y) + origin.y
                         let fine = Float(groundNoise.fbm(wx / 1.5, wy / 1.5, octaves: 2))
                         let mid = Float(groundNoise.fbm(wx / 6 + 17, wy / 6 - 9, octaves: 2))
                         let dry = Float(groundNoise.fbm(wx / 40 - 31, wy / 40 + 5, octaves: 2))
-                        albedo *= 1 + (fine * 0.16 + mid * 0.12) * fade
+                        albedo *= 1 + (fine * 0.07 + mid * 0.08) * fade   // calm: art review found the 0.16/0.12 mottle "camouflage"
                         let dryTint = SIMD3<Float>(1.10, 1.02, 0.80)
-                        albedo *= SIMD3<Float>(repeating: 1) + (dryTint - SIMD3<Float>(repeating: 1)) * (max(0, dry) * 0.9 * fade)
+                        albedo *= SIMD3<Float>(repeating: 1) + (dryTint - SIMD3<Float>(repeating: 1)) * (max(0, dry) * 0.5 * fade)
                         let e: Double = 0.6
                         let gx = Float(groundNoise.fbm((wx + e) / 2.2, wy / 2.2, octaves: 2) - groundNoise.fbm((wx - e) / 2.2, wy / 2.2, octaves: 2))
                         let gy = Float(groundNoise.fbm(wx / 2.2, (wy + e) / 2.2, octaves: 2) - groundNoise.fbm(wx / 2.2, (wy - e) / 2.2, octaves: 2))
-                        n = simd_normalize(n + SIMD3(-gx, -gy, 0) * (0.9 * fade))
+                        n = simd_normalize(n + SIMD3(-gx, -gy, 0) * (0.3 * fade))
                     }
                     var colour: SIMD3<Float>
                     let ndl = fdot(n, toSun)

@@ -208,8 +208,16 @@ public enum CloudShaders {
 
     constexpr sampler cl_lin(filter::linear, address::clamp_to_edge, coord::normalized);
 
+    // Upsample with a small tent filter: hides the per-pixel jitter pattern of the half-res march
+    // (art review: visible dither on cloud bodies) without smearing cloud edges.
     fragment float4 cloud_composite_fragment(CloudVarying in [[stage_in]], texture2d<float> clouds [[texture(0)]]) {
-        return clouds.sample(cl_lin, in.uv);
+        float2 t = 1.0 / float2(clouds.get_width(), clouds.get_height());
+        float4 c = clouds.sample(cl_lin, in.uv) * 0.36;
+        c += clouds.sample(cl_lin, in.uv + float2( 0.9,  0.9) * t) * 0.16;
+        c += clouds.sample(cl_lin, in.uv + float2(-0.9,  0.9) * t) * 0.16;
+        c += clouds.sample(cl_lin, in.uv + float2( 0.9, -0.9) * t) * 0.16;
+        c += clouds.sample(cl_lin, in.uv + float2(-0.9, -0.9) * t) * 0.16;
+        return c;
     }
     """
 }
