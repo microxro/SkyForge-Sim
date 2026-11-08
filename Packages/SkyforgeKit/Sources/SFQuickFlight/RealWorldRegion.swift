@@ -222,11 +222,13 @@ public struct RealWorldRegion: FlightWorld {
                 let jx = (Hash.unit(rng.next()) - 0.5) * (cell - 2 * hx) * 0.8, jy = (Hash.unit(rng.next()) - 0.5) * (cell - 2 * hy) * 0.8
                 let cx = px + jx, cy = py + jy, ch = cos(heading), sh = sin(heading)
                 let fp = [(-hx, -hy), (hx, -hy), (hx, hy), (-hx, hy)].map { SIMD2(cx + ch * $0.0 - sh * $0.1, cy + sh * $0.0 + ch * $0.1) }
-                let roof = SIMD3(Float(powf(c.x, 2.2)), Float(powf(c.y, 2.2)), Float(powf(c.z, 2.2))) * 0.9
-                // Walls: the photo's colour, desaturated and a little darker (not a bright fixed palette,
+                // Roof: the same photo→albedo conversion as the terrain (ImageryGround), so a roof is exactly
+                // as bright as the photo around it (×0.9 made every box read 25 % paler than the ground).
+                let roof = SIMD3(powf(powf(c.x, 2.2), 1.12), powf(powf(c.y, 2.2), 1.12), powf(powf(c.z, 2.2), 1.12)) * 0.72
+                // Walls: the photo's colour, desaturated and darker than the roof (not a bright fixed palette,
                 // which read as untextured boxes against the photo).
                 let grey = (roof.x + roof.y + roof.z) / 3
-                let wall = (roof + (SIMD3(repeating: grey) - roof) * 0.5) * 0.8 + SIMD3(0.03, 0.028, 0.025)
+                let wall = (roof + (SIMD3(repeating: grey) - roof) * 0.5) * 0.7 + SIMD3(0.02, 0.019, 0.017)
                 out.append(OSMBuilding(id: -Int64(out.count + 1), footprint: fp, heightMetres: 4.5 + Hash.unit(rng.next()) * 3.5,
                                        kind: "house", roofColour: roof, wallColour: wall, tags: ["source": "procedural fallback"]))
             }
