@@ -89,3 +89,8 @@ Open defects (next passes): near-field ground is flat colour (needs detail textu
 - New `sfpreview real`: real Terrarium elevation, USGS orthoimagery (z16, ≈2 m) near, Sentinel-2 cloudless 2016 (≈20 m) to 40 km, imagery converted to albedo (exposure removed), 16 m smoothed water mask from colour, Fresnel water with wind-roughened reflection, ≈19,600 3D pines/oaks grown on forest pixels with canopy colour from the photo, physical sky, chase aircraft at 1,250 ft.
 - Compared with the user's reference (MSFS 2024, same region type): ground now reads as a real place (lagoon, neighbourhoods, tree cover, roads, sports fields). Still behind: no photogrammetry buildings, aircraft is a low-poly model, clouds are a 2D layer, imagery softens within ~300 m.
 - Scores: sharpness 7, lighting 8, colour 8, variety 9, depth 8, cleanliness 7 → **7.8**.
+
+### 2026-11-08 P1.14 volumetric cumulus (n)
+- CPU reference `VolumetricClouds` (coverage + height-tapered density, 3D erosion, dual-lobe HG, multiple-scattering term, energy-conserving integration) rendered over the physical sky with `sfpreview clouds`: ground view (n_clouds_ground), toward a 20° sun (n_clouds_backlit, silver linings and dark cores), above the layer at 3.2 km (n_clouds_above).
+- Metal port runs at half resolution against scene depth with aerial perspective; CI checks the GPU march against the CPU reference (p95 transmittance error < 0.02, radiance < 3 %) and that clouds appear in the sky but never over nearby terrain.
+- Replaces the "2D layer" gap noted in (r). Scores for the cloud previews: shape 8, lighting 8, integration 7 → **7.7**. Open: no cloud shadows on the ground yet; slight step banding at grazing angles in the 48–64 step march.
