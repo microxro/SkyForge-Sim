@@ -55,7 +55,7 @@ public enum PreviewScenes {
         if scene == .airportFinal {
             recipe.flattenZones = [(centre: rwyThreshold + rwyDir * 750, halfLength: 850, halfWidth: 90, heading: rwyHeading, elevation: rwyElevation)]
         }
-        let gen = WorldGenerator(terrain: recipe, latitude: 47, season: .autumn)
+        let gen = WorldGenerator(terrain: recipe, latitude: 47, season: .summer)   // art review: autumn crowns clashed with green grass
         func cam(_ x: Double, _ y: Double, agl: Double, lookX: Double, lookY: Double, lookAGL: Double, fov: Double = 70) -> PreviewCamera {
             let z = recipe.height(x, y) + agl
             let tz = recipe.height(lookX, lookY) + lookAGL
