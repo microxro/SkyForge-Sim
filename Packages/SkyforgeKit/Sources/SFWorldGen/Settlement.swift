@@ -416,7 +416,7 @@ public struct WorldGenerator: Sendable {
                 let jx = Hash.unit(rng.next()), jy = Hash.unit(rng.next())
                 let x = x0 + (Double(i) + jx) * cell, y = y0 + (Double(j) + jy) * cell
                 let z = terrain.height(x, y)
-                if terrain.isWater(x, y) || terrain.isAirport(x, y) { continue }
+                if terrain.isWater(x, y) || terrain.isAirport(x, y) || terrain.isApproachCorridor(x, y) { continue }
                 let nrm = terrain.normal(x, y)
                 let slope = acos(min(1, nrm.z))
                 let moisture = clamp(0.55 + moistureNoise.fbm(x / 700, y / 700, octaves: 3) * 0.6
@@ -455,8 +455,10 @@ public struct WorldGenerator: Sendable {
         if conifer { return pick < 0.5 ? srgb(38, 58, 40) : srgb(46, 66, 44) }
         switch season {
         case .autumn:
-            // Restrained autumn palette: ochres and rusts mixed with lingering greens (no rainbow).
-            let options = [srgb(146, 96, 50), srgb(164, 124, 62), srgb(124, 74, 44), srgb(88, 100, 52), srgb(104, 112, 56), srgb(170, 140, 74), srgb(78, 92, 48)]
+            // Early autumn: mostly lingering greens with muted ochres and a few rusts (no rainbow);
+            // low, warm physical sunlight already pushes canopies toward orange.
+            let options = [srgb(72, 96, 48), srgb(86, 104, 52), srgb(64, 86, 44), srgb(98, 108, 56), srgb(80, 94, 50),
+                           srgb(128, 108, 64), srgb(138, 116, 70), srgb(112, 84, 54)]
             return options[min(options.count - 1, Int(pick * Double(options.count)))]
         case .winter: return srgb(92, 82, 70)
         default:

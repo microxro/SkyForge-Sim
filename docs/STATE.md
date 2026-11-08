@@ -1,4 +1,4 @@
-LAST_UPDATE: 2026-11-08T03:14:50Z
+LAST_UPDATE: 2026-11-08T03:27:14Z
 
 # SKYFORGE state
 
@@ -42,12 +42,12 @@ P0 accepted (CI fully green). P1 in progress: P1.1, P1.2, P1.2b-2, P1.4, P1.7b, 
 - SFAtmosphere `SkyModel`: Hillaire 2020 sky (LUTs in ~0.25 s on 4 cores release), zenith transmittance within 0.6 % of analytic optical depth; previews m_sky_noon/golden/sunset/twilight.
 
 ## What is unverified
-- Offscreen Metal sky test only runs where `MTLCreateSystemDefaultDevice()` is non-nil; whether GitHub's macOS runners expose a device is unknown until the next CI run.
+- RESOLVED 2026-11-08: GitHub's macos-26 runner exposes a Metal device. CI run 42441951368 ran `metalOffscreenSkyMatchesCPUReference` and it passed, so Metal shaders now execute and are verified in CI on every PR.
 - SwiftUI `InstrumentCanvas`/`InstrumentDemoView`, `TouchFlightControls`, `BindingsView` and the CoreMotion `MotionTiltInput` compile only in CI; never run.
 - Apple-only code now COMPILES in CI (iOS Simulator + macOS, Xcode 26.6) but has never RUN: the Metal sky renderer, SwiftUI menu and device tiers need a simulator/device run (no Metal device on CI runners) or Mac day.
 
 ## Broken
-- Nothing known. Last CI run 42421809423 green on all jobs.
+- Nothing known. Last CI run 42441951368 green on all jobs.
 
 ## Last green SHA
-- f5fe3da (CI run 42421809423, all jobs green)
+- 153f54f (CI run 42441951368: linux, macOS package tests incl. offscreen Metal sky vs CPU reference, iOS Simulator and macOS app builds)

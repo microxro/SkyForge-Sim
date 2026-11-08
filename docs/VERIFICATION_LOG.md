@@ -45,3 +45,5 @@ Every gate run, CI run and manual verification. Newest at the bottom.
 - 2026-11-08T03:07:12Z gate fast on Linux x86_64: PASS (HEAD 0e3abf5)
 - 2026-11-08T03:14:37Z gate fast on Linux x86_64: PASS (HEAD 7a9c9de)
 - 2026-11-08T03:15:25Z CI run 42441371307 (7a9c9de) apple job failed: macOS Swift type-checker timeout in VisualRegressionTests.swift:85 (closure max over Int sums); Linux compiled it. Fixed by an explicit loop.
+- 2026-11-08T03:26:41Z gate fast on Linux x86_64: PASS (HEAD 153f54f)
+- 2026-11-08 CI run 42441951368 (153f54f): green. macOS runner has a Metal device; `metalOffscreenSkyMatchesCPUReference` passed (31 s incl. pipeline compile). First execution of SKYFORGE Metal code.

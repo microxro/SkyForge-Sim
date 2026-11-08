@@ -84,9 +84,11 @@ public struct SceneBuilder {
             ? [srgb(138, 124, 84), srgb(104, 92, 70), srgb(86, 104, 58), srgb(120, 112, 78), srgb(96, 112, 62), srgb(146, 132, 92), srgb(78, 96, 54)]
             : [srgb(98, 126, 62), srgb(122, 130, 72), srgb(86, 112, 56), srgb(136, 132, 86), srgb(110, 104, 72)]
         var col = crops[Int(h % UInt64(crops.count))]
-        // Row texture along the field orientation.
-        let rows = Hash.unit(Hash.mix(h)) < 0.5 ? u : v
-        col *= Float(0.94 + 0.06 * sin(rows * 1.3))
+        // A 4.8 m crop-row pattern cannot be represented at terrain-vertex spacing (it aliased into
+        // dark moiré bands); use a gentle per-field gradient across the parcel instead.
+        let fu = u / 160 - Double(iu), fv = v / 240 - Double(iv)
+        let along = Hash.unit(Hash.mix(h)) < 0.5 ? fu : fv
+        col *= Float(0.96 + 0.06 * along)
         return base * 0.25 + col * 0.75
     }
 

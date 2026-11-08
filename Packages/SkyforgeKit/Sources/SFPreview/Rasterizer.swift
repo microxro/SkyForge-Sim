@@ -240,7 +240,11 @@ public struct ShadowMap: Sendable {
         if sx < 1 || sy < 1 || sx >= Float(size - 2) || sy >= Float(size - 2) { return 1 }
         let z = (d * dir).sum()
         let texel = 2 * halfExtent / Float(size)
-        let bias = texel * (1.0 + 2.5 * (1 - max(0.05, normalDotLight)))
+        // Slope-scaled bias: the depth error across a texel grows with tan(angle to the light), which
+        // reaches ~10 for a 6° sun on flat ground (the old linear term left acne bands at sunrise).
+        let ndl = max(0.05, normalDotLight)
+        let tanT = (1 - ndl * ndl).squareRoot() / ndl
+        let bias = texel * (1.2 + min(10, tanT))
         var lit: Float = 0
         let ix = Int(sx), iy = Int(sy)
         for oy in -1...1 {

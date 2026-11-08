@@ -132,6 +132,20 @@ public struct TerrainRecipe: Sendable {
         return false
     }
 
+    /// Whether a point lies under a runway approach/departure surface out to `length` metres past
+    /// either end: inner edge 60 m beyond the strip, diverging 15 % each side (ICAO Annex 14 style).
+    /// Obstacles such as trees are kept out so finals look like real, cleared approaches.
+    public func isApproachCorridor(_ x: Double, _ y: Double, length: Double = 1_800) -> Bool {
+        for z in flattenZones {
+            let d = SIMD2(x, y) - z.centre
+            let a = SIMD2(sin(z.heading), cos(z.heading))
+            let along = abs((d * a).sum()) - z.halfLength
+            guard along > 0, along < length else { continue }
+            if abs(d.x * a.y - d.y * a.x) < z.halfWidth + 60 + along * 0.15 { return true }
+        }
+        return false
+    }
+
     /// Surface normal from central differences.
     public func normal(_ x: Double, _ y: Double, step: Double = 4) -> SIMD3<Double> {
         let hx = height(x + step, y) - height(x - step, y)

@@ -67,3 +67,10 @@ Open defects (next passes): near-field ground is flat colour (needs detail textu
 - Re-rendered a, d, e, f, j at 1280×720. Most visible gains: blue zenith-to-haze gradients instead of the grey-mauve band, depth haze that turns bluish with distance (f), a warm sun aureole (a, e).
 - Scores (sharpness, lighting, colour, variety, depth, cleanliness): a 6/8/7/6/8/7 → **7.0** (was 6.5); f 7/8/8/7/9/7 → **7.7** (was 6.7); j 6/7/6/5/7/6 → **6.2** (was 5.8); d, e ≈ +0.5 each.
 - Open: broadleaf palette reads too orange under low warm sun; ground is flat colour near field; snow slightly lilac; still below the 8.0 target for a, d, e, j.
+
+### 2026-11-08 P1.3 pass 4: palette, approach clearing, aliasing, shadow bias
+- Early-autumn canopy palette (greens dominant, muted ochres): low physical sun no longer turns forests orange.
+- Approach/departure surfaces (60 m inner edge, 15 % splay, 1.8 km) are cleared of trees; scene (j) now shows a realistic cleared final instead of a forest up to the threshold (test `approachCorridorIsClearedOfTrees`).
+- Removed the 4.8 m crop-row term, which aliased at vertex spacing into dark moiré bands (e, d); fields use a gentle per-parcel gradient.
+- Slope-scaled shadow bias (tan θ, capped at 10 texels) removes acne at grazing sun. The remaining banding in (j) at sunrise is real micro-relief under a 6° sun (it vanishes at midday).
+- Scores: a 7.2, d 7.0, e 7.0, f 7.7, j 6.8 → average **7.1** (was 6.1 at the start of the day).

@@ -118,4 +118,20 @@ import SFMath
         let chunk = g.generateChunk(cx: 5, cy: 0)
         #expect(chunk.trees.allSatisfy { !r.isAirport($0.position.x, $0.position.y) })
     }
+
+    @Test func approachCorridorIsClearedOfTrees() {
+        var r = TerrainRecipe(kind: .suburbanPlain, seed: 1)
+        r.flattenZones = [(centre: SIMD2(5_000, 0), halfLength: 800, halfWidth: 80, heading: 0, elevation: 42)]
+        #expect(r.isApproachCorridor(5_000, 1_500))          // 700 m past the north end, on centreline
+        #expect(r.isApproachCorridor(5_300, -2_300))         // 1,500 m out, 300 m off: inside the 15 % splay
+        #expect(!r.isApproachCorridor(5_500, -1_000))        // abeam the strip end, outside the inner edge
+        #expect(!r.isApproachCorridor(5_000, 3_000))         // beyond 1,800 m
+        let g = WorldGenerator(terrain: r)
+        var checked = 0
+        for cy in [-3, -2, 1, 2] {
+            let chunk = g.generateChunk(cx: Int((5_000 / WorldGenerator.chunkSize).rounded(.down)), cy: cy)
+            for t in chunk.trees { #expect(!r.isApproachCorridor(t.position.x, t.position.y)); checked += 1 }
+        }
+        #expect(checked > 0)
+    }
 }
