@@ -101,3 +101,7 @@ Open defects (next passes): near-field ground is flat colour (needs detail textu
 - metal_cockpit (first try): panel, pillars and PFD correct, but the view was filled by the fuselage interior. Cause: aircraft normals pointed inward, so the back-face discard removed the outer skin. Fixed in caee43d with winding tests.
 - metal_cockpit (after caee43d): runway ahead through the windscreen, pillars, glare shield, panel and live PFD. Reads as a cockpit; pillars are heavy and the panel is flat-shaded. **6.5**.
 - Cloud shadows: the first CI frame showed no shadow because the test patch is under a clear gap (the CPU model agrees: 0 of 1,024 samples shaded). Over 20 km the model shades 15 % of the ground at coverage 0.42 and 61 % at 0.6. The shadow samples moved into the lower half of the slab and the test now looks at a patch the CPU model puts about one third in shadow.
+
+### 2026-11-08 Airfield grass (j and Quick Flight)
+- The Metal Quick Flight final and preview (j) showed the approach as brown autumn stubble. `SceneBuilder.airfield` now paints the runway strip (±150 m) and 500 m extensions as mown grass with 40 m mowing stripes (wider than any vertex step), blended out over 50 m.
+- j: approach reads as an airfield instead of a ploughed field. Score j 7.0 → **7.4**; average a 7.5, d 7.3, e 7.2, f 7.8, j 7.4 → **7.4**.

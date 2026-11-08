@@ -80,6 +80,7 @@ public struct QuickFlightWorld: FlightWorld {
     public func buildEnvironment(detail d: QuickFlightDetail, origin: SIMD3<Double>? = nil) -> TriangleSoup {
         let focus = runwayCentre
         var b = SceneBuilder(generator: generator, origin: origin ?? SIMD3(focus.x, focus.y, 0))
+        b.airfield = runway
         b.addTerrain(centre: focus, halfExtent: d.nearHalfExtent, step: d.nearStep)
         b.addTerrain(centre: focus, halfExtent: d.midHalfExtent, step: d.midStep, skipInside: d.nearHalfExtent - d.midStep, lower: 0.5, far: true)
         b.addTerrain(centre: focus, halfExtent: d.farHalfExtent, step: d.farStep, skipInside: d.midHalfExtent - d.farStep, lower: 1.5, far: true)

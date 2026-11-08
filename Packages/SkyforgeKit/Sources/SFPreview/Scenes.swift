@@ -107,6 +107,7 @@ public enum PreviewScenes {
         let focus = SIMD2(cam.position.x + fwd2.x * s.nearHalfExtent * 0.55, cam.position.y + fwd2.y * s.nearHalfExtent * 0.55)
         let origin = SIMD3(cam.position.x, cam.position.y, 0)
         var b = SceneBuilder(generator: s.generator, origin: origin)
+        b.airfield = s.runway
         b.addTerrain(centre: focus, halfExtent: s.nearHalfExtent, step: s.nearStep)
         // Mid ring (24 m) out to 8 km, then the far ring; each skips the area the finer ring covers.
         let midHalf = max(s.nearHalfExtent * 2.5, 8_000.0), midStep = 24.0

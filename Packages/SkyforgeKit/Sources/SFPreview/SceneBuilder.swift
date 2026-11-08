@@ -11,6 +11,8 @@ public struct SceneBuilder {
     let macroNoise: GradientNoise2D
     let moistureNoise: GradientNoise2D
     public private(set) var stats: [String: Int] = [:]
+    /// Runway whose surroundings are mown airfield grass (set before `addTerrain`).
+    public var airfield: RunwaySpec?
 
     public init(generator: WorldGenerator, origin: SIMD3<Double>) {
         self.generator = generator
@@ -68,9 +70,24 @@ public struct SceneBuilder {
             let bank = Float(1 - smoothstep(r.width / 2, r.width / 2 + 14, rd))
             c = c + (srgb(112, 100, 78) - c) * bank
         }
+        if let a = airfield, slope < 0.2 { c = airfieldGrass(x, y, a, current: c) }
         // Macro variation breaks up uniformity (no visible tiling).
         let v = Float(1 + macroNoise.fbm(x / 260, y / 260, octaves: 3) * 0.16)
         return c * v
+    }
+
+    /// Mown grass inside the runway strip (±150 m) and its 500 m extensions, with broad mowing
+    /// stripes along the runway (40 m: wider than any terrain vertex step, so they never alias).
+    func airfieldGrass(_ x: Double, _ y: Double, _ a: RunwaySpec, current c: SIMD3<Float>) -> SIMD3<Float> {
+        let dir = SIMD2(sin(a.heading), cos(a.heading)), side = SIMD2(dir.y, -dir.x)
+        let d = SIMD2(x, y) - a.threshold
+        let along = (d * dir).sum(), across = abs((d * side).sum())
+        let outside = max(0, -along - 500, along - a.length - 500)
+        let w = Float((1 - smoothstep(120, 170, across)) * (1 - smoothstep(0, 120, outside)))
+        if w <= 0 { return c }
+        let stripe = Int((across / 40).rounded(.down)) % 2 == 0 ? Float(1.0) : 0.9
+        let grass = srgb(88, 116, 60) * stripe * Float(0.95 + 0.08 * macroNoise.fbm(x / 60, y / 60, octaves: 2))
+        return c + (grass - c) * w
     }
 
     func fieldColour(_ x: Double, _ y: Double, base: SIMD3<Float>) -> SIMD3<Float> {
