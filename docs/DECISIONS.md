@@ -81,3 +81,11 @@
 - Scope: US airports only. Sentinel-2 is 10 m native.
 - Packs: KMRY, KASE, KBFI and KCOI re-recorded; showcase total 51 MB.
 - Licence: USGS The National Map imagery is a US Government work (public domain). No key, no account.
+
+## ADR-0018 Texture streaming for the sharp imagery layer (2026-11-08)
+- The fixed z17 approach square (ADR-0017) became a camera-following z18 layer:
+  - 1.2 km at 0.59 m/px on phone and tablet (2048 px); 1.6 km at 0.39 m/px on desktop (4096 px).
+  - The region loads it around the start view. Once the aircraft drifts 40 % of the half extent, the app re-streams it centred 75 % of the half extent ahead.
+- Loading: tiles come from the pack, then the tile cache, then the network. The texture and its mips are built off the main thread and swapped in on the render thread, so no frame stalls.
+- Memory: one detail texture at a time (phone: 2048² RGBA + mips ≈ 22 MB).
+- Evidence: CPU reference renders of the KMRY start view show the GPU sampling path is correct. The remaining softness at 170 m AGL is mostly photo trees and baked shadows at grazing angles, not texel size, so the gain is largest low on approach and on the ground.

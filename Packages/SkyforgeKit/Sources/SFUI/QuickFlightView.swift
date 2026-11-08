@@ -51,6 +51,12 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
     /// In-cockpit view (3D panel with a live SF-1000 PFD) instead of the chase camera.
     @Published var cockpit = false
     private var pfdBusy = false
+    /// Camera-following sharp imagery (texture streaming): the loaded region, its tile sources and state.
+    private var realRegion: RealWorldRegion?
+    private var tileTransport: (any HTTPTransport)?
+    private var tileCache: KeyedCache?
+    private var detailBusy = false
+    private var lastDetailPosition: SIMD3<Double>?
     @Published var attribution: [String] = []
     /// SkyWorld detail for this device tier (used directly, or as the offline fallback).
     private var skyWorldDetail: QuickFlightDetail = .phone
@@ -142,6 +148,9 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
                         try self.renderer?.setRealWorld(data)
                         try self.renderer?.setAircraft(aircraft)
                         self.world = region
+                        self.realRegion = region
+                        self.tileTransport = transport
+                        self.tileCache = cache
                         self.session = QuickFlightSession(world: region, start: start)
                         self.attribution = region.attribution + (weather.map { ["Weather: \($0.raw) (aviationweather.gov)"] } ?? [])
                         self.renderer?.clouds = weather?.layer ?? .fairWeather(fieldElevation: Float(region.runwayElevation))
@@ -213,6 +222,35 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
         cmd.commit()
         hudCounter += 1
         if hudCounter % 2 == 0 { hud = session.data; crashed = session.crashed }
+        if hudCounter % 60 == 0 { refreshDetail() }
+    }
+
+    /// Re-centres the sharp imagery layer ahead of the aircraft once it has drifted 40 % of its half extent:
+    /// tiles come from the pack, the cache or the network, and the texture is built off the main thread,
+    /// then swapped in (one detail texture at a time, so memory stays bounded).
+    private func refreshDetail() {
+        guard let region = realRegion, region.detailStreamable, !detailBusy, let r = renderer, let transport = tileTransport else { return }
+        let p = session.positionENU
+        let heading = lastDetailPosition.map { p - $0 } ?? .zero
+        lastDetailPosition = p
+        let target = region.detailCentre(position: p, velocity: heading)
+        if let cur = r.detailImageryPlacement {
+            let d = target - cur.centre
+            if (d * d).sum().squareRoot() < cur.half * 0.4 { return }
+        }
+        detailBusy = true
+        let cache = tileCache
+        nonisolated(unsafe) let builder = r
+        Task.detached(priority: .utility) {
+            let mosaic = await region.streamDetail(around: target, transport: transport, cache: cache)
+            let prepared = mosaic.flatMap {
+                try? builder.makeImagery(RealWorldRenderData.Imagery(centre: $0.centre, halfExtent: $0.halfExtent, size: $0.size, rgb: $0.rgb))
+            }
+            await MainActor.run {
+                if let prepared { self.renderer?.setDetailImagery(prepared) }
+                self.detailBusy = false
+            }
+        }
     }
 }
 

@@ -30,7 +30,8 @@ public struct RealWorldDetail: Sendable, Equatable {
     public var nearHalf: Double, nearStep: Double, midHalf: Double, midStep: Double, farHalf: Double, farStep: Double
     public var imageryNearSize: Int, imageryFarSize: Int
     public var treeRadius: Double, maxTrees: Int
-    /// Sharp inner imagery square along the approach (US aerial photo only); size 0 = none.
+    /// Sharp camera-following imagery square (US aerial photo only, z18 ≈ 0.5 m/px); size 0 = none.
+    /// The region loads it around the start view; the app re-streams it ahead of the aircraft.
     public var imageryDetailHalf: Double, imageryDetailSize: Int
     public init(nearHalf: Double, nearStep: Double, midHalf: Double, midStep: Double, farHalf: Double, farStep: Double,
                 imageryNearSize: Int, imageryFarSize: Int, treeRadius: Double, maxTrees: Int,
@@ -42,13 +43,13 @@ public struct RealWorldDetail: Sendable, Equatable {
     }
     public static let phone = RealWorldDetail(nearHalf: 3_000, nearStep: 16, midHalf: 12_000, midStep: 80, farHalf: 40_000, farStep: 400,
                                               imageryNearSize: 2_048, imageryFarSize: 1_024, treeRadius: 1_800, maxTrees: 40_000,
-                                              imageryDetailHalf: 1_200, imageryDetailSize: 2_048)
+                                              imageryDetailHalf: 600, imageryDetailSize: 2_048)
     public static let tablet = RealWorldDetail(nearHalf: 3_200, nearStep: 12, midHalf: 12_000, midStep: 60, farHalf: 40_000, farStep: 300,
                                                imageryNearSize: 3_072, imageryFarSize: 2_048, treeRadius: 2_400, maxTrees: 90_000,
-                                               imageryDetailHalf: 1_200, imageryDetailSize: 2_048)
+                                               imageryDetailHalf: 600, imageryDetailSize: 2_048)
     public static let desktop = RealWorldDetail(nearHalf: 3_200, nearStep: 12, midHalf: 12_000, midStep: 48, farHalf: 40_000, farStep: 240,
                                                 imageryNearSize: 4_096, imageryFarSize: 2_048, treeRadius: 3_000, maxTrees: 120_000,
-                                                imageryDetailHalf: 1_200, imageryDetailSize: 4_096)
+                                                imageryDetailHalf: 800, imageryDetailSize: 4_096)
 }
 
 public struct RealWorldRegion: FlightWorld {
@@ -133,9 +134,10 @@ public struct RealWorldRegion: FlightWorld {
                                               provider: nearProvider, streamer: sNear)
         async let iFar = ImageryMosaic.build(origin: origin, centre: .zero, halfExtent: detail.farHalf, size: detail.imageryFarSize,
                                              provider: farProvider, streamer: sFar)
-        // Sharp inner layer (about 1 m/px at phone tier, z17) over the final approach: the camera on a
-        // 2 km final and everything ahead of it. Aerial photo (USGS) only: Sentinel-2 is 10 m native.
-        let detailCentre = thr - (v / max(len, 1)) * 1_000
+        // Sharp layer (about 0.6 m/px at phone tier, z18) over the start view's foreground: 1.5 km before
+        // the threshold, just ahead of the chase camera on the 2 km final. Aerial photo (USGS) only:
+        // Sentinel-2 is 10 m native. The app re-streams it ahead of the aircraft in flight.
+        let detailCentre = thr - (v / max(len, 1)) * 1_500
         let wantDetail = detail.imageryDetailSize > 0 && nearProvider.id == usgs.id
         let detailProvider = USGSImageryProvider(maxZoom: 18)
         let sDetail = ImageryStreamer(provider: detailProvider, transport: transport, cache: cache)
@@ -251,6 +253,29 @@ public struct RealWorldRegion: FlightWorld {
             } }
             return n >= minNeighbours
         }.map { list[$0] }
+    }
+
+    /// Whether the sharp camera-following layer exists here (US aerial photo coverage).
+    public var detailStreamable: Bool { ground.detail != nil && detail.imageryDetailSize > 0 }
+
+    /// Where the sharp layer should be centred for an aircraft at `position` moving along `velocity`
+    /// (horizontal): 75 % of its half extent ahead, which covers what a chase or cockpit view sees closest.
+    public func detailCentre(position: SIMD3<Double>, velocity: SIMD3<Double>) -> SIMD2<Double> {
+        let h = SIMD2(velocity.x, velocity.y), l = (h * h).sum().squareRoot()
+        let dir = l > 1 ? h / l : SIMD2(sin(runwayHeading), cos(runwayHeading))
+        return SIMD2(position.x, position.y) + dir * detail.imageryDetailHalf * 0.75
+    }
+
+    /// Builds the sharp layer around `centre` (tile cache and packs first, network otherwise), colour-matched
+    /// to the near mosaic. Nil where there is no aerial photo coverage.
+    public func streamDetail(around centre: SIMD2<Double>, transport: any HTTPTransport, cache: KeyedCache?) async -> ImageryMosaic? {
+        guard detailStreamable else { return nil }
+        let provider = USGSImageryProvider(maxZoom: 18)
+        var m = await ImageryMosaic.build(origin: origin, centre: centre, halfExtent: detail.imageryDetailHalf, size: detail.imageryDetailSize,
+                                          provider: provider, streamer: ImageryStreamer(provider: provider, transport: transport, cache: cache))
+        guard m.coverage.contains(where: { $0 > 0 }) else { return nil }
+        ImageryGrading.match(&m, to: ground.near)
+        return m
     }
 
     /// The runway with its taxiways (120 m either side of the centreline): never water.

@@ -380,6 +380,43 @@ public final class WorldRenderer {
         return (conifer, oak)
     }
 
+    /// A ready GPU imagery texture with its placement, built on any thread (`makeImagery`) and swapped in
+    /// on the render thread (`setDetailImagery`), so streaming never stalls a frame.
+    public struct PreparedImagery: @unchecked Sendable {
+        public let texture: MTLTexture
+        public let centre: SIMD2<Double>
+        public let half: Double
+    }
+
+    /// Mipmapped sRGB texture for an imagery mosaic (blocks the calling thread for the mip blit; call it
+    /// off the main thread when streaming).
+    public static func imageryTexture(_ i: RealWorldRenderData.Imagery, device: MTLDevice, queue: MTLCommandQueue) throws -> PreparedImagery {
+        let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm_srgb, width: i.size, height: i.size, mipmapped: true)
+        d.usage = [.shaderRead]
+        guard let t = device.makeTexture(descriptor: d) else { throw RendererError.commandQueue }
+        var rgba = [UInt8](repeating: 255, count: i.size * i.size * 4)
+        for p in 0..<(i.size * i.size) { rgba[4 * p] = i.rgb[3 * p]; rgba[4 * p + 1] = i.rgb[3 * p + 1]; rgba[4 * p + 2] = i.rgb[3 * p + 2] }
+        t.replace(region: MTLRegionMake2D(0, 0, i.size, i.size), mipmapLevel: 0, withBytes: rgba, bytesPerRow: i.size * 4)
+        if let cmd = queue.makeCommandBuffer(), let blit = cmd.makeBlitCommandEncoder() {
+            blit.generateMipmaps(for: t); blit.endEncoding(); cmd.commit(); cmd.waitUntilCompleted()
+        }
+        return PreparedImagery(texture: t, centre: i.centre, half: i.halfExtent)
+    }
+
+    /// Builds the streamed detail texture (call off the main thread).
+    public func makeImagery(_ i: RealWorldRenderData.Imagery) throws -> PreparedImagery {
+        try Self.imageryTexture(i, device: device, queue: queue)
+    }
+
+    /// Swaps the camera-following sharp imagery layer (nil removes it). The previous texture is released,
+    /// so streaming holds one detail texture at a time.
+    public func setDetailImagery(_ p: PreparedImagery?) {
+        imageryDetail = p.map { ($0.texture, $0.centre, $0.half) }
+    }
+
+    /// Centre and half extent of the current detail layer (nil = none).
+    public var detailImageryPlacement: (centre: SIMD2<Double>, half: Double)? { imageryDetail.map { ($0.centre, $0.half) } }
+
     /// Uploads real-world terrain chunks, tree instances and imagery.
     public func setRealWorld(_ data: RealWorldRenderData) throws {
         // OSM buildings and roads use the world mesh pass (culled spatial cells, shadows).
@@ -429,16 +466,7 @@ public final class WorldRenderer {
                 try buf(treeVerts), meshes.conifer.count, meshes.conifer.count, meshes.oak.count,
                 inst.isEmpty ? nil : try buf(inst), conifers.count, oaks.count)
         func imageryTexture(_ i: RealWorldRenderData.Imagery) throws -> MTLTexture {
-            let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm_srgb, width: i.size, height: i.size, mipmapped: true)
-            d.usage = [.shaderRead]
-            guard let t = device.makeTexture(descriptor: d) else { throw RendererError.commandQueue }
-            var rgba = [UInt8](repeating: 255, count: i.size * i.size * 4)
-            for p in 0..<(i.size * i.size) { rgba[4 * p] = i.rgb[3 * p]; rgba[4 * p + 1] = i.rgb[3 * p + 1]; rgba[4 * p + 2] = i.rgb[3 * p + 2] }
-            t.replace(region: MTLRegionMake2D(0, 0, i.size, i.size), mipmapLevel: 0, withBytes: rgba, bytesPerRow: i.size * 4)
-            if let cmd = queue.makeCommandBuffer(), let blit = cmd.makeBlitCommandEncoder() {
-                blit.generateMipmaps(for: t); blit.endEncoding(); cmd.commit(); cmd.waitUntilCompleted()
-            }
-            return t
+            try Self.imageryTexture(i, device: device, queue: queue).texture
         }
         imageryNear = try data.near.map { (try imageryTexture($0), $0.centre, $0.halfExtent) }
         imageryFar = try data.far.map { (try imageryTexture($0), $0.centre, $0.halfExtent) }

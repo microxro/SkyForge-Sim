@@ -35,11 +35,17 @@ import SFTerrainCore
         let d = RealWorldDetail(nearHalf: 600, nearStep: 40, midHalf: 2_000, midStep: 200, farHalf: 8_000, farStep: 1_000,
                                 imageryNearSize: Int(Double(p.imageryNearSize) * 600 / p.nearHalf),
                                 imageryFarSize: Int(Double(p.imageryFarSize) * 8_000 / p.farHalf), treeRadius: 300, maxTrees: 1_000,
-                                imageryDetailHalf: 600, imageryDetailSize: p.imageryDetailSize / 2)
+                                imageryDetailHalf: 300, imageryDetailSize: p.imageryDetailSize / 2)
         let region = try await RealWorldRegion.load(airport: a.ident, detail: d, transport: transport, cache: nil)
-        // The sharp approach layer (z17 USGS export tiles) is in the pack too.
+        // The sharp layer around the start view (z18 USGS export tiles) is in the pack too, and streaming
+        // it again around the same centre is served offline.
         let det = try #require(region.ground.detail)
-        #expect(det.zoom == 17 && Double(det.coverage.filter { $0 > 0 }.count) / Double(det.coverage.count) > 0.99)
+        #expect(det.zoom == 18 && Double(det.coverage.filter { $0 > 0 }.count) / Double(det.coverage.count) > 0.99)
+        let again = try #require(await region.streamDetail(around: det.centre, transport: transport, cache: nil))
+        #expect(again.zoom == 18 && again.centre == det.centre)
+        // Ahead of an aircraft flying east at 60 m/s: 75 % of the half extent ahead.
+        let c = region.detailCentre(position: SIMD3(100, 200, 300), velocity: SIMD3(60, 0, 0))
+        #expect(abs(c.x - (100 + 300 * 0.75)) < 1e-9 && abs(c.y - 200) < 1e-9)
         let nearM = region.ground.near, farM = try #require(region.ground.far)
         let near = nearM.coverage.filter { $0 > 0 }.count, far = farM.coverage.filter { $0 > 0 }.count
         #expect(Double(near) / Double(nearM.coverage.count) > 0.99)
