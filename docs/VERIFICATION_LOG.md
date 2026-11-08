@@ -155,3 +155,5 @@ Method: `FrameTimeTests`, 30 frames after 3 warm-up frames; command-buffer GPU t
 - SkyWorld: low 8.08 ms, high 14.35 ms (pass).
 - KMRY: low 9.99 ms, high 17.49 ms (budget 16.7; clouds 4.64, shadows 3.46). The 12 m high-tier mesh saved about 0.5 ms.
 - Next: high preset render scale 0.8 → 0.75 and cloud steps 48 → 40.
+- 2026-11-08T22:18:12Z gate fast on Linux x86_64: PASS (HEAD 9b50dd5)
+- 2026-11-08T22:25:25Z gate fast on Linux x86_64: PASS (HEAD 9b50dd5)

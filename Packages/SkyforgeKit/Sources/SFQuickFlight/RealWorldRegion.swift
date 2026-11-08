@@ -30,18 +30,25 @@ public struct RealWorldDetail: Sendable, Equatable {
     public var nearHalf: Double, nearStep: Double, midHalf: Double, midStep: Double, farHalf: Double, farStep: Double
     public var imageryNearSize: Int, imageryFarSize: Int
     public var treeRadius: Double, maxTrees: Int
+    /// Sharp inner imagery square along the approach (US aerial photo only); size 0 = none.
+    public var imageryDetailHalf: Double, imageryDetailSize: Int
     public init(nearHalf: Double, nearStep: Double, midHalf: Double, midStep: Double, farHalf: Double, farStep: Double,
-                imageryNearSize: Int, imageryFarSize: Int, treeRadius: Double, maxTrees: Int) {
+                imageryNearSize: Int, imageryFarSize: Int, treeRadius: Double, maxTrees: Int,
+                imageryDetailHalf: Double = 1_200, imageryDetailSize: Int = 0) {
+        self.imageryDetailHalf = imageryDetailHalf; self.imageryDetailSize = imageryDetailSize
         self.nearHalf = nearHalf; self.nearStep = nearStep; self.midHalf = midHalf; self.midStep = midStep
         self.farHalf = farHalf; self.farStep = farStep; self.imageryNearSize = imageryNearSize; self.imageryFarSize = imageryFarSize
         self.treeRadius = treeRadius; self.maxTrees = maxTrees
     }
     public static let phone = RealWorldDetail(nearHalf: 3_000, nearStep: 16, midHalf: 12_000, midStep: 80, farHalf: 40_000, farStep: 400,
-                                              imageryNearSize: 2_048, imageryFarSize: 1_024, treeRadius: 1_800, maxTrees: 40_000)
+                                              imageryNearSize: 2_048, imageryFarSize: 1_024, treeRadius: 1_800, maxTrees: 40_000,
+                                              imageryDetailHalf: 1_200, imageryDetailSize: 2_048)
     public static let tablet = RealWorldDetail(nearHalf: 3_200, nearStep: 12, midHalf: 12_000, midStep: 60, farHalf: 40_000, farStep: 300,
-                                               imageryNearSize: 3_072, imageryFarSize: 2_048, treeRadius: 2_400, maxTrees: 90_000)
+                                               imageryNearSize: 3_072, imageryFarSize: 2_048, treeRadius: 2_400, maxTrees: 90_000,
+                                               imageryDetailHalf: 1_200, imageryDetailSize: 2_048)
     public static let desktop = RealWorldDetail(nearHalf: 3_200, nearStep: 12, midHalf: 12_000, midStep: 48, farHalf: 40_000, farStep: 240,
-                                                imageryNearSize: 4_096, imageryFarSize: 2_048, treeRadius: 3_000, maxTrees: 120_000)
+                                                imageryNearSize: 4_096, imageryFarSize: 2_048, treeRadius: 3_000, maxTrees: 120_000,
+                                                imageryDetailHalf: 1_200, imageryDetailSize: 4_096)
 }
 
 public struct RealWorldRegion: FlightWorld {
@@ -126,8 +133,18 @@ public struct RealWorldRegion: FlightWorld {
                                               provider: nearProvider, streamer: sNear)
         async let iFar = ImageryMosaic.build(origin: origin, centre: .zero, halfExtent: detail.farHalf, size: detail.imageryFarSize,
                                              provider: farProvider, streamer: sFar)
+        // Sharp inner layer (about 1 m/px at phone tier, z17) over the final approach: the camera on a
+        // 2 km final and everything ahead of it. Aerial photo (USGS) only: Sentinel-2 is 10 m native.
+        let detailCentre = thr - (v / max(len, 1)) * 1_000
+        let wantDetail = detail.imageryDetailSize > 0 && nearProvider.id == usgs.id
+        let detailProvider = USGSImageryProvider(maxZoom: 18)
+        let sDetail = ImageryStreamer(provider: detailProvider, transport: transport, cache: cache)
+        async let iDetail: ImageryMosaic? = wantDetail
+            ? ImageryMosaic.build(origin: origin, centre: detailCentre, halfExtent: detail.imageryDetailHalf, size: detail.imageryDetailSize,
+                                  provider: detailProvider, streamer: sDetail) : nil
         async let osmFetch = OSMService(transport: transport, cache: cache).data(around: origin, halfExtent: min(detail.nearHalf, 3_000))
         let (hn, hf, inr, ifr) = await (hNear, hFar, iNear, iFar)
+        let idt = await iDetail
         progress("Buildings")
         let osm = await osmFetch
         progress("Land cover")
@@ -138,7 +155,7 @@ public struct RealWorldRegion: FlightWorld {
         if let o = osm, !(o.buildings.isEmpty && o.roads.isEmpty) { attribution.append(OSMData.attribution) }
         var region = RealWorldRegion(name: apt.name, airportIdent: ident, origin: origin, runwayThreshold: thr, runwayHeading: heading,
                                runwayLengthMetres: len, runwayWidthMetres: rwy.widthMetres, runwayElevation: elevFt * Units.feetToMetres,
-                               nearHeights: hn, farHeights: hf, ground: ImageryGround(near: inr, far: ifr, grade: true), attribution: attribution, detail: detail)
+                               nearHeights: hn, farHeights: hf, ground: ImageryGround(near: inr, far: ifr, detail: idt, grade: true), attribution: attribution, detail: detail)
         // Dark runway and apron asphalt reads as water by colour; real water is flat and sizeable.
         region.ground = region.ground.cleaningWater(exclude: region.pavedArea) { x, y in max(0, hn.height(x, y)) }
         region.osm = osm

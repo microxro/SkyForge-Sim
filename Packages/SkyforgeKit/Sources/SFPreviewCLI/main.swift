@@ -130,6 +130,7 @@ if args.first == "pack-airport" {
         catch { fail("sfpreview: cannot write pack: \(error)", code: 1) }
         let bytes = responses.values.reduce(0) { $0 + $1.count }
         let cov = region.ground.near.coverage.filter { $0 > 0 }.count * 100 / max(1, region.ground.near.coverage.count)
+        if let d = region.ground.detail { print("sfpreview: detail imagery z\(d.zoom), \(d.coverage.filter { $0 > 0 }.count * 100 / max(1, d.coverage.count))% covered") }
         print(String(format: "sfpreview: pack %@ (%@): %d responses, %.1f MB, near imagery z%d %d%% covered",
                      ident, region.name, responses.count, Double(bytes) / 1_048_576, region.ground.near.zoom, cov))
     }

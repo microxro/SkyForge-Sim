@@ -27,8 +27,23 @@ public struct USGSImageryProvider: ImageryProvider {
         let hawaii = latitude > 18.8 && latitude < 22.4 && longitude > -160.5 && longitude < -154.6
         return conus || alaska || hawaii
     }
+    /// Cached tiles stop at z16. Finer zooms (the sharp approach layer) are rendered by the same
+    /// public-domain map service's export endpoint for exactly the tile's Web Mercator bounds, as a
+    /// 256 px JPEG, so they slot into the same tile pipeline, cache and packs.
     public func url(_ t: TileCoord) -> URL {
-        URL(string: "https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/\(t.z)/\(t.y)/\(t.x)")!
+        if t.z <= 16 {
+            return URL(string: "https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/\(t.z)/\(t.y)/\(t.x)")!
+        }
+        let b = Self.mercatorBounds(t)
+        let bbox = String(format: "%.3f,%.3f,%.3f,%.3f", b.minX, b.minY, b.maxX, b.maxY)
+        return URL(string: "https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/export?bbox=\(bbox)&bboxSR=3857&imageSR=3857&size=256,256&format=jpg&f=image")!
+    }
+
+    /// EPSG:3857 bounds (metres) of a slippy-map tile.
+    public static func mercatorBounds(_ t: TileCoord) -> (minX: Double, minY: Double, maxX: Double, maxY: Double) {
+        let o = 20_037_508.342_789_244, size = 2 * o / Double(1 << t.z)
+        let minX = -o + Double(t.x) * size, maxY = o - Double(t.y) * size
+        return (minX, maxY - size, minX + size, maxY)
     }
 }
 

@@ -72,3 +72,12 @@
 ## ADR-0016 OSM data access from the build environment
 - Context: A3 needs OpenStreetMap buildings and roads (ODbL). The cloud build environment's proxy refuses every OSM host: overpass-api.de, its mirrors, api.openstreetmap.org, planet and Geofabrik. overpass-api.de was added to the allow-list (approved by the user on 2026-11-08), but its TLS handshake is still reset upstream.
 - Decision: the app queries Overpass at runtime (keyless and free, ODbL attribution on screen), and tests use fixtures. Showcase packs gain OSM layers once the build environment can reach an OSM source; until then they carry imagery and elevation only, and buildings fall back to procedural ones. Overture Maps is not used, because its building layer mixes in Microsoft ML footprints, which the directive forbids.
+
+## ADR-0017 Sharp approach imagery from the USGS export endpoint (2026-11-08)
+- Context: the art review found near-ground blur at US airports (KMRY, KBFI, KASE). The cause is the 3 m/px phone-tier mosaic magnified about 6× near the camera. USGS cached tiles (`USGSImageryOnly/MapServer/tile`) stop at z16. The NAIP ImageServer host (imagery.nationalmap.gov) is blocked from the build environment.
+- Decision: `USGSImageryProvider` builds z17/z18 tile URLs from the same public-domain map service's `export` endpoint, using exactly the tile's EPSG:3857 bounds at 256 px. These tiles flow through the normal tile pipeline, cache and packs.
+- Coverage: a third imagery layer, `detail`, covers a 2.4 km square centred 1 km out on the approach. At phone tier it is 2048 px (z17, about 1 m/px); on desktop 4096 px (z18 streamed; offline it falls back to z17 tiles).
+- Grading and rendering: the layer is colour-matched to the near mosaic and feathered over its outer 8 % (Metal shader and CPU `ImageryGround` agree).
+- Scope: US airports only. Sentinel-2 is 10 m native.
+- Packs: KMRY, KASE, KBFI and KCOI re-recorded; showcase total 51 MB.
+- Licence: USGS The National Map imagery is a US Government work (public domain). No key, no account.

@@ -97,3 +97,24 @@ actor FixtureTransport: HTTPTransport {
         #expect(road.urban > 0.6 && road.water < 0.1)
     }
 }
+
+@Suite struct USGSExportTests {
+    /// z ≤ 16 uses the cached tiles; finer zooms use the export endpoint for exactly the tile's bounds.
+    @Test func finerZoomsUseTheExportEndpointWithTileBounds() {
+        let p = USGSImageryProvider(maxZoom: 18)
+        #expect(p.url(TileCoord(z: 16, x: 10587, y: 25602)).path.hasSuffix("/tile/16/25602/10587"))
+        let u = p.url(TileCoord(z: 17, x: 21174, y: 51204)).absoluteString
+        #expect(u.contains("/MapServer/export?bbox=-13563597.795,4381676.209,-13563292.047,4381981.958&bboxSR=3857"))
+        #expect(u.contains("size=256,256") && u.contains("format=jpg"))
+        let b = USGSImageryProvider.mercatorBounds(TileCoord(z: 17, x: 21174, y: 51204))
+        #expect(abs((b.maxX - b.minX) - 305.748) < 0.01 && abs((b.maxY - b.minY) - (b.maxX - b.minX)) < 1e-6)
+    }
+
+    /// A recorded export response (Monterey, z17, public domain) decodes to a 256 px tile.
+    @Test func exportJPEGDecodes() throws {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Fixtures/imagery/usgs_export_17_21174_51204.jpg")
+        let img = try JPEGDecoder.decode([UInt8](try Data(contentsOf: url)))
+        #expect(img.width == 256 && img.height == 256)
+    }
+}

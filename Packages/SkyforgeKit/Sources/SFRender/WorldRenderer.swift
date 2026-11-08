@@ -27,6 +27,7 @@ struct WorldUniforms {
     var imageryFar: SIMD4<Float>
     var clouds: CloudLayerGPU
     var fieldGrid: SIMD4<Float>       // farmed-parcel texture: iu0, iv0, width, height (width 0 = none)
+    var imageryDetail: SIMD4<Float>   // centre x, y, half extent, 1 if present
 }
 
 /// 16-byte vertex matching `TerrainVertex` (position + snorm normal; w = −127 marks bark).
@@ -136,6 +137,7 @@ public final class WorldRenderer {
     public var treeCellCount: Int { treeCells.count }
     private var imageryNear: (tex: MTLTexture, centre: SIMD2<Double>, half: Double)?
     private var imageryFar: (tex: MTLTexture, centre: SIMD2<Double>, half: Double)?
+    private var imageryDetail: (tex: MTLTexture, centre: SIMD2<Double>, half: Double)?
     private var waterTex: MTLTexture?
     private lazy var dummy2D: MTLTexture = makeDummy()
     /// Chunks drawn in the last frame after frustum culling (diagnostics/tests).
@@ -440,6 +442,7 @@ public final class WorldRenderer {
         }
         imageryNear = try data.near.map { (try imageryTexture($0), $0.centre, $0.halfExtent) }
         imageryFar = try data.far.map { (try imageryTexture($0), $0.centre, $0.halfExtent) }
+        imageryDetail = try data.detail.map { (try imageryTexture($0), $0.centre, $0.halfExtent) }
         if let wm = data.waterMask {
             let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .r32Float, width: wm.size, height: wm.size, mipmapped: false)
             d.usage = [.shaderRead]
@@ -816,6 +819,7 @@ public final class WorldRenderer {
         enc.setFragmentTexture(imageryFar?.tex ?? dummy2D, index: 4)
         enc.setFragmentTexture(waterTex ?? dummy2D, index: 5)
         enc.setFragmentTexture(parcelTex?.tex ?? dummy2D, index: 6)
+        enc.setFragmentTexture(imageryDetail?.tex ?? dummy2D, index: 7)
         let upHint = SIMD3<Float>(Float(c.up.x), Float(c.up.y), Float(c.up.z))
         let viewProj = Self.reversedZProjection(fovY: Float(fovY), aspect: Float(aspect), near: Float(c.near)) * Self.view(forward: fwd, up: upHint)
         let sunAz = Float(atan2(Double(toSun.y), Double(toSun.x)))
@@ -834,7 +838,8 @@ public final class WorldRenderer {
                           imageryNear: imageryNear.map { SIMD4(Float($0.centre.x), Float($0.centre.y), Float($0.half), 1) } ?? .zero,
                           imageryFar: imageryFar.map { SIMD4(Float($0.centre.x), Float($0.centre.y), Float($0.half), 1) } ?? .zero,
                           clouds: CloudUniforms(layer: clouds, steps: 0).layer,
-                          fieldGrid: parcelTex.map { SIMD4(Float($0.grid.iu0), Float($0.grid.iv0), Float($0.grid.width), Float($0.grid.height)) } ?? .zero)
+                          fieldGrid: parcelTex.map { SIMD4(Float($0.grid.iu0), Float($0.grid.iv0), Float($0.grid.width), Float($0.grid.height)) } ?? .zero,
+                          imageryDetail: imageryDetail.map { SIMD4(Float($0.centre.x), Float($0.centre.y), Float($0.half), 1) } ?? .zero)
         }
         if let e = environment {
             let o = e.origin - c.position

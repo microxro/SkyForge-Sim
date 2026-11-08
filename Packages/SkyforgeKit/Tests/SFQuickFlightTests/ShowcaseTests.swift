@@ -34,8 +34,12 @@ import SFTerrainCore
         let p = RealWorldDetail.phone
         let d = RealWorldDetail(nearHalf: 600, nearStep: 40, midHalf: 2_000, midStep: 200, farHalf: 8_000, farStep: 1_000,
                                 imageryNearSize: Int(Double(p.imageryNearSize) * 600 / p.nearHalf),
-                                imageryFarSize: Int(Double(p.imageryFarSize) * 8_000 / p.farHalf), treeRadius: 300, maxTrees: 1_000)
+                                imageryFarSize: Int(Double(p.imageryFarSize) * 8_000 / p.farHalf), treeRadius: 300, maxTrees: 1_000,
+                                imageryDetailHalf: 600, imageryDetailSize: p.imageryDetailSize / 2)
         let region = try await RealWorldRegion.load(airport: a.ident, detail: d, transport: transport, cache: nil)
+        // The sharp approach layer (z17 USGS export tiles) is in the pack too.
+        let det = try #require(region.ground.detail)
+        #expect(det.zoom == 17 && Double(det.coverage.filter { $0 > 0 }.count) / Double(det.coverage.count) > 0.99)
         let nearM = region.ground.near, farM = try #require(region.ground.far)
         let near = nearM.coverage.filter { $0 > 0 }.count, far = farM.coverage.filter { $0 > 0 }.count
         #expect(Double(near) / Double(nearM.coverage.count) > 0.99)

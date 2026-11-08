@@ -16,6 +16,8 @@ public protocol GroundAlbedo: Sendable {
 public struct ImageryGround: GroundAlbedo {
     public let near: ImageryMosaic
     public let far: ImageryMosaic?
+    /// Optional sharp inner square (same source as `near`, finer zoom), feathered into `near`.
+    public let detail: ImageryMosaic?
     /// Water score averaged over 8 × 8 imagery pixels (≈16 m) so shorelines are smooth and dark
     /// roofs or tree shadows in town are not mistaken for ponds.
     public let waterMask: [Float]
@@ -24,7 +26,7 @@ public struct ImageryGround: GroundAlbedo {
 
     /// `grade`: de-haze the far mosaic and colour-match it to the near aerial photo (the near layer and
     /// the water mask classified from it stay untouched).
-    public init(near: ImageryMosaic, far: ImageryMosaic?, grade: Bool = false) {
+    public init(near: ImageryMosaic, far: ImageryMosaic?, detail: ImageryMosaic? = nil, grade: Bool = false) {
         let b = Self.block, n = near.size / b
         var mask = [Float](repeating: 0, count: n * n)
         for j in 0..<n {
@@ -47,13 +49,14 @@ public struct ImageryGround: GroundAlbedo {
             ImageryGrading.dehaze(&f)
             ImageryGrading.match(far: &f, to: nm)
             self.near = nm; self.far = f
+            if var d = detail { ImageryGrading.match(&d, to: nm); self.detail = d } else { self.detail = nil }
         } else {
-            self.near = near; self.far = far
+            self.near = near; self.far = far; self.detail = detail
         }
     }
 
-    private init(near: ImageryMosaic, far: ImageryMosaic?, waterMask: [Float], maskSize: Int) {
-        self.near = near; self.far = far; self.waterMask = waterMask; self.maskSize = maskSize
+    private init(near: ImageryMosaic, far: ImageryMosaic?, detail: ImageryMosaic?, waterMask: [Float], maskSize: Int) {
+        self.near = near; self.far = far; self.detail = detail; self.waterMask = waterMask; self.maskSize = maskSize
     }
 
     /// Centre of mask cell (i, j) in local metres.
@@ -94,7 +97,7 @@ public struct ImageryGround: GroundAlbedo {
             }
             if members.count < minCells { for p in members { mask[p] = 0 } }
         }
-        return ImageryGround(near: near, far: far, waterMask: mask, maskSize: n)
+        return ImageryGround(near: near, far: far, detail: detail, waterMask: mask, maskSize: n)
     }
 
     func water(_ x: Double, _ y: Double) -> Float? {
@@ -117,6 +120,13 @@ public struct ImageryGround: GroundAlbedo {
             let e = Float(min(min(u, v), min(1 - u, 1 - v)))
             let t = max(0, min(1, (e - 0.002) / 0.058)), wN = t * t * (3 - 2 * t)
             cOpt = f + (n - f) * wN
+        }
+        if let d = detail, let dc = d.sample(x, y), let c0 = cOpt {
+            // Detail square feathered into the near layer over its outer 8 % (as the Metal shader).
+            let u = (x - (d.centre.x - d.halfExtent)) / (2 * d.halfExtent), v = (y - (d.centre.y - d.halfExtent)) / (2 * d.halfExtent)
+            let e = Float(min(min(u, v), min(1 - u, 1 - v)))
+            let t = max(0, min(1, (e - 0.002) / 0.078)), wD = t * t * (3 - 2 * t)
+            cOpt = c0 + (dc - c0) * wD
         }
         guard let c = cOpt else { return nil }
         // Orthophotos already contain sunlight, shadows and camera exposure: convert to a plausible

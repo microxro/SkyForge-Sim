@@ -25,6 +25,8 @@ public struct RealWorldRenderData: Sendable {
     public var trees: [Tree]
     public var near: Imagery?
     public var far: Imagery?
+    /// Sharp inner imagery square (US aerial photo along the approach), feathered into `near`.
+    public var detail: Imagery?
     public var waterMask: (size: Int, values: [Float])?
     /// OpenStreetMap buildings and roads (local metres), drawn with the world mesh pass.
     public var buildings: TriangleSoup?
@@ -46,6 +48,7 @@ extension RealWorldRenderData {
         let g = region.ground
         self.init(chunks: chunks, trees: trees, near: imagery(g.near), far: imagery(g.far),
                   waterMask: (g.maskSize, g.waterMask))
+        detail = imagery(g.detail)
         buildings = region.osmMesh()
     }
 }

@@ -33,6 +33,7 @@ public enum WorldShaders {
         float4 imageryFar;        // centre x, y, half extent, 1 if present
         CloudLayerGPU clouds;     // cumulus layer for cloud shadows (coverage 0 = none)
         float4 fieldGrid;         // farmed-parcel texture origin iu0, iv0 and size (width 0 = none)
+        float4 imageryDetail;     // sharp inner imagery square: centre x, y, half extent, 1 if present
     };
 
     struct TerrainVertex { packed_float3 position; char4 normal; };
@@ -349,7 +350,8 @@ public enum WorldShaders {
                                    texture3d<float> ins [[texture(0)]], texture3d<float> tr [[texture(1)]],
                                    depth2d_array<float> sm [[texture(2)]],
                                    texture2d<float> imgNear [[texture(3)]], texture2d<float> imgFar [[texture(4)]],
-                                   texture2d<float> waterMask [[texture(5)]], texture2d<float> parcels [[texture(6)]]) {
+                                   texture2d<float> waterMask [[texture(5)]], texture2d<float> parcels [[texture(6)]],
+                                   texture2d<float> imgDetail [[texture(7)]]) {
         float dist = length(in.rel);
         float3 dir = in.rel / max(dist, 1e-3);
         float3 n = normalize(in.normal);
@@ -381,6 +383,15 @@ public enum WorldShaders {
             float3 nearC = imgNear.sample(imgSampler, nuv).rgb;
             float3 nb = imgNear.sample(imgSampler, nuv, bias(2.0)).rgb;
             nearC = max(nearC + (nearC - nb) * 0.45, 0.0);
+            // Sharp inner square along the approach (about 1 m/px), feathered over its outer 8 %.
+            float2 duv = (w - (u.imageryDetail.xy - u.imageryDetail.z)) / (2.0 * max(u.imageryDetail.z, 1.0));
+            duv.y = 1.0 - duv.y;
+            float3 detC = imgDetail.sample(imgSampler, duv).rgb;
+            float3 db = imgDetail.sample(imgSampler, duv, bias(2.0)).rgb;
+            detC = max(detC + (detC - db) * 0.35, 0.0);
+            float edgeD = min(min(duv.x, duv.y), min(1.0 - duv.x, 1.0 - duv.y));
+            float wDet = u.imageryDetail.w > 0.5 ? smoothstep(0.002, 0.08, edgeD) : 0.0;
+            nearC = mix(nearC, detC, wDet);
             float3 c = wNear > 0.0 ? mix(farC, nearC, wNear) : farC;
             float cl = dot(c, float3(0.2126, 0.7152, 0.0722));
             imgForest = smoothstep(0.0, 0.02, c.g - max(c.r, c.b)) * smoothstep(0.10, 0.03, cl);   // dark green canopy
