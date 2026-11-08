@@ -58,6 +58,9 @@ public struct RealWorldRegion: FlightWorld {
     public let ground: ImageryGround
     public let attribution: [String]
     public let detail: RealWorldDetail
+    /// OpenStreetMap buildings and roads around the airfield (nil when Overpass was unreachable and
+    /// nothing was cached; the renderer then shows imagery only).
+    public var osm: OSMData? = nil
 
     public enum LoadError: Error, Equatable { case unknownAirport(String), noRunwayGeometry(String) }
 
@@ -109,14 +112,34 @@ public struct RealWorldRegion: FlightWorld {
         async let iFar = ImageryMosaic.build(origin: origin, centre: .zero, halfExtent: detail.farHalf, size: detail.imageryFarSize,
                                              provider: farProvider, streamer: sFar)
         let (hn, hf, inr, ifr) = await (hNear, hFar, iNear, iFar)
+        progress("Buildings")
+        let osm = await OSMService(transport: transport, cache: cache).data(around: origin, halfExtent: min(detail.nearHalf, 3_000))
         progress("Land cover")
         var attribution = [nearProvider.attribution]
         if farProvider.id != nearProvider.id { attribution.append(farProvider.attribution) }
         attribution.append("Elevation: Terrarium tiles (Mapzen/Tilezen; SRTM, USGS 3DEP and others)")
         attribution.append("Airports: OurAirports (public domain)")
-        return RealWorldRegion(name: apt.name, airportIdent: ident, origin: origin, runwayThreshold: thr, runwayHeading: heading,
+        if let o = osm, !(o.buildings.isEmpty && o.roads.isEmpty) { attribution.append(OSMData.attribution) }
+        var region = RealWorldRegion(name: apt.name, airportIdent: ident, origin: origin, runwayThreshold: thr, runwayHeading: heading,
                                runwayLengthMetres: len, runwayWidthMetres: rwy.widthMetres, runwayElevation: elevFt * Units.feetToMetres,
                                nearHeights: hn, farHeights: hf, ground: ImageryGround(near: inr, far: ifr, grade: true), attribution: attribution, detail: detail)
+        region.osm = osm
+        return region
+    }
+
+    /// OSM buildings and roads as one mesh in local metres (nil without OSM data).
+    public func osmMesh() -> TriangleSoup? {
+        guard let o = osm, !(o.buildings.isEmpty && o.roads.isEmpty) else { return nil }
+        let roads = OSMMeshBuilder.roads(o.roads) { self.height($0, $1) }
+        let buildings = OSMMeshBuilder.buildings(o.buildings) { self.height($0, $1) }
+        var soup = TriangleSoup(origin: .zero)
+        let perVertex = !roads.vertexAlbedo.isEmpty || !buildings.vertexAlbedo.isEmpty
+        for part in [roads, buildings] {
+            soup.positions += part.positions; soup.normals += part.normals
+            soup.albedo += part.albedo; soup.material += part.material
+            if perVertex { soup.vertexAlbedo += part.vertexAlbedo.isEmpty ? part.albedo.flatMap { [$0, $0, $0] } : part.vertexAlbedo }
+        }
+        return soup
     }
 
     // MARK: meshes
@@ -172,6 +195,19 @@ public struct RealWorldRegion: FlightWorld {
     public func trees() -> [TreeInstance] {
         var out: [TreeInstance] = []
         let r = detail.treeRadius, cell = 7.0
+        // OSM footprints by 40 m grid cell, so trees never grow through buildings.
+        var footprints: [SIMD2<Int>: [[SIMD2<Double>]]] = [:]
+        for b in osm?.buildings ?? [] {
+            let xs = b.footprint.map(\.x), ys = b.footprint.map(\.y)
+            guard let x0 = xs.min(), let x1 = xs.max(), let y0 = ys.min(), let y1 = ys.max() else { continue }
+            for cy in Int((y0 / 40).rounded(.down))...Int((y1 / 40).rounded(.down)) {
+                for cx in Int((x0 / 40).rounded(.down))...Int((x1 / 40).rounded(.down)) { footprints[SIMD2(cx, cy), default: []].append(b.footprint) }
+            }
+        }
+        func inBuilding(_ x: Double, _ y: Double) -> Bool {
+            guard let list = footprints[SIMD2(Int((x / 40).rounded(.down)), Int((y / 40).rounded(.down)))] else { return false }
+            return list.contains { OSMGeometry.contains($0, SIMD2(x, y)) }
+        }
         let near = ground.near
         var y = -r
         while y < r {
@@ -184,7 +220,7 @@ public struct RealWorldRegion: FlightWorld {
                 guard let c = near.sample(px, py), let g = ground.ground(px, py) else { continue }
                 let lc = LandCover.classify(c)
                 if Hash.unit(rng.next()) > Double(lc.forest) * 0.9 || g.water > 0.3 { continue }
-                if nearRunway(px, py) { continue }
+                if nearRunway(px, py) || inBuilding(px, py) { continue }
                 let h = 9 + Hash.unit(rng.next()) * 10
                 let conifer = Hash.unit(rng.next()) < 0.55
                 let tint = g.albedo * 1.9 * Float(0.85 + 0.3 * Hash.unit(rng.next()))

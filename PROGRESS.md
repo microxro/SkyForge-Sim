@@ -11,8 +11,8 @@ Legend: [x] done and verified, [ ] not done. Unchecked items are not available i
 - [ ] A1 Real-world airport is the default Quick Flight start (SkyWorld = offline fallback)
 - [x] A2 Any OurAirports airport: USGS near / Sentinel-2 far / Terrarium DEM / water / trees; stream + cache; ancestor-tile fallback; SkyWorld fallback on failure
 - [x] A2b Bundled showcase airports: KMRY, KASE, KBFI, LSZS, NZQN, KCOI (43 MB tile packs, SHA-256 manifests, offline load test)
-- [ ] A3 OSM buildings (extruded footprints, height tags or default), roads; ODbL attribution; procedural fallback
-- [ ] A4 Imagery: USGS↔Sentinel-2 colour match at the seam, de-haze/contrast curve, mipmaps + anisotropic filtering
+- [ ] A3 OSM buildings (extruded footprints, height tags or default), roads; ODbL attribution; procedural fallback — runtime Overpass client, parser, meshes, trees avoid footprints, attribution done; procedural fallback and OSM in showcase packs pending (OSM unreachable from the build environment, ADR-0016)
+- [x] A4 Imagery: USGS↔Sentinel-2 colour match, de-haze/contrast curve, feathered near/far seam, mipmaps + 8× anisotropic filtering
 - [ ] A5 Real DEM relief with CDLOD morphing (no cracks/popping), per-pixel detail normals + micro-albedo on imagery
 ### Phase B — Renderer quality
 - [ ] B6a Bloom + sun glare (energy conserving)

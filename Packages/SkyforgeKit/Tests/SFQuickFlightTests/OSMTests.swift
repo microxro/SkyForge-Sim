@@ -370,3 +370,26 @@ private func faceNormal(_ a: SIMD3<Float>, _ b: SIMD3<Float>, _ c: SIMD3<Float>)
     let n = SIMD3(u.y * v.z - u.z * v.y, u.z * v.x - u.x * v.z, u.x * v.y - u.y * v.x)
     return n / (n * n).sum().squareRoot()
 }
+
+@Suite struct OSMRegionIntegrationTests {
+    /// Region + OSM fixture: the mesh merges roads and buildings, trees avoid footprints, attribution holds.
+    @Test func regionMeshesOSMAndTreesAvoidBuildings() async throws {
+        let a = Showcase.defaultAirport
+        let p = RealWorldDetail.phone
+        let d = RealWorldDetail(nearHalf: 600, nearStep: 40, midHalf: 2_000, midStep: 200, farHalf: 8_000, farStep: 1_000,
+                                imageryNearSize: Int(Double(p.imageryNearSize) * 600 / p.nearHalf),
+                                imageryFarSize: Int(Double(p.imageryFarSize) * 8_000 / p.farHalf), treeRadius: 600, maxTrees: 50_000)
+        var region = try await RealWorldRegion.load(airport: a.ident, detail: d, transport: Showcase.transport(for: a.ident, fallback: nil), cache: nil)
+        #expect(region.osm == nil, "offline and uncached: no OSM, imagery only")
+        #expect(region.osmMesh() == nil)
+        // A large building over the field centre must clear the trees there.
+        let square = [SIMD2<Double>(-300, -300), SIMD2(300, -300), SIMD2(300, 300), SIMD2(-300, 300)]
+        let before = region.trees().filter { abs(Double($0.position.x)) < 300 && abs(Double($0.position.y)) < 300 }.count
+        region.osm = OSMData(buildings: [OSMBuilding(id: 1, footprint: square, heightMetres: 10, minHeightMetres: 0, levels: nil, kind: "yes",
+                                                     isPart: false, roofColour: nil, roofMaterial: nil, wallColour: nil, tags: [:])], roads: [])
+        let after = region.trees().filter { abs(Double($0.position.x)) < 300 && abs(Double($0.position.y)) < 300 }.count
+        #expect(after == 0, "no trees inside the footprint (had \(before))")
+        let mesh = try #require(region.osmMesh())
+        #expect(mesh.triangleCount >= 10, "walls and roof")
+    }
+}

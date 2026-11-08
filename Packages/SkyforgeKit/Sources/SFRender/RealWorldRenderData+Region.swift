@@ -3,6 +3,7 @@
 // Pure data mapping (no Metal), so it builds and is testable on every platform.
 import SFQuickFlight
 import SFImagery
+import SFPreview
 
 /// GPU-agnostic description of a real-world region for `WorldRenderer.setRealWorld`.
 public struct RealWorldRenderData: Sendable {
@@ -25,6 +26,8 @@ public struct RealWorldRenderData: Sendable {
     public var near: Imagery?
     public var far: Imagery?
     public var waterMask: (size: Int, values: [Float])?
+    /// OpenStreetMap buildings and roads (local metres), drawn with the world mesh pass.
+    public var buildings: TriangleSoup?
     public init(chunks: [Chunk], trees: [Tree], near: Imagery?, far: Imagery?, waterMask: (size: Int, values: [Float])?) {
         self.chunks = chunks; self.trees = trees; self.near = near; self.far = far; self.waterMask = waterMask
     }
@@ -43,5 +46,6 @@ extension RealWorldRenderData {
         let g = region.ground
         self.init(chunks: chunks, trees: trees, near: imagery(g.near), far: imagery(g.far),
                   waterMask: (g.maskSize, g.waterMask))
+        buildings = region.osmMesh()
     }
 }

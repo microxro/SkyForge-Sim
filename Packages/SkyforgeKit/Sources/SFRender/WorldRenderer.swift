@@ -323,6 +323,8 @@ public final class WorldRenderer {
 
     /// Uploads real-world terrain chunks, tree instances and imagery.
     public func setRealWorld(_ data: RealWorldRenderData) throws {
+        // OSM buildings and roads use the world mesh pass (culled spatial cells, shadows).
+        if let b = data.buildings, b.triangleCount > 0 { try setEnvironment(b) } else { environment = nil; fieldPattern = nil }
         func q(_ x: Float) -> Int8 { Int8(max(-127, min(127, (x * 127).rounded()))) }
         var verts: [PackedTerrainVertex] = [], idx: [UInt32] = []
         var draws: [(Int, Int, Int, SIMD3<Float>, SIMD3<Float>)] = []
