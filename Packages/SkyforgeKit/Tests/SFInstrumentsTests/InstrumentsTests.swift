@@ -5,6 +5,7 @@ import Foundation
 import SFFlightModel
 import SFAtmosphere
 import SFMath
+import SFPreview
 
 @Suite struct GaugeMathTests {
     @Test func altimeterHandsReadTwelveThreeFortyFive() {
@@ -185,5 +186,25 @@ import SFMath
         let sky = pfd.pixel(160, 30), ground = pfd.pixel(310, 195)
         #expect(sky.2 > sky.0 + 0.2)
         #expect(ground.0 > ground.2 + 0.15)
+    }
+}
+
+@Suite struct InstrumentGoldenTests {
+    static let goldenDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        .appendingPathComponent("Fixtures/golden")
+
+    func check(_ name: String, _ img: Image2D) {
+        switch VisualRegression.check(name: name, rgb: img.bytes(), width: img.width, height: img.height, goldenDir: Self.goldenDir) {
+        case .passed, .blessed: break
+        case let .failed(d, a): Issue.record("\(name): \(d) \(a)")
+        case let .missingGolden(p): Issue.record("\(name): no golden, candidate \(p)")
+        }
+    }
+
+    @Test func panelsMatchGoldens() {
+        let d = InstrumentScenario.climbingTurn(seconds: 10)
+        check("instruments_sixpack_360x240", Raster2D.render(SteamGauges.sixPack(d), width: 360, height: 240))
+        check("instruments_pfd_320x200", Raster2D.render(PFD.draw(d, options: PFDOptions(selectedAltitudeFt: 3_500, selectedHeadingDeg: 90)),
+                                                         width: 320, height: 200))
     }
 }
