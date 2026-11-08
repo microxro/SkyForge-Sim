@@ -16,6 +16,8 @@ public struct SceneBuilder {
     /// Beyond this radius around `centre` (where real buildings stop), built-up far terrain carries a
     /// per-pixel suburb impostor (`FieldPattern.town`) instead of the 25 m vertex mottle. Set before `addTerrain`.
     public var townImpostor: (centre: SIMD2<Double>, radius: Double)?
+    /// Farmed flag per field parcel, decided once at the parcel centre (filled by `addTerrain`).
+    private var parcelFarmed: [SIMD2<Int32>: Bool] = [:]
 
     public init(generator: WorldGenerator, origin: SIMD3<Double>) {
         self.generator = generator
@@ -41,8 +43,10 @@ public struct SceneBuilder {
     }
 
     /// Vertex albedo and field weight (0…1: how much `FieldPattern` parcels show here; −1…0: suburb impostor).
-    func groundSample(_ x: Double, _ y: Double, _ z: Double, normal n: SIMD3<Double>, far: Bool = false) -> (colour: SIMD3<Float>, field: Float) {
-        var field: Float = 0
+    /// `base` is the land-use weight before local clips (rock, snow, sand, river bank, airfield), `clip` their product.
+    func groundSample(_ x: Double, _ y: Double, _ z: Double, normal n: SIMD3<Double>, far: Bool = false)
+        -> (colour: SIMD3<Float>, field: Float, base: Float, clip: Float) {
+        var field: Float = 0, clip: Float = 1
         let slope = acos(min(1, n.z))
         let rd = terrain.riverDistance(x, y)
         let moisture = clamp(0.55 + moistureNoise.fbm(x / 700, y / 700, octaves: 3) * 0.6 + (rd < 300 ? 0.2 : 0), 0, 1)
@@ -99,13 +103,13 @@ public struct SceneBuilder {
         let strata = Float(0.86 + 0.08 * band + 0.10 * macroNoise.fbm(x / 40, y / 40, octaves: 2))
         let rockCol = srgb(104, 100, 94) * strata   // neutral grey-brown (review: lilac cast)
         c = c + (rockCol - c) * rock
-        field *= 1 - rock
+        clip *= 1 - rock
         let t = BiomeClassifier.temperature(latitude: generator.latitude, elevation: z + macroNoise.fbm(x / 400, y / 400) * 120)
         // Snow only holds on gentler slopes; steep faces stay rock (art review: peaks read as clay).
         let snow = Float(smoothstep(-1, -4, t) * (1 - smoothstep(0.52, 0.72, slope)))   // holds up to ~35°
         c = c + (srgb(236, 240, 246) - c) * snow
-        field *= 1 - snow
-        if terrain.kind == .coastline && z < 4 && z > terrain.seaLevel - 1 { c = srgb(206, 190, 150); field = 0 }
+        clip *= 1 - snow
+        if terrain.kind == .coastline && z < 4 && z > terrain.seaLevel - 1 { c = srgb(206, 190, 150); clip = 0 }
         if let r = terrain.river, rd < r.width / 2 + 26 {
             // Wider bank with wet mud at the waterline (art review: dark water against grass made the
             // vertex-spacing waterline read as sawtooth; a low-contrast bank hides it).
@@ -113,15 +117,15 @@ public struct SceneBuilder {
             c = c + (srgb(112, 102, 80) - c) * bank
             let wet = Float(1 - smoothstep(r.width / 2 - 2, r.width / 2 + 9, rd))
             c = c + (srgb(58, 60, 50) - c) * wet
-            field *= (1 - bank) * (1 - wet)
+            clip *= (1 - bank) * (1 - wet)
         }
         if let a = airfield, slope < 0.2 {
             c = airfieldGrass(x, y, a, current: c)
-            field *= 1 - airfieldWeight(x, y, a)
+            clip *= 1 - airfieldWeight(x, y, a)
         }
         // Macro variation breaks up uniformity (no visible tiling).
         let v = Float(1 + macroNoise.fbm(x / 260, y / 260, octaves: 3) * 0.16)
-        return (c * v, field)
+        return (c * v, field * clip, field, clip)
     }
 
 
@@ -157,6 +161,7 @@ public struct SceneBuilder {
         var normals = [SIMD3<Float>](repeating: .zero, count: (n + 1) * (n + 1))
         var colours = [SIMD3<Float>](repeating: .zero, count: (n + 1) * (n + 1))
         var fields = [Float](repeating: 0, count: (n + 1) * (n + 1))
+        let pattern = fieldPattern
         for j in 0...n {
             for i in 0...n {
                 let x = x0 + Double(i) * step, y = y0 + Double(j) * step
@@ -166,7 +171,21 @@ public struct SceneBuilder {
                 normals[j * (n + 1) + i] = SIMD3(Float(nn.x), Float(nn.y), Float(nn.z))
                 let g = groundSample(x, y, z, normal: nn, far: far)
                 colours[j * (n + 1) + i] = g.colour
-                fields[j * (n + 1) + i] = g.field
+                if g.base < 0 {
+                    fields[j * (n + 1) + i] = g.field                       // suburb impostor stays per vertex
+                } else {
+                    // Fields are decided once per parcel (at its centre), so they end on whole parcels and
+                    // hedgerows; only local clips (river, rock, sand, airfield) cut through a parcel.
+                    // The vertex keeps only the local clip; the per-pixel lookup in `parcelFarmed` decides.
+                    let key = pattern.parcelIndex(Float(x), Float(y))
+                    if parcelFarmed[key] == nil {
+                        let c = pattern.parcelCentre(key)
+                        let cx = Double(c.x), cy = Double(c.y)
+                        let base = groundSample(cx, cy, terrain.height(cx, cy), normal: terrain.normal(cx, cy, step: max(2, step / 2)), far: far).base
+                        parcelFarmed[key] = pattern.farmed(key, base: base)
+                    }
+                    fields[j * (n + 1) + i] = g.clip
+                }
             }
         }
         let cx = (centre.x / step).rounded() * step, cy = (centre.y / step).rounded() * step
@@ -189,6 +208,9 @@ public struct SceneBuilder {
             }
         }
         stats["terrain", default: 0] += count
+        var fp = fieldPattern
+        fp.parcels = FieldPattern.ParcelGrid(parcelFarmed)
+        soup.fieldPattern = fp
     }
 
     // MARK: Water

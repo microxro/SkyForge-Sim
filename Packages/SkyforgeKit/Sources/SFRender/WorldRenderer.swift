@@ -26,6 +26,7 @@ struct WorldUniforms {
     var imageryNear: SIMD4<Float>
     var imageryFar: SIMD4<Float>
     var clouds: CloudLayerGPU
+    var fieldGrid: SIMD4<Float>       // farmed-parcel texture: iu0, iv0, width, height (width 0 = none)
 }
 
 /// 16-byte vertex matching `TerrainVertex` (position + snorm normal; w = −127 marks bark).
@@ -145,6 +146,7 @@ public final class WorldRenderer {
     private var environment: (buffer: MTLBuffer, count: Int, origin: SIMD3<Double>, cells: [MeshCell])?
     /// Field parcels drawn per pixel on the environment's terrain (from the soup; nil = none).
     public private(set) var fieldPattern: FieldPattern?
+    private var parcelTex: (tex: MTLTexture, grid: FieldPattern.ParcelGrid)?
     private let worldLibrary: MTLLibrary
     /// Environment cells drawn in the last main pass (of `environmentCellCount`), for tests and HUD stats.
     public private(set) var lastDrawnEnvironmentCells = 0
@@ -224,12 +226,20 @@ public final class WorldRenderer {
 
     /// `FieldPattern.factor` evaluated by the world shader's code (CI compares it with the CPU).
     public func fieldFactors(points: [SIMD3<Float>], pattern: FieldPattern, town: Bool = false) throws -> [SIMD3<Float>] {
-        let n = points.count
+        try runFieldKernel(points.map { SIMD4<Float>($0, 0) }, pattern: pattern, town: town).map { SIMD3($0.x, $0.y, $0.z) }
+    }
+
+    /// `FieldPattern.coverage` on the GPU for (x, y, weight) triples.
+    public func fieldCoverage(points: [SIMD3<Float>], pattern: FieldPattern) throws -> [Float] {
+        try runFieldKernel(points.map { SIMD4<Float>($0.x, $0.y, 1, $0.z) }, pattern: pattern, town: false).map(\.w)
+    }
+
+    private func runFieldKernel(_ pts: [SIMD4<Float>], pattern: FieldPattern, town: Bool) throws -> [SIMD4<Float>] {
+        let n = pts.count
         guard n > 0 else { return [] }
         guard let k = worldLibrary.makeFunction(name: "field_factors") else { throw RendererError.shaderCompile("missing field_factors") }
         let kernel: MTLComputePipelineState
         do { kernel = try device.makeComputePipelineState(function: k) } catch { throw RendererError.pipeline(String(describing: error)) }
-        let pts = points.map { SIMD4<Float>($0, 0) }
         var params = SIMD4<Float>(Float(pattern.seed), pattern.autumn ? 1 : 0, town ? 1 : 0, 0)
         guard let ib = device.makeBuffer(bytes: pts, length: n * 16, options: .storageModeShared),
               let ob = device.makeBuffer(length: n * 16, options: .storageModeShared),
@@ -238,6 +248,7 @@ public final class WorldRenderer {
         enc.setBuffer(ib, offset: 0, index: 0)
         enc.setBuffer(ob, offset: 0, index: 1)
         enc.setBytes(&params, length: 16, index: 2)
+        enc.setTexture(dummy2D, index: 0)
         enc.dispatchThreads(MTLSize(width: n, height: 1, depth: 1),
                             threadsPerThreadgroup: MTLSize(width: min(n, kernel.maxTotalThreadsPerThreadgroup), height: 1, depth: 1))
         enc.endEncoding()
@@ -245,7 +256,7 @@ public final class WorldRenderer {
         cmd.waitUntilCompleted()
         if let e = cmd.error { throw RendererError.pipeline(String(describing: e)) }
         let p = ob.contents().bindMemory(to: SIMD4<Float>.self, capacity: n)
-        return (0..<n).map { SIMD3(p[$0].x, p[$0].y, p[$0].z) }
+        return (0..<n).map { p[$0] }
     }
 
     private func makeDummy() -> MTLTexture {
@@ -403,6 +414,14 @@ public final class WorldRenderer {
         let (order, cells) = SpatialBinning.bin(positions: soup.positions)
         environment = (try makeBuffer(Self.pack(soup, order: order)), soup.triangleCount * 3, soup.origin, cells)
         fieldPattern = soup.vertexField.isEmpty ? nil : soup.fieldPattern
+        parcelTex = nil
+        if let g = fieldPattern?.parcels, g.width > 0, g.height > 0 {
+            let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .r8Unorm, width: g.width, height: g.height, mipmapped: false)
+            d.usage = [.shaderRead]
+            guard let t = device.makeTexture(descriptor: d) else { throw RendererError.commandQueue }
+            g.on.withUnsafeBytes { t.replace(region: MTLRegionMake2D(0, 0, g.width, g.height), mipmapLevel: 0, withBytes: $0.baseAddress!, bytesPerRow: g.width) }
+            parcelTex = (t, g)
+        }
     }
 
     public func setAircraft(_ soup: TriangleSoup) throws {
@@ -619,6 +638,7 @@ public final class WorldRenderer {
         enc.setFragmentTexture(imageryNear?.tex ?? dummy2D, index: 3)
         enc.setFragmentTexture(imageryFar?.tex ?? dummy2D, index: 4)
         enc.setFragmentTexture(waterTex ?? dummy2D, index: 5)
+        enc.setFragmentTexture(parcelTex?.tex ?? dummy2D, index: 6)
         let upHint = SIMD3<Float>(Float(c.up.x), Float(c.up.y), Float(c.up.z))
         let viewProj = Self.reversedZProjection(fovY: Float(fovY), aspect: Float(aspect), near: Float(c.near)) * Self.view(forward: fwd, up: upHint)
         let sunAz = Float(atan2(Double(toSun.y), Double(toSun.x)))
@@ -636,7 +656,8 @@ public final class WorldRenderer {
                           cameraLocal: SIMD4(Float(c.position.x), Float(c.position.y), Float(c.position.z), 0),
                           imageryNear: imageryNear.map { SIMD4(Float($0.centre.x), Float($0.centre.y), Float($0.half), 1) } ?? .zero,
                           imageryFar: imageryFar.map { SIMD4(Float($0.centre.x), Float($0.centre.y), Float($0.half), 1) } ?? .zero,
-                          clouds: CloudUniforms(layer: clouds, steps: 0).layer)
+                          clouds: CloudUniforms(layer: clouds, steps: 0).layer,
+                          fieldGrid: parcelTex.map { SIMD4(Float($0.grid.iu0), Float($0.grid.iv0), Float($0.grid.width), Float($0.grid.height)) } ?? .zero)
         }
         if let e = environment {
             let o = e.origin - c.position

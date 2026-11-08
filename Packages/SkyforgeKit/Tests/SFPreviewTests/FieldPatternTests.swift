@@ -84,3 +84,27 @@ import SFWorldGen
         #expect(outside > 0, "suburb impostor beyond 1 km")
     }
 }
+
+@Suite struct ParcelGridTests {
+    @Test func farmedParcelsAreWholeAndClipStillCuts() {
+        var b = SceneBuilder(generator: WorldGenerator(terrain: TerrainRecipe(kind: .suburbanPlain, seed: 3)), origin: .zero)
+        b.addTerrain(centre: SIMD2(2_000, -1_500), halfExtent: 1_500, step: 50)
+        let p = try! #require(b.soup.fieldPattern)
+        let grid = try! #require(p.parcels)
+        #expect(grid.on.contains(255) && grid.on.contains(0), "some parcels farmed, some not")
+        // Inside a farmed parcel with full clip, coverage is 1 everywhere; in an unfarmed one it is 0.
+        var checked = 0
+        for iv in 0..<grid.height {
+            for iu in 0..<grid.width where checked < 40 {
+                let idx = SIMD2(grid.iu0 + Int32(iu), grid.iv0 + Int32(iv))
+                let c = p.parcelCentre(idx)
+                guard p.parcelIndex(c.x, c.y) == idx else { continue }       // warp moved the centre out
+                let cov = p.coverage(c.x, c.y, weight: 1)
+                #expect(cov == (grid.isOn(idx) ? 1 : 0))
+                #expect(p.coverage(c.x, c.y, weight: 0) == 0, "a full clip removes the field")
+                checked += 1
+            }
+        }
+        #expect(checked > 10)
+    }
+}

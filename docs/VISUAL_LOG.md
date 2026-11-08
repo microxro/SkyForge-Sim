@@ -172,3 +172,14 @@ Open defects (next passes): near-field ground is flat colour (needs detail textu
   - `tools/render_previews.sh` renders the five reviewed scenes at their canonical times.
   - The Metal shader mirrors all of the above.
 - Aircraft: thin dark seams outline the flaps, ailerons, elevator and rudder on both faces (shared mesh, previews and Quick Flight).
+
+### 2026-11-08 Art-director re-review (round 10) and fixes
+- a 5.83, d 5.83, e 6.00, f 6.17, j 5.83 → **5.93** (was 5.63). All four changes landed and nothing regressed.
+- Open from the review:
+  - (j) near parcels lack visible rows.
+  - Parcels dissolve into meadow with soft, stepped edges in (e) and (d).
+  - Rock in (f) reads as smooth plastic at mid-distance.
+  - No wing glint.
+- Field edges: farming is now decided once per parcel at its centre (`FieldPattern.ParcelGrid`; on Metal an R8 texture plus a `fieldGrid` uniform). The vertex weight carries only local clips (river bank, rock, snow, sand, airfield), and their switch is anti-aliased by the screen-space weight gradient (fwidth on Metal, G-buffer neighbours on the CPU). Field areas now end on whole parcels with crisp edges; (e)'s sawtooth is gone.
+- Rows: contrast varies per field (5–12 %), pasture mowing stripes are at 6 %, and the generic ground mottle is calmed by 70 % under fields.
+- Rock: fine crevices (4 m, along the fall line) and ledges (3.5 m, across it) as normal detail on steep faces, faded by footprint (CPU and Metal).

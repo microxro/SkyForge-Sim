@@ -8,8 +8,37 @@ import Foundation
 public struct FieldPattern: Sendable, Equatable {
     public var seed: UInt32
     public var autumn: Bool
+    /// Which parcels are farmed (decided once per parcel by SceneBuilder). With a grid, the per-vertex
+    /// weight is only the local clip (river, rock, sand, airfield) and parcels switch on whole.
+    public var parcels: ParcelGrid?
 
     public init(seed: UInt32, autumn: Bool) { self.seed = seed; self.autumn = autumn }
+
+    /// On/off flags for a rectangle of parcels (indices iu0…iu0+width−1, iv0…iv0+height−1; outside = off).
+    public struct ParcelGrid: Sendable, Equatable {
+        public var iu0: Int32, iv0: Int32, width: Int, height: Int
+        public var on: [UInt8]      // 0 or 255, row-major by iv
+
+        public init(_ flags: [SIMD2<Int32>: Bool]) {
+            let keys = flags.keys
+            let u0 = keys.map(\.x).min() ?? 0, u1 = keys.map(\.x).max() ?? -1
+            let v0 = keys.map(\.y).min() ?? 0, v1 = keys.map(\.y).max() ?? -1
+            iu0 = u0; iv0 = v0; width = Int(u1 - u0 + 1); height = Int(v1 - v0 + 1)
+            on = [UInt8](repeating: 0, count: max(0, width * height))
+            for (k, f) in flags where f { on[Int(k.y - v0) * width + Int(k.x - u0)] = 255 }
+        }
+
+        @inline(__always) public func isOn(_ p: SIMD2<Int32>) -> Bool {
+            let x = Int(p.x - iu0), y = Int(p.y - iv0)
+            return x >= 0 && y >= 0 && x < width && y < height && on[y * width + x] != 0
+        }
+    }
+
+    /// Whether a parcel with land-use weight `base` (at its centre) is farmed: each parcel has its own
+    /// hashed threshold, so field areas fray parcel by parcel at their margins.
+    public func farmed(_ p: SIMD2<Int32>, base: Float) -> Bool {
+        base > 0.3 + 0.4 * Self.unit(Self.hash(p.x, p.y, seed ^ 0x5EED))
+    }
 
     /// Parcel size along the rotated u, v axes (metres).
     public static let parcelU: Float = 110, parcelV: Float = 170
@@ -59,6 +88,41 @@ public struct FieldPattern: Sendable, Equatable {
         return v * 2 - 1
     }
 
+    /// How much of the parcel pattern shows at (x, y) for an interpolated vertex field weight: each parcel
+    /// switches on at its own hashed threshold, so field areas end on whole parcels and their hedgerows
+    /// instead of dissolving over the hundreds of metres where the weight ramps (review: soft edges).
+    /// Parcel containing (x, y) (rotated, warped grid).
+    public func parcelIndex(_ x: Float, _ y: Float) -> SIMD2<Int32> {
+        let c = cos(Self.angle), s = sin(Self.angle)
+        let wu = Self.noise(x / 420 + 7.3, y / 420, seed ^ 0x51) * 22
+        let wv = Self.noise(x / 420, y / 420 - 9.1, seed ^ 0xA3) * 22
+        let u = c * x + s * y + wu, v = -s * x + c * y + wv
+        return SIMD2(Int32((u / Self.parcelU).rounded(.down)), Int32((v / Self.parcelV).rounded(.down)))
+    }
+
+    /// A representative point of a parcel (its unwarped centre; the warp is at most 22 m).
+    public func parcelCentre(_ p: SIMD2<Int32>) -> SIMD2<Float> {
+        let c = cos(Self.angle), s = sin(Self.angle)
+        let u = (Float(p.x) + 0.5) * Self.parcelU, v = (Float(p.y) + 0.5) * Self.parcelV
+        return SIMD2(c * u - s * v, s * u + c * v)
+    }
+
+    /// `band` widens the switch where the weight changes quickly on screen (anti-aliasing).
+    public func coverage(_ x: Float, _ y: Float, weight: Float, band: Float = 0.12) -> Float {
+        let c = cos(Self.angle), s = sin(Self.angle)
+        let wu = Self.noise(x / 420 + 7.3, y / 420, seed ^ 0x51) * 22
+        let wv = Self.noise(x / 420, y / 420 - 9.1, seed ^ 0xA3) * 22
+        let u = c * x + s * y + wu, v = -s * x + c * y + wv
+        let iu = (u / Self.parcelU).rounded(.down), iv = (v / Self.parcelV).rounded(.down)
+        var t = 0.3 + 0.4 * Self.unit(Self.hash(Int32(iu), Int32(iv), seed ^ 0x5EED))
+        if let g = parcels {
+            if !g.isOn(SIMD2(Int32(iu), Int32(iv))) { return 0 }
+            t = 0.5                                   // weight is the local clip only
+        }
+        let k = min(1, max(0, (weight - (t - band / 2)) / band))
+        return k * k * (3 - 2 * k)
+    }
+
     /// Albedo multiplier at world (x, y) metres. `footprint` is the ground size of a pixel (metres):
     /// hedgerows thinner than a pixel fade toward their area-average instead of aliasing.
     public func factor(_ x: Float, _ y: Float, footprint: Float) -> SIMD3<Float> {
@@ -83,7 +147,8 @@ public struct FieldPattern: Sendable, Equatable {
         let spacing: Float = pasture ? 14 : 3 + 3 * Self.unit(h >> 8)
         let coord = (h >> 24) & 1 == 0 ? u : v
         let rowFade = min(1, max(0, 1 - max(0.05, footprint) * 2.5 / spacing))
-        col *= 1 + (pasture ? 0.03 : 0.07) * sin(coord / spacing * 6.2831853) * rowFade
+        let rowAmp: Float = pasture ? 0.06 : 0.05 + 0.07 * Self.unit(h >> 16)   // contrast varies per field
+        col *= 1 + rowAmp * sin(coord / spacing * 6.2831853) * rowFade
         // Distance to the parcel border in metres; crisp hedgerow strip, anti-aliased by footprint.
         let edge = min(tu * Self.parcelU, (1 - tu) * Self.parcelU, tv * Self.parcelV, (1 - tv) * Self.parcelV)
         let fp = max(0.05, footprint)

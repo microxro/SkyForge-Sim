@@ -33,6 +33,17 @@ import SFQuickFlight
     }
 
     @Test(.enabled(if: SkyRegressionTests.hasDevice, "no Metal device on this host"))
+    func gpuFieldCoverageMatchesCPU() throws {
+        let r = try WorldRenderer(lighting: .preset(.midday))
+        let pattern = FieldPattern(seed: 4_242, autumn: false)
+        let pts = (0..<4_096).map { i in SIMD3<Float>(Float(i % 64) * 61 - 1_900, Float(i / 64) * 67 - 2_100, Float(i % 97) / 96) }
+        let gpu = try r.fieldCoverage(points: pts, pattern: pattern)
+        let bad = pts.indices.filter { abs(gpu[$0] - pattern.coverage(pts[$0].x, pts[$0].y, weight: pts[$0].z)) > 0.01 }.count
+        print("field coverage GPU vs CPU: \(bad)/\(pts.count) differ")
+        #expect(bad <= pts.count / 200)
+    }
+
+    @Test(.enabled(if: SkyRegressionTests.hasDevice, "no Metal device on this host"))
     func gpuTownImpostorMatchesCPU() throws {
         let r = try WorldRenderer(lighting: .preset(.midday))
         let pattern = FieldPattern(seed: 0x00AB_CDEF, autumn: false)

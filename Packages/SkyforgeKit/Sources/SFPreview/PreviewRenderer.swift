@@ -54,6 +54,12 @@ public enum PreviewRenderer {
         let camAltitude = Float(camera.position.z)
         let gb = g
         let fields = fields ?? soup.fieldPattern
+        // Screen-space change of the field weight (like fwidth on the GPU), for anti-aliased parcel switches.
+        @Sendable func fieldBand(_ i: Int) -> Float {
+            let x = i % W, f = gb.field[i]
+            let dx = x + 1 < W ? abs(gb.field[i + 1] - f) : 0, dy = i + W < W * H ? abs(gb.field[i + W] - f) : 0
+            return max(0.12, 2.5 * (dx + dy))
+        }
         hdr.withUnsafeMutableBufferPointer { hb in
             let out = Shared(hb.baseAddress!)
             DispatchQueue.concurrentPerform(iterations: H) { y in
@@ -89,18 +95,24 @@ public enum PreviewRenderer {
                         let t = fpat.town(wx, wy, footprint: footprint, lawn: albedo)
                         albedo += (t - albedo) * min(1, -gb.field[idx])
                     }
+                    var fieldCov: Float = 0
                     if mat == Material.terrain.rawValue && !imagery, let fpat = fields, gb.field[idx] > 0.003 {
                         // Field parcels and hedgerows per pixel (the vertex grid blurred and stepped them).
-                        let footprint = dist / focal / max(0.15, abs(fdot(dir, n)))
                         let wx = Float(Double(p.x) + origin.x), wy = Float(Double(p.y) + origin.y)
-                        let f = fpat.factor(wx, wy, footprint: footprint)
-                        albedo *= SIMD3<Float>(repeating: 1) + (f - SIMD3<Float>(repeating: 1)) * min(1, gb.field[idx])
+                        fieldCov = fpat.coverage(wx, wy, weight: gb.field[idx], band: fieldBand(idx))
+                        if fieldCov > 0 {
+                            let footprint = dist / focal / max(0.15, abs(fdot(dir, n)))
+                            let f = fpat.factor(wx, wy, footprint: footprint)
+                            albedo *= SIMD3<Float>(repeating: 1) + (f - SIMD3<Float>(repeating: 1)) * fieldCov
+                        }
                     }
                     if mat == Material.terrain.rawValue && dist < (imagery ? 350 : 700) {
                         // Per-pixel ground detail the vertex grid cannot carry: clumps (1.5 m), patches
                         // (6 m), dry/lush variation (40 m), and micro-relief shading; faded with distance
                         // so it never aliases.
-                        let fade = (1 - dist / (imagery ? 350 : 700)) * (imagery ? 0.5 : 1)
+                        // Fields carry their own rows and stripes; the generic mottle is calmed there (review:
+                        // near parcels in (j) showed only blotches).
+                        let fade = (1 - dist / (imagery ? 350 : 700)) * (imagery ? 0.5 : 1) * (1 - 0.7 * fieldCov)
                         let wx = Double(p.x) + origin.x, wy = Double(p.y) + origin.y
                         let fine = Float(groundNoise.fbm(wx / 1.5, wy / 1.5, octaves: 2))
                         let mid = Float(groundNoise.fbm(wx / 6 + 17, wy / 6 - 9, octaves: 2))
@@ -133,6 +145,20 @@ public enum PreviewRenderer {
                             let tilt = perp * (-dg * 0.35 * gw)
                             n = simd_normalize(n + SIMD3(tilt.x, tilt.y, 0))
                             albedo *= 1 - 0.28 * max(0, -g) * gw            // darker gully floors (also in shade)
+                        }
+                        // Fine crevices (4 m, along the fall line) and ledges (3.5 m, across it) so clean rock
+                        // faces read as rock rather than clay (review round 10).
+                        let cw = w(4) * steep
+                        if cw > 0 {
+                            let e = 0.5
+                            let cr = Float(groundNoise.fbm(across / 4 - 19, along / 10, octaves: 2))
+                            let crp = Float(groundNoise.fbm((across + e) / 4 - 19, along / 10, octaves: 2))
+                            let ld = Float(groundNoise.fbm(across / 25 + 7, along / 3.5, octaves: 2))
+                            let ldp = Float(groundNoise.fbm(across / 25 + 7, (along + e) / 3.5, octaves: 2))
+                            let dc = (crp - cr) / Float(e) * 4, dl = (ldp - ld) / Float(e) * 3.5
+                            let t2 = perp * (-dc * 0.22 * cw) + fall * (-dl * 0.18 * cw)
+                            n = simd_normalize(n + SIMD3(t2.x, t2.y, 0))
+                            albedo *= 1 - 0.12 * max(0, -cr) * cw
                         }
                         let big = Float(groundNoise.fbm(wx / 60 - 13, wy / 60 + 29, octaves: 2)) * w(60)
                         let small = Float(groundNoise.fbm(wx / 9 + 3, wy / 9 - 7, octaves: 2)) * w(9)

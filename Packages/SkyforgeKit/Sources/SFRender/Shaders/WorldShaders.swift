@@ -32,6 +32,7 @@ public enum WorldShaders {
         float4 imageryNear;       // centre x, y, half extent, 1 if present
         float4 imageryFar;        // centre x, y, half extent, 1 if present
         CloudLayerGPU clouds;     // cumulus layer for cloud shadows (coverage 0 = none)
+        float4 fieldGrid;         // farmed-parcel texture origin iu0, iv0 and size (width 0 = none)
     };
 
     struct TerrainVertex { packed_float3 position; char4 normal; };
@@ -199,6 +200,22 @@ public enum WorldShaders {
         float3(0.95, 0.60, 1.10), float3(1.70, 1.28, 2.05), float3(0.55, 0.70, 0.66), float3(1.32, 0.96, 1.30) };
     constant float3 fpAutumn[6] = { float3(1.43, 1.03, 1.57), float3(0.78, 0.54, 1.00), float3(0.60, 0.68, 0.82),
         float3(1.22, 0.89, 1.38), float3(0.76, 0.77, 0.95), float3(1.67, 1.21, 2.00) };
+    static float fieldCoverage(float x, float y, float weight, uint seed, float band, float4 grid, texture2d<float> parcels) {
+        float c = cos(0.35f), s = sin(0.35f);
+        float wu = fp_noise(x / 420.0 + 7.3, y / 420.0, seed ^ 0x51u) * 22.0;
+        float wv = fp_noise(x / 420.0, y / 420.0 - 9.1, seed ^ 0xA3u) * 22.0;
+        float u = c * x + s * y + wu, v = -s * x + c * y + wv;
+        float iu = floor(u / 110.0), iv = floor(v / 170.0);
+        float t = 0.3 + 0.4 * fp_unit(fp_hash(int(iu), int(iv), seed ^ 0x5EEDu));
+        if (grid.z > 0.0) {                                   // farmed parcels decided per parcel on the CPU
+            float gx = iu - grid.x, gy = iv - grid.y;
+            if (gx < 0.0 || gy < 0.0 || gx >= grid.z || gy >= grid.w) return 0.0;
+            if (parcels.read(uint2(uint(gx), uint(gy))).r < 0.5) return 0.0;
+            t = 0.5;                                          // weight is the local clip only
+        }
+        float k = min(1.0, max(0.0, (weight - (t - band * 0.5)) / band));
+        return k * k * (3.0 - 2.0 * k);
+    }
     static float3 fieldFactor(float x, float y, float footprint, uint seed, bool autumn) {
         const float PU = 110.0, PV = 170.0, HW = 1.2;
         float c = cos(0.35f), s = sin(0.35f);
@@ -217,7 +234,8 @@ public enum WorldShaders {
         float spacing = pasture ? 14.0 : 3.0 + 3.0 * fp_unit(h >> 8);
         float coord = ((h >> 24) & 1u) == 0u ? u : v;
         float rowFade = min(1.0, max(0.0, 1.0 - max(0.05, footprint) * 2.5 / spacing));
-        col *= 1.0 + (pasture ? 0.03 : 0.07) * sin(coord / spacing * 6.2831853) * rowFade;
+        float rowAmp = pasture ? 0.06 : 0.05 + 0.07 * fp_unit(h >> 16);
+        col *= 1.0 + rowAmp * sin(coord / spacing * 6.2831853) * rowFade;
         float edge = min(min(tu * PU, (1.0 - tu) * PU), min(tv * PV, (1.0 - tv) * PV));
         float fp = max(0.05, footprint);
         float hw = min(HW, max(0.3, 1.5 * fp));
@@ -268,10 +286,12 @@ public enum WorldShaders {
     /// CI check: FieldPattern factors (or town colours on lawn 0.10/0.12/0.06 when params.z = 1) on the GPU
     /// (in: x, y, footprint; params: seed, autumn, town).
     kernel void field_factors(const device float4* pts [[buffer(0)]], device float4* out [[buffer(1)]],
-                              constant float4& params [[buffer(2)]], uint i [[thread_position_in_grid]]) {
+                              constant float4& params [[buffer(2)]], texture2d<float> dummy [[texture(0)]],
+                              uint i [[thread_position_in_grid]]) {
         float4 p = pts[i];
         out[i] = params.z > 0.5 ? float4(townColour(p.x, p.y, p.z, float3(0.10, 0.12, 0.06), uint(params.x)), 0.0)
-                                : float4(fieldFactor(p.x, p.y, p.z, uint(params.x), params.y > 0.5), 0.0);
+                                : float4(fieldFactor(p.x, p.y, p.z, uint(params.x), params.y > 0.5),
+                                         fieldCoverage(p.x, p.y, p.w, uint(params.x), 0.12, float4(0.0), dummy));
     }
 
     /// Cook–Torrance GGX for dielectric paint and glass (F0 = 0.04), with a sky-tinted
@@ -299,7 +319,7 @@ public enum WorldShaders {
                                    texture3d<float> ins [[texture(0)]], texture3d<float> tr [[texture(1)]],
                                    depth2d_array<float> sm [[texture(2)]],
                                    texture2d<float> imgNear [[texture(3)]], texture2d<float> imgFar [[texture(4)]],
-                                   texture2d<float> waterMask [[texture(5)]]) {
+                                   texture2d<float> waterMask [[texture(5)]], texture2d<float> parcels [[texture(6)]]) {
         float dist = length(in.rel);
         float3 dir = in.rel / max(dist, 1e-3);
         float3 n = normalize(in.normal);
@@ -328,13 +348,18 @@ public enum WorldShaders {
         }
         float2 fieldW = in.rel.xy + u.cameraLocal.xy;
         float fieldFp = length(fwidth(fieldW));              // derivatives outside divergent branches
+        float fieldBand = max(0.12, 2.5 * fwidth(in.field));
         if (m == 7.0 && in.material == 7.0 && u.skyHorizon.w > 0.5 && in.field < -0.003) {
             albedo = mix(albedo, townColour(fieldW.x, fieldW.y, fieldFp, albedo, uint(u.ambientGround.w)), min(1.0, -in.field));
         }
+        float fieldCov = 0.0;
         if (m == 7.0 && in.material == 7.0 && u.skyHorizon.w > 0.5 && in.field > 0.003) {
             // Field parcels with crisp hedgerows per pixel (the vertex grid blurred and stepped them).
-            float3 f = fieldFactor(fieldW.x, fieldW.y, fieldFp, uint(u.ambientGround.w), u.skyHorizon.w > 1.5);
-            albedo *= 1.0 + (f - 1.0) * min(1.0, in.field);
+            fieldCov = fieldCoverage(fieldW.x, fieldW.y, in.field, uint(u.ambientGround.w), fieldBand, u.fieldGrid, parcels);
+            if (fieldCov > 0.0) {
+                float3 f = fieldFactor(fieldW.x, fieldW.y, fieldFp, uint(u.ambientGround.w), u.skyHorizon.w > 1.5);
+                albedo *= 1.0 + (f - 1.0) * fieldCov;
+            }
         }
         if (m == 7.0 && dist < (in.material == 8.0 ? 350.0 : 1400.0)) {
             // Per-pixel ground detail (as SFPreview). Each octave fades out once its cell shrinks
@@ -342,7 +367,7 @@ public enum WorldShaders {
             float2 w = in.rel.xy + u.cameraPos.xy;
             float fp = length(fwidth(w));
             float wFine = saturate(1.0 - fp / 1.0), wMid = saturate(1.0 - fp / 4.0), wDry = saturate(1.0 - fp / 16.0);
-            float fade = 1.0 - dist / 1400.0;
+            float fade = (1.0 - dist / 1400.0) * (1.0 - 0.7 * fieldCov);   // fields carry their own rows
             float fine = groundNoise(w, 2.0), mid = groundNoise(w + 17.0, 8.0), dry = groundNoise(w - 31.0, 32.0);
             albedo *= 1.0 + (fine * 0.08 * wFine + mid * 0.06 * wMid) * fade;
             albedo *= 1.0 + (float3(1.10, 1.02, 0.80) - 1.0) * (max(0.0, dry) * 0.45 * wDry * fade);
@@ -366,6 +391,16 @@ public enum WorldShaders {
                 float dg = (gp - g) / 1.5 * 16.0;
                 n = normalize(n + float3(perp * (-dg * 0.35 * gw), 0.0));
                 albedo *= 1.0 - 0.28 * max(0.0, -g) * gw;
+            }
+            float cw = saturate(1.0 - fieldFp * 2.5 / 4.0) * steep;
+            if (cw > 0.0) {
+                float cr = groundNoise(float2(across, along * 0.4) - 19.0, 4.0);
+                float crp = groundNoise(float2(across + 0.5, along * 0.4) - 19.0, 4.0);
+                float ld = groundNoise(float2(across * 0.14, along) + 7.0, 4.0);
+                float ldp = groundNoise(float2(across * 0.14, along + 0.5) + 7.0, 4.0);
+                float dc = (crp - cr) / 0.5 * 4.0, dl = (ldp - ld) / 0.5 * 4.0;
+                n = normalize(n + float3(perp * (-dc * 0.22 * cw) + fall * (-dl * 0.18 * cw), 0.0));
+                albedo *= 1.0 - 0.12 * max(0.0, -cr) * cw;
             }
             float big = groundNoise(w - 13.0, 64.0) * saturate(1.0 - fieldFp * 2.5 / 64.0);
             float small = groundNoise(w + 3.0, 8.0) * saturate(1.0 - fieldFp * 2.5 / 8.0);
