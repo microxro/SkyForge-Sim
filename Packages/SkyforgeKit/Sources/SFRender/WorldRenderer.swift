@@ -121,6 +121,11 @@ public final class WorldRenderer {
     public private(set) var lastDrawnChunks = 0
     /// Sun shadows (two cascades). Low-tier devices may turn this off.
     public var shadowsEnabled = true
+    /// Volumetric cumulus layer (coverage 0 disables the cloud passes).
+    public var clouds: CloudLayer = .clear
+    /// Cloud march steps per ray (device tier knob).
+    public var cloudSteps = 64
+    private var cloudRenderer: CloudRenderer?
     private let sky: PhysicalSkyRenderer
     private var environment: (buffer: MTLBuffer, count: Int, origin: SIMD3<Double>)?
     private var aircraft: (buffer: MTLBuffer, count: Int)?
@@ -465,7 +470,8 @@ public final class WorldRenderer {
         pass.depthAttachment.texture = depth
         pass.depthAttachment.loadAction = .clear
         pass.depthAttachment.clearDepth = 0
-        pass.depthAttachment.storeAction = .dontCare
+        let cloudsOn = clouds.coverage > 0
+        pass.depthAttachment.storeAction = cloudsOn ? .store : .dontCare
         guard let enc = cmd.makeRenderCommandEncoder(descriptor: pass) else { throw RendererError.commandQueue }
         enc.setRenderPipelineState(pipeline)
         enc.setDepthStencilState(depthState)
@@ -539,6 +545,23 @@ public final class WorldRenderer {
             enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: a.count)
         }
         enc.endEncoding()
+        if cloudsOn {
+            if cloudRenderer == nil { cloudRenderer = try CloudRenderer(device: device, colorFormat: colorFormat) }
+            let cr = cloudRenderer!
+            cr.steps = cloudSteps
+            var cu = CloudUniforms(layer: clouds, steps: cloudSteps)
+            let r = simd_normalize(simd_cross(fwd, SIMD3<Float>(0, 0, 1)))
+            let up = simd_cross(r, fwd)
+            let tanV = Float(tan(fovY / 2)), tanH = tanV * Float(aspect)
+            cu.camPos = SIMD4(Float(c.position.x), Float(c.position.y), Float(c.position.z), Float(cloudSteps))
+            cu.forward = SIMD4(fwd, 0.5); cu.right = SIMD4(r, tanH); cu.up = SIMD4(up, tanV)
+            cu.toSun = SIMD4(toSun, sunAz)
+            cu.sun = SIMD4(L.sunColour, L.exposure)
+            cu.skyAmb = SIMD4(L.ambientSky, dims.w)
+            cu.groundAmb = SIMD4(L.ambientGround, 1)
+            cu.tableDims = SIMD4(dims.x, dims.y, dims.z, 0)
+            try cr.encode(cmd: cmd, colour: colour, depth: depth, uniforms: cu, inscatter: ins, transmit: tr)
+        }
     }
 
     /// World coordinate modulo the 4096 m noise period (non-negative).
@@ -556,7 +579,7 @@ public final class WorldRenderer {
 
     public func makeDepth(width: Int, height: Int) throws -> MTLTexture {
         let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .depth32Float, width: width, height: height, mipmapped: false)
-        d.usage = [.renderTarget]
+        d.usage = [.renderTarget, .shaderRead]   // the cloud march reads scene depth
         d.storageMode = .private
         guard let t = device.makeTexture(descriptor: d) else { throw RendererError.commandQueue }
         return t

@@ -68,6 +68,23 @@ if args.first == "sky" {
     exit(0)
 }
 
+if args.first == "clouds" {
+    guard args.count >= 3, let el = Double(args[2]) else { fail("usage: sfpreview clouds <out.png> <sunElevationDeg> [width] [yawDeg] [viewHeightKm] [coverage] [pitchDeg]") }
+    let w = args.count > 3 ? Int(args[3]) ?? 960 : 960
+    let yaw = args.count > 4 ? Double(args[4]) ?? 0 : 0
+    let hKm = args.count > 5 ? Double(args[5]) ?? 0.3 : 0.3
+    let cov = args.count > 6 ? Float(args[6]) ?? 0.42 : 0.42
+    let pitch = args.count > 7 ? Double(args[7]) ?? 10 : 10
+    let start = Date()
+    let model = SkyModel(sunElevationDeg: el, viewHeightKm: hKm)
+    var layer = CloudLayer.fairWeather; layer.coverage = cov
+    let rgb = SkyPreview.renderClouds(model, layer: layer, width: w, height: w * 9 / 16, pitchDeg: pitch, yawDeg: yaw)
+    do { try PNGEncoder.encodeRGB(width: w, height: w * 9 / 16, rgb: rgb).write(to: URL(fileURLWithPath: args[1])) }
+    catch { fail("sfpreview: cannot write \(args[1]): \(error)", code: 1) }
+    print(String(format: "sfpreview: clouds el %.1f° cov %.2f -> %@ (%.2fs)", el, cov, args[1], Date().timeIntervalSince(start)))
+    exit(0)
+}
+
 if args.first == "quickflight-stats" {
     let world = QuickFlightWorld()
     for (name, d) in [("phone", QuickFlightDetail.phone), ("tablet", .tablet), ("desktop", .desktop)] {
