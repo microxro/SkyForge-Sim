@@ -196,6 +196,8 @@ import simd
         let img = try r.render(width: w, height: h, camera: WorldCamera(position: cam.position, target: cam.target),
                                aircraftPosition: session.positionENU, aircraftBodyToENU: simd_double3x3(columns: (c.0, c.1, c.2)))
         _ = VisualRegression.check(name: "metal_quickflight_320x180", rgb: img, width: w, height: h, goldenDir: goldenDir)
+        #expect(r.lastDrawnEnvironmentCells > 0 && r.lastDrawnEnvironmentCells < r.environmentCellCount,
+                "environment culling drew \(r.lastDrawnEnvironmentCells) of \(r.environmentCellCount) cells")
         func px(_ x: Int, _ y: Int) -> SIMD3<Int> { let i = 3 * (y * w + x); return SIMD3(Int(img[i]), Int(img[i + 1]), Int(img[i + 2])) }
         let top = px(w / 4, 3), bottom = px(w / 4, h - 3)
         #expect(top.z > top.x, "sky at top is blue: \(top)")

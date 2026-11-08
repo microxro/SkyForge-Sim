@@ -12,6 +12,7 @@ import SFInstruments
 import SFQuickFlight
 import SFPlatform
 import SFContent
+import SFAtmosphere
 
 /// Where Quick Flight takes place.
 public enum QuickFlightLocation: Hashable, Sendable {
@@ -70,6 +71,9 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
                             : LightingSetup.physicalPreset(.goldenHour, azimuthDegrees: 255, cameraHeightMetres: world.runwayElevation + 50)
         do { renderer = try WorldRenderer(device: device, colorFormat: .bgra8Unorm, lighting: lighting) }
         catch { status = .failed("Renderer: \(error)"); return }
+        // Fair-weather cumulus; march quality by device tier (the march runs at half resolution).
+        renderer?.clouds = .fairWeather
+        renderer?.cloudSteps = tier == .low ? 40 : (tier == .medium ? 56 : 80)
         switch location {
         case .skyWorld:
             let detail: QuickFlightDetail = tier == .low ? .phone : (tier == .medium ? .tablet : .desktop)

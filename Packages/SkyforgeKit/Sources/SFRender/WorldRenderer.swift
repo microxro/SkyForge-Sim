@@ -127,7 +127,10 @@ public final class WorldRenderer {
     public var cloudSteps = 64
     private var cloudRenderer: CloudRenderer?
     private let sky: PhysicalSkyRenderer
-    private var environment: (buffer: MTLBuffer, count: Int, origin: SIMD3<Double>)?
+    private var environment: (buffer: MTLBuffer, count: Int, origin: SIMD3<Double>, cells: [MeshCell])?
+    /// Environment cells drawn in the last main pass (of `environmentCellCount`), for tests and HUD stats.
+    public private(set) var lastDrawnEnvironmentCells = 0
+    public var environmentCellCount: Int { environment?.cells.count ?? 0 }
     private var aircraft: (buffer: MTLBuffer, count: Int)?
     private var tables: (ins: MTLTexture, tr: MTLTexture, key: SIMD4<Float>)?
     public private(set) var lighting: LightingSetup
@@ -285,6 +288,15 @@ public final class WorldRenderer {
         return [r3 + r0, r3 - r0, r3 + r1, r3 - r1, r2]   // left, right, bottom, top, near (z ≥ 0); infinite far
     }
 
+    /// Six clip planes of an orthographic (or any) matrix with z in [0, 1].
+    static func clipPlanes(_ m: simd_float4x4) -> [SIMD4<Float>] {
+        let r0 = SIMD4(m.columns.0.x, m.columns.1.x, m.columns.2.x, m.columns.3.x)
+        let r1 = SIMD4(m.columns.0.y, m.columns.1.y, m.columns.2.y, m.columns.3.y)
+        let r2 = SIMD4(m.columns.0.z, m.columns.1.z, m.columns.2.z, m.columns.3.z)
+        let r3 = SIMD4(m.columns.0.w, m.columns.1.w, m.columns.2.w, m.columns.3.w)
+        return [r3 + r0, r3 - r0, r3 + r1, r3 - r1, r2, r3 - r2]
+    }
+
     static func boxVisible(_ planes: [SIMD4<Float>], _ lo: SIMD3<Float>, _ hi: SIMD3<Float>) -> Bool {
         for p in planes {
             let v = SIMD3(p.x >= 0 ? hi.x : lo.x, p.y >= 0 ? hi.y : lo.y, p.z >= 0 ? hi.z : lo.z)
@@ -306,12 +318,13 @@ public final class WorldRenderer {
         return t
     }
 
-    static func pack(_ soup: TriangleSoup) -> [PackedWorldVertex] {
+    static func pack(_ soup: TriangleSoup, order: [Int]? = nil) -> [PackedWorldVertex] {
         var out = [PackedWorldVertex]()
         out.reserveCapacity(soup.triangleCount * 3)
         func q(_ x: Float) -> Int8 { Int8(max(-127, min(127, (x * 127).rounded()))) }
         func c(_ x: Float) -> UInt8 { UInt8(max(0, min(255, (max(0, x).squareRoot() * 255).rounded()))) }
-        for t in 0..<soup.triangleCount {
+        for i in 0..<soup.triangleCount {
+            let t = order?[i] ?? i
             let a = soup.albedo[t], m = soup.material[t].rawValue
             for k in 0..<3 {
                 let p = soup.positions[3 * t + k], n = soup.normals[3 * t + k]
@@ -331,7 +344,8 @@ public final class WorldRenderer {
 
     public func setEnvironment(_ soup: TriangleSoup) throws {
         precondition(MemoryLayout<PackedWorldVertex>.stride == 20)
-        environment = (try makeBuffer(Self.pack(soup)), soup.triangleCount * 3, soup.origin)
+        let (order, cells) = SpatialBinning.bin(positions: soup.positions)
+        environment = (try makeBuffer(Self.pack(soup, order: order)), soup.triangleCount * 3, soup.origin, cells)
     }
 
     public func setAircraft(_ soup: TriangleSoup) throws {
@@ -411,7 +425,11 @@ public final class WorldRenderer {
                     var su = ShadowUniforms(lightViewProj: cascades[ci], model: Self.translation(o))
                     se.setVertexBuffer(e.buffer, offset: 0, index: 0)
                     se.setVertexBytes(&su, length: MemoryLayout<ShadowUniforms>.stride, index: 1)
-                    se.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: e.count)
+                    // Only cells inside this cascade's light volume can cast into it.
+                    let lp = Self.clipPlanes(cascades[ci] * su.model)
+                    for r in SpatialBinning.runs(e.cells, visible: { Self.boxVisible(lp, $0.min, $0.max) }) {
+                        se.drawPrimitives(type: .triangle, vertexStart: r.lowerBound, vertexCount: r.count)
+                    }
                 }
                 if let rw = real {
                     var su = ShadowUniforms(lightViewProj: cascades[ci], model: Self.translation(-c.position))
@@ -506,7 +524,14 @@ public final class WorldRenderer {
             enc.setVertexBuffer(e.buffer, offset: 0, index: 0)
             enc.setVertexBytes(&u, length: MemoryLayout<WorldUniforms>.stride, index: 1)
             enc.setFragmentBytes(&u, length: MemoryLayout<WorldUniforms>.stride, index: 1)
-            enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: e.count)
+            let fp = Self.planes(viewProj * u.model)
+            var cellsDrawn = 0
+            for r in SpatialBinning.runs(e.cells, visible: { c in
+                let v = Self.boxVisible(fp, c.min, c.max); if v { cellsDrawn += 1 }; return v
+            }) {
+                enc.drawPrimitives(type: .triangle, vertexStart: r.lowerBound, vertexCount: r.count)
+            }
+            lastDrawnEnvironmentCells = cellsDrawn
         }
         if let rw = real {
             var u = uniforms(model: Self.translation(-c.position))
