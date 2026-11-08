@@ -150,7 +150,11 @@ struct AirportPickerView: View {
         if let a = Showcase.airports.first(where: { $0.ident == code }) {
             onPick(.realAirport(ident: a.ident, name: a.name)); dismiss(); return
         }
-        guard let db = try? BundledNavData.load(), let apt = db.airport(code) else {
+        let db: NavDatabase
+        do { db = try BundledNavData.load() } catch {
+            message = "The bundled airport database could not be read (\(error.localizedDescription))."; return
+        }
+        guard let apt = db.airport(code) else {
             message = "\(code) is not in the bundled OurAirports data."; return
         }
         guard db.runways(at: code).contains(where: { $0.hasGeometry && !$0.closed }) else {

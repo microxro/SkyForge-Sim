@@ -24,12 +24,12 @@ Legend: [x] done and verified, [ ] not done. Unchecked items are not available i
 - [ ] B9 Cloud self-shadowing quality per tier
 ### Phase C — Performance (measured)
 - [ ] C10 CI GPU frame-time test per tier on the macOS Metal runner (numbers in VERIFICATION_LOG)
-- [ ] C11 Building LOD + instancing, GPU culling where useful, texture streaming with memory cap, no main-thread stalls (measured)
+- [ ] C11 Building LOD + instancing, GPU culling where useful, texture streaming with memory cap, no main-thread stalls (measured) — texture streaming done (camera-following z18 layer, built off the main thread, one texture at a time; ADR-0018)
 - [ ] C12 60 fps high / 30 fps low targets documented; device numbers unverified until run on hardware
 ### Phase D — Correctness
 - [ ] D13 Tests for every new feature (unit, GPU-vs-CPU parity, Metal smoke)
 - [x] D15 30-minute soak test (simulated, KMRY offline pack, 22 km box across mosaics/tiles): no crash, no NaN, memory bounded (Linux: 125 → 114 MB)
-- [ ] D16 Stub/dishonest-code audit at the end of each phase
+- [ ] D16 Stub/dishonest-code audit at the end of each phase — Phase A audit done (docs/audits/PHASE_A_AUDIT.md: 1 HIGH, 2 MEDIUM, 1 LOW fixed)
 - [ ] Done: art ≥ 8 on Metal frames (≥3 real airports + 1 SkyWorld), frame-time + soak pass, attribution + licence audit, PR before/after
 
 ## P0 Bootstrap

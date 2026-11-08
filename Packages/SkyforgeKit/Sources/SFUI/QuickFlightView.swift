@@ -94,7 +94,8 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
                             : LightingSetup.physicalPreset(.goldenHour, azimuthDegrees: 255, cameraHeightMetres: world.runwayElevation + 50)
         do { renderer = try WorldRenderer(device: device, colorFormat: .bgra8Unorm, lighting: lighting) }
         catch { status = .failed("Renderer: \(error)"); return }
-        try? renderer?.setCockpit(Cockpit.mesh(), screen: Cockpit.pfdCorners.map { SIMD3<Float>(Float($0.x), Float($0.y), Float($0.z)) })
+        do { try renderer?.setCockpit(Cockpit.mesh(), screen: Cockpit.pfdCorners.map { SIMD3<Float>(Float($0.x), Float($0.y), Float($0.z)) }) }
+        catch { attribution.append("Cockpit view unavailable: \(error)") }
         // Fair-weather cumulus; march quality by device tier (the march runs at half resolution).
         renderer?.clouds = .fairWeather
         renderer?.apply(tier == .low ? .low : (tier == .medium ? .medium : .high))
@@ -216,8 +217,13 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
             camera = WorldCamera(position: cam.position, target: cam.target)
         }
         let c = session.bodyToENUColumns
-        try? r.encode(cmd: cmd, colour: tex, depth: depth, camera: camera,
-                      aircraftPosition: session.positionENU, aircraftBodyToENU: simd_double3x3(columns: (c.0, c.1, c.2)))
+        do {
+            try r.encode(cmd: cmd, colour: tex, depth: depth, camera: camera,
+                         aircraftPosition: session.positionENU, aircraftBodyToENU: simd_double3x3(columns: (c.0, c.1, c.2)))
+        } catch {
+            status = .failed("Rendering stopped: \(error)")   // say so instead of showing a blank view
+            return
+        }
         cmd.present(drawable)
         cmd.commit()
         hudCounter += 1
