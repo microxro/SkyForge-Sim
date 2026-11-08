@@ -133,3 +133,9 @@ Method: `FrameTimeTests`, 30 frames after 3 warm-up frames; command-buffer GPU t
 2026-11-08T20:46:58Z compaction; last commit cba2288
 - 2026-11-08T21:25:10Z gate fast on Linux x86_64: PASS (HEAD cba2288)
 - 2026-11-08T21:38:33Z gate fast on Linux x86_64: PASS (HEAD 54a8841)
+
+## 2026-11-08 CI run 42525189171 (54a8841, macos-26 virtual GPU) — frame times
+- SkyWorld low 1280×720: median 9.22 ms (budget 33.3). High 1920×1080: median 16.14 ms (budget 16.7); clouds 5.30, shadows 3.66, bloom 1.13, SSAO 1.23.
+- KMRY low: median 8.55 ms. High: median 14.83 ms; clouds 3.19, shadows 3.36, bloom 0.34, SSAO 0.45.
+- Diagnostic: real-terrain chunks drawn with `baseVertex` came out wrong on this GPU (fixed in debba5b with absolute indices).
+- Device numbers: unverified (no hardware run).
