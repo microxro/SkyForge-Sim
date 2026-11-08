@@ -35,7 +35,10 @@ public struct SceneBuilder {
                                                            moisture: moisture, distanceToWater: distWater))
         var c = GroundPalette.colour(biome, season: generator.season)
         let settle = generator.settlementDensity(x, y)
-        let forestMask = smoothstep(-0.25, 0.15, moistureNoise.fbm(x / 1_100 + 9, y / 1_100, octaves: 3))
+        // Approach corridors are cleared of trees, so they must not wear the canopy tint either
+        // (art review: the final approach was one uniform canopy-green lawn).
+        let cleared = terrain.isApproachCorridor(x, y) || terrain.isAirport(x, y)
+        let forestMask = cleared ? 0 : smoothstep(-0.25, 0.15, moistureNoise.fbm(x / 1_100 + 9, y / 1_100, octaves: 3))
         if (biome == .temperateForest || biome == .boreal) && settle < 0.32 {
             // Distant forest canopy tint (trees are only instanced near the camera).
             let canopy: LinearRGB = biome == .boreal ? srgb(40, 56, 40) : (generator.season == .autumn ? srgb(92, 84, 50) : srgb(52, 76, 40))
@@ -104,12 +107,12 @@ public struct SceneBuilder {
     }
 
     func fieldColour(_ x: Double, _ y: Double, base: SIMD3<Float>) -> SIMD3<Float> {
-        // Patchwork of fields in rotated 160 x 240 m parcels, colour by crop and season.
+        // Patchwork of fields in rotated 110 x 170 m parcels, colour by crop and season.
         let a = 0.35, c = cos(a), s = sin(a)
         // Low-frequency warp so parcel borders curve like real field boundaries.
         let wu = macroNoise.fbm(x / 420 + 7, y / 420, octaves: 2) * 28, wv = macroNoise.fbm(x / 420, y / 420 - 9, octaves: 2) * 28
         let u = c * x + s * y + wu, v = -s * x + c * y + wv
-        let iu = Int((u / 160).rounded(.down)), iv = Int((v / 240).rounded(.down))
+        let iu = Int((u / 110).rounded(.down)), iv = Int((v / 170).rounded(.down))   // smaller parcels: one no longer fills a low view
         let h = Hash.int(iu, iv, seed: Hash.combine(terrain.seed, 0xF1E1D))
         // Muted, art-directed crop palette (stubble, ploughed soil, winter wheat, pasture).
         let crops: [LinearRGB] = generator.season == .autumn
@@ -118,11 +121,11 @@ public struct SceneBuilder {
         var col = crops[Int(h % UInt64(crops.count))]
         // A 4.8 m crop-row pattern cannot be represented at terrain-vertex spacing (it aliased into
         // dark moiré bands); use a gentle per-field gradient across the parcel instead.
-        let fu = u / 160 - Double(iu), fv = v / 240 - Double(iv)
+        let fu = u / 110 - Double(iu), fv = v / 170 - Double(iv)
         let along = Hash.unit(Hash.mix(h)) < 0.5 ? fu : fv
         col *= Float(0.96 + 0.06 * along)
         // Soft hedgerow margins instead of hard parcel steps on the vertex grid (art review).
-        let edge = min(fu * 160, (1 - fu) * 160, fv * 240, (1 - fv) * 240)
+        let edge = min(fu * 110, (1 - fu) * 110, fv * 170, (1 - fv) * 170)
         let w = Float(smoothstep(0, 14, edge))
         let hedge = base * 0.92
         col = hedge + (col - hedge) * w
