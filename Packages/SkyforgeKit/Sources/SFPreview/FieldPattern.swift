@@ -107,6 +107,28 @@ public struct FieldPattern: Sendable, Equatable {
         return SIMD2(c * u - s * v, s * u + c * v)
     }
 
+    /// Horizontal normal tilt of the crop rows at (x, y): rows are low ridges, so a low sun rakes them into
+    /// light and shadow where albedo contrast alone vanishes (review: no rows visible in (j)).
+    public func rowTilt(_ x: Float, _ y: Float, footprint: Float) -> SIMD2<Float> {
+        let c = cos(Self.angle), s = sin(Self.angle)
+        let wu = Self.noise(x / 420 + 7.3, y / 420, seed ^ 0x51) * 22
+        let wv = Self.noise(x / 420, y / 420 - 9.1, seed ^ 0xA3) * 22
+        let u = c * x + s * y + wu, v = -s * x + c * y + wv
+        let h = Self.hash(Int32((u / Self.parcelU).rounded(.down)), Int32((v / Self.parcelV).rounded(.down)), seed)
+        let count = UInt32(autumn ? Self.autumnCrops.count : Self.summer.count)
+        let idx = Int(h % count)
+        let pasture = !autumn && (idx == 0 || idx == 5)
+        let ploughed = autumn ? idx == 1 : idx == 3
+        let spacing: Float = pasture ? 14 : 3 + 3 * Self.unit(h >> 8)
+        let alongU = (h >> 24) & 1 == 0
+        let coord = alongU ? u : v
+        let fade = min(1, max(0, 1 - max(0.05, footprint) * 4 / spacing))   // relief fades earlier than colour (moiré)
+        let strength: Float = pasture ? 0.03 : (ploughed ? 0.20 : 0.10)
+        let slope = cos(coord / spacing * 6.2831853) * strength * fade
+        let axis = alongU ? SIMD2<Float>(c, s) : SIMD2<Float>(-s, c)
+        return -axis * slope
+    }
+
     /// `band` widens the switch where the weight changes quickly on screen (anti-aliasing).
     public func coverage(_ x: Float, _ y: Float, weight: Float, band: Float = 0.12) -> Float {
         let c = cos(Self.angle), s = sin(Self.angle)

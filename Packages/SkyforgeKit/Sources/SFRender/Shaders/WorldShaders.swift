@@ -216,6 +216,24 @@ public enum WorldShaders {
         float k = min(1.0, max(0.0, (weight - (t - band * 0.5)) / band));
         return k * k * (3.0 - 2.0 * k);
     }
+    static float2 fieldRowTilt(float x, float y, float footprint, uint seed, bool autumn) {
+        float c = cos(0.35f), s = sin(0.35f);
+        float wu = fp_noise(x / 420.0 + 7.3, y / 420.0, seed ^ 0x51u) * 22.0;
+        float wv = fp_noise(x / 420.0, y / 420.0 - 9.1, seed ^ 0xA3u) * 22.0;
+        float u = c * x + s * y + wu, v = -s * x + c * y + wv;
+        uint h = fp_hash(int(floor(u / 110.0)), int(floor(v / 170.0)), seed);
+        uint idx = autumn ? h % 6u : h % 7u;
+        bool pasture = !autumn && (idx == 0u || idx == 5u);
+        bool ploughed = autumn ? idx == 1u : idx == 3u;
+        float spacing = pasture ? 14.0 : 3.0 + 3.0 * fp_unit(h >> 8);
+        bool alongU = ((h >> 24) & 1u) == 0u;
+        float coord = alongU ? u : v;
+        float fade = min(1.0, max(0.0, 1.0 - max(0.05, footprint) * 4.0 / spacing));
+        float strength = pasture ? 0.03 : (ploughed ? 0.20 : 0.10);
+        float slope = cos(coord / spacing * 6.2831853) * strength * fade;
+        float2 axis = alongU ? float2(c, s) : float2(-s, c);
+        return -axis * slope;
+    }
     static float3 fieldFactor(float x, float y, float footprint, uint seed, bool autumn) {
         const float PU = 110.0, PV = 170.0, HW = 1.2;
         float c = cos(0.35f), s = sin(0.35f);
@@ -359,6 +377,8 @@ public enum WorldShaders {
             if (fieldCov > 0.0) {
                 float3 f = fieldFactor(fieldW.x, fieldW.y, fieldFp, uint(u.ambientGround.w), u.skyHorizon.w > 1.5);
                 albedo *= 1.0 + (f - 1.0) * fieldCov;
+                float2 rt = fieldRowTilt(fieldW.x, fieldW.y, fieldFp, uint(u.ambientGround.w), u.skyHorizon.w > 1.5) * fieldCov;
+                n = normalize(n + float3(rt, 0.0));
             }
         }
         if (m == 7.0 && dist < (in.material == 8.0 ? 350.0 : 1400.0)) {
@@ -380,28 +400,38 @@ public enum WorldShaders {
             // Steep ground: fall-line gullies, rock tone variation, scrub and scree (as SFPreview), each
             // octave faded by pixel footprint so big slopes keep detail far away.
             float steep = smoothstep(0.9, 0.7, n.z);
-            float2 w = fieldW;      // true region metres: rotated gully coordinates must not jump at the 4 km wrap
+            float2 w = fieldW;      // true region metres (no jump at the 4 km noise wrap)
             float2 hz = n.xy; float hl = length(hz);
             float2 fall = hl > 1e-4 ? hz / hl : float2(1, 0), perp = float2(-fall.y, fall.x);
-            float along = dot(fall, w), across = dot(perp, w);
-            float gw = saturate(1.0 - fieldFp * 2.5 / 16.0) * steep;
+            // Triplanar on the vertical planes (horizontal axis × height), rotation-free (no wood-grain swirl).
+            float wz = in.rel.z + u.cameraLocal.z;
+            float ax = abs(n.x), ay = abs(n.y), asum = max(1e-3, ax + ay);
+            #define TRI(ah, bv, off, dh, dz) ((ax * groundNoise(float2((w.y + (dh)) + (off) * (ah), (wz + (dz)) * (ah) / (bv)), ah) + \
+                                              ay * groundNoise(float2((w.x + (dh)) - (off) * (ah), (wz + (dz)) * (ah) / (bv) - 7.0 * (ah)), ah)) / asum)
+            float gw = saturate(1.0 - fieldFp * 2.5 / 14.0) * steep;
             if (gw > 0.0) {
-                float g = groundNoise(float2(across, along * 0.2) + 51.0, 16.0);
-                float gp = groundNoise(float2(across + 1.5, along * 0.2) + 51.0, 16.0);
-                float dg = (gp - g) / 1.5 * 16.0;
+                float g = TRI(14.0, 70.0, 51.0, 0.0, 0.0), gp = TRI(14.0, 70.0, 51.0, 1.5, 0.0);
+                float dg = (gp - g) / 1.5 * 14.0;
                 n = normalize(n + float3(perp * (-dg * 0.35 * gw), 0.0));
                 albedo *= 1.0 - 0.28 * max(0.0, -g) * gw;
             }
+            float bw = saturate(1.0 - fieldFp * 2.5 / 45.0) * steep;
+            if (bw > 0.0) {
+                float b0 = TRI(45.0, 160.0, 91.0, 0.0, 0.0), b1 = TRI(45.0, 160.0, 91.0, 4.0, 0.0);
+                float db = (b1 - b0) / 4.0 * 45.0;
+                n = normalize(n + float3(perp * (-db * 0.45 * bw), 0.0));
+                float streak = TRI(9.0, 220.0, -41.0, 0.0, 0.0), ledge = TRI(320.0, 28.0, 13.0, 0.0, 0.0);
+                albedo *= (1.0 - 0.22 * max(0.0, streak) * bw) * (1.0 + 0.12 * max(0.0, ledge) * bw) * (1.0 - 0.10 * max(0.0, -b0) * bw);
+            }
             float cw = saturate(1.0 - fieldFp * 2.5 / 4.0) * steep;
             if (cw > 0.0) {
-                float cr = groundNoise(float2(across, along * 0.4) - 19.0, 4.0);
-                float crp = groundNoise(float2(across + 0.5, along * 0.4) - 19.0, 4.0);
-                float ld = groundNoise(float2(across * 0.14, along) + 7.0, 4.0);
-                float ldp = groundNoise(float2(across * 0.14, along + 0.5) + 7.0, 4.0);
-                float dc = (crp - cr) / 0.5 * 4.0, dl = (ldp - ld) / 0.5 * 4.0;
-                n = normalize(n + float3(perp * (-dc * 0.22 * cw) + fall * (-dl * 0.18 * cw), 0.0));
+                float cr = TRI(4.0, 10.0, -19.0, 0.0, 0.0), crp = TRI(4.0, 10.0, -19.0, 0.5, 0.0);
+                float ld = TRI(25.0, 3.5, 7.0, 0.0, 0.0), ldp = TRI(25.0, 3.5, 7.0, 0.0, 0.5);
+                float dc = (crp - cr) / 0.5 * 4.0, dl = (ldp - ld) / 0.5 * 3.5;
+                n = normalize(n + float3(perp * (-dc * 0.22 * cw) + fall * (dl * 0.18 * cw), 0.0));
                 albedo *= 1.0 - 0.12 * max(0.0, -cr) * cw;
             }
+            #undef TRI
             float big = groundNoise(w - 13.0, 64.0) * saturate(1.0 - fieldFp * 2.5 / 64.0);
             float small = groundNoise(w + 3.0, 8.0) * saturate(1.0 - fieldFp * 2.5 / 8.0);
             albedo *= 1.0 + (0.22 * big + 0.10 * small) * steep;

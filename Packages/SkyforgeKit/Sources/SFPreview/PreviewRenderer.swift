@@ -104,6 +104,8 @@ public enum PreviewRenderer {
                             let footprint = dist / focal / max(0.15, abs(fdot(dir, n)))
                             let f = fpat.factor(wx, wy, footprint: footprint)
                             albedo *= SIMD3<Float>(repeating: 1) + (f - SIMD3<Float>(repeating: 1)) * fieldCov
+                            let rt = fpat.rowTilt(wx, wy, footprint: footprint) * fieldCov
+                            n = simd_normalize(n + SIMD3(rt.x, rt.y, 0))
                         }
                     }
                     if mat == Material.terrain.rawValue && dist < (imagery ? 350 : 700) {
@@ -134,29 +136,47 @@ public enum PreviewRenderer {
                         let wx = Double(p.x) + origin.x, wy = Double(p.y) + origin.y
                         let h = SIMD2<Float>(n.x, n.y), hl = (h * h).sum().squareRoot()
                         let fall = hl > 1e-4 ? h / hl : SIMD2<Float>(1, 0), perp = SIMD2<Float>(-fall.y, fall.x)
-                        let along = Double(fall.x) * wx + Double(fall.y) * wy, across = Double(perp.x) * wx + Double(perp.y) * wy
+                        // Triplanar on the two vertical planes (horizontal axis × height): rotating world
+                        // coordinates by the local fall direction swirled the pattern like wood grain, since tiny
+                        // angle changes times kilometre-scale coordinates warp it (review round 11).
+                        let wz = Double(p.z) + origin.z
+                        let ax = Double(abs(n.x)), ay = Double(abs(n.y)), asum = max(1e-3, ax + ay)
+                        func tri(_ ah: Double, _ bv: Double, _ off: Double, dh: Double = 0, dz: Double = 0, octaves: Int = 2) -> Float {
+                            let a = ax > 0.02 ? groundNoise.fbm((wy + dh) / ah + off, (wz + dz) / bv, octaves: octaves) : 0
+                            let b = ay > 0.02 ? groundNoise.fbm((wx + dh) / ah - off, (wz + dz) / bv - 7, octaves: octaves) : 0
+                            return Float((ax * a + ay * b) / asum)
+                        }
                         func w(_ cell: Float) -> Float { max(0, min(1, 1 - fpx * 2.5 / cell)) }
                         let gw = w(14) * steep
                         if gw > 0 {
-                            let e = 1.5
-                            let g = Float(groundNoise.fbm(across / 14 + 51, along / 70, octaves: 2))
-                            let gp = Float(groundNoise.fbm((across + e) / 14 + 51, along / 70, octaves: 2))
-                            let dg = (gp - g) / Float(e) * 14
+                            // Gullies: 14 m across, 70 m down the fall line.
+                            let g = tri(14, 70, 51), gp = tri(14, 70, 51, dh: 1.5)
+                            let dg = (gp - g) / 1.5 * 14
                             let tilt = perp * (-dg * 0.35 * gw)
                             n = simd_normalize(n + SIMD3(tilt.x, tilt.y, 0))
                             albedo *= 1 - 0.28 * max(0, -g) * gw            // darker gully floors (also in shade)
                         }
-                        // Fine crevices (4 m, along the fall line) and ledges (3.5 m, across it) so clean rock
-                        // faces read as rock rather than clay (review round 10).
+                        // Buttresses and couloirs (45 m across, 160 m tall), dark weathering streaks down the fall
+                        // line and pale ledge bands across it: the scale the camera sees on a far massif.
+                        let bw = w(45) * steep
+                        if bw > 0 {
+                            let b0 = tri(45, 160, 91, octaves: 3), b1 = tri(45, 160, 91, dh: 4, octaves: 3)
+                            let db = (b1 - b0) / 4 * 45
+                            let tb = perp * (-db * 0.45 * bw)
+                            n = simd_normalize(n + SIMD3(tb.x, tb.y, 0))
+                            let streak = tri(9, 220, -41), ledge = tri(320, 28, 13)
+                            let kStreak: Float = 1 - 0.22 * max(0, streak) * bw
+                            let kLedge: Float = 1 + 0.12 * max(0, ledge) * bw
+                            let kCouloir: Float = 1 - 0.10 * max(0, -b0) * bw
+                            albedo *= kStreak * kLedge * kCouloir
+                        }
+                        // Fine crevices (4 m across, 10 m tall) and ledges (25 m wide, 3.5 m tall) for close range.
                         let cw = w(4) * steep
                         if cw > 0 {
-                            let e = 0.5
-                            let cr = Float(groundNoise.fbm(across / 4 - 19, along / 10, octaves: 2))
-                            let crp = Float(groundNoise.fbm((across + e) / 4 - 19, along / 10, octaves: 2))
-                            let ld = Float(groundNoise.fbm(across / 25 + 7, along / 3.5, octaves: 2))
-                            let ldp = Float(groundNoise.fbm(across / 25 + 7, (along + e) / 3.5, octaves: 2))
-                            let dc = (crp - cr) / Float(e) * 4, dl = (ldp - ld) / Float(e) * 3.5
-                            let t2 = perp * (-dc * 0.22 * cw) + fall * (-dl * 0.18 * cw)
+                            let cr = tri(4, 10, -19), crp = tri(4, 10, -19, dh: 0.5)
+                            let ld = tri(25, 3.5, 7), ldp = tri(25, 3.5, 7, dz: 0.5)
+                            let dc = (crp - cr) / 0.5 * 4, dl = (ldp - ld) / 0.5 * 3.5
+                            let t2 = perp * (-dc * 0.22 * cw) + fall * (dl * 0.18 * cw)
                             n = simd_normalize(n + SIMD3(t2.x, t2.y, 0))
                             albedo *= 1 - 0.12 * max(0, -cr) * cw
                         }

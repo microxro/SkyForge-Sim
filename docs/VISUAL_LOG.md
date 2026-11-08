@@ -183,3 +183,11 @@ Open defects (next passes): near-field ground is flat colour (needs detail textu
 - Field edges: farming is now decided once per parcel at its centre (`FieldPattern.ParcelGrid`; on Metal an R8 texture plus a `fieldGrid` uniform). The vertex weight carries only local clips (river bank, rock, snow, sand, airfield), and their switch is anti-aliased by the screen-space weight gradient (fwidth on Metal, G-buffer neighbours on the CPU). Field areas now end on whole parcels with crisp edges; (e)'s sawtooth is gone.
 - Rows: contrast varies per field (5–12 %), pasture mowing stripes are at 6 %, and the generic ground mottle is calmed by 70 % under fields.
 - Rock: fine crevices (4 m, along the fall line) and ledges (3.5 m, across it) as normal detail on steep faces, faded by footprint (CPU and Metal).
+
+### 2026-11-08 Art-director re-review (round 11) and fixes
+- a 5.83, d 6.00, e 6.17, f 6.17, j 5.83 → **6.00** (was 5.93). Whole-parcel farming landed: crisp continuous edges in (d) and (e).
+- Not visible: rows in (j) under the low sun (albedo contrast vanishes) and the 4 m rock detail in (f) (sub-pixel at that range).
+- Rows as relief: `FieldPattern.rowTilt` tilts the normal across each row (ploughed 0.20, crops 0.10, pasture 0.03), faded earlier than the colour so it never moirés. The low sun now rakes the rows in (j). Mirrored on Metal.
+- Rock at visible scale: buttresses and couloirs (45 × 160 m), dark fall-line streaks and pale ledge bands.
+- Swirl fix: all steep-ground noise is now triplanar on the vertical planes (horizontal axis × world height). Rotating world coordinates by the local fall direction had produced a wood-grain swirl, because tiny angle changes times kilometre-scale coordinates warp the pattern. Mirrored on Metal.
+- CI: 42d95de failed to compile a Metal-only test on macOS (type-checker timeout in an array literal); split into simple statements.
