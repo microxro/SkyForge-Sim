@@ -357,6 +357,7 @@ public enum WorldShaders {
         float3 albedo = in.albedo;
         float m = in.material;
         bool imageryWater = false;
+        float shoreWm = 0.0;                                 // water-mask value (imagery water) for shoreline foam
         if (m == 8.0) {
             float2 w = in.rel.xy + u.cameraLocal.xy;
             float2 nuv = (w - (u.imageryNear.xy - u.imageryNear.z)) / (2.0 * u.imageryNear.z);
@@ -372,7 +373,7 @@ public enum WorldShaders {
             // Same photo→albedo conversion as SFPreview.ImageryGround (textures are sRGB, so c is linear).
             albedo = pow(max(c, 0.0), 1.12) * 0.72;
             float wm = inNear ? waterMask.sample(imgSampler, nuv).r : 0.0;
-            if (saturate((wm - 0.35) / 0.25) > 0.5) { imageryWater = true; albedo *= 0.7; }
+            if (saturate((wm - 0.35) / 0.25) > 0.5) { imageryWater = true; albedo *= 0.7; shoreWm = wm; }
             m = imageryWater ? 1.0 : 7.0;
         }
         float2 fieldW = in.rel.xy + u.cameraLocal.xy;
@@ -471,13 +472,33 @@ public enum WorldShaders {
         float3 ambient = mix(u.ambientGround.rgb, u.ambientSky.rgb, n.z * 0.5 + 0.5);
         float3 col;
         if (m == 1.0) {                                      // water
-            float3 r = reflect(dir, float3(0, 0, 1));
-            float cosT = max(0.0, -dir.z);
+            // Wind waves: two octaves of slope noise (14 m and 3.5 m), faded by pixel footprint so
+            // distant water calms to a mirror-like sheen instead of aliasing.
+            float2 ww = fieldW;
+            float wFar = saturate(1.0 - fieldFp * 2.5 / 14.0), wNear = saturate(1.0 - fieldFp * 2.5 / 3.5);
+            float2 slope = float2(groundNoise(ww + float2(0.7, 0.0), 14.0) - groundNoise(ww - float2(0.7, 0.0), 14.0),
+                                  groundNoise(ww + float2(0.0, 0.7), 14.0) - groundNoise(ww - float2(0.0, 0.7), 14.0)) * 0.9 * wFar
+                         + float2(groundNoise(ww + float2(0.2, 0.0) + 31.0, 3.5) - groundNoise(ww - float2(0.2, 0.0) + 31.0, 3.5),
+                                  groundNoise(ww + float2(0.0, 0.2) + 31.0, 3.5) - groundNoise(ww - float2(0.0, 0.2) + 31.0, 3.5)) * 0.7 * wNear;
+            float3 wn = normalize(float3(-slope, 1.0));
+            float3 r = reflect(dir, wn);
+            r.z = abs(r.z);
+            float cosT = max(0.0, -dot(dir, wn));
             float fres = 0.02 + 0.98 * pow(1.0 - cosT, 5.0);
-            float3 refl = u.skyHorizon.rgb + u.sunColour.rgb * pow(max(0.0, dot(r, toSun)), 600.0) * 30.0 * vis;
+            // Sky gradient in the reflection: horizon colour low, deeper sky colour higher up.
+            float3 skyR = mix(u.skyHorizon.rgb, u.ambientSky.rgb * 1.6, saturate(pow(r.z, 0.6)));
+            float glitter = pow(max(0.0, dot(r, toSun)), 900.0) * 60.0 + pow(max(0.0, dot(r, toSun)), 60.0) * 0.6;
+            float3 refl = skyR + u.sunColour.rgb * glitter * vis;
             float3 body = albedo * (ambient * 0.6 + u.sunColour.rgb * max(0.0, toSun.z) * 0.15);
-            float reflScale = imageryWater ? 0.5 : 1.0;          // wind-roughened open water
-            col = mix(body, refl * reflScale, min(1.0, fres * (imageryWater ? 0.8 : 1.0)));
+            float reflScale = imageryWater ? 0.6 : 1.0;          // wind-roughened open water
+            col = mix(body, refl * reflScale, min(1.0, 0.08 + fres * (imageryWater ? 0.85 : 1.0)));
+            if (imageryWater) {
+                // Shoreline foam: the mask's transition band (wm 0.6–0.8), broken up by noise.
+                float band = 1.0 - smoothstep(0.6, 0.8, shoreWm);
+                float breakUp = smoothstep(-0.1, 0.4, groundNoise(ww + 77.0, 4.0)) * wNear + 0.35 * (1.0 - wNear);
+                float foam = band * breakUp * 0.8;
+                col = mix(col, float3(0.85, 0.88, 0.88) * (u.sunColour.rgb * max(0.0, toSun.z) * vis + ambient), foam);
+            }
         } else if (m == 2.0) {                               // foliage: wrap + back-scatter
             float wrap = max(0.0, ndl * 0.55 + 0.45);
             float back = pow(max(0.0, dot(dir, toSun)), 4.0) * 0.35;
