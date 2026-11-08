@@ -3,8 +3,8 @@
 Legend: [x] done and verified, [ ] not done. Unchecked items are not available in the app.
 
 ## CURRENT
-- CURRENT: P1.3 visual passes toward 8/10 (aircraft in frame, ground detail)
-- Next 3: P1.13 Metal imagery + real-world Quick Flight · P1.15 performance (instancing, culling) · P1.14 volumetric clouds
+- CURRENT: P1.3 visual passes toward 8/10 (SkyWorld ground and cockpit polish)
+- Next 3: cockpit polish (thinner pillars, panel shading) · SkyWorld ground colour/detail on Metal · P1 acceptance review
 
 ## P0 Bootstrap
 - [x] P0.1 Save master prompt to docs/MASTER_PROMPT.md
@@ -19,10 +19,10 @@ Legend: [x] done and verified, [ ] not done. Unchecked items are not available i
 
 ## P1 Vertical slice with a visual foundation
 - [x] P1.1 SF-1 Trainer FDM at 120 Hz (trim, stall, energy, stability-sign, determinism, fuzz tests) — Linux verified; JSBSim oracle comparison still to do (P1.1b)
-- [ ] P1.13 Real-world ground (user request after MSFS comparison): SFImagery (USGS public-domain + Sentinel-2 2016 CC BY), JPEG decoder, mosaics, land cover, CPU real-world scene (r) done; Metal imagery terrain, instanced trees, culling, app location picker (KCOI) written; awaiting CI Metal frame review
-- [ ] P1.14 Volumetric cumulus clouds (Metal + CPU reference): CPU reference + preview + Metal half-res march written; awaiting CI GPU-vs-CPU check
-- [ ] P1.15 Performance: real terrain chunks culled + instanced trees (done); SkyWorld environment spatial cells with frustum + per-cascade shadow culling (written); tree impostors next
-- [ ] P1.16 Cockpit view: 3D panel with live SF-1000 PFD texture (written; awaiting CI cockpit frame)
+- [x] P1.13 Real-world ground: SFImagery, KCOI region, Metal imagery terrain, culled chunks, instanced trees, app location picker (CI 42474288474)
+- [x] P1.14 Volumetric cumulus: CPU reference, Metal half-res march (GPU≈CPU in CI), cloud shadows, METAR-driven layer
+- [x] P1.15 Performance: SkyWorld spatial cells (frustum + per-cascade shadow culling), real terrain chunk culling, instanced trees, tiered cloud steps (device frame times still unmeasured)
+- [x] P1.16 Cockpit view: 3D panel, live SF-1000 PFD, banking camera, chase/cockpit toggle (CI frame reviewed)
 - [ ] P1.1b Optional JSBSim offline oracle comparison in tools/jsbsim_oracle/
 - [x] P1.2 Terrain core: pure-Swift inflate + PNG decoder, Terrarium decode (verified on a real tile), Web Mercator tile math, bilinear height queries, CDLOD quadtree selection with morph ranges
 - [x] P1.2b-1 Bundled global DEM baseline (11.7 MB, Terrarium z4 → 4096x2048 equirectangular, tiled zlib, SHA-256 manifest, on-demand decode)

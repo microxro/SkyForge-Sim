@@ -1,4 +1,4 @@
-LAST_UPDATE: 2026-11-08T10:51:18Z
+LAST_UPDATE: 2026-11-08T11:13:52Z
 
 # SKYFORGE state
 
@@ -49,8 +49,12 @@ P0 accepted (CI fully green). P1 in progress: P1.1, P1.2, P1.2b-2, P1.4, P1.7b, 
 - SwiftUI `InstrumentCanvas`/`InstrumentDemoView`, `TouchFlightControls`, `BindingsView` and the CoreMotion `MotionTiltInput` compile only in CI; never run.
 - SwiftUI screens and device tiers compile in CI but have never run interactively (Metal passes do run offscreen in CI).
 
+- Real-world Quick Flight (KCOI): USGS/Sentinel-2 imagery terrain, water mask, instanced trees, culled chunks; Metal frame from fixture imagery in CI.
+- Volumetric cumulus (Metal, half-res, depth-aware) matching the CPU reference in CI; cloud shadows; live METAR cloud cover at real airports.
+- Cockpit view with live PFD texture and banking camera; sky pass rolls and uses the proper ENU→sky rotation.
+
 ## Broken
 - Nothing known. Speckle fixed in f8afa50 (CI frame reviewed).
 
 ## Last green SHA
-- f8afa50 (CI run 42445934343: all jobs green, 146 tests incl. Metal frames)
+- 5aee5ff (CI run 42474288474: all jobs green, 185 tests incl. Metal clouds, cloud shadows, cockpit, real-world frames)
