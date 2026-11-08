@@ -46,3 +46,8 @@
 - Context: the user, on 2026-11-08, asked for a command that sends "continue" every 5 hours, in addition to `autoContinueAtUsageLimit`.
 - Decision: a session-bound scheduled task (`trig_01VkukC5znseCkMfBGwFqndn`, cron `33 */5 * * *` UTC). This supersedes the "no scheduled task" part of ADR-0002 at the user's explicit request.
 - Consequence: an idle session is woken at most every 5 hours; the Stop hook still drives continuation while a turn is running.
+
+## ADR-0013 Physically based sky: CPU reference first
+- Context: §8 asks for Hillaire sky LUTs on Metal; this host has no Metal device and CI's device availability is unknown.
+- Decision: implement the Hillaire 2020 model in Swift (`SFAtmosphere/Scattering.swift`) with the paper's Earth parameters (Rayleigh 5.802/13.558/33.1 ·10⁻³ km⁻¹, H 8 km; Mie 3.996/4.40 ·10⁻³ km⁻¹, H 1.2 km, g 0.8; ozone tent at 25 km), test it on Linux, use it for CPU previews, and treat it as the oracle for the MSL compute port (P1.5b), compared texel-by-texel by the visual-regression harness when a device exists.
+- Consequence: the sky is correct and testable everywhere today; the GPU path cannot drift silently.

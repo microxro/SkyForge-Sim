@@ -1,4 +1,4 @@
-LAST_UPDATE: 2026-11-08T03:01:36Z
+LAST_UPDATE: 2026-11-08T03:05:55Z
 
 # SKYFORGE state
 
@@ -38,6 +38,8 @@ P0 accepted (CI fully green). P1 in progress: P1.1, P1.2, P1.2b-2, P1.4, P1.7b, 
 - SFWeather `METARService`: live METAR from aviationweather.gov with memory+disk cache (10 min), stale fallback, coalesced requests (tests use a scripted transport only).
 
 - Visual regression: `VisualRegression.check` against Tests/Fixtures/golden (bless with SKYFORGE_BLESS=1; failures write actual+diff PNGs to SKYFORGE_VISUAL_OUT, uploaded by CI).
+
+- SFAtmosphere `SkyModel`: Hillaire 2020 sky (LUTs in ~0.25 s on 4 cores release), zenith transmittance within 0.6 % of analytic optical depth; previews m_sky_noon/golden/sunset/twilight.
 
 ## What is unverified
 - Offscreen Metal sky test only runs where `MTLCreateSystemDefaultDevice()` is non-nil; whether GitHub's macOS runners expose a device is unknown until the next CI run.

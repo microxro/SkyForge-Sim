@@ -4,7 +4,7 @@ Legend: [x] done and verified, [ ] not done. Unchecked items are not available i
 
 ## CURRENT
 - CURRENT: P1.3 visual passes toward 8/10 (aircraft in frame, ground detail)
-- Next 3: P1.5 Hillaire sky LUTs (CPU reference first) · P1.3 visual passes · P1 acceptance review
+- Next 3: P1.3 pass: physically based sky + aerial perspective in the CPU previews · P1.5b MSL LUTs · P1.5c shadows/PBR
 
 ## P0 Bootstrap
 - [x] P0.1 Save master prompt to docs/MASTER_PROMPT.md
@@ -26,6 +26,9 @@ Legend: [x] done and verified, [ ] not done. Unchecked items are not available i
 - [ ] P1.3 CPU preview renderer (§8.6) with scenes (a) suburban golden hour, (d) forest and river, (e) coastline, (f) mountain valley — renderer done, 4 scenes rendered and reviewed (avg 6.2/10 after pass 2, aircraft in scene a); open until avg ≥ 8
 - [x] P1.4 Biome model and first SkyWorld layers (procedural terrain recipes, rivers, street grid + rural roads, parcels, houses/warehouses/strip malls/farms, parking lots, Poisson-like vegetation) with determinism and placement tests
 - [ ] P1.5 Hillaire sky LUTs (Metal) + cascaded shadows + PBR aircraft
+  - [x] P1.5a Hillaire atmosphere CPU reference (transmittance/multi-scattering/sky-view LUTs, sun disc, aerial perspective), previews m_sky_*, 7 tests
+  - [ ] P1.5b MSL compute port of the LUTs verified against the CPU reference on a Metal device
+  - [ ] P1.5c cascaded shadow maps + PBR aircraft (Metal)
 - [x] P1.6a OurAirports parsing (RFC 4180 CSV), airports/runways/navaids model, runway geometry checks, labelled synthetic 3° ILS, nearest airport, bearing/distance (Vincenty)
 - [x] P1.6b-1 Visual runway generation (surface, shoulders, Annex 14 markings, designators) + terrain flattening; preview scene (j)
 - [x] P1.6b-2 Bundled compact OurAirports snapshot (2.6 MB, pure-Swift inflate) + validated atomic updater with injectable transport (UI button pending P1.9 UI work)

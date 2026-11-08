@@ -54,3 +54,10 @@ Open defects (next passes): near-field ground is flat colour (needs detail textu
 - Pass 1 defects fixed: ASI labels crowding the title, Kollsman window over the 3 numeral, VSI ".5"/"UP" collision and wide decimal points (narrow punctuation cells added), slashed zero on dials, visible sky banding on the PFD (14 → 64 bands), redline overspeed in RPM (propeller Cp fit retuned to 2,550 RPM).
 - Scores: legibility 8, layout 8, colour 8, realism 7, cleanliness 8 → **7.8**.
 - Open: altimeter hands can cover the Kollsman window (as on real dials); tape labels clip at tape edges (intended); no speed trend vector yet; no glass reflections on the PFD.
+
+### 2026-11-08 P1.5a physically based sky (m_sky_noon, m_sky_golden, m_sky_sunset, m_sky_twilight)
+- CPU Hillaire 2020 atmosphere: Rayleigh/Mie/ozone, 256×64 transmittance, 32² multiple scattering, 192×108 sky-view LUT, limb-darkened sun disc, Lambertian ground with aerial perspective; auto-exposure, ACES.
+- Sun elevations 45°, 6°, 0.5°, −4°, looking toward the sun's azimuth, 300 m eye height.
+- Observed: deep blue zenith and pale horizon at noon; golden aureole at 6°; red-orange horizon glow and reddened disc at 0.5°; purple-pink twilight with dark ground at −4° (the "purple light" of civil twilight). No banding.
+- Scores: realism 8, colour 8, smoothness 9, depth 7 (ground is flat) → **8.0**.
+- Next: use SkyModel for sky, sun colour, ambient and aerial perspective in the scene previews (P1.3 pass 3).

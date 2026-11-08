@@ -23,7 +23,7 @@ let package = Package(
         .target(name: "SFWeather", dependencies: ["SFMath", "SFAtmosphere", "SFContent"]),
         .target(name: "SFTerrainCore", dependencies: ["SFMath", "SFContent"], resources: [.copy("Resources")]),
         .target(name: "SFWorldGen", dependencies: ["SFMath", "SFTerrainCore"]),
-        .target(name: "SFPreview", dependencies: ["SFMath", "SFTerrainCore", "SFWorldGen"]),
+        .target(name: "SFPreview", dependencies: ["SFMath", "SFTerrainCore", "SFWorldGen", "SFAtmosphere"]),
         .target(name: "SFContent", dependencies: ["SFMath", .product(name: "Crypto", package: "swift-crypto")]),
         .target(name: "SFInput", dependencies: ["SFMath"]),
         .target(name: "SFInstruments", dependencies: ["SFMath", "SFAtmosphere", "SFFlightModel"]),
@@ -34,7 +34,7 @@ let package = Package(
         .target(name: "SFAudio", dependencies: ["SFSim"]),
         .target(name: "SFPlatform", dependencies: ["SFSim", "SFInput"]),
         .target(name: "SFUI", dependencies: ["SFSim", "SFRender", "SFAudio", "SFPlatform", "SFNavData", "SFContent", "SFInstruments", "SFInput"]),
-        .executableTarget(name: "SFPreviewCLI", dependencies: ["SFPreview", "SFInstruments", "SFWorldGen", "SFTerrainCore", "SFMath"]),
+        .executableTarget(name: "SFPreviewCLI", dependencies: ["SFPreview", "SFInstruments", "SFAtmosphere", "SFWorldGen", "SFTerrainCore", "SFMath"]),
         // Tests (Swift Testing)
         .testTarget(name: "SFMathTests", dependencies: ["SFMath"]),
         .testTarget(name: "SFAtmosphereTests", dependencies: ["SFAtmosphere"]),

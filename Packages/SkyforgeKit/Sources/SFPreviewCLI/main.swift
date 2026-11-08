@@ -3,10 +3,12 @@
 //   sfpreview --version
 //   sfpreview icon <out.png> <size>
 //   sfpreview instruments <sixpack|pfd> <out.png> [width]
+//   sfpreview sky <out.png> <sunElevationDeg> [width] [yawDeg] [viewHeightKm]
 //   sfpreview --scene <name> [--time <preset>] [--seed <n>] [--width W --height H] [--ss N] --out <file.png>
 import Foundation
 import SFPreview
 import SFInstruments
+import SFAtmosphere
 
 func fail(_ msg: String, code: Int32 = 2) -> Never {
     FileHandle.standardError.write(Data((msg + "\n").utf8))
@@ -42,6 +44,23 @@ if args.first == "instruments" {
     print(String(format: "sfpreview: instruments %@ -> %@ (%d primitives, %.2fs) IAS %.1f ALT %.0f VS %.0f pitch %.1f roll %.1f hdg %.0f turn %.2f ball %.2f rpm %.0f",
                  args[1], args[2], list.primitiveCount, Date().timeIntervalSince(start), data.indicatedAirspeedKt, data.indicatedAltitudeFt,
                  data.verticalSpeedFpm, data.pitchDeg, data.rollDeg, data.headingDeg, data.turnRateDegPerSec, data.slipBall, data.rpm))
+    exit(0)
+}
+
+if args.first == "sky" {
+    guard args.count >= 3, let el = Double(args[2]) else { fail("usage: sfpreview sky <out.png> <sunElevationDeg> [width] [yawDeg] [viewHeightKm]") }
+    let w = args.count > 3 ? Int(args[3]) ?? 1_280 : 1_280
+    let yaw = args.count > 4 ? Double(args[4]) ?? 0 : 0
+    let hKm = args.count > 5 ? Double(args[5]) ?? 0.3 : 0.3
+    let h = w * 9 / 16
+    let start = Date()
+    let model = SkyModel(sunElevationDeg: el, viewHeightKm: hKm)
+    let lutTime = Date().timeIntervalSince(start)
+    let rgb = SkyPreview.render(model, width: w, height: h, yawDeg: yaw)
+    do { try PNGEncoder.encodeRGB(width: w, height: h, rgb: rgb).write(to: URL(fileURLWithPath: args[1])) }
+    catch { fail("sfpreview: cannot write \(args[1]): \(error)", code: 1) }
+    print(String(format: "sfpreview: sky el %.1f° -> %@ (LUTs %.2fs, total %.2fs, exposure %.1f)", el, args[1], lutTime,
+                 Date().timeIntervalSince(start), SkyPreview.autoExposure(model)))
     exit(0)
 }
 
