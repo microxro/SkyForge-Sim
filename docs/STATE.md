@@ -1,9 +1,9 @@
-LAST_UPDATE: 2026-11-08T02:52:33Z
+LAST_UPDATE: 2026-11-08T02:56:44Z
 
 # SKYFORGE state
 
 ## Phase
-P0 accepted (CI fully green). P1 in progress: P1.1, P1.2, P1.2b-2, P1.4, P1.7b, P1.9, P1.6a, P1.2b-1, P1.6b, P1.7, P1.8a, P1.11 done; P1.3 renderer done with visuals below target.
+P0 accepted (CI fully green). P1 in progress: P1.1, P1.2, P1.2b-2, P1.4, P1.7b, P1.8b, P1.9, P1.6a, P1.2b-1, P1.6b, P1.7, P1.8a, P1.11 done; P1.3 renderer done with visuals below target.
 
 ## Environment facts (recorded at session start)
 - Host: Linux x86_64, Ubuntu 24.04.5 LTS, 4 CPUs, 15 GB RAM (Claude Code on the web sandbox).
@@ -38,7 +38,7 @@ P0 accepted (CI fully green). P1 in progress: P1.1, P1.2, P1.2b-2, P1.4, P1.7b, 
 - SFWeather `METARService`: live METAR from aviationweather.gov with memory+disk cache (10 min), stale fallback, coalesced requests (tests use a scripted transport only).
 
 ## What is unverified
-- SwiftUI `InstrumentCanvas`/`InstrumentDemoView` compile only in CI; never run.
+- SwiftUI `InstrumentCanvas`/`InstrumentDemoView`, `TouchFlightControls`, `BindingsView` and the CoreMotion `MotionTiltInput` compile only in CI; never run.
 - Apple-only code now COMPILES in CI (iOS Simulator + macOS, Xcode 26.6) but has never RUN: the Metal sky renderer, SwiftUI menu and device tiers need a simulator/device run (no Metal device on CI runners) or Mac day.
 
 ## Broken

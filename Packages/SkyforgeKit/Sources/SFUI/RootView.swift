@@ -20,6 +20,7 @@ public struct SkyforgeRootView: View {
                 Section {
                     Button("Renderer preview (sky)") { showingSky = true }
                     Button("Instruments demo (steam gauges and SF-1000 PFD)") { showingInstruments = true }
+                    NavigationLink("Controls and bindings") { BindingsView() }
                 } header: {
                     Text("Available")
                 }
