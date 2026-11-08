@@ -76,3 +76,23 @@ actor OfflineImageryTransport: HTTPTransport {
         #expect(abs(s.data.headingDeg - r.runwayHeading * 180 / .pi) < 2)
     }
 }
+
+@Suite struct TreeThinningTests {
+    /// A dense 2 km forest capped at 5,000 trees keeps every tree near the centre and still reaches the edge.
+    @Test func thinningKeepsNearDenseAndReachesFar() {
+        var trees: [TreeInstance] = []
+        var y = -1_000.0
+        while y < 1_000 { var x = -1_000.0; while x < 1_000 {
+            if x * x + y * y < 1_000 * 1_000 { trees.append(TreeInstance(position: SIMD3(Float(x), Float(y), 0), height: 10, conifer: true, colour: .one)) }
+            x += 7 }; y += 7 }
+        func d2(_ t: TreeInstance) -> Float { (SIMD2(t.position.x, t.position.y) * SIMD2(t.position.x, t.position.y)).sum() }
+        trees.sort { d2($0) < d2($1) }
+        let kept = RealWorldRegion.thin(trees, max: 5_000, d2: d2)
+        #expect(kept.count <= 5_000 && kept.count > 4_800, "\(kept.count)")
+        let far = kept.filter { d2($0) > 900 * 900 }.count, farAll = trees.filter { d2($0) > 900 * 900 }.count
+        #expect(far > 0 && far < farAll / 2, "far ring thinned, not empty: \(far) of \(farAll)")
+        let nearKept = kept.filter { d2($0) < 100 * 100 }.count, nearAll = trees.filter { d2($0) < 100 * 100 }.count
+        #expect(nearKept == nearAll, "near trees all kept")
+        #expect(RealWorldRegion.thin(trees, max: 5_000, d2: d2).count == kept.count, "deterministic")
+    }
+}

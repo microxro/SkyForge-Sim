@@ -142,3 +142,9 @@ Method: `FrameTimeTests`, 30 frames after 3 warm-up frames; command-buffer GPU t
 - 2026-11-08T21:46:31Z gate fast on Linux x86_64: PASS (HEAD 850bcad)
 - 2026-11-08T21:53:11Z gate fast on Linux x86_64: PASS (HEAD 873eaf5)
 - 2026-11-08T21:55:27Z gate fast on Linux x86_64: PASS (HEAD 873eaf5)
+- 2026-11-08T21:59:23Z gate fast on Linux x86_64: PASS (HEAD 4618a1c)
+
+## 2026-11-08 CI run 42526879763 (873eaf5) — isolated GPU frame-time step
+- SkyWorld low 8.19 ms, high 15.72 ms (budget 16.7): pass.
+- KMRY low 9.62 ms; high 18.99 ms: over budget. The near terrain ring is now actually drawn (before debba5b the CI GPU dropped it).
+- Fix in the next commit: desktop real-terrain mesh 8 → 12 m (mid 48 m, far 240 m), trees capped at 120k and thinned with distance.

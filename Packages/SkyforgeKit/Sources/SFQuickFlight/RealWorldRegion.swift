@@ -40,8 +40,8 @@ public struct RealWorldDetail: Sendable, Equatable {
                                               imageryNearSize: 2_048, imageryFarSize: 1_024, treeRadius: 1_800, maxTrees: 40_000)
     public static let tablet = RealWorldDetail(nearHalf: 3_200, nearStep: 12, midHalf: 12_000, midStep: 60, farHalf: 40_000, farStep: 300,
                                                imageryNearSize: 3_072, imageryFarSize: 2_048, treeRadius: 2_400, maxTrees: 90_000)
-    public static let desktop = RealWorldDetail(nearHalf: 3_200, nearStep: 8, midHalf: 12_000, midStep: 40, farHalf: 40_000, farStep: 200,
-                                                imageryNearSize: 4_096, imageryFarSize: 2_048, treeRadius: 3_000, maxTrees: 160_000)
+    public static let desktop = RealWorldDetail(nearHalf: 3_200, nearStep: 12, midHalf: 12_000, midStep: 48, farHalf: 40_000, farStep: 240,
+                                                imageryNearSize: 4_096, imageryFarSize: 2_048, treeRadius: 3_000, maxTrees: 120_000)
 }
 
 public struct RealWorldRegion: FlightWorld {
@@ -322,8 +322,28 @@ public struct RealWorldRegion: FlightWorld {
         let c = SIMD2<Float>(Float(nearHeights.centre.x), Float(nearHeights.centre.y))
         func d2(_ t: TreeInstance) -> Float { let d = SIMD2(t.position.x, t.position.y) - c; return (d * d).sum() }
         out.sort { d2($0) < d2($1) }
-        if out.count > detail.maxTrees { out.removeLast(out.count - detail.maxTrees) }
-        return out
+        return Self.thin(out, max: detail.maxTrees, d2: d2)
+    }
+
+    /// Keeps at most `max` trees with full density out to a radius d0 and density ∝ (d0/d)² beyond
+    /// (about as many trees per screen area at every distance), instead of cutting at the nearest
+    /// `max`: in dense forest that cut stopped trees ~800 m from the centre. Each tree keeps a fixed
+    /// random rank, so thinning is stable. Input and output are sorted nearest first.
+    static func thin(_ trees: [TreeInstance], max: Int, d2: (TreeInstance) -> Float) -> [TreeInstance] {
+        guard trees.count > max else { return trees }
+        let dd = trees.map(d2)
+        let rank = trees.indices.map { i -> Float in
+            Float(Hash.unit(Hash.int(Int(trees[i].position.x * 4), Int(trees[i].position.y * 4), seed: 0x7417)))
+        }
+        func keep(_ i: Int, _ d0sq: Float) -> Bool { dd[i] <= d0sq || rank[i] < d0sq / dd[i] }
+        var lo: Float = 0, hi = dd.last ?? 1
+        for _ in 0..<40 {
+            let mid = (lo + hi) / 2
+            var n = 0
+            for i in trees.indices where keep(i, mid) { n += 1 }
+            if n > max { hi = mid } else { lo = mid }
+        }
+        return trees.indices.filter { keep($0, lo) }.map { trees[$0] }
     }
 
     func nearRunway(_ x: Double, _ y: Double) -> Bool {
