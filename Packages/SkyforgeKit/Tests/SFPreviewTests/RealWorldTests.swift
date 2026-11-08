@@ -112,3 +112,27 @@ actor TileFixtureTransport: HTTPTransport {
         #expect(f.rgb[0] > 60 && f.rgb[1] > 70 && f.rgb[2] > 50, "\(f.rgb[0...2])")
     }
 }
+
+@Suite struct WaterCleaningTests {
+    /// A big flat lake stays; a small dark spot and a dark patch on a slope (shadowed snow) go.
+    @Test func keepsFlatLakesDropsSpotsAndSlopes() {
+        // 512 px over 1 km (≈2 m/px, mask cells ≈16 m, 64×64 cells). Land is mid green-brown.
+        let m = ImageryGradingTests.mosaic(size: 512, half: 500) { i, j in
+            let lake = (40..<240).contains(i) && (40..<240).contains(j)
+            let spot = (400..<420).contains(i) && (60..<80).contains(j)
+            let slopePatch = (300..<460).contains(i) && (300..<460).contains(j)
+            return lake || spot || slopePatch ? SIMD3(20, 30, 45) : SIMD3(120, 115, 80)
+        }
+        let g = ImageryGround(near: m, far: nil)
+        // Ground rises steeply (20 %) east of x = 50 m.
+        let cleaned = g.cleaningWater { x, _ in x > 50 ? (x - 50) * 0.2 : 0 }
+        func w(_ px: Int, _ py: Int) -> Float {
+            let x = -500 + (Double(px) + 0.5) * 1000 / 512, y = 500 - (Double(py) + 0.5) * 1000 / 512
+            return cleaned.ground(x, y)!.water
+        }
+        #expect(w(140, 140) > 0.9, "lake kept")
+        #expect(w(410, 70) < 0.1, "small spot removed")
+        #expect(w(380, 380) < 0.1, "dark patch on a slope removed")
+        #expect(g.ground(-500 + 410.5 * 1000 / 512, 500 - 70.5 * 1000 / 512)!.water > 0.5, "the spot was water before cleaning")
+    }
+}

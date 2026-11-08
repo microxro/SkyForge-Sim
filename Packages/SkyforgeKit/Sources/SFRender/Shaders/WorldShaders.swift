@@ -497,10 +497,10 @@ public enum WorldShaders {
             float reflScale = imageryWater ? 0.6 : 1.0;          // wind-roughened open water
             col = mix(body, refl * reflScale, min(1.0, 0.08 + fres * (imageryWater ? 0.85 : 1.0)));
             if (imageryWater) {
-                // Shoreline foam: the mask's transition band (wm 0.6–0.8), broken up by noise.
-                float band = 1.0 - smoothstep(0.6, 0.8, shoreWm);
+                // Shoreline foam: the mask's transition band (wm 0.6–0.7), broken up by noise.
+                float band = 1.0 - smoothstep(0.6, 0.7, shoreWm);   // a thin line, not a white blob
                 float breakUp = smoothstep(-0.1, 0.4, groundNoise(ww + 77.0, 4.0)) * wNear + 0.35 * (1.0 - wNear);
-                float foam = band * breakUp * 0.8;
+                float foam = band * breakUp * 0.45;
                 col = mix(col, float3(0.85, 0.88, 0.88) * (u.sunColour.rgb * max(0.0, toSun.z) * vis + ambient), foam);
             }
         } else if (m == 2.0) {                               // foliage: wrap + back-scatter

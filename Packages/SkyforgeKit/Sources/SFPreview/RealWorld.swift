@@ -50,6 +50,51 @@ public struct ImageryGround: GroundAlbedo {
         }
     }
 
+    private init(near: ImageryMosaic, far: ImageryMosaic?, waterMask: [Float], maskSize: Int) {
+        self.near = near; self.far = far; self.waterMask = waterMask; self.maskSize = maskSize
+    }
+
+    /// Centre of mask cell (i, j) in local metres.
+    public func maskCellCentre(_ i: Int, _ j: Int) -> SIMD2<Double> {
+        let mpp = near.metresPerPixel * Double(Self.block)
+        return SIMD2(near.centre.x - near.halfExtent + (Double(i) + 0.5) * mpp, near.centre.y + near.halfExtent - (Double(j) + 0.5) * mpp)
+    }
+
+    /// Water must be flat and come in sizeable bodies: colour alone also flags shadowed snow, dark roofs
+    /// and asphalt. Cells on terrain steeper than `maxSlope` are cleared first (per cell, so a lake is
+    /// not lost to the shadowed slope beside it), then connected areas (mask > 0.35) smaller than
+    /// `minCells` cells (16 m each at phone detail) are removed. `exclude` clears known dry areas (pavement).
+    public func cleaningWater(minCells: Int = 24, maxSlope: Double = 0.06, exclude: (Double, Double) -> Bool = { _, _ in false },
+                              height: (Double, Double) -> Double) -> ImageryGround {
+        let n = maskSize
+        var mask = waterMask
+        let mpp = near.metresPerPixel * Double(Self.block)
+        for p in 0..<(n * n) where mask[p] > 0.2 {
+            let c = maskCellCentre(p % n, p / n)
+            if exclude(c.x, c.y) { mask[p] = 0; continue }
+            let gx = height(c.x + mpp, c.y) - height(c.x - mpp, c.y), gy = height(c.x, c.y + mpp) - height(c.x, c.y - mpp)
+            if (gx * gx + gy * gy).squareRoot() / (2 * mpp) > maxSlope { mask[p] = 0 }
+        }
+        var seen = [Bool](repeating: false, count: n * n)
+        var stack: [Int] = []
+        for start in 0..<(n * n) where mask[start] > 0.35 && !seen[start] {
+            var members: [Int] = []
+            seen[start] = true; stack = [start]
+            while let p = stack.popLast() {
+                members.append(p)
+                let i = p % n, j = p / n
+                for (di, dj) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+                    let ni = i + di, nj = j + dj
+                    guard ni >= 0, nj >= 0, ni < n, nj < n else { continue }
+                    let q = nj * n + ni
+                    if mask[q] > 0.35 && !seen[q] { seen[q] = true; stack.append(q) }
+                }
+            }
+            if members.count < minCells { for p in members { mask[p] = 0 } }
+        }
+        return ImageryGround(near: near, far: far, waterMask: mask, maskSize: n)
+    }
+
     func water(_ x: Double, _ y: Double) -> Float? {
         let mpp = near.metresPerPixel * Double(Self.block)
         let fx = (x - (near.centre.x - near.halfExtent)) / mpp - 0.5

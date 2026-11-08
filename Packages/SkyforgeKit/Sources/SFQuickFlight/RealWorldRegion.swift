@@ -55,7 +55,7 @@ public struct RealWorldRegion: FlightWorld {
     public let runwayElevation: Double
     public let nearHeights: HeightMosaic
     public let farHeights: HeightMosaic
-    public let ground: ImageryGround
+    public internal(set) var ground: ImageryGround
     public let attribution: [String]
     public let detail: RealWorldDetail
     /// OpenStreetMap buildings and roads around the airfield (nil when Overpass was unreachable and
@@ -139,6 +139,8 @@ public struct RealWorldRegion: FlightWorld {
         var region = RealWorldRegion(name: apt.name, airportIdent: ident, origin: origin, runwayThreshold: thr, runwayHeading: heading,
                                runwayLengthMetres: len, runwayWidthMetres: rwy.widthMetres, runwayElevation: elevFt * Units.feetToMetres,
                                nearHeights: hn, farHeights: hf, ground: ImageryGround(near: inr, far: ifr, grade: true), attribution: attribution, detail: detail)
+        // Dark runway and apron asphalt reads as water by colour; real water is flat and sizeable.
+        region.ground = region.ground.cleaningWater(exclude: region.pavedArea) { x, y in max(0, hn.height(x, y)) }
         region.osm = osm
         if osm?.buildings.isEmpty != false { region.fallbackBuildings = region.proceduralBuildings() }
         return region
@@ -208,6 +210,14 @@ public struct RealWorldRegion: FlightWorld {
             y += cell
         }
         return out
+    }
+
+    /// The runway with its taxiways (120 m either side of the centreline): never water.
+    func pavedArea(_ x: Double, _ y: Double) -> Bool {
+        let d = SIMD2(x, y) - runwayThreshold
+        let along = (d * runwayDirection).sum()
+        let across = abs(d.x * runwayDirection.y - d.y * runwayDirection.x)
+        return along > -300 && along < runwayLengthMetres + 300 && across < 120
     }
 
     /// The runway, its strip and a 250 m apron band either side (no fallback buildings there).

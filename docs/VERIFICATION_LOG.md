@@ -140,3 +140,5 @@ Method: `FrameTimeTests`, 30 frames after 3 warm-up frames; command-buffer GPU t
 - Diagnostic: real-terrain chunks drawn with `baseVertex` came out wrong on this GPU (fixed in debba5b with absolute indices).
 - Device numbers: unverified (no hardware run).
 - 2026-11-08T21:46:31Z gate fast on Linux x86_64: PASS (HEAD 850bcad)
+- 2026-11-08T21:53:11Z gate fast on Linux x86_64: PASS (HEAD 873eaf5)
+- 2026-11-08T21:55:27Z gate fast on Linux x86_64: PASS (HEAD 873eaf5)
