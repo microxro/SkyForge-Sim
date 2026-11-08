@@ -138,3 +138,38 @@ import SFAtmosphere
     }
 }
 #endif
+
+#if canImport(Metal)
+@Suite struct PhysicalSkyPassTests {
+    /// CPU oracle: the same camera through SkyModel.radiance and the same tone curve.
+    static func cpuSky(_ v: SkyView, width w: Int, height h: Int) -> [UInt8] {
+        let m = SkyModel(sunElevationDeg: v.sunElevationDeg, sunAzimuthDeg: v.sunAzimuthDeg, viewHeightKm: v.viewHeightKm)
+        let b = v.basis
+        let tanX = tan(v.horizontalFOVDeg * .pi / 360), tanY = tanX * Double(h) / Double(w)
+        func aces(_ x: Double) -> Double { min(1, max(0, (x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14))) }
+        var out = [UInt8](repeating: 0, count: w * h * 3)
+        for y in 0..<h {
+            for x in 0..<w {
+                let nx = (Double(x) + 0.5) / Double(w) * 2 - 1, ny = 1 - (Double(y) + 0.5) / Double(h) * 2
+                var d = b.forward + b.right * (nx * tanX) + b.up * (ny * tanY)
+                d /= (d * d).sum().squareRoot()
+                let L = m.radiance(d)
+                for k in 0..<3 { out[3 * (y * w + x) + k] = UInt8((pow(aces(L[k] * v.exposure), 1 / 2.2) * 255).rounded()) }
+            }
+        }
+        return out
+    }
+
+    @Test(.enabled(if: SkyRegressionTests.hasDevice, "no Metal device on this host"))
+    func gpuSkyPassMatchesCPUSkyModel() throws {
+        var v = SkyView()
+        v.sunElevationDeg = 12; v.sunAzimuthDeg = 30; v.yawDeg = 10; v.pitchDeg = 18; v.exposure = 9
+        let w = 192, h = 108
+        let gpu = try PhysicalSkyRenderer().render(width: w, height: h, view: v)
+        let cpu = Self.cpuSky(v, width: w, height: h)
+        _ = VisualRegression.check(name: "metal_physical_sky_192x108", rgb: gpu, width: w, height: h, goldenDir: goldenDir)
+        let d = ImageDiff.compare(gpu, cpu, width: w, height: h, pixelThreshold: 16)
+        #expect(d.passes(.init(meanAbsError: 2.0, pixelThreshold: 16, fractionOver: 0.01, minSSIM: 0.97)), "\(d)")
+    }
+}
+#endif

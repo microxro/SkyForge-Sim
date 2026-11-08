@@ -197,3 +197,60 @@ public enum AtmosphereShaders {
     }
     """
 }
+
+extension AtmosphereShaders {
+    /// Fullscreen sky pass sampling the sky-view LUT plus a limb-darkened solar disc. Compiled
+    /// together with `source` (shares Atmo, sampler and transmittance helpers).
+    public static let skyPass = source + """
+
+    struct SkyVaryingL { float4 position [[position]]; float2 uv; };
+    struct SkyLUTUniforms {
+        float4 forward;   // xyz, tan(half horizontal fov)
+        float4 right;     // xyz, aspect (w/h)
+        float4 up;        // xyz, exposure
+        float4 sun;       // xyz direction (y up), sun azimuth atan2(z, x)
+        float4 params;    // view radius r (km), unused, unused, sun angular radius
+    };
+
+    vertex SkyVaryingL sky_lut_vertex(uint vid [[vertex_id]]) {
+        float2 p = float2((vid << 1) & 2, vid & 2);
+        SkyVaryingL o;
+        o.position = float4(p * 2.0 - 1.0, 0.0, 1.0);
+        o.uv = float2(p.x, 1.0 - p.y);
+        return o;
+    }
+
+    static float3 acesL(float3 x) {
+        const float a = 2.51, b = 0.03, c = 2.43, d = 0.59, e = 0.14;
+        return saturate((x * (a * x + b)) / (x * (c * x + d) + e));
+    }
+
+    fragment float4 sky_lut_fragment(SkyVaryingL in [[stage_in]], constant SkyLUTUniforms& u [[buffer(0)]],
+                                     constant Atmo& a [[buffer(1)]],
+                                     texture2d<float> sv [[texture(0)]], texture2d<float> tl [[texture(1)]]) {
+        float2 ndc = float2(in.uv.x * 2.0 - 1.0, 1.0 - in.uv.y * 2.0);
+        float tanX = u.forward.w, tanY = tanX / u.right.w;
+        float3 d = normalize(u.forward.xyz + u.right.xyz * (ndc.x * tanX) + u.up.xyz * (ndc.y * tanY));
+        float r = u.params.x, bot = a.radii.x;
+        float az = atan2(d.z, d.x) - u.sun.w;
+        if (az < 0.0f) az += 2.0f * PI;
+        float horizon = PI - asin(min(1.0f, bot / r));
+        float zenith = acos(clamp(d.y, -1.0f, 1.0f));
+        float v;
+        if (zenith < horizon) { float c = zenith / horizon; v = 0.5f * (1.0f - sqrt(1.0f - c)); }
+        else { float c = (zenith - horizon) / (PI - horizon); v = 0.5f + 0.5f * sqrt(c); }
+        float3 L = sv.sample(lin, float2(clamp(az / (2.0f * PI), 0.0f, 1.0f), clamp(v, 0.0f, 1.0f))).rgb;
+        float ang = u.params.w;
+        float c = dot(d, u.sun.xyz);
+        float tmp = 0.0f;
+        if (c > cos(ang) && !raySphere(r, d.y, bot, tmp)) {
+            float3 T = transmittance(a, tl, r, d.y);
+            float rho = acos(min(1.0f, c)) / ang;
+            float mu = sqrt(max(0.0f, 1.0f - rho * rho));
+            L += T * a.solar.xyz / (PI * ang * ang) * (0.4f + 0.6f * mu);
+        }
+        float3 col = acesL(L * u.up.w);
+        return float4(pow(col, float3(1.0f / 2.2f)), 1.0f);
+    }
+    """
+}

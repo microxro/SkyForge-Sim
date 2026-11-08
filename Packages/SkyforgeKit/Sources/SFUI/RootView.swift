@@ -18,7 +18,7 @@ public struct SkyforgeRootView: View {
         NavigationStack {
             List {
                 Section {
-                    Button("Renderer preview (sky)") { showingSky = true }
+                    Button("Renderer preview (physically based sky, day to twilight)") { showingSky = true }
                     Button("Instruments demo (steam gauges and SF-1000 PFD)") { showingInstruments = true }
                     NavigationLink("Controls and bindings") { BindingsView() }
                 } header: {
@@ -52,11 +52,11 @@ public struct SkyforgeRootView: View {
 
 #if os(macOS)
 struct SkyPreviewView: NSViewRepresentable {
-    final class Coordinator { var renderer: SkyRenderer? }
+    final class Coordinator { var renderer: PhysicalSkyViewDelegate? }
     func makeCoordinator() -> Coordinator { Coordinator() }
     func makeNSView(context: Context) -> MTKView {
         let view = MTKView(frame: .zero, device: MTLCreateSystemDefaultDevice())
-        context.coordinator.renderer = try? SkyRenderer(view: view)
+        context.coordinator.renderer = try? PhysicalSkyViewDelegate(view: view)
         view.delegate = context.coordinator.renderer
         view.preferredFramesPerSecond = 60
         return view
@@ -65,11 +65,11 @@ struct SkyPreviewView: NSViewRepresentable {
 }
 #else
 struct SkyPreviewView: UIViewRepresentable {
-    final class Coordinator { var renderer: SkyRenderer? }
+    final class Coordinator { var renderer: PhysicalSkyViewDelegate? }
     func makeCoordinator() -> Coordinator { Coordinator() }
     func makeUIView(context: Context) -> MTKView {
         let view = MTKView(frame: .zero, device: MTLCreateSystemDefaultDevice())
-        context.coordinator.renderer = try? SkyRenderer(view: view)
+        context.coordinator.renderer = try? PhysicalSkyViewDelegate(view: view)
         view.delegate = context.coordinator.renderer
         view.preferredFramesPerSecond = 60
         return view
