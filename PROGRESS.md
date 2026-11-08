@@ -3,12 +3,12 @@
 Legend: [x] done and verified, [ ] not done. Unchecked items are not available in the app.
 
 ## CURRENT
-- CURRENT: Bold Mode (docs/BOLD_MODE.md). Phase A: real-world airports by default.
-- Next 3: A2 generalised airport region + showcase fixtures · A3 OSM buildings/roads · A4 imagery colour match
+- CURRENT: Bold Mode (docs/BOLD_MODE.md). High-tier frame-time budget, then art review of the CI Metal frames.
+- Next 3: C10 high tier under 16.7 ms on CI · art round on real-airport frames · A3 procedural fallback
 
 ## Bold Mode (user directive 2026-11-08, docs/BOLD_MODE.md)
 ### Phase A — Real world first
-- [ ] A1 Real-world airport is the default Quick Flight start (SkyWorld = offline fallback)
+- [x] A1 Real-world airport is the default Quick Flight start (KMRY, offline pack), airport picker with download prompt, SkyWorld fallback (SwiftUI compiled in CI 42505456889)
 - [x] A2 Any OurAirports airport: USGS near / Sentinel-2 far / Terrarium DEM / water / trees; stream + cache; ancestor-tile fallback; SkyWorld fallback on failure
 - [x] A2b Bundled showcase airports: KMRY, KASE, KBFI, LSZS, NZQN, KCOI (43 MB tile packs, SHA-256 manifests, offline load test)
 - [ ] A3 OSM buildings (extruded footprints, height tags or default), roads; ODbL attribution; procedural fallback — runtime Overpass client, parser, meshes, trees avoid footprints, attribution done; procedural fallback and OSM in showcase packs pending (OSM unreachable from the build environment, ADR-0016)

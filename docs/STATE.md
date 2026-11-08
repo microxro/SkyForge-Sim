@@ -1,9 +1,20 @@
-LAST_UPDATE: 2026-11-08T17:30:39Z
+LAST_UPDATE: 2026-11-08T20:39:46Z
 
 # SKYFORGE state
 
 ## Phase
-Bold Mode (docs/BOLD_MODE.md) in progress: Phase A. A real-world showcase airport (KMRY, bundled tile pack, offline) is the default Quick Flight start. Six showcase packs are bundled; other airports stream after a prompt; SkyWorld is the offline fallback. OSM is blocked in the build environment (ADR-0016).
+Bold Mode (docs/BOLD_MODE.md) is in progress.
+- Done (CI-verified unless noted):
+  - A real-world showcase airport (KMRY, offline tile pack) is the default start. Six packs are bundled; any OurAirports airport streams after a prompt; SkyWorld is the fallback.
+  - Imagery grading and a feathered seam.
+  - Near layer centred toward the approach; near/far height blend.
+  - OSM runtime client and meshes. Unit-tested; OSM is unreachable from the build environment, so no showcase pack carries OSM yet (ADR-0016).
+  - HDR scene buffer with bloom, SSAO (CI compile pending), water waves and foam, prop disc (CI pending).
+  - Tier render presets and the CI GPU frame-time test. Low tier is within budget on the CI GPU; the high tier is being optimised.
+  - 30-minute soak test.
+- Open:
+  - Procedural building fallback where OSM is missing; cascades 3–4; aircraft textures; cockpit textures; cloud self-shadow tiers.
+  - Art review of the CI Metal frames (target ≥ 8).
 
 P0 accepted (CI fully green). P1 in progress: P1.1, P1.2, P1.2b-2, P1.4, P1.7b, P1.8b, P1.9, P1.10, P1.12, P1.5, P1.6a, P1.2b-1, P1.6b, P1.7, P1.8a, P1.11 done; P1.3 renderer done with visuals below target (independent art review 6.00/10 vs commercial sims after 11 rounds; open: per-pixel land cover, tree crowns, impostors).
 
