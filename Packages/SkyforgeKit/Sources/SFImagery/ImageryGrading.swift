@@ -109,4 +109,27 @@ public enum ImageryGrading {
         guard let s = overlapStats(near, far) else { return [(1, 0), (1, 0), (1, 0)] }
         return remap(&far, from: s.far, to: s.near)
     }
+
+    /// Brightens a dark mosaic (Sentinel-2 cloudless over conifer forest came out with a median sRGB
+    /// luminance near 0.12, rendering near-black) with a gamma curve that moves the median toward
+    /// `target`; black and white stay put and order is kept. Never darkens; gamma ≥ `minGamma`.
+    /// Returns the gamma applied (1 = unchanged).
+    @discardableResult
+    public static func lift(_ m: inout ImageryMosaic, target: Double = 0.26, minGamma: Double = 0.7) -> Double {
+        var hist = [Int](repeating: 0, count: 256), n = 0
+        for p in stride(from: 0, to: m.size * m.size, by: 7) where m.coverage[p] != 0 {
+            let l = 0.2126 * Double(m.rgb[3 * p]) + 0.7152 * Double(m.rgb[3 * p + 1]) + 0.0722 * Double(m.rgb[3 * p + 2])
+            hist[min(255, Int(l.rounded()))] += 1; n += 1
+        }
+        guard n > 0 else { return 1 }
+        var acc = 0, median = 0
+        for v in 0..<256 { acc += hist[v]; if acc * 2 >= n { median = v; break } }
+        let l = max(1, Double(median)) / 255
+        guard l < target else { return 1 }
+        let gamma = max(minGamma, log(target) / log(l))
+        var lut = [UInt8](repeating: 0, count: 256)
+        for v in 0..<256 { lut[v] = UInt8(max(0, min(255, (pow(Double(v) / 255, gamma) * 255).rounded()))) }
+        for k in 0..<m.rgb.count { m.rgb[k] = lut[Int(m.rgb[k])] }
+        return gamma
+    }
 }

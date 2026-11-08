@@ -136,3 +136,17 @@ actor TileFixtureTransport: HTTPTransport {
         #expect(g.ground(-500 + 410.5 * 1000 / 512, 500 - 70.5 * 1000 / 512)!.water > 0.5, "the spot was water before cleaning")
     }
 }
+
+@Suite struct ImageryLiftTests {
+    @Test func liftsDarkMosaicsOnlyAndKeepsOrder() {
+        var dark = ImageryGradingTests.mosaic(size: 64, half: 100) { i, j in let v = UInt8(10 + (i + j) % 40); return SIMD3(v, v &+ 8, v) }
+        let before = dark.rgb
+        let g = ImageryGrading.lift(&dark)
+        #expect(g < 1 && g >= 0.7, "gamma \(g)")
+        #expect(dark.rgb.reduce(0) { $0 + Int($1) } > before.reduce(0) { $0 + Int($1) })
+        for k in 1..<before.count where before[k] > before[k - 1] { #expect(dark.rgb[k] >= dark.rgb[k - 1]) }
+        var bright = ImageryGradingTests.mosaic(size: 64, half: 100) { _, _ in SIMD3(140, 150, 120) }
+        let b0 = bright.rgb
+        #expect(ImageryGrading.lift(&bright) == 1 && bright.rgb == b0, "bright mosaic untouched")
+    }
+}

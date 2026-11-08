@@ -42,9 +42,11 @@ public struct ImageryGround: GroundAlbedo {
         }
         waterMask = mask; maskSize = n
         if grade, var f = far {
+            var nm = near
+            ImageryGrading.lift(&nm)                 // after the water mask: dark water stays classified
             ImageryGrading.dehaze(&f)
-            ImageryGrading.match(far: &f, to: near)
-            self.near = near; self.far = f
+            ImageryGrading.match(far: &f, to: nm)
+            self.near = nm; self.far = f
         } else {
             self.near = near; self.far = far
         }

@@ -205,3 +205,27 @@ Open defects (next passes): near-field ground is flat colour (needs detail textu
   - Cloud base is the field elevation + 1,100 m.
   - CI review frames use the phone tier from re-recorded packs.
   - The macOS CI tests run in release, so the loads take seconds.
+
+## Bold round 1 — CI Metal frames (commit 4618a1c, run 42527626613), independent art director
+First round on real GPU frames after the ground fixes (baseVertex, grading crush, false water).
+| Frame | Score |
+|---|---|
+| KMRY (coastal, default) | 4.5 |
+| KASE (mountain) | 5.5 |
+| KBFI (city, procedural buildings) | 3.5 |
+| LSZS (Sentinel-2) | 3.0 |
+| NZQN (Sentinel-2) | 4.0 |
+| SkyWorld 320×180 | 2.5 |
+| **Average** | **3.83** |
+Findings:
+- Near-ground "smear": the reviewer suspected a DOF/TAA pass. The renderer has none; the cause is about 6× magnification of the about 3 m/px phone imagery.
+- LSZS near-black foreground: the Sentinel-2 imagery is dark there (linear albedo about 0.01–0.02), and there were no trees in it.
+- White shore rim (NZQN); untextured fallback boxes doubling the photo roofs (KBFI); flat white aircraft.
+
+Round-2 batch:
+1. Imagery clarity: unsharp mask against the mip two levels up.
+2. Canopy crowns and bumped normals on photo forest out to 1.5 km; ground micro-detail out to 900 m.
+3. Gamma lift of dark mosaics toward a median sRGB luminance of 0.26.
+4. Foam at 0.18 and only where wavelets resolve.
+5. Trees thinned with distance instead of cut (bac5be8).
+Next structural candidate: a higher-resolution inner imagery layer (z17 USGS) around the approach in the packs.

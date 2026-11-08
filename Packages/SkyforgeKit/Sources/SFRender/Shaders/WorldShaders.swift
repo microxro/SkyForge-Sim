@@ -362,6 +362,7 @@ public enum WorldShaders {
         float m = in.material;
         bool imageryWater = false;
         float shoreWm = 0.0;                                 // water-mask value (imagery water) for shoreline foam
+        float imgForest = 0.0;                               // canopy score of the imagery colour (real terrain)
         if (m == 8.0) {
             float2 w = in.rel.xy + u.cameraLocal.xy;
             float2 nuv = (w - (u.imageryNear.xy - u.imageryNear.z)) / (2.0 * u.imageryNear.z);
@@ -373,7 +374,16 @@ public enum WorldShaders {
             // Feather the near layer into the far one over the outer 6 % (no hard seam at the boundary).
             float edgeN = min(min(nuv.x, nuv.y), min(1.0 - nuv.x, 1.0 - nuv.y));
             float wNear = inNear ? smoothstep(0.002, 0.06, edgeN) : 0.0;
-            float3 c = wNear > 0.0 ? mix(farC, imgNear.sample(imgSampler, nuv).rgb, wNear) : farC;
+            // Clarity: unsharp mask against a coarser mip (two levels up) so magnified photo texels near
+            // the camera keep their edges instead of reading as a smear.
+            if (u.imageryFar.w > 0.5) { float3 fb = imgFar.sample(imgSampler, fuv, bias(2.0)).rgb; farC = max(farC + (farC - fb) * 0.3, 0.0); }
+            // Sampled unconditionally (clamped UVs): implicit-LOD sampling must not sit in divergent flow.
+            float3 nearC = imgNear.sample(imgSampler, nuv).rgb;
+            float3 nb = imgNear.sample(imgSampler, nuv, bias(2.0)).rgb;
+            nearC = max(nearC + (nearC - nb) * 0.45, 0.0);
+            float3 c = wNear > 0.0 ? mix(farC, nearC, wNear) : farC;
+            float cl = dot(c, float3(0.2126, 0.7152, 0.0722));
+            imgForest = smoothstep(0.0, 0.02, c.g - max(c.r, c.b)) * smoothstep(0.10, 0.03, cl);   // dark green canopy
             // Same photo→albedo conversion as SFPreview.ImageryGround (textures are sRGB, so c is linear).
             albedo = pow(max(c, 0.0), 1.12) * 0.72;
             float wm = inNear ? waterMask.sample(imgSampler, nuv).r : 0.0;
@@ -397,13 +407,26 @@ public enum WorldShaders {
                 n = normalize(n + float3(rt, 0.0));
             }
         }
-        if (m == 7.0 && dist < (in.material == 8.0 ? 350.0 : 1400.0)) {
+        if (m == 7.0 && in.material == 8.0 && imgForest > 0.0 && dist < 1500.0) {
+            // Canopy on photo forest: crowns (4 m) and gaps (12 m), lit through a bumped normal, so
+            // magnified forest reads as treetops rather than a dark green smear.
+            float2 w = in.rel.xy + u.cameraPos.xy;
+            float fp = fieldFp;                              // derivatives taken outside the branch
+            float wc = saturate(1.0 - fp / 2.0) * imgForest * (1.0 - dist / 1500.0);
+            float crown = groundNoise(w, 4.0), gap = groundNoise(w + 41.0, 12.0);
+            albedo *= 1.0 + (crown * 0.30 + gap * 0.20) * wc;
+            float e = 1.0;
+            float gx = groundNoise(w + float2(e, 0), 4.0) - groundNoise(w - float2(e, 0), 4.0);
+            float gy = groundNoise(w + float2(0, e), 4.0) - groundNoise(w - float2(0, e), 4.0);
+            n = normalize(n + float3(-gx, -gy, 0.0) * (0.35 * wc));
+        }
+        if (m == 7.0 && dist < (in.material == 8.0 ? 900.0 : 1400.0)) {
             // Per-pixel ground detail (as SFPreview). Each octave fades out once its cell shrinks
             // below about two pixels (screen-space footprint from fwidth), so it never aliases.
             float2 w = in.rel.xy + u.cameraPos.xy;
             float fp = length(fwidth(w));
             float wFine = saturate(1.0 - fp / 1.0), wMid = saturate(1.0 - fp / 4.0), wDry = saturate(1.0 - fp / 16.0);
-            float fade = (1.0 - dist / 1400.0) * (1.0 - 0.7 * fieldCov);   // fields carry their own rows
+            float fade = (1.0 - dist / (in.material == 8.0 ? 900.0 : 1400.0)) * (1.0 - 0.7 * fieldCov);   // fields carry their own rows
             float fine = groundNoise(w, 2.0), mid = groundNoise(w + 17.0, 8.0), dry = groundNoise(w - 31.0, 32.0);
             albedo *= 1.0 + (fine * 0.08 * wFine + mid * 0.06 * wMid) * fade;
             albedo *= 1.0 + (float3(1.10, 1.02, 0.80) - 1.0) * (max(0.0, dry) * 0.45 * wDry * fade);
@@ -500,7 +523,7 @@ public enum WorldShaders {
                 // Shoreline foam: the mask's transition band (wm 0.6–0.7), broken up by noise.
                 float band = 1.0 - smoothstep(0.6, 0.7, shoreWm);   // a thin line, not a white blob
                 float breakUp = smoothstep(-0.1, 0.4, groundNoise(ww + 77.0, 4.0)) * wNear + 0.35 * (1.0 - wNear);
-                float foam = band * breakUp * 0.45;
+                float foam = band * breakUp * 0.18 * wNear;   // faint, and only where wavelets resolve (lakes have no surf)
                 col = mix(col, float3(0.85, 0.88, 0.88) * (u.sunColour.rgb * max(0.0, toSun.z) * vis + ambient), foam);
             }
         } else if (m == 2.0) {                               // foliage: wrap + back-scatter

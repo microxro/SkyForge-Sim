@@ -148,3 +148,4 @@ Method: `FrameTimeTests`, 30 frames after 3 warm-up frames; command-buffer GPU t
 - SkyWorld low 8.19 ms, high 15.72 ms (budget 16.7): pass.
 - KMRY low 9.62 ms; high 18.99 ms: over budget. The near terrain ring is now actually drawn (before debba5b the CI GPU dropped it).
 - Fix in the next commit: desktop real-terrain mesh 8 → 12 m (mid 48 m, far 240 m), trees capped at 120k and thinned with distance.
+- 2026-11-08T22:05:35Z gate fast on Linux x86_64: PASS (HEAD 2c4af63)
