@@ -416,3 +416,15 @@ private func faceNormal(_ a: SIMD3<Float>, _ b: SIMD3<Float>, _ c: SIMD3<Float>)
         #expect(region.proceduralBuildings() == b, "deterministic")
     }
 }
+
+@Suite struct IsolatedBuildingTests {
+    @Test func loneBoxesAreDroppedClustersKept() {
+        func box(_ x: Double, _ y: Double, _ id: Int64) -> OSMBuilding {
+            OSMBuilding(id: id, footprint: [SIMD2(x - 4, y - 4), SIMD2(x + 4, y - 4), SIMD2(x + 4, y + 4), SIMD2(x - 4, y + 4)], heightMetres: 6)
+        }
+        let cluster = (0..<4).map { box(Double($0) * 40, 0, Int64($0)) }
+        let lone = box(500, 500, 99)
+        let kept = RealWorldRegion.dropIsolated(cluster + [lone])
+        #expect(kept.count == 4 && !kept.contains { $0.id == 99 })
+    }
+}

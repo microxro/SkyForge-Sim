@@ -221,12 +221,36 @@ public struct RealWorldRegion: FlightWorld {
                 let cx = px + jx, cy = py + jy, ch = cos(heading), sh = sin(heading)
                 let fp = [(-hx, -hy), (hx, -hy), (hx, hy), (-hx, hy)].map { SIMD2(cx + ch * $0.0 - sh * $0.1, cy + sh * $0.0 + ch * $0.1) }
                 let roof = SIMD3(Float(powf(c.x, 2.2)), Float(powf(c.y, 2.2)), Float(powf(c.z, 2.2))) * 0.9
-                out.append(OSMBuilding(id: -Int64(out.count + 1), footprint: fp, heightMetres: 5 + Hash.unit(rng.next()) * 4,
-                                       kind: "house", roofColour: roof, tags: ["source": "procedural fallback"]))
+                // Walls: the photo's colour, desaturated and a little darker (not a bright fixed palette,
+                // which read as untextured boxes against the photo).
+                let grey = (roof.x + roof.y + roof.z) / 3
+                let wall = (roof + (SIMD3(repeating: grey) - roof) * 0.5) * 0.8 + SIMD3(0.03, 0.028, 0.025)
+                out.append(OSMBuilding(id: -Int64(out.count + 1), footprint: fp, heightMetres: 4.5 + Hash.unit(rng.next()) * 3.5,
+                                       kind: "house", roofColour: roof, wallColour: wall, tags: ["source": "procedural fallback"]))
             }
             y += cell
         }
-        return out
+        return Self.dropIsolated(out)
+    }
+
+    /// Keeps buildings with at least `minNeighbours` other within `radius` m: real built-up areas are
+    /// clusters, while a lone box is usually a bright car park or roof misread by the colour classifier.
+    static func dropIsolated(_ list: [OSMBuilding], radius: Double = 50, minNeighbours: Int = 1) -> [OSMBuilding] {
+        func centre(_ b: OSMBuilding) -> SIMD2<Double> { b.footprint.reduce(.zero, +) / Double(max(1, b.footprint.count)) }
+        let cs = list.map(centre)
+        var grid: [SIMD2<Int>: [Int]] = [:]
+        func key(_ p: SIMD2<Double>) -> SIMD2<Int> { SIMD2(Int((p.x / radius).rounded(.down)), Int((p.y / radius).rounded(.down))) }
+        for (i, c) in cs.enumerated() { grid[key(c), default: []].append(i) }
+        return list.indices.filter { i in
+            let k = key(cs[i]); var n = 0
+            for dy in -1...1 { for dx in -1...1 {
+                for j in grid[k &+ SIMD2(dx, dy)] ?? [] where j != i {
+                    let d = cs[j] - cs[i]
+                    if (d * d).sum() <= radius * radius { n += 1 }
+                }
+            } }
+            return n >= minNeighbours
+        }.map { list[$0] }
     }
 
     /// The runway with its taxiways (120 m either side of the centreline): never water.

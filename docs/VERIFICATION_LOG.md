@@ -157,3 +157,5 @@ Method: `FrameTimeTests`, 30 frames after 3 warm-up frames; command-buffer GPU t
 - Next: high preset render scale 0.8 → 0.75 and cloud steps 48 → 40.
 - 2026-11-08T22:18:12Z gate fast on Linux x86_64: PASS (HEAD 9b50dd5)
 - 2026-11-08T22:25:25Z gate fast on Linux x86_64: PASS (HEAD 9b50dd5)
+- 2026-11-08T22:29:34Z gate fast on Linux x86_64: FAIL (HEAD cb21cbb)
+- 2026-11-08T22:32:58Z gate fast on Linux x86_64: PASS (HEAD cb21cbb)

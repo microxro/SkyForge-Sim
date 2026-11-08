@@ -525,7 +525,7 @@ public struct SceneBuilder {
         for t in AircraftMesh.build() {
             let colour: SIMD3<Float>, mat: Material
             switch t.part {
-            case .paint: colour = srgb(232, 232, 228); mat = .paint
+            case .paint: colour = srgb(214, 214, 208); mat = .paint   // albedo ≈ 0.66: white paint keeps visible shading under a midday sun
             case .accent: colour = accent; mat = .paint
             case .glass: colour = srgb(28, 34, 42); mat = .glass
             case .metal: colour = srgb(150, 152, 156); mat = .paint
