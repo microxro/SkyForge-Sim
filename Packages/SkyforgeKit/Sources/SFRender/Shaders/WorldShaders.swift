@@ -64,6 +64,7 @@ public enum WorldShaders {
         float3 albedo;
         float material;
         float field;              // FieldPattern weight (terrain mesh only)
+        float3 local;             // mesh-local position (aircraft: body axes)
     };
 
     vertex WorldVarying world_vertex(const device WorldVertex* v [[buffer(0)]], constant WorldUniforms& u [[buffer(1)]],
@@ -79,6 +80,7 @@ public enum WorldShaders {
         o.albedo = c * c;
         o.material = float(w.colour.a);
         o.field = float(w.normal.w) / 127.0;      // > 0 field parcels, < 0 suburb impostor
+        o.local = float3(w.position);
         return o;
     }
 
@@ -93,6 +95,7 @@ public enum WorldShaders {
         o.albedo = float3(0.15, 0.17, 0.12);
         o.material = 8.0;                       // real terrain: albedo from imagery in the fragment shader
         o.field = 0.0;
+        o.local = float3(0.0);
         return o;
     }
 
@@ -110,6 +113,7 @@ public enum WorldShaders {
         o.albedo = w.normal.w < 0 ? float3(0.06, 0.045, 0.03) : float3(t.colour) * (0.85 + 0.3 * saturate(local.z));
         o.material = w.normal.w < 0 ? 0.0 : 2.0;
         o.field = 0.0;
+        o.local = float3(0.0);
         return o;
     }
 
@@ -504,7 +508,7 @@ public enum WorldShaders {
             float back = pow(max(0.0, dot(dir, toSun)), 4.0) * 0.35;
             col = albedo * (u.sunColour.rgb * (wrap + back) * vis + ambient * 0.85);
         } else if (m == 6.0 || m == 5.0) {                   // aircraft paint / glass: GGX
-            float rough = m == 6.0 ? 0.32 : 0.06;
+            float rough = m == 6.0 ? 0.24 : 0.06;   // glossy paint: a visible sun glint
             float3 env = mix(u.ambientGround.rgb, u.skyHorizon.rgb, saturate(reflect(dir, n).z * 0.5 + 0.5));
             col = pbrDielectric(albedo, n, -dir, toSun, rough, u.sunColour.rgb, env, vis) + albedo * ambient * (m == 6.0 ? 1.0 : 0.3);
         } else {
@@ -519,6 +523,23 @@ public enum WorldShaders {
         aerial(u, ins, tr, dir, dist, L, T);
         col = col * T + L;
         return float4(col * u.sunColour.w, 1.0);    // linear HDR (× exposure); tone-mapped in post
+    }
+
+    // Spinning propeller disc: translucent blur, denser toward the blade tips, painted tip ring, opaque
+    // spinner; slight two-blade modulation. Body axes: disc centred at (x, 0, −0.05), radius 0.95 m.
+    fragment float4 prop_fragment(WorldVarying in [[stage_in]], constant WorldUniforms& u [[buffer(1)]]) {
+        float2 q = float2(in.local.y, in.local.z + 0.05);
+        float r = length(q) / 0.95, th = atan2(q.y, q.x);
+        float alpha = (0.07 + 0.11 * smoothstep(0.15, 0.85, r)) * (0.85 + 0.15 * cos(2.0 * th));
+        float3 base = float3(0.02, 0.02, 0.022);
+        if (r > 0.88) { alpha = 0.22; base = float3(0.55, 0.45, 0.08); }                 // tip paint ring
+        if (r < 0.12) { alpha = 1.0; base = float3(0.25, 0.25, 0.26); }                  // spinner
+        float3 n = normalize(in.normal);
+        float3 dir = normalize(in.rel);
+        if (dot(n, dir) > 0.0) n = -n;
+        float3 ambient = mix(u.ambientGround.rgb, u.ambientSky.rgb, n.z * 0.5 + 0.5);
+        float3 col = base * (u.sunColour.rgb * max(0.0, dot(n, u.sunDir.xyz)) + ambient);
+        return float4(col * u.sunColour.w, alpha);
     }
 
     // Cockpit display (SF-1000 PFD): display-referred texture on a quad in aircraft body axes.

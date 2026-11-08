@@ -244,7 +244,7 @@ public enum PreviewRenderer {
                             // aircraft reads as glossy paint instead of flat white (art review).
                             let v = -dir, nv = max(0.001, fdot(n, v)), nl = max(0, ndl)
                             let h = simd_normalize(toSun + v), nh = max(0, fdot(n, h)), vh = max(0, fdot(v, h))
-                            let rough: Float = 0.32, a2 = rough * rough * rough * rough
+                            let rough: Float = 0.24, a2 = rough * rough * rough * rough
                             let dd = nh * nh * (a2 - 1) + 1
                             let D = a2 / (Float.pi * dd * dd)
                             let Fh = 0.04 + 0.96 * powf(1 - vh, 5), Fv = 0.04 + 0.96 * powf(1 - nv, 5)

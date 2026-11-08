@@ -113,7 +113,7 @@ public struct QuickFlightWorld: FlightWorld {
     /// Aircraft mesh in body axes (x forward, y right, z down), with colours and materials.
     public static func aircraftMesh(accent: SIMD3<Float> = SIMD3(0.011, 0.048, 0.18)) -> TriangleSoup {
         var b = SceneBuilder(generator: WorldGenerator(terrain: TerrainRecipe(kind: .suburbanPlain, seed: 1)), origin: .zero)
-        b.addAircraft(at: .zero, heading: 0, pitch: 0, roll: 0, accent: accent)
+        b.addAircraft(at: .zero, heading: 0, pitch: 0, roll: 0, accent: accent, propDisc: true)
         // addAircraft maps NED→ENU; undo it so the mesh stays in body axes (x fwd, y right, z down).
         var soup = TriangleSoup(origin: .zero)
         let s = b.soup

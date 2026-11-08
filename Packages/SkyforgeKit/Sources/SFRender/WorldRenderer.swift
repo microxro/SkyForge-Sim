@@ -175,6 +175,10 @@ public final class WorldRenderer {
     public private(set) var lastDrawnEnvironmentCells = 0
     public var environmentCellCount: Int { environment?.cells.count ?? 0 }
     private var aircraft: (buffer: MTLBuffer, count: Int)?
+    /// Translucent propeller disc (material 9), drawn blended after the opaque airframe.
+    private var propDisc: (buffer: MTLBuffer, count: Int)?
+    private let propPipeline: MTLRenderPipelineState
+    private let propDepthState: MTLDepthStencilState
     private var tables: (ins: MTLTexture, tr: MTLTexture, key: SIMD4<Float>)?
     public private(set) var lighting: LightingSetup
     public let colorFormat: MTLPixelFormat
@@ -249,6 +253,26 @@ public final class WorldRenderer {
         shadowTerrainPipeline = try pso("shadow_terrain_vertex", nil, label: "ShadowTerrain", colour: false)
         shadowTreePipeline = try pso("shadow_tree_vertex", nil, label: "ShadowTrees", colour: false)
         screenPipeline = try pso("screen_vertex", "screen_fragment", label: "CockpitScreen", colour: true)
+        do {
+            guard let pv = lib.makeFunction(name: "world_vertex"), let pf = lib.makeFunction(name: "prop_fragment") else {
+                throw RendererError.shaderCompile("missing prop functions")
+            }
+            let pd = MTLRenderPipelineDescriptor()
+            pd.label = "PropDisc"
+            pd.vertexFunction = pv; pd.fragmentFunction = pf
+            pd.colorAttachments[0].pixelFormat = .rgba16Float
+            pd.depthAttachmentPixelFormat = .depth32Float
+            let ca = pd.colorAttachments[0]!
+            ca.isBlendingEnabled = true
+            ca.sourceRGBBlendFactor = .sourceAlpha; ca.destinationRGBBlendFactor = .oneMinusSourceAlpha
+            ca.sourceAlphaBlendFactor = .one; ca.destinationAlphaBlendFactor = .oneMinusSourceAlpha
+            propPipeline = try device.makeRenderPipelineState(descriptor: pd)
+        } catch let e as RendererError { throw e } catch { throw RendererError.pipeline(String(describing: error)) }
+        let pds = MTLDepthStencilDescriptor()
+        pds.depthCompareFunction = .greater      // reversed-Z test, no depth write (translucent)
+        pds.isDepthWriteEnabled = false
+        guard let pdss = device.makeDepthStencilState(descriptor: pds) else { throw RendererError.commandQueue }
+        propDepthState = pdss
         do {
             let plib = try device.makeLibrary(source: PostShaders.source, options: nil)
             let fd = MTLRenderPipelineDescriptor()
@@ -444,7 +468,7 @@ public final class WorldRenderer {
         out.reserveCapacity(soup.triangleCount * 3)
         func q(_ x: Float) -> Int8 { Int8(max(-127, min(127, (x * 127).rounded()))) }
         func c(_ x: Float) -> UInt8 { UInt8(max(0, min(255, (max(0, x).squareRoot() * 255).rounded()))) }
-        for i in 0..<soup.triangleCount {
+        for i in 0..<(order?.count ?? soup.triangleCount) {
             let t = order?[i] ?? i
             let m = soup.material[t].rawValue
             for k in 0..<3 {
@@ -480,7 +504,10 @@ public final class WorldRenderer {
     }
 
     public func setAircraft(_ soup: TriangleSoup) throws {
-        aircraft = (try makeBuffer(Self.pack(soup)), soup.triangleCount * 3)
+        let opaque = (0..<soup.triangleCount).filter { soup.material[$0] != .prop }
+        let prop = (0..<soup.triangleCount).filter { soup.material[$0] == .prop }
+        aircraft = (try makeBuffer(Self.pack(soup, order: opaque)), opaque.count * 3)
+        propDisc = prop.isEmpty ? nil : (try makeBuffer(Self.pack(soup, order: prop)), prop.count * 3)
     }
 
     /// Cockpit interior (body axes, like the aircraft) and the display quad corners
@@ -846,6 +873,17 @@ public final class WorldRenderer {
                 enc.setFragmentTexture(cockpitScreen ?? dummy2D, index: 0)
                 enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
                 enc.setRenderPipelineState(pipeline)
+            }
+            if let pdisc = propDisc {
+                u.cameraPos.w = 0
+                enc.setRenderPipelineState(propPipeline)
+                enc.setDepthStencilState(propDepthState)
+                enc.setVertexBuffer(pdisc.buffer, offset: 0, index: 0)
+                enc.setVertexBytes(&u, length: MemoryLayout<WorldUniforms>.stride, index: 1)
+                enc.setFragmentBytes(&u, length: MemoryLayout<WorldUniforms>.stride, index: 1)
+                enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: pdisc.count)
+                enc.setRenderPipelineState(pipeline)
+                enc.setDepthStencilState(depthState)
             }
         }
         enc.endEncoding()

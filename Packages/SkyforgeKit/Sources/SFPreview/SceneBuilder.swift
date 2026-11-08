@@ -512,7 +512,9 @@ public struct SceneBuilder {
     // MARK: Aircraft
 
     /// Adds the procedural aircraft at a world position (ENU) with heading (rad from north, clockwise), pitch and roll.
-    public mutating func addAircraft(at p: SIMD3<Double>, heading: Double, pitch: Double, roll: Double, accent: SIMD3<Float>) {
+    /// `propDisc`: include the spinning propeller disc (material `.prop`, drawn translucent by the Metal
+    /// renderer; the CPU preview has no transparency, so it leaves it out).
+    public mutating func addAircraft(at p: SIMD3<Double>, heading: Double, pitch: Double, roll: Double, accent: SIMD3<Float>, propDisc: Bool = false) {
         let q = Quaternion(roll: roll, pitch: pitch, yaw: heading)   // body -> NED
         func world(_ b: SIMD3<Double>) -> SIMD3<Double> {
             let ned = q.rotate(b)
@@ -529,7 +531,9 @@ public struct SceneBuilder {
             case .metal: colour = srgb(150, 152, 156); mat = .paint
             case .tyre: colour = srgb(24, 24, 26); mat = .opaque
             case .seam: colour = srgb(70, 72, 76); mat = .opaque
-            case .prop: continue // a spinning disc needs transparency; not drawn in the CPU preview
+            case .prop:
+                if !propDisc { continue }
+                colour = srgb(34, 34, 36); mat = .prop
             }
             soup.addFlat(world(t.a), world(t.c), world(t.b), colour: colour, material: mat)
         }
