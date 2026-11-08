@@ -149,3 +149,9 @@ Method: `FrameTimeTests`, 30 frames after 3 warm-up frames; command-buffer GPU t
 - KMRY low 9.62 ms; high 18.99 ms: over budget. The near terrain ring is now actually drawn (before debba5b the CI GPU dropped it).
 - Fix in the next commit: desktop real-terrain mesh 8 → 12 m (mid 48 m, far 240 m), trees capped at 120k and thinned with distance.
 - 2026-11-08T22:05:35Z gate fast on Linux x86_64: PASS (HEAD 2c4af63)
+- 2026-11-08T22:13:02Z gate fast on Linux x86_64: PASS (HEAD 16a6845)
+
+## 2026-11-08 CI run 42528493894 (16a6845) — isolated GPU frame times
+- SkyWorld: low 8.08 ms, high 14.35 ms (pass).
+- KMRY: low 9.99 ms, high 17.49 ms (budget 16.7; clouds 4.64, shadows 3.46). The 12 m high-tier mesh saved about 0.5 ms.
+- Next: high preset render scale 0.8 → 0.75 and cloud steps 48 → 40.

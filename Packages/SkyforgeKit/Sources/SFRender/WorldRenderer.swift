@@ -162,7 +162,7 @@ public final class WorldRenderer {
         }
         public static let low = Settings(renderScale: 1, cloudSteps: 40, cloudDownsample: 2, bloomIntensity: 0.04, ssaoStrength: 0.5)
         public static let medium = Settings(renderScale: 1, cloudSteps: 48, cloudDownsample: 2, bloomIntensity: 0.05, ssaoStrength: 0.7)
-        public static let high = Settings(renderScale: 0.8, cloudSteps: 48, cloudDownsample: 3, bloomIntensity: 0.05, ssaoStrength: 0.7)
+        public static let high = Settings(renderScale: 0.75, cloudSteps: 40, cloudDownsample: 3, bloomIntensity: 0.05, ssaoStrength: 0.7)
     }
 
     public func apply(_ s: Settings) {
