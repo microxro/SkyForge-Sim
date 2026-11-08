@@ -51,3 +51,8 @@
 - Context: §8 asks for Hillaire sky LUTs on Metal; this host has no Metal device and CI's device availability is unknown.
 - Decision: implement the Hillaire 2020 model in Swift (`SFAtmosphere/Scattering.swift`) with the paper's Earth parameters (Rayleigh 5.802/13.558/33.1 ·10⁻³ km⁻¹, H 8 km; Mie 3.996/4.40 ·10⁻³ km⁻¹, H 1.2 km, g 0.8; ozone tent at 25 km), test it on Linux, use it for CPU previews, and treat it as the oracle for the MSL compute port (P1.5b), compared texel-by-texel by the visual-regression harness when a device exists.
 - Consequence: the sky is correct and testable everywhere today; the GPU path cannot drift silently.
+
+## ADR-0014 Real orthoimagery for ground realism
+- Context: the user compared SKYFORGE with MSFS 2024 and asked for realism; procedural colour alone cannot reach that look. MSFS's ground comes from licensed aerial imagery, which is not available to us.
+- Decision: free sources only, without keys or accounts: USGS orthoimagery (public domain, ≈0.3–1 m, US) and Sentinel-2 cloudless 2016 (CC BY 4.0, 10 m, worldwide). Pure-Swift baseline JPEG decoder so previews/tests run on Linux; tiles cached in the content store; land cover (water/forest/built-up) derived from colour drives water shading and 3D tree placement on top of the imagery.
+- Consequence: US regions approach photographic ground detail; elsewhere 10 m imagery plus procedural detail. Attribution is required in the app (Settings → Attributions) for the Sentinel-2 layer.
