@@ -11,7 +11,7 @@ public enum PreviewScene: String, Sendable, CaseIterable {
         switch self {
         case .suburban: return .goldenHour
         case .forestRiver: return .midday
-        case .coastline: return .goldenHour
+        case .coastline: return .midday      // the committed preview has always been midday
         case .mountainValley: return .midday
         case .airportFinal: return .sunrise
         }

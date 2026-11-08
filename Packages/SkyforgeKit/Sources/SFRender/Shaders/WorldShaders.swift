@@ -212,13 +212,20 @@ public enum WorldShaders {
         float tu = fu - iu, tv = fv - iv;
         float along = ((h >> 24) & 1u) == 0u ? tu : tv;
         col *= 0.95 + 0.08 * along;
+        uint idx = autumn ? h % 6u : h % 7u;
+        bool pasture = !autumn && (idx == 0u || idx == 5u);
+        float spacing = pasture ? 14.0 : 3.0 + 3.0 * fp_unit(h >> 8);
+        float coord = ((h >> 24) & 1u) == 0u ? u : v;
+        float rowFade = min(1.0, max(0.0, 1.0 - max(0.05, footprint) * 2.5 / spacing));
+        col *= 1.0 + (pasture ? 0.03 : 0.07) * sin(coord / spacing * 6.2831853) * rowFade;
         float edge = min(min(tu * PU, (1.0 - tu) * PU), min(tv * PV, (1.0 - tv) * PV));
         float fp = max(0.05, footprint);
-        float cover = 1.0 - min(1.0, max(0.0, (edge - HW) / fp + 0.5));
-        float strength = min(1.0, 2.0 * HW / fp);
+        float hw = min(HW, max(0.3, 1.5 * fp));
+        float cover = 1.0 - min(1.0, max(0.0, (edge - hw) / fp + 0.5));
+        float strength = min(1.0, 2.0 * hw / fp);
         float gaps = fp_noise(u / 18.0, v / 18.0, seed ^ 0x77u) > -0.55 ? 1.0 : 0.0;
         float hedgeAmount = cover * strength * gaps;
-        return col + (float3(0.24, 0.30, 0.38) - col) * hedgeAmount;
+        return col + (float3(0.46, 0.56, 0.52) - col) * hedgeAmount;
     }
 
     constant float3 fpRoofs[5] = { float3(0.050, 0.050, 0.055), float3(0.170, 0.060, 0.040), float3(0.080, 0.090, 0.100),
@@ -365,7 +372,7 @@ public enum WorldShaders {
             albedo *= 1.0 + (0.22 * big + 0.10 * small) * steep;
             if (dot(albedo, float3(0.3, 0.6, 0.1)) < 0.3) {
                 float patch = groundNoise(w + 71.0, 32.0) * saturate(1.0 - fieldFp * 2.5 / 32.0);
-                float scrub = smoothstep(0.08, 0.32, patch) * steep;
+                float scrub = smoothstep(0.14, 0.36, patch) * steep * smoothstep(0.76, 0.84, n.z);
                 float scree = smoothstep(-0.2, -0.42, patch) * steep;
                 albedo = mix(albedo, float3(0.050, 0.072, 0.030), scrub * 0.75);
                 albedo *= 1.0 + 0.35 * scree;

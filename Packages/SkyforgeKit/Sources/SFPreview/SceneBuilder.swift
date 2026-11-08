@@ -506,6 +506,7 @@ public struct SceneBuilder {
             case .glass: colour = srgb(28, 34, 42); mat = .glass
             case .metal: colour = srgb(150, 152, 156); mat = .paint
             case .tyre: colour = srgb(24, 24, 26); mat = .opaque
+            case .seam: colour = srgb(70, 72, 76); mat = .opaque
             case .prop: continue // a spinning disc needs transparency; not drawn in the CPU preview
             }
             soup.addFlat(world(t.a), world(t.c), world(t.b), colour: colour, material: mat)

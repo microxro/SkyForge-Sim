@@ -156,3 +156,19 @@ Open defects (next passes): near-field ground is flat colour (needs detail textu
 - (j): the mown airfield zone shrank from ±150 m with 500 m extensions to ±90 m with 240 m beyond each end (runway strip and end safety area), so the final approach crosses a field patchwork. Previews re-rendered.
 - Steep ground (f): per-pixel fall-line gullies, rock tone variation, scrub patches and pale scree, each octave faded by pixel footprint instead of a fixed 700 m distance, so the shaded valley wall carries detail; mirrored in the Metal world shader.
 - Suburb impostor: past the building radius, built-up far terrain draws lots, roofs, back-garden trees and streets per pixel (`FieldPattern.town`, negative field weight; Metal mirror checked against the CPU in CI), averaging to the area colour as the pixel footprint grows. In (a), the band beyond the houses turned out to be farmland past the town edge (field weights confirmed), so (a) is unchanged; the impostor matters in Quick Flight, where tiers draw buildings to 1–2.5 km only.
+
+### 2026-11-08 Art-director re-review (round 9) and fixes
+- a 5.67, d 5.67, e 5.33, f 6.00, j 5.50 → **5.63** (was 5.50). Per-pixel fields landed: crisp edges, muted tones, no lime. The approach in (j) now crosses a patchwork. The right-hand face in (f) has gullies.
+- Issues raised:
+  - Parcels read as flat vector polygons.
+  - Hedgerows near the camera read as black ink lines.
+  - Scrub on the left massif looked like camouflage.
+  - (e) regressed. This was my own error: the earlier preview was rendered with `--time midday`, but my re-render used the scene default, golden hour.
+- Fixes:
+  - Crop rows (3–6 m, ±7 %) and broad mowing stripes on pasture, oriented per field and faded by footprint.
+  - Hedgerows are now mid-dark green and capped at about 3 px wide near the camera.
+  - Scrub only on gentler ledges.
+  - The coastline scene's default time is now midday, matching the committed preview.
+  - `tools/render_previews.sh` renders the five reviewed scenes at their canonical times.
+  - The Metal shader mirrors all of the above.
+- Aircraft: thin dark seams outline the flaps, ailerons, elevator and rudder on both faces (shared mesh, previews and Quick Flight).

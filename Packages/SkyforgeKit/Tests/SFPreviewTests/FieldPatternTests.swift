@@ -24,8 +24,9 @@ import SFWorldGen
         var dark = 0, total = 0, maxDarkFar: Float = 0
         for k in 0..<20_000 {
             let x = Float(k) * 0.25 - 2_500, y = Float(k % 97) * 3
-            let near = pattern.factor(x, y, footprint: 0.1)
-            if near.x < 0.3 { dark += 1 }
+            let near = pattern.factor(x, y, footprint: 0.8)
+            let dh = near - FieldPattern.hedge
+            if (dh * dh).sum() < 0.0004 { dark += 1 }
             total += 1
             let far = pattern.factor(x, y, footprint: 40)
             maxDarkFar = max(maxDarkFar, 1 - far.x / max(0.3, pattern.factor(x + 20, y + 20, footprint: 40).x))

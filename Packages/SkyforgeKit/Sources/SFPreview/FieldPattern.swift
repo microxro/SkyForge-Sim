@@ -33,7 +33,7 @@ public struct FieldPattern: Sendable, Equatable {
         SIMD3(1.43, 1.03, 1.57), SIMD3(0.78, 0.54, 1.00), SIMD3(0.60, 0.68, 0.82),
         SIMD3(1.22, 0.89, 1.38), SIMD3(0.76, 0.77, 0.95), SIMD3(1.67, 1.21, 2.00),
     ]
-    static let hedge = SIMD3<Float>(0.24, 0.30, 0.38)   // dark shrub green
+    static let hedge = SIMD3<Float>(0.46, 0.56, 0.52)   // mid-dark shrub green (review: near-black read as ink)
 
     @inline(__always) static func hash(_ x: Int32, _ y: Int32, _ s: UInt32) -> UInt32 {
         var h = UInt32(bitPattern: x) &* 0x8DA6_B343
@@ -76,10 +76,18 @@ public struct FieldPattern: Sendable, Equatable {
         let tu = fu - iu, tv = fv - iv
         let along = (h >> 24) & 1 == 0 ? tu : tv
         col *= 0.95 + 0.08 * along
+        // Crop rows (3–6 m) or broad mowing stripes on pasture, parallel to one parcel side; faded out
+        // before they are thinner than ~2.5 pixels so they never alias.
+        let idx = Int(h % UInt32(crops.count))
+        let pasture = !autumn && (idx == 0 || idx == 5)
+        let spacing: Float = pasture ? 14 : 3 + 3 * Self.unit(h >> 8)
+        let coord = (h >> 24) & 1 == 0 ? u : v
+        let rowFade = min(1, max(0, 1 - max(0.05, footprint) * 2.5 / spacing))
+        col *= 1 + (pasture ? 0.03 : 0.07) * sin(coord / spacing * 6.2831853) * rowFade
         // Distance to the parcel border in metres; crisp hedgerow strip, anti-aliased by footprint.
         let edge = min(tu * Self.parcelU, (1 - tu) * Self.parcelU, tv * Self.parcelV, (1 - tv) * Self.parcelV)
         let fp = max(0.05, footprint)
-        let hw = Self.hedgeHalfWidth
+        let hw = min(Self.hedgeHalfWidth, max(0.3, 1.5 * fp))           // at most ~3 px wide near the camera
         let cover = 1 - min(1, max(0, (edge - hw) / fp + 0.5))     // pixel coverage of the strip
         let strength = min(1, 2 * hw / fp)                           // thinner than a pixel → area-average
         // Hedges break up: gaps where the noise is low, so lines are not ruled.

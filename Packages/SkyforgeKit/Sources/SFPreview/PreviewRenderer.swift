@@ -142,7 +142,9 @@ public enum PreviewRenderer {
                         let luma = albedo.x * 0.3 + albedo.y * 0.6 + albedo.z * 0.1
                         if luma < 0.3 {
                             let patch = Float(groundNoise.fbm(wx / 45 + 71, wy / 45 - 37, octaves: 3)) * w(45)
-                            let scrub = Float(smoothstep(0.08, 0.32, Double(patch))) * steep
+                            // Scrub holds on gentler ledges only, not on the steep upper faces (review: camouflage speckle).
+                            let ledge = Float(smoothstep(0.76, 0.84, Double(n.z)))
+                            let scrub = Float(smoothstep(0.14, 0.36, Double(patch))) * steep * ledge
                             let scree = Float(smoothstep(-0.2, -0.42, Double(patch))) * steep
                             albedo = albedo + (SIMD3<Float>(0.050, 0.072, 0.030) - albedo) * (scrub * 0.75)
                             albedo *= 1 + 0.35 * scree
