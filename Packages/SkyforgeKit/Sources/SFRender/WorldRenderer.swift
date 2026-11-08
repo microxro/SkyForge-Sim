@@ -765,6 +765,28 @@ public final class WorldRenderer {
     }
 
     /// Offscreen frame to RGB8 (tests, screenshots).
+    /// GPU time (ms, from command-buffer GPU timestamps) of `frames` consecutive frames rendered into an
+    /// offscreen target of `width` × `height`, after `warmup` untimed frames. No readback.
+    public func benchmark(width: Int, height: Int, camera: WorldCamera, frames: Int, warmup: Int = 3,
+                          aircraftPosition: SIMD3<Double>? = nil, aircraftBodyToENU: simd_double3x3? = nil) throws -> [Double] {
+        let td = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: colorFormat, width: width, height: height, mipmapped: false)
+        td.usage = [.renderTarget, .shaderRead]
+        td.storageMode = .private
+        guard let colour = device.makeTexture(descriptor: td) else { throw RendererError.commandQueue }
+        let depth = try makeDepth(width: width, height: height)
+        var times: [Double] = []
+        for i in 0..<(warmup + frames) {
+            guard let cmd = queue.makeCommandBuffer() else { throw RendererError.commandQueue }
+            try encode(cmd: cmd, colour: colour, depth: depth, camera: camera,
+                       aircraftPosition: aircraftPosition, aircraftBodyToENU: aircraftBodyToENU)
+            cmd.commit()
+            cmd.waitUntilCompleted()
+            if let e = cmd.error { throw RendererError.pipeline(String(describing: e)) }
+            if i >= warmup { times.append((cmd.gpuEndTime - cmd.gpuStartTime) * 1_000) }
+        }
+        return times
+    }
+
     public func render(width: Int, height: Int, camera: WorldCamera, aircraftPosition: SIMD3<Double>? = nil,
                        aircraftBodyToENU: simd_double3x3? = nil) throws -> [UInt8] {
         let td = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: colorFormat, width: width, height: height, mipmapped: false)

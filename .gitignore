@@ -9,3 +9,4 @@ xcuserdata/
 docs/reference/
 *.xcresult
 __pycache__/
+.claude/worktrees/

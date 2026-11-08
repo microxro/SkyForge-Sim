@@ -116,7 +116,7 @@ public struct RealWorldRegion: FlightWorld {
         attribution.append("Airports: OurAirports (public domain)")
         return RealWorldRegion(name: apt.name, airportIdent: ident, origin: origin, runwayThreshold: thr, runwayHeading: heading,
                                runwayLengthMetres: len, runwayWidthMetres: rwy.widthMetres, runwayElevation: elevFt * Units.feetToMetres,
-                               nearHeights: hn, farHeights: hf, ground: ImageryGround(near: inr, far: ifr), attribution: attribution, detail: detail)
+                               nearHeights: hn, farHeights: hf, ground: ImageryGround(near: inr, far: ifr, grade: true), attribution: attribution, detail: detail)
     }
 
     // MARK: meshes

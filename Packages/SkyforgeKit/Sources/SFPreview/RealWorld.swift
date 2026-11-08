@@ -22,8 +22,9 @@ public struct ImageryGround: GroundAlbedo {
     public let maskSize: Int
     public static let block = 8
 
-    public init(near: ImageryMosaic, far: ImageryMosaic?) {
-        self.near = near; self.far = far
+    /// `grade`: de-haze the far mosaic and colour-match the near mosaic to it (after the water mask is
+    /// classified from the untouched photo).
+    public init(near: ImageryMosaic, far: ImageryMosaic?, grade: Bool = false) {
         let b = Self.block, n = near.size / b
         var mask = [Float](repeating: 0, count: n * n)
         for j in 0..<n {
@@ -40,6 +41,14 @@ public struct ImageryGround: GroundAlbedo {
             }
         }
         waterMask = mask; maskSize = n
+        if grade, var f = far {
+            ImageryGrading.dehaze(&f)
+            var nm = near
+            ImageryGrading.match(&nm, to: f)
+            self.near = nm; self.far = f
+        } else {
+            self.near = near; self.far = far
+        }
     }
 
     func water(_ x: Double, _ y: Double) -> Float? {
@@ -54,7 +63,16 @@ public struct ImageryGround: GroundAlbedo {
     }
 
     public func ground(_ x: Double, _ y: Double) -> (albedo: SIMD3<Float>, water: Float)? {
-        guard let c = near.sample(x, y) ?? far?.sample(x, y) else { return nil }
+        // Near layer feathered into the far one over its outer 6 % (as the Metal shader).
+        let nc = near.sample(x, y), fc = far?.sample(x, y)
+        var cOpt = nc ?? fc
+        if let n = nc, let f = fc {
+            let u = (x - (near.centre.x - near.halfExtent)) / (2 * near.halfExtent), v = (y - (near.centre.y - near.halfExtent)) / (2 * near.halfExtent)
+            let e = Float(min(min(u, v), min(1 - u, 1 - v)))
+            let t = max(0, min(1, (e - 0.002) / 0.058)), wN = t * t * (3 - 2 * t)
+            cOpt = f + (n - f) * wN
+        }
+        guard let c = cOpt else { return nil }
         // Orthophotos already contain sunlight, shadows and camera exposure: convert to a plausible
         // albedo (darker, slightly more contrast) so the renderer's own lighting does not double it.
         var lin = SIMD3(srgbToLinear(c.x), srgbToLinear(c.y), srgbToLinear(c.z))
@@ -99,7 +117,7 @@ public enum RealWorldScenes {
         let cam = site.camera
         var soup = TriangleSoup(origin: SIMD3(cam.position.x, cam.position.y, 0))
         var stats: [String: Int] = [:]
-        let ground = ImageryGround(near: inputs.near, far: inputs.far)
+        let ground = ImageryGround(near: inputs.near, far: inputs.far, grade: true)
         func h(_ x: Double, _ y: Double) -> Double {
             let n = inputs.heights
             if abs(x - n.centre.x) < n.halfExtent && abs(y - n.centre.y) < n.halfExtent { return max(0, n.height(x, y)) }
@@ -228,7 +246,7 @@ extension RealWorldScenes {
         let shadowCentre = SIMD3(cam.position.x + fwd2.x * 900, cam.position.y + fwd2.y * 900, 0)
         let img = PreviewRenderer.render(soup: soup, camera: cam, lighting: lighting, width: width, height: height,
                                          supersample: supersample, shadowCentre: shadowCentre, shadowHalfExtent: 1_800,
-                                         ground: ImageryGround(near: inputs.near, far: inputs.far), stats: &stats)
+                                         ground: ImageryGround(near: inputs.near, far: inputs.far, grade: true), stats: &stats)
         return (img, stats, counts)
     }
 }

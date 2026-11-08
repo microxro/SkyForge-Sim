@@ -124,6 +124,10 @@ public struct ImageryMosaic: Sendable {
     public let zoom: Int
     public var metresPerPixel: Double { 2 * halfExtent / Double(size) }
 
+    public init(centre: SIMD2<Double>, halfExtent: Double, size: Int, rgb: [UInt8], coverage: [UInt8], zoom: Int) {
+        self.centre = centre; self.halfExtent = halfExtent; self.size = size; self.rgb = rgb; self.coverage = coverage; self.zoom = zoom
+    }
+
     /// Web Mercator ground resolution (m per pixel of a 256-px tile) at a latitude.
     public static func tileResolution(zoom: Int, latitude: Double) -> Double {
         156_543.033_92 * cos(latitude * .pi / 180) / Double(1 << zoom)

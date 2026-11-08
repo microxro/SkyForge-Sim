@@ -113,7 +113,7 @@ public enum WorldShaders {
         return o;
     }
 
-    constexpr sampler imgSampler(filter::linear, mip_filter::linear, address::clamp_to_edge, coord::normalized);
+    constexpr sampler imgSampler(filter::linear, mip_filter::linear, address::clamp_to_edge, coord::normalized, max_anisotropy(8));
 
     constexpr sampler tbl(filter::linear, address::clamp_to_edge, coord::normalized);
 
@@ -356,8 +356,11 @@ public enum WorldShaders {
             float2 fuv = (w - (u.imageryFar.xy - u.imageryFar.z)) / (2.0 * u.imageryFar.z);
             fuv.y = 1.0 - fuv.y;
             bool inNear = u.imageryNear.w > 0.5 && all(nuv > 0.002) && all(nuv < 0.998);
-            float3 c = inNear ? imgNear.sample(imgSampler, nuv).rgb
-                              : (u.imageryFar.w > 0.5 ? imgFar.sample(imgSampler, fuv).rgb : float3(0.12, 0.14, 0.10));
+            float3 farC = u.imageryFar.w > 0.5 ? imgFar.sample(imgSampler, fuv).rgb : float3(0.12, 0.14, 0.10);
+            // Feather the near layer into the far one over the outer 6 % (no hard seam at the boundary).
+            float edgeN = min(min(nuv.x, nuv.y), min(1.0 - nuv.x, 1.0 - nuv.y));
+            float wNear = inNear ? smoothstep(0.002, 0.06, edgeN) : 0.0;
+            float3 c = wNear > 0.0 ? mix(farC, imgNear.sample(imgSampler, nuv).rgb, wNear) : farC;
             // Same photo→albedo conversion as SFPreview.ImageryGround (textures are sRGB, so c is linear).
             albedo = pow(max(c, 0.0), 1.12) * 0.72;
             float wm = inNear ? waterMask.sample(imgSampler, nuv).r : 0.0;
