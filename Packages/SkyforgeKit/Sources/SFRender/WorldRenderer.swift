@@ -21,6 +21,7 @@ struct WorldUniforms {
     var shadow1: simd_float4x4
     var cascadeSplits: SIMD4<Float>
     var cascadeDepth: SIMD4<Float>
+    var cameraPos: SIMD4<Float>
 }
 
 struct ShadowUniforms {
@@ -313,7 +314,8 @@ public final class WorldRenderer {
                           cascadeSplits: SIMD4(ShadowCascades.splits[0], ShadowCascades.splits[1],
                                                2 * ShadowCascades.halfExtents[0] / Float(ShadowCascades.size),
                                                2 * ShadowCascades.halfExtents[1] / Float(ShadowCascades.size)),
-                          cascadeDepth: SIMD4(ShadowCascades.depthRanges[0], ShadowCascades.depthRanges[1], 0, 0))
+                          cascadeDepth: SIMD4(ShadowCascades.depthRanges[0], ShadowCascades.depthRanges[1], 0, 0),
+                          cameraPos: SIMD4(Float(Self.wrap(c.position.x)), Float(Self.wrap(c.position.y)), Float(c.position.z), 0))
         }
         if let e = environment {
             let o = e.origin - c.position
@@ -332,6 +334,9 @@ public final class WorldRenderer {
         }
         enc.endEncoding()
     }
+
+    /// World coordinate modulo the 4096 m noise period (non-negative).
+    static func wrap(_ v: Double) -> Double { let r = v.truncatingRemainder(dividingBy: 4_096); return r < 0 ? r + 4_096 : r }
 
     static func translation(_ o: SIMD3<Double>) -> simd_float4x4 {
         simd_float4x4(columns: (SIMD4(1, 0, 0, 0), SIMD4(0, 1, 0, 0), SIMD4(0, 0, 1, 0), SIMD4(Float(o.x), Float(o.y), Float(o.z), 1)))

@@ -27,6 +27,7 @@ public enum WorldShaders {
         float4x4 shadow1;
         float4 cascadeSplits;     // far edge (m) of cascade 0, 1; texel size (m) of cascade 0, 1
         float4 cascadeDepth;      // light-space depth range (m) of cascade 0, 1
+        float4 cameraPos;         // camera world x, y modulo 4096 m (noise period), z, unused
     };
 
     struct ShadowUniforms { float4x4 lightViewProj; float4x4 model; };
@@ -102,6 +103,23 @@ public enum WorldShaders {
         return lit / 9.0;
     }
 
+    // Value noise on a lattice that repeats every `period` cells, so world coordinates taken
+    // modulo 4096 m stay seamless (cell sizes 2, 8 and 32 m divide 4096).
+    static float hashP(float2 i, float period) {
+        i = fmod(fmod(i, period) + period, period);
+        float2 p = fract(i * float2(0.1031, 0.1030));
+        p += dot(p, p.yx + 33.33);
+        return fract((p.x + p.y) * p.x);
+    }
+    static float vnoiseP(float2 x, float period) {
+        float2 i = floor(x), f = fract(x);
+        float2 u = f * f * (3.0 - 2.0 * f);
+        float a = hashP(i, period), b = hashP(i + float2(1, 0), period);
+        float c = hashP(i + float2(0, 1), period), d = hashP(i + float2(1, 1), period);
+        return mix(mix(a, b, u.x), mix(c, d, u.x), u.y) * 2.0 - 1.0;
+    }
+    static float groundNoise(float2 w, float cell) { return vnoiseP(w / cell, 4096.0 / cell); }
+
     /// Cook–Torrance GGX for dielectric paint and glass (F0 = 0.04), with a sky-tinted
     /// environment term so the airframe never looks like flat plastic.
     static float3 pbrDielectric(float3 albedo, float3 n, float3 v, float3 l, float rough, float3 sun, float3 env, float vis) {
@@ -131,6 +149,19 @@ public enum WorldShaders {
         float3 n = normalize(in.normal);
         if (dot(n, dir) > 0.0) n = -n;                       // two-sided, robust to winding
         float3 toSun = u.sunDir.xyz;
+        float3 albedo = in.albedo;
+        if (in.material == 7.0 && dist < 1400.0) {
+            // Per-pixel ground detail (as SFPreview): clumps, patches, dry/lush, micro-relief; faded out.
+            float fade = 1.0 - dist / 1400.0;
+            float2 w = in.rel.xy + u.cameraPos.xy;
+            float fine = groundNoise(w, 2.0), mid = groundNoise(w + 17.0, 8.0), dry = groundNoise(w - 31.0, 32.0);
+            albedo *= 1.0 + (fine * 0.16 + mid * 0.12) * fade;
+            albedo *= 1.0 + (float3(1.10, 1.02, 0.80) - 1.0) * (max(0.0, dry) * 0.9 * fade);
+            float e = 0.6;
+            float gx = groundNoise(w + float2(e, 0), 2.0) - groundNoise(w - float2(e, 0), 2.0);
+            float gy = groundNoise(w + float2(0, e), 2.0) - groundNoise(w - float2(0, e), 2.0);
+            n = normalize(n + float3(-gx, -gy, 0.0) * (0.5 * fade));
+        }
         float ndl = dot(n, toSun);
         float vis = toSun.z > -0.05 ? shadowVisibility(u, sm, in.rel, n, dist, max(0.0f, ndl)) : 0.0;
         float3 ambient = mix(u.ambientGround.rgb, u.ambientSky.rgb, n.z * 0.5 + 0.5);
@@ -141,18 +172,18 @@ public enum WorldShaders {
             float cosT = max(0.0, -dir.z);
             float fres = 0.02 + 0.98 * pow(1.0 - cosT, 5.0);
             float3 refl = u.skyHorizon.rgb + u.sunColour.rgb * pow(max(0.0, dot(r, toSun)), 600.0) * 30.0 * vis;
-            float3 body = in.albedo * (ambient * 0.6 + u.sunColour.rgb * max(0.0, toSun.z) * 0.15);
+            float3 body = albedo * (ambient * 0.6 + u.sunColour.rgb * max(0.0, toSun.z) * 0.15);
             col = mix(body, refl, min(1.0, fres));
         } else if (m == 2.0) {                               // foliage: wrap + back-scatter
             float wrap = max(0.0, ndl * 0.55 + 0.45);
             float back = pow(max(0.0, dot(dir, toSun)), 4.0) * 0.35;
-            col = in.albedo * (u.sunColour.rgb * (wrap + back) * vis + ambient * 0.85);
+            col = albedo * (u.sunColour.rgb * (wrap + back) * vis + ambient * 0.85);
         } else if (m == 6.0 || m == 5.0) {                   // aircraft paint / glass: GGX
             float rough = m == 6.0 ? 0.32 : 0.06;
             float3 env = mix(u.ambientGround.rgb, u.skyHorizon.rgb, saturate(reflect(dir, n).z * 0.5 + 0.5));
-            col = pbrDielectric(in.albedo, n, -dir, toSun, rough, u.sunColour.rgb, env, vis) + in.albedo * ambient * (m == 6.0 ? 1.0 : 0.3);
+            col = pbrDielectric(albedo, n, -dir, toSun, rough, u.sunColour.rgb, env, vis) + albedo * ambient * (m == 6.0 ? 1.0 : 0.3);
         } else {
-            col = in.albedo * (u.sunColour.rgb * max(0.0, ndl) * vis + ambient);
+            col = albedo * (u.sunColour.rgb * max(0.0, ndl) * vis + ambient);
             if (m == 3.0) {                      // road: Blinn-Phong highlight
                 float3 h = normalize(toSun - dir);
                 float spec = pow(max(0.0, dot(n, h)), 20.0) * 0.08;
