@@ -137,10 +137,25 @@ public enum PreviewRenderer {
                             let steep = max(0, 1 - n.z)
                             colour += albedo * L.sunColour * (0.10 * steep * (1 - vis * diff))
                         }
-                        if mat == Material.paint.rawValue || mat == Material.road.rawValue {
+                        if mat == Material.paint.rawValue {
+                            // GGX dielectric (as the Metal pass) with a sky/ground environment term, so the
+                            // aircraft reads as glossy paint instead of flat white (art review).
+                            let v = -dir, nv = max(0.001, fdot(n, v)), nl = max(0, ndl)
+                            let h = simd_normalize(toSun + v), nh = max(0, fdot(n, h)), vh = max(0, fdot(v, h))
+                            let rough: Float = 0.32, a2 = rough * rough * rough * rough
+                            let dd = nh * nh * (a2 - 1) + 1
+                            let D = a2 / (Float.pi * dd * dd)
+                            let Fh = 0.04 + 0.96 * powf(1 - vh, 5), Fv = 0.04 + 0.96 * powf(1 - nv, 5)
+                            let k = (rough + 1) * (rough + 1) / 8
+                            let G = (nl / (nl * (1 - k) + k)) * (nv / (nv * (1 - k) + k))
+                            let spec = D * Fh * G / max(1e-4, 4 * nl * nv) * nl
+                            let r = dir - n * (2 * fdot(dir, n))
+                            let env = L.ambientGround + (L.ambientSky * 1.4 - L.ambientGround) * max(0, min(1, r.z * 0.5 + 0.5))
+                            colour = albedo * 0.86 * (1 - Fv) * (L.sunColour * diff * vis + ambient)
+                                + L.sunColour * spec * vis + env * Fv * (1 - rough * 0.7)
+                        } else if mat == Material.road.rawValue {
                             let h = simd_normalize(toSun - dir)
-                            let spec = powf(max(0, fdot(n, h)), mat == Material.paint.rawValue ? 80 : 20) * (mat == Material.paint.rawValue ? 0.6 : 0.08)
-                            colour += L.sunColour * spec * vis
+                            colour += L.sunColour * powf(max(0, fdot(n, h)), 20) * 0.08 * vis
                         }
                     }
                     if let ph = L.physical {
