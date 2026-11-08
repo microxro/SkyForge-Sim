@@ -1,4 +1,4 @@
-LAST_UPDATE: 2026-11-08T14:46:16Z
+LAST_UPDATE: 2026-11-08T15:00:41Z
 
 # SKYFORGE state
 
@@ -57,4 +57,4 @@ P0 accepted (CI fully green). P1 in progress: P1.1, P1.2, P1.2b-2, P1.4, P1.7b, 
 - Nothing known. Speckle fixed in f8afa50 (CI frame reviewed).
 
 ## Last green SHA
-- 7e449cd (CI run 42490541435: all jobs green; smooth river waterlines, GGX preview paint)
+- 16be5ae (CI run 42491885437: all jobs green; lobed tree crowns)
