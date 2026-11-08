@@ -25,6 +25,7 @@ struct WorldUniforms {
     var cameraLocal: SIMD4<Float>
     var imageryNear: SIMD4<Float>
     var imageryFar: SIMD4<Float>
+    var clouds: CloudLayerGPU
 }
 
 /// 16-byte vertex matching `TerrainVertex` (position + snorm normal; w = −127 marks bark).
@@ -156,7 +157,7 @@ public final class WorldRenderer {
         self.lighting = lighting
         sky = try PhysicalSkyRenderer(device: device, colorFormat: colorFormat)
         let lib: MTLLibrary
-        do { lib = try device.makeLibrary(source: WorldShaders.source, options: nil) }
+        do { lib = try device.makeLibrary(source: CloudShaders.common + WorldShaders.source, options: nil) }
         catch { throw RendererError.shaderCompile(String(describing: error)) }
         guard let v = lib.makeFunction(name: "world_vertex"), let f = lib.makeFunction(name: "world_fragment") else {
             throw RendererError.shaderCompile("missing world functions")
@@ -563,7 +564,8 @@ public final class WorldRenderer {
                           cameraPos: SIMD4(Float(Self.wrap(c.position.x)), Float(Self.wrap(c.position.y)), Float(c.position.z), 0),
                           cameraLocal: SIMD4(Float(c.position.x), Float(c.position.y), Float(c.position.z), 0),
                           imageryNear: imageryNear.map { SIMD4(Float($0.centre.x), Float($0.centre.y), Float($0.half), 1) } ?? .zero,
-                          imageryFar: imageryFar.map { SIMD4(Float($0.centre.x), Float($0.centre.y), Float($0.half), 1) } ?? .zero)
+                          imageryFar: imageryFar.map { SIMD4(Float($0.centre.x), Float($0.centre.y), Float($0.half), 1) } ?? .zero,
+                          clouds: CloudUniforms(layer: clouds, steps: 0).layer)
         }
         if let e = environment {
             let o = e.origin - c.position

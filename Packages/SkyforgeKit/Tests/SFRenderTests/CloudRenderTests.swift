@@ -64,11 +64,12 @@ import SFQuickFlight
         let cloudy = try r.render(width: w, height: h, camera: cam)
         _ = VisualRegression.check(name: "metal_clouds_320x180", rgb: cloudy, width: w, height: h, goldenDir: goldenDir)
         func diff(_ y0: Int, _ y1: Int) -> (changed: Int, whiter: Int) {
+            // `changed` counts brightening only: cloud shadows may darken terrain, cloud pixels never cover it.
             var changed = 0, whiter = 0
             for y in y0..<y1 { for x in 0..<w {
                 let i = 3 * (y * w + x)
                 let a = Int(clear[i]) + Int(clear[i + 1]) + Int(clear[i + 2]), b = Int(cloudy[i]) + Int(cloudy[i + 1]) + Int(cloudy[i + 2])
-                if abs(a - b) > 6 { changed += 1 }
+                if b > a + 6 { changed += 1 }
                 // Cloud: brighter and greyer than the blue sky behind it.
                 if b > a + 30 && Int(cloudy[i + 2]) - Int(cloudy[i]) < Int(clear[i + 2]) - Int(clear[i]) { whiter += 1 }
             } }
@@ -78,6 +79,36 @@ import SFQuickFlight
         print("clouds frame: top changed \(top.changed) whiter \(top.whiter); bottom changed \(bottom.changed)")
         #expect(top.whiter > w * h / 4 / 20, "cumulus visible in the upper sky: \(top.whiter)")
         #expect(bottom.changed < w * 12 / 50, "nearby terrain is not covered by clouds: \(bottom.changed)")
+    }
+
+    @Test(.enabled(if: SkyRegressionTests.hasDevice, "no Metal device on this host"))
+    func cloudsCastShadowsOnTheGround() throws {
+        let world = QuickFlightWorld()
+        var dt = QuickFlightDetail.phone
+        dt.objectRadius = 400; dt.nearHalfExtent = 1_500; dt.midHalfExtent = 3_000; dt.farHalfExtent = 6_000
+        let lighting = LightingSetup.physicalPreset(.midday, azimuthDegrees: 200, cameraHeightMetres: 800)
+        let r = try WorldRenderer(lighting: lighting)
+        r.shadowsEnabled = false
+        try r.setEnvironment(world.buildEnvironment(detail: dt))
+        // Below the layer, looking steeply down at the ground: no cloud pixels in view, only their shadows.
+        let eye = SIMD3<Double>(0, -400, world.runwayElevation + 800)
+        let cam = WorldCamera(position: eye, target: eye + SIMD3(0, 600, -800))
+        let w = 240, h = 160
+        let clear = try r.render(width: w, height: h, camera: cam)
+        r.clouds = CloudLayer(coverage: 0.6)
+        let shaded = try r.render(width: w, height: h, camera: cam)
+        _ = VisualRegression.check(name: "metal_cloud_shadows_240x160", rgb: shaded, width: w, height: h, goldenDir: goldenDir)
+        var darker = 0, brighter = 0
+        for p in 0..<(w * h) {
+            let a = Int(clear[3 * p]) + Int(clear[3 * p + 1]) + Int(clear[3 * p + 2])
+            let b = Int(shaded[3 * p]) + Int(shaded[3 * p + 1]) + Int(shaded[3 * p + 2])
+            if b < a - 20 { darker += 1 }
+            if b > a + 6 { brighter += 1 }
+        }
+        print("cloud shadows: darker \(darker)/\(w * h), brighter \(brighter)")
+        #expect(darker > w * h / 20, "cloud shadows on the ground: \(darker)")
+        #expect(darker < w * h * 95 / 100, "not uniformly dark")
+        #expect(brighter < w * h / 100)
     }
 }
 #endif

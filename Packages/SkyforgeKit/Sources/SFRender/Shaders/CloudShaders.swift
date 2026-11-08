@@ -5,7 +5,8 @@
 // it over the frame.
 
 public enum CloudShaders {
-    public static let source = """
+    /// Layer struct, hash/value noise and density (shared with the world pass for cloud shadows).
+    public static let common = """
     #include <metal_stdlib>
     using namespace metal;
 
@@ -70,6 +71,9 @@ public enum CloudShaders {
         return min(1.0, d * 2.2) * ext;
     }
 
+    """
+
+    public static let source = common + """
     static float cl_hg(float cosT, float g) {
         float g2 = g * g;
         float denom = max(1e-4, 1.0 + g2 - 2.0 * g * cosT);

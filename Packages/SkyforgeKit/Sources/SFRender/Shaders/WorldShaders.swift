@@ -31,6 +31,7 @@ public enum WorldShaders {
         float4 cameraLocal;       // camera x, y, z in region metres (imagery lookup), unused
         float4 imageryNear;       // centre x, y, half extent, 1 if present
         float4 imageryFar;        // centre x, y, half extent, 1 if present
+        CloudLayerGPU clouds;     // cumulus layer for cloud shadows (coverage 0 = none)
     };
 
     struct TerrainVertex { packed_float3 position; char4 normal; };
@@ -238,6 +239,18 @@ public enum WorldShaders {
         }
         float ndl = dot(n, toSun);
         float vis = toSun.z > -0.05 ? shadowVisibility(u, sm, in.rel, n, dist, max(0.0f, ndl)) : 0.0;
+        if (u.clouds.shape.z > 0.0 && toSun.z > 0.05 && vis > 0.0) {
+            // Cloud shadow: optical depth along the sun ray through the cumulus slab (3 samples).
+            float3 wp = in.rel + u.cameraLocal.xyz;
+            float thick = u.clouds.shape.y, od = 0.0;
+            for (int k = 0; k < 3; k++) {
+                float z = u.clouds.shape.x + thick * (0.2 + 0.25 * float(k));
+                float t = (z - wp.z) / toSun.z;
+                if (t > 0.0) od += cl_density(wp + toSun * t, u.clouds);
+            }
+            od *= thick / 3.0 / toSun.z;
+            vis *= max(0.12, exp(-0.35 * od));     // multiple scattering keeps cloud shadows soft, never black
+        }
         float3 ambient = mix(u.ambientGround.rgb, u.ambientSky.rgb, n.z * 0.5 + 0.5);
         float3 col;
         if (m == 1.0) {                                      // water
