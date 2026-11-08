@@ -50,6 +50,7 @@ jobs:
       - name: Package tests (macOS, incl. offscreen Metal regression when a device exists)
         env:
           SKYFORGE_VISUAL_OUT: ${{ github.workspace }}/visual-out
+          SKYFORGE_VISUAL_LOG: "1"
         run: swift test --package-path Packages/SkyforgeKit
       - name: Build iOS Simulator
         run: |

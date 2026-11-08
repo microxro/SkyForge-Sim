@@ -105,6 +105,9 @@ public enum VisualRegression {
         let out = URL(fileURLWithPath: env["SKYFORGE_VISUAL_OUT"] ?? FileManager.default.temporaryDirectory.appendingPathComponent("skyforge-visual").path)
         try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
         let png = PNGEncoder.encodeRGB(width: width, height: height, rgb: rgb)
+        // CI artefact downloads are not reachable from every reviewer's sandbox; optionally echo the
+        // image into the log (one line) so it can be recovered from the job log.
+        if env["SKYFORGE_VISUAL_LOG"] == "1" { print("SKYFORGE_PNG \(name) \(png.base64EncodedString())") }
         guard let data = try? Data(contentsOf: golden), let g = try? PNGDecoder.decode([UInt8](data)),
               g.width == width, g.height == height else {
             if env["SKYFORGE_BLESS"] == "1" {
