@@ -10,6 +10,7 @@ import SFRender
 /// Root view shown by the app. Items that are not implemented yet are labelled honestly.
 public struct SkyforgeRootView: View {
     @State private var showingSky = false
+    @State private var showingInstruments = false
 
     public init() {}
 
@@ -18,6 +19,7 @@ public struct SkyforgeRootView: View {
             List {
                 Section {
                     Button("Renderer preview (sky)") { showingSky = true }
+                    Button("Instruments demo (steam gauges and SF-1000 PFD)") { showingInstruments = true }
                 } header: {
                     Text("Available")
                 }
@@ -36,6 +38,9 @@ public struct SkyforgeRootView: View {
                 }
             }
             .navigationTitle("SKYFORGE")
+            .sheet(isPresented: $showingInstruments) {
+                InstrumentDemoView()
+            }
             .sheet(isPresented: $showingSky) {
                 SkyPreviewView()
                     .ignoresSafeArea()

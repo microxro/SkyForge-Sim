@@ -4,7 +4,7 @@ Legend: [x] done and verified, [ ] not done. Unchecked items are not available i
 
 ## CURRENT
 - CURRENT: P1.3 visual passes toward 8/10 (aircraft in frame, ground detail)
-- Next 3: P1.9 gauges · P1.7b live METAR fetch · P1.8b touch/tilt + bind UI
+- Next 3: P1.7b live METAR fetch · P1.8b touch/tilt + bind UI · P1.10 Metal visual-regression harness
 
 ## P0 Bootstrap
 - [x] P0.1 Save master prompt to docs/MASTER_PROMPT.md
@@ -33,7 +33,7 @@ Legend: [x] done and verified, [ ] not done. Unchecked items are not available i
 - [ ] P1.7b Live METAR fetch (aviationweather.gov, 10-min cache, stale-on-failure, injectable transport)
 - [x] P1.8a SFInput: axes/actions, bindings with modifiers/context/aircraft, dead zones, calibration, curves (linear/exponential/monotone spline), smoothing, layered profiles, conflict detection, schema-versioned JSON; GameController gamepad + keyboard adapter (compile-checked in CI)
 - [ ] P1.8b Touch yoke/throttle UI and CoreMotion tilt adapter; press-to-bind UI
-- [ ] P1.9 Basic PFD / steam gauges
+- [x] P1.9 Basic PFD / steam gauges (SFInstruments: pitot-static/gyro model with lags and blockages, six-pack, SF-1000 PFD, CPU raster previews k/l, SwiftUI Canvas demo; Metal 2D path pending)
 - [ ] P1.10 Offscreen Metal visual-regression harness
 - [x] P1.11 Scripted flight integration test: autopilot-flown 10-minute circuit (takeoff, climb, circuit, 3° approach, flare, landing, rollout) in calm air and an 8 kt crosswind; touchdown −252 fpm, stops on the centre-line
 

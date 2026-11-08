@@ -2,9 +2,11 @@
 // sfpreview: CPU preview renderer CLI (§8.6).
 //   sfpreview --version
 //   sfpreview icon <out.png> <size>
+//   sfpreview instruments <sixpack|pfd> <out.png> [width]
 //   sfpreview --scene <name> [--time <preset>] [--seed <n>] [--width W --height H] [--ss N] --out <file.png>
 import Foundation
 import SFPreview
+import SFInstruments
 
 func fail(_ msg: String, code: Int32 = 2) -> Never {
     FileHandle.standardError.write(Data((msg + "\n").utf8))
@@ -21,6 +23,25 @@ if args.first == "icon" {
     let px = IconRenderer.render(size: size)
     do { try PNGEncoder.encodeRGB(width: size, height: size, rgb: px).write(to: URL(fileURLWithPath: args[1])) }
     catch { fail("sfpreview: cannot write \(args[1]): \(error)", code: 1) }
+    exit(0)
+}
+
+if args.first == "instruments" {
+    guard args.count >= 3, ["sixpack", "pfd"].contains(args[1]) else { fail("usage: sfpreview instruments <sixpack|pfd> <out.png> [width]") }
+    let start = Date()
+    let data = InstrumentScenario.climbingTurn()
+    let list: DrawList
+    let aspect: Double
+    if args[1] == "sixpack" { list = SteamGauges.sixPack(data); aspect = 1_000.0 / 1_500 }
+    else { list = PFD.draw(data, options: PFDOptions(selectedAltitudeFt: 3_500, selectedHeadingDeg: 90)); aspect = 800.0 / 1_280 }
+    let w = args.count > 3 ? Int(args[3]) ?? 1_500 : 1_500
+    let h = Int((Double(w) * aspect).rounded())
+    let img = Raster2D.render(list, width: w, height: h)
+    do { try PNGEncoder.encodeRGB(width: w, height: h, rgb: img.bytes()).write(to: URL(fileURLWithPath: args[2])) }
+    catch { fail("sfpreview: cannot write \(args[2]): \(error)", code: 1) }
+    print(String(format: "sfpreview: instruments %@ -> %@ (%d primitives, %.2fs) IAS %.1f ALT %.0f VS %.0f pitch %.1f roll %.1f hdg %.0f turn %.2f ball %.2f rpm %.0f",
+                 args[1], args[2], list.primitiveCount, Date().timeIntervalSince(start), data.indicatedAirspeedKt, data.indicatedAltitudeFt,
+                 data.verticalSpeedFpm, data.pitchDeg, data.rollDeg, data.headingDeg, data.turnRateDegPerSec, data.slipBall, data.rpm))
     exit(0)
 }
 

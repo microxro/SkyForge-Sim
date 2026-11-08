@@ -38,3 +38,4 @@ Every gate run, CI run and manual verification. Newest at the bottom.
 2026-11-08T01:37:32Z compaction; last commit 765faf4
 2026-11-08T02:31:39Z compaction; last commit 765faf4
 - 2026-11-08T02:35:15Z gate fast on Linux x86_64: PASS (HEAD 50fdfb9)
+- 2026-11-08T02:48:57Z gate fast on Linux x86_64: PASS (HEAD 35ffabc)

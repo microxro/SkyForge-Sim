@@ -48,3 +48,9 @@ Open defects (next passes): near-field ground is flat colour (needs detail textu
 - File: docs/previews/j_airport_final.png (20 s). New: runway geometry with simplified ICAO Annex 14 markings (threshold stripes, seven-segment designators, centre-line, aiming point, touchdown zone, edges), flattened airfield with 150 m embankment blend, chase aircraft on a 3° final, sunrise three-stop sky.
 - Scores: sharpness 6, lighting 6, colour 6, variety 5, depth 6, cleanliness 6 → **5.8**.
 - Defects: near trees are visibly low-poly at 37 m AGL; trees fill the approach corridor (real approaches are cleared); no approach/runway lights; no terminal/hangars yet.
+
+### 2026-11-08 P1.9 instruments (k six-pack, l SF-1000 PFD)
+- Files: docs/previews/k_six_pack.png (1500×1000), docs/previews/l_pfd_sf1000.png (1280×800). The panels show what the instruments read after 25 s of real FDM flight: a 20° bank climbing turn at 93 KIAS, 2,610 ft, +290 fpm, 4.0°/s turn (g·tanφ/V predicts 4.1°/s).
+- Pass 1 defects fixed: ASI labels crowding the title, Kollsman window over the 3 numeral, VSI ".5"/"UP" collision and wide decimal points (narrow punctuation cells added), slashed zero on dials, visible sky banding on the PFD (14 → 64 bands), redline overspeed in RPM (propeller Cp fit retuned to 2,550 RPM).
+- Scores: legibility 8, layout 8, colour 8, realism 7, cleanliness 8 → **7.8**.
+- Open: altimeter hands can cover the Kollsman window (as on real dials); tape labels clip at tape edges (intended); no speed trend vector yet; no glass reflections on the PFD.
