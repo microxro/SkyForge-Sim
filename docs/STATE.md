@@ -1,4 +1,4 @@
-LAST_UPDATE: 2026-11-08T22:53:39Z
+LAST_UPDATE: 2026-11-08T23:20:25Z
 
 # SKYFORGE state
 
@@ -34,6 +34,7 @@ P0 accepted (CI fully green). P1 in progress: P1.1, P1.2, P1.2b-2, P1.4, P1.7b, 
 - `autoContinueAtUsageLimit: true` is set in the session's user settings (`~/.claude/settings.json`); the user asked for this instead of a scheduled task, (ADR-0002).
 - 2026-11-08: the user then explicitly asked for a scheduled task that sends "continue" every 5 hours; created as `trig_01VkukC5znseCkMfBGwFqndn` ("SKYFORGE continue pulse", cron `33 */5 * * *` UTC, bound to this session).
 - PR #1 was merged by the owner at 2026-11-07T23:13Z (commit 50fdfb9). Follow-up work restarts the branch from main and goes into a new PR.
+- PR #2 was merged by the owner at 2026-11-08T23:19Z (merge 67b7ddc). The branch restarted from main; follow-up Bold work goes into a new PR.
 - Fallback: send the message "continue" to resume.
 
 ## What works (verified on Linux)
