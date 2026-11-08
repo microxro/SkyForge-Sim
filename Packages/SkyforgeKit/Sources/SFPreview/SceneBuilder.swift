@@ -162,6 +162,36 @@ public struct SceneBuilder {
         if terrain.kind == .coastline {
             let e = halfExtent * 3
             let z = terrain.seaLevel
+            // Near-shore grid with per-vertex colour by depth: foam at the waterline, turquoise
+            // shallows, then the deep colour (art review: the sea cut straight against the land).
+            let n = Int((2 * halfExtent / step).rounded())
+            let x0 = centre.x - halfExtent, y0 = centre.y - halfExtent
+            func depth(_ x: Double, _ y: Double) -> Double { z - terrain.height(x, y) }
+            func colour(_ d: Double) -> SIMD3<Float> {
+                let foam = srgb(196, 206, 204), shallow = srgb(52, 128, 126), mid = srgb(28, 82, 92)
+                if d < 0.6 { return foam + (shallow - foam) * Float(smoothstep(0.0, 0.6, d)) }
+                if d < 6 { return shallow + (mid - shallow) * Float(smoothstep(0.6, 6, d)) }
+                return mid + (deep - mid) * Float(smoothstep(6, 28, d))
+            }
+            var dgrid = [Double](repeating: 0, count: (n + 1) * (n + 1))
+            for j in 0...n { for i in 0...n { dgrid[j * (n + 1) + i] = depth(x0 + Double(i) * step, y0 + Double(j) * step) } }
+            var cells = 0
+            for j in 0..<n {
+                for i in 0..<n {
+                    let d00 = dgrid[j * (n + 1) + i], d10 = dgrid[j * (n + 1) + i + 1]
+                    let d01 = dgrid[(j + 1) * (n + 1) + i], d11 = dgrid[(j + 1) * (n + 1) + i + 1]
+                    let dmax = max(d00, d10, d01, d11), dmin = min(d00, d10, d01, d11)
+                    if dmax < -1.5 || dmin > 30 { continue }      // dry land, or deep water under the big quad
+                    let xa = x0 + Double(i) * step, ya = y0 + Double(j) * step
+                    let p00 = SIMD3(xa, ya, z + 0.02), p10 = SIMD3(xa + step, ya, z + 0.02)
+                    let p01 = SIMD3(xa, ya + step, z + 0.02), p11 = SIMD3(xa + step, ya + step, z + 0.02)
+                    let c00 = colour(d00), c10 = colour(d10), c01 = colour(d01), c11 = colour(d11)
+                    soup.add(p00, p10, p11, na: up, nb: up, nc: up, colour: (c00 + c10 + c11) / 3, material: .water)
+                    soup.add(p00, p11, p01, na: up, nb: up, nc: up, colour: (c00 + c11 + c01) / 3, material: .water)
+                    cells += 1
+                }
+            }
+            stats["shoreCells", default: 0] += cells
             let a = SIMD3(centre.x - e, centre.y - e, z), b = SIMD3(centre.x + e, centre.y - e, z)
             let c = SIMD3(centre.x + e, centre.y + e, z), d = SIMD3(centre.x - e, centre.y + e, z)
             soup.add(a, b, c, na: up, nb: up, nc: up, colour: deep, material: .water)
