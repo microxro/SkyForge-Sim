@@ -6,11 +6,13 @@ public enum SFUIInfo { public static let moduleVersion = "0.1.0" }
 import SwiftUI
 import MetalKit
 import SFRender
+import SFQuickFlight
 
 /// Root view shown by the app. Items that are not implemented yet are labelled honestly.
 public struct SkyforgeRootView: View {
     @State private var showingSky = false
     @State private var showingFlight = false
+    @State private var flightLocation: QuickFlightLocation = .skyWorld
     @State private var showingInstruments = false
 
     public init() {}
@@ -19,7 +21,10 @@ public struct SkyforgeRootView: View {
         NavigationStack {
             List {
                 Section {
-                    Button("Quick Flight (SF-1 Trainer, SkyWorld airfield)") { showingFlight = true }
+                    Button("Quick Flight: SkyWorld airfield (offline)") { flightLocation = .skyWorld; showingFlight = true }
+                    Button("Quick Flight: Merritt Island, FL (real imagery, downloads once)") {
+                        flightLocation = .merrittIsland; showingFlight = true
+                    }
                     Button("Renderer preview (physically based sky, day to twilight)") { showingSky = true }
                     Button("Instruments demo (steam gauges and SF-1000 PFD)") { showingInstruments = true }
                     NavigationLink("Controls and bindings") { BindingsView() }
@@ -41,9 +46,9 @@ public struct SkyforgeRootView: View {
             }
             .navigationTitle("SKYFORGE")
             #if os(iOS)
-            .fullScreenCover(isPresented: $showingFlight) { QuickFlightView() }
+            .fullScreenCover(isPresented: $showingFlight) { QuickFlightView(location: flightLocation) }
             #else
-            .sheet(isPresented: $showingFlight) { QuickFlightView().frame(minWidth: 1100, minHeight: 700) }
+            .sheet(isPresented: $showingFlight) { QuickFlightView(location: flightLocation).frame(minWidth: 1100, minHeight: 700) }
             #endif
             .sheet(isPresented: $showingInstruments) {
                 InstrumentDemoView()

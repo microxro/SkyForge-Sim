@@ -30,6 +30,12 @@ public struct RealWorldDetail: Sendable, Equatable {
     public var nearHalf: Double, nearStep: Double, midHalf: Double, midStep: Double, farHalf: Double, farStep: Double
     public var imageryNearSize: Int, imageryFarSize: Int
     public var treeRadius: Double, maxTrees: Int
+    public init(nearHalf: Double, nearStep: Double, midHalf: Double, midStep: Double, farHalf: Double, farStep: Double,
+                imageryNearSize: Int, imageryFarSize: Int, treeRadius: Double, maxTrees: Int) {
+        self.nearHalf = nearHalf; self.nearStep = nearStep; self.midHalf = midHalf; self.midStep = midStep
+        self.farHalf = farHalf; self.farStep = farStep; self.imageryNearSize = imageryNearSize; self.imageryFarSize = imageryFarSize
+        self.treeRadius = treeRadius; self.maxTrees = maxTrees
+    }
     public static let phone = RealWorldDetail(nearHalf: 3_000, nearStep: 16, midHalf: 12_000, midStep: 80, farHalf: 40_000, farStep: 400,
                                               imageryNearSize: 2_048, imageryFarSize: 1_024, treeRadius: 1_800, maxTrees: 40_000)
     public static let tablet = RealWorldDetail(nearHalf: 3_200, nearStep: 12, midHalf: 12_000, midStep: 60, farHalf: 40_000, farStep: 300,

@@ -11,6 +11,24 @@ import SFInput
 import SFInstruments
 import SFQuickFlight
 import SFPlatform
+import SFContent
+
+/// Where Quick Flight takes place.
+public enum QuickFlightLocation: Hashable, Sendable {
+    /// The procedural SkyWorld airfield (fully offline).
+    case skyWorld
+    /// A real airport with free orthoimagery and elevation tiles (network once, then cached).
+    case realAirport(ident: String, name: String)
+
+    public static let merrittIsland = QuickFlightLocation.realAirport(ident: "KCOI", name: "Merritt Island, Florida")
+
+    public var title: String {
+        switch self {
+        case .skyWorld: "SkyWorld airfield (procedural)"
+        case .realAirport(let ident, let name): "\(name) (\(ident), real imagery)"
+        }
+    }
+}
 
 @MainActor
 final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
@@ -18,8 +36,9 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
     @Published var status: Status = .loading("Building the airfield…")
     @Published var hud = InstrumentData()
     @Published var crashed = false
+    @Published var attribution: [String] = []
 
-    let world = QuickFlightWorld()
+    private(set) var world: any FlightWorld = QuickFlightWorld()
     private(set) var session: QuickFlightSession
     var touch = InputMapper.DeviceState()
     private var renderer: WorldRenderer?
@@ -27,9 +46,11 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
     private var last: CFTimeInterval?
     private var hudCounter = 0
     private let start: QuickFlightStart
+    let location: QuickFlightLocation
 
-    init(start: QuickFlightStart) {
+    init(start: QuickFlightStart, location: QuickFlightLocation) {
         self.start = start
+        self.location = location
         session = QuickFlightSession(world: world, start: start)
         super.init()
     }
@@ -43,11 +64,24 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
         view.preferredFramesPerSecond = 60
         view.delegate = self
         let tier = DeviceTierDetector.detect(device: device)
-        let detail: QuickFlightDetail = tier == .low ? .phone : (tier == .medium ? .tablet : .desktop)
-        let lighting = LightingSetup.physicalPreset(.goldenHour, azimuthDegrees: 255, cameraHeightMetres: world.runwayElevation + 50)
+        let real: Bool
+        if case .realAirport = location { real = true } else { real = false }
+        let lighting = real ? LightingSetup.physicalPreset(.midday, azimuthDegrees: 200, cameraHeightMetres: 300)
+                            : LightingSetup.physicalPreset(.goldenHour, azimuthDegrees: 255, cameraHeightMetres: world.runwayElevation + 50)
         do { renderer = try WorldRenderer(device: device, colorFormat: .bgra8Unorm, lighting: lighting) }
         catch { status = .failed("Renderer: \(error)"); return }
-        let world = self.world
+        switch location {
+        case .skyWorld:
+            let detail: QuickFlightDetail = tier == .low ? .phone : (tier == .medium ? .tablet : .desktop)
+            loadSkyWorld(detail: detail)
+        case .realAirport(let ident, let name):
+            let detail: RealWorldDetail = tier == .low ? .phone : (tier == .medium ? .tablet : .desktop)
+            loadRealAirport(ident: ident, name: name, detail: detail)
+        }
+    }
+
+    private func loadSkyWorld(detail: QuickFlightDetail) {
+        let world = QuickFlightWorld()
         Task.detached(priority: .userInitiated) {
             let soup = world.buildEnvironment(detail: detail)
             let aircraft = QuickFlightWorld.aircraftMesh()
@@ -57,6 +91,36 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
                     try self.renderer?.setAircraft(aircraft)
                     self.status = .ready
                 } catch { self.status = .failed("Upload: \(error)") }
+            }
+        }
+    }
+
+    private func loadRealAirport(ident: String, name: String, detail: RealWorldDetail) {
+        status = .loading("Loading \(name)…")
+        let start = self.start
+        Task.detached(priority: .userInitiated) {
+            do {
+                let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+                let cache = try? KeyedCache(root: caches.appendingPathComponent("SkyforgeTiles", isDirectory: true))
+                let region = try await RealWorldRegion.load(airport: ident, detail: detail, transport: URLSessionTransport(),
+                                                            cache: cache) { msg in
+                    Task { @MainActor in self.status = .loading(msg) }
+                }
+                await MainActor.run { self.status = .loading("Building terrain and trees…") }
+                let data = RealWorldRenderData(region: region)
+                let aircraft = QuickFlightWorld.aircraftMesh()
+                await MainActor.run {
+                    do {
+                        try self.renderer?.setRealWorld(data)
+                        try self.renderer?.setAircraft(aircraft)
+                        self.world = region
+                        self.session = QuickFlightSession(world: region, start: start)
+                        self.attribution = region.attribution
+                        self.status = .ready
+                    } catch { self.status = .failed("Upload: \(error)") }
+                }
+            } catch {
+                await MainActor.run { self.status = .failed("Could not load \(name): \(error.localizedDescription)") }
             }
         }
     }
@@ -112,8 +176,8 @@ public struct QuickFlightView: View {
     @StateObject private var controller: QuickFlightController
     @Environment(\.dismiss) private var dismiss
 
-    public init(start: QuickFlightStart = .runway) {
-        _controller = StateObject(wrappedValue: QuickFlightController(start: start))
+    public init(start: QuickFlightStart = .runway, location: QuickFlightLocation = .skyWorld) {
+        _controller = StateObject(wrappedValue: QuickFlightController(start: start, location: location))
     }
 
     public var body: some View {
@@ -134,6 +198,11 @@ public struct QuickFlightView: View {
                 }
                 .padding()
                 Spacer()
+                if !controller.attribution.isEmpty {
+                    Text(controller.attribution.joined(separator: " · "))
+                        .font(.caption2).padding(6).background(.black.opacity(0.45)).foregroundStyle(.white)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
                 #if os(iOS)
                 TouchFlightControls { controller.touch = $0 }
                 #else

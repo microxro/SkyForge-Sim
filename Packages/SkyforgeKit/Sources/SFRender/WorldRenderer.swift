@@ -42,31 +42,6 @@ struct PackedTreeInstance {
 }
 
 /// Real-world content handed to the renderer (all positions in region metres).
-public struct RealWorldRenderData {
-    public struct Chunk { public var positions: [SIMD3<Float>]; public var normals: [SIMD3<Float>]; public var indices: [UInt32]
-        public var boundsMin: SIMD3<Float>; public var boundsMax: SIMD3<Float>
-        public init(positions: [SIMD3<Float>], normals: [SIMD3<Float>], indices: [UInt32], boundsMin: SIMD3<Float>, boundsMax: SIMD3<Float>) {
-            self.positions = positions; self.normals = normals; self.indices = indices; self.boundsMin = boundsMin; self.boundsMax = boundsMax
-        }
-    }
-    public struct Tree { public var position: SIMD3<Float>; public var height: Float; public var conifer: Bool; public var colour: SIMD3<Float>
-        public init(position: SIMD3<Float>, height: Float, conifer: Bool, colour: SIMD3<Float>) {
-            self.position = position; self.height = height; self.conifer = conifer; self.colour = colour
-        }
-    }
-    public struct Imagery { public var centre: SIMD2<Double>; public var halfExtent: Double; public var size: Int; public var rgb: [UInt8]
-        public init(centre: SIMD2<Double>, halfExtent: Double, size: Int, rgb: [UInt8]) { self.centre = centre; self.halfExtent = halfExtent; self.size = size; self.rgb = rgb }
-    }
-    public var chunks: [Chunk]
-    public var trees: [Tree]
-    public var near: Imagery?
-    public var far: Imagery?
-    public var waterMask: (size: Int, values: [Float])?
-    public init(chunks: [Chunk], trees: [Tree], near: Imagery?, far: Imagery?, waterMask: (size: Int, values: [Float])?) {
-        self.chunks = chunks; self.trees = trees; self.near = near; self.far = far; self.waterMask = waterMask
-    }
-}
-
 struct ShadowUniforms {
     var lightViewProj: simd_float4x4
     var model: simd_float4x4

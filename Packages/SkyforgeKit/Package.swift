@@ -32,7 +32,7 @@ let package = Package(
         .target(name: "SFATC", dependencies: ["SFMath", "SFWeather"]),
         .target(name: "SFSim", dependencies: ["SFMath", "SFAtmosphere", "SFFlightModel", "SFSystems", "SFWeather", "SFInput"]),
         // Apple-only code inside #if canImport(...) so these compile empty on Linux
-        .target(name: "SFRender", dependencies: ["SFMath", "SFSim", "SFTerrainCore", "SFWorldGen", "SFAtmosphere", "SFPreview"]),
+        .target(name: "SFRender", dependencies: ["SFMath", "SFSim", "SFTerrainCore", "SFWorldGen", "SFAtmosphere", "SFPreview", "SFQuickFlight"]),
         .target(name: "SFAudio", dependencies: ["SFSim"]),
         .target(name: "SFPlatform", dependencies: ["SFSim", "SFInput"]),
         .target(name: "SFUI", dependencies: ["SFSim", "SFRender", "SFAudio", "SFPlatform", "SFNavData", "SFContent", "SFInstruments", "SFInput", "SFQuickFlight"]),
@@ -52,7 +52,7 @@ let package = Package(
         .testTarget(name: "SFImageryTests", dependencies: ["SFImagery", "SFContent"]),
         .testTarget(name: "SFInstrumentsTests", dependencies: ["SFInstruments", "SFFlightModel", "SFAtmosphere", "SFPreview"]),
         .testTarget(name: "SFQuickFlightTests", dependencies: ["SFQuickFlight", "SFFlightModel", "SFInput", "SFPreview", "SFImagery", "SFContent"]),
-        .testTarget(name: "SFRenderTests", dependencies: ["SFRender", "SFPreview", "SFAtmosphere", "SFQuickFlight"]),
+        .testTarget(name: "SFRenderTests", dependencies: ["SFRender", "SFPreview", "SFAtmosphere", "SFQuickFlight", "SFImagery", "SFContent"]),
     ],
     swiftLanguageModes: [.v6]
 )
