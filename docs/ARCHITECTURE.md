@@ -18,3 +18,8 @@ See docs/MASTER_PROMPT.md §18; rows are updated here as features land.
 | Content store | SFContent | partial (no quota/LRU yet) | ContentStoreTests |
 | Flight dynamics | SFFlightModel | done (P1.1) | FlightModelTests, ControlSenseTests |
 | Sky render | SFRender | authored, unverified | — (macOS CI) |
+
+## Quick Flight slice (P1.12)
+- `SFQuickFlight` (pure Swift): `QuickFlightWorld` (SkyWorld airfield region, per-tier mesh budgets) and `QuickFlightSession` (FDM at a fixed 120 Hz on recipe terrain, instruments, input mapping, crash detection, chase camera). Headless tests fly it on Linux.
+- `SFRender.WorldRenderer` (Metal): two-cascade sun shadow pass → physical sky pass (GPU Hillaire LUTs) → forward world pass (20-byte packed vertices, reversed-Z, aerial perspective from 3D tables built by `SFPreview.PhysicalSky`). Offscreen frames are tested in CI on the macOS runner's Metal device.
+- `SFUI.QuickFlightView`: MTKView driver on the main actor; the environment mesh is built off the main thread, then uploaded.
