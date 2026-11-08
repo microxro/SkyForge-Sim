@@ -13,6 +13,7 @@ import SFQuickFlight
 import SFPlatform
 import SFContent
 import SFAtmosphere
+import SFWeather
 
 /// Where Quick Flight takes place.
 public enum QuickFlightLocation: Hashable, Sendable {
@@ -22,6 +23,14 @@ public enum QuickFlightLocation: Hashable, Sendable {
     case realAirport(ident: String, name: String)
 
     public static let merrittIsland = QuickFlightLocation.realAirport(ident: "KCOI", name: "Merritt Island, Florida")
+
+    /// METAR stations for the live sky, nearest first (KCOI itself does not report; Titusville and Melbourne do).
+    public var metarStations: [String] {
+        switch self {
+        case .skyWorld: []
+        case .realAirport(let ident, _): ident == "KCOI" ? ["KCOI", "KTIX", "KMLB"] : [ident]
+        }
+    }
 
     public var title: String {
         switch self {
@@ -106,6 +115,7 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
     private func loadRealAirport(ident: String, name: String, detail: RealWorldDetail) {
         status = .loading("Loading \(name)…")
         let start = self.start
+        let stations = location.metarStations
         Task.detached(priority: .userInitiated) {
             do {
                 let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
@@ -116,6 +126,9 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
                 }
                 await MainActor.run { self.status = .loading("Building terrain and trees…") }
                 let data = RealWorldRenderData(region: region)
+                // Live sky from the nearest METAR (keyless aviationweather.gov); fair-weather cumulus if none answers.
+                let weather = await WeatherClouds.live(stations: stations, fieldElevation: region.runwayElevation,
+                                                       service: METARService(transport: URLSessionTransport(), cache: cache))
                 let aircraft = QuickFlightWorld.aircraftMesh()
                 await MainActor.run {
                     do {
@@ -123,7 +136,8 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
                         try self.renderer?.setAircraft(aircraft)
                         self.world = region
                         self.session = QuickFlightSession(world: region, start: start)
-                        self.attribution = region.attribution
+                        self.attribution = region.attribution + (weather.map { ["Weather: \($0.raw) (aviationweather.gov)"] } ?? [])
+                        if let w = weather { self.renderer?.clouds = w.layer }
                         self.status = .ready
                     } catch { self.status = .failed("Upload: \(error)") }
                 }

@@ -28,14 +28,14 @@ let package = Package(
         .target(name: "SFInput", dependencies: ["SFMath"]),
         .target(name: "SFImagery", dependencies: ["SFMath", "SFContent", "SFTerrainCore"]),
         .target(name: "SFInstruments", dependencies: ["SFMath", "SFAtmosphere", "SFFlightModel"]),
-        .target(name: "SFQuickFlight", dependencies: ["SFMath", "SFAtmosphere", "SFFlightModel", "SFInstruments", "SFInput", "SFWorldGen", "SFPreview", "SFImagery", "SFNavData", "SFTerrainCore", "SFContent"]),
+        .target(name: "SFQuickFlight", dependencies: ["SFMath", "SFAtmosphere", "SFWeather", "SFFlightModel", "SFInstruments", "SFInput", "SFWorldGen", "SFPreview", "SFImagery", "SFNavData", "SFTerrainCore", "SFContent"]),
         .target(name: "SFATC", dependencies: ["SFMath", "SFWeather"]),
         .target(name: "SFSim", dependencies: ["SFMath", "SFAtmosphere", "SFFlightModel", "SFSystems", "SFWeather", "SFInput"]),
         // Apple-only code inside #if canImport(...) so these compile empty on Linux
         .target(name: "SFRender", dependencies: ["SFMath", "SFSim", "SFTerrainCore", "SFWorldGen", "SFAtmosphere", "SFPreview", "SFQuickFlight"]),
         .target(name: "SFAudio", dependencies: ["SFSim"]),
         .target(name: "SFPlatform", dependencies: ["SFSim", "SFInput"]),
-        .target(name: "SFUI", dependencies: ["SFSim", "SFRender", "SFAudio", "SFPlatform", "SFNavData", "SFContent", "SFInstruments", "SFInput", "SFQuickFlight", "SFAtmosphere"]),
+        .target(name: "SFUI", dependencies: ["SFSim", "SFRender", "SFAudio", "SFPlatform", "SFNavData", "SFContent", "SFInstruments", "SFInput", "SFQuickFlight", "SFAtmosphere", "SFWeather"]),
         .executableTarget(name: "SFPreviewCLI", dependencies: ["SFPreview", "SFInstruments", "SFAtmosphere", "SFQuickFlight", "SFImagery", "SFContent", "SFWorldGen", "SFTerrainCore", "SFMath"]),
         // Tests (Swift Testing)
         .testTarget(name: "SFMathTests", dependencies: ["SFMath"]),
@@ -51,7 +51,7 @@ let package = Package(
         .testTarget(name: "SFInputTests", dependencies: ["SFInput"]),
         .testTarget(name: "SFImageryTests", dependencies: ["SFImagery", "SFContent"]),
         .testTarget(name: "SFInstrumentsTests", dependencies: ["SFInstruments", "SFFlightModel", "SFAtmosphere", "SFPreview"]),
-        .testTarget(name: "SFQuickFlightTests", dependencies: ["SFQuickFlight", "SFFlightModel", "SFInput", "SFPreview", "SFImagery", "SFContent"]),
+        .testTarget(name: "SFQuickFlightTests", dependencies: ["SFQuickFlight", "SFWeather", "SFAtmosphere", "SFFlightModel", "SFInput", "SFPreview", "SFImagery", "SFContent"]),
         .testTarget(name: "SFRenderTests", dependencies: ["SFRender", "SFPreview", "SFAtmosphere", "SFQuickFlight", "SFImagery", "SFContent"]),
     ],
     swiftLanguageModes: [.v6]

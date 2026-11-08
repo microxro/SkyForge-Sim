@@ -94,3 +94,8 @@ Open defects (next passes): near-field ground is flat colour (needs detail textu
 - CPU reference `VolumetricClouds` (coverage + height-tapered density, 3D erosion, dual-lobe HG, multiple-scattering term, energy-conserving integration) rendered over the physical sky with `sfpreview clouds`: ground view (n_clouds_ground), toward a 20° sun (n_clouds_backlit, silver linings and dark cores), above the layer at 3.2 km (n_clouds_above).
 - Metal port runs at half resolution against scene depth with aerial perspective; CI checks the GPU march against the CPU reference (p95 transmittance error < 0.02, radiance < 3 %) and that clouds appear in the sky but never over nearby terrain.
 - Replaces the "2D layer" gap noted in (r). Scores for the cloud previews: shape 8, lighting 8, integration 7 → **7.7**. Open: no cloud shadows on the ground yet; slight step banding at grazing angles in the 48–64 step march.
+
+### 2026-11-08 Metal frames from CI run 42472262069 (clouds, roll, cockpit)
+- metal_clouds: fair-weather cumulus over the SkyWorld runway, flat bases, lit tops, aerial fade toward the horizon; terrain untouched. **8.0**.
+- metal_roll90: camera rolled 90°, sky and terrain both rotate (the sky pass previously used a mirrored ENU→sky mapping, now a proper rotation with roll).
+- metal_cockpit (first try): panel, pillars and PFD correct, but the view was filled by the fuselage interior. Cause: aircraft normals pointed inward, so the back-face discard removed the outer skin. Fixed in caee43d with winding tests.
