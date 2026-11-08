@@ -150,17 +150,19 @@ public final class WorldRenderer {
 
     /// Per-device-tier render settings (the app and the CI frame-time test use the same presets).
     public struct Settings: Sendable, Equatable {
-        public var renderScale: Float, cloudSteps: Int, cloudDownsample: Int, bloomIntensity: Float
-        public init(renderScale: Float, cloudSteps: Int, cloudDownsample: Int, bloomIntensity: Float) {
-            self.renderScale = renderScale; self.cloudSteps = cloudSteps; self.cloudDownsample = cloudDownsample; self.bloomIntensity = bloomIntensity
+        public var renderScale: Float, cloudSteps: Int, cloudDownsample: Int, bloomIntensity: Float, ssaoStrength: Float
+        public init(renderScale: Float, cloudSteps: Int, cloudDownsample: Int, bloomIntensity: Float, ssaoStrength: Float) {
+            self.renderScale = renderScale; self.cloudSteps = cloudSteps; self.cloudDownsample = cloudDownsample
+            self.bloomIntensity = bloomIntensity; self.ssaoStrength = ssaoStrength
         }
-        public static let low = Settings(renderScale: 1, cloudSteps: 40, cloudDownsample: 2, bloomIntensity: 0.04)
-        public static let medium = Settings(renderScale: 1, cloudSteps: 48, cloudDownsample: 2, bloomIntensity: 0.05)
-        public static let high = Settings(renderScale: 0.85, cloudSteps: 56, cloudDownsample: 3, bloomIntensity: 0.05)
+        public static let low = Settings(renderScale: 1, cloudSteps: 40, cloudDownsample: 2, bloomIntensity: 0.04, ssaoStrength: 0.5)
+        public static let medium = Settings(renderScale: 1, cloudSteps: 48, cloudDownsample: 2, bloomIntensity: 0.05, ssaoStrength: 0.7)
+        public static let high = Settings(renderScale: 0.85, cloudSteps: 56, cloudDownsample: 3, bloomIntensity: 0.05, ssaoStrength: 0.7)
     }
 
     public func apply(_ s: Settings) {
-        renderScale = s.renderScale; cloudSteps = s.cloudSteps; cloudDownsample = s.cloudDownsample; bloomIntensity = s.bloomIntensity
+        renderScale = s.renderScale; cloudSteps = s.cloudSteps; cloudDownsample = s.cloudDownsample
+        bloomIntensity = s.bloomIntensity; ssaoStrength = s.ssaoStrength
     }
     private var cloudRenderer: CloudRenderer?
     private let sky: PhysicalSkyRenderer
@@ -184,6 +186,10 @@ public final class WorldRenderer {
     private let bloomUpPipeline: MTLRenderPipelineState
     private let tonemapPipeline: MTLRenderPipelineState
     private var bloomLevels: [MTLTexture] = []
+    private let ssaoPipeline: MTLRenderPipelineState
+    private var aoTarget: MTLTexture?
+    /// Screen-space ambient occlusion strength (0 = off).
+    public var ssaoStrength: Float = 0.7
     private var ldrTarget: MTLTexture?
 
     public init(device: MTLDevice? = MTLCreateSystemDefaultDevice(), colorFormat: MTLPixelFormat = .rgba8Unorm,
@@ -267,6 +273,7 @@ public final class WorldRenderer {
             bloomDownPipeline = try post("bloom_down_fragment", "BloomDown", .rgba16Float)
             bloomUpPipeline = try post("bloom_up_fragment", "BloomUp", .rgba16Float, additive: true)
             tonemapPipeline = try post("tonemap_fragment", "Tonemap", colorFormat)
+            ssaoPipeline = try post("ssao_fragment", "SSAO", .r16Float)
         } catch { throw RendererError.pipeline(String(describing: error)) }
     }
 
@@ -605,6 +612,19 @@ public final class WorldRenderer {
                 }
             }
         }
+        // SSAO from the scene depth (reversed infinite Z).
+        if ssaoStrength > 0 {
+            aoTarget = target(aoTarget, .r16Float, sw, sh)
+            guard let ao = aoTarget else { throw RendererError.commandQueue }
+            let fovY = Float(c.verticalFOVDeg) * .pi / 180
+            let tanY = tan(fovY / 2), tanX = tanY * Float(sw) / Float(sh)
+            var ap = SIMD4<Float>(Float(c.near), tanX, tanY, 2.5)
+            try pass(ao, load: .dontCare, label: "SSAO") { e in
+                e.setRenderPipelineState(ssaoPipeline)
+                e.setFragmentTexture(sceneDepth, index: 0)
+                e.setFragmentBytes(&ap, length: 16, index: 0)
+            }
+        }
         // Tone map (HDR + bloom → display), then FXAA on the display-referred frame.
         let toneOut: MTLTexture
         if antialiasing {
@@ -618,7 +638,10 @@ public final class WorldRenderer {
             e.setRenderPipelineState(tonemapPipeline)
             e.setFragmentTexture(scene, index: 0)
             e.setFragmentTexture(bloomTex, index: 1)
+            e.setFragmentTexture((ssaoStrength > 0 ? aoTarget : nil) ?? scene, index: 2)
             e.setFragmentBytes(&tp, length: 16, index: 0)
+            var aoS = SIMD4<Float>(ssaoStrength > 0 ? ssaoStrength : 0, 0, 0, 0)
+            e.setFragmentBytes(&aoS, length: 16, index: 1)
         }
         if antialiasing {
             try pass(colour, load: .dontCare, label: "FXAA") { e in

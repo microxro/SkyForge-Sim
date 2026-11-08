@@ -30,9 +30,10 @@ import SFPreview
         r.clouds = .clear; let noClouds = Self.median(try bench()); r.clouds = .fairWeather
         r.shadowsEnabled = false; let noShadows = Self.median(try bench()); r.shadowsEnabled = true
         r.bloomIntensity = 0; let noBloom = Self.median(try bench()); r.bloomIntensity = t.settings.bloomIntensity
+        r.ssaoStrength = 0; let noAO = Self.median(try bench()); r.ssaoStrength = t.settings.ssaoStrength
         r.renderScale = 1; let full = Self.median(try bench()); r.renderScale = t.settings.renderScale
-        print(String(format: "SKYFORGE_FRAMECOST scene=%@ tier=high base=%.2f clouds=%.2f shadows=%.2f bloom=%.2f scale1=%.2f (ms)",
-                     scene, base, base - noClouds, base - noShadows, base - noBloom, full))
+        print(String(format: "SKYFORGE_FRAMECOST scene=%@ tier=high base=%.2f clouds=%.2f shadows=%.2f bloom=%.2f ssao=%.2f scale1=%.2f (ms)",
+                     scene, base, base - noClouds, base - noShadows, base - noBloom, base - noAO, full))
     }
 
     static func median(_ v: [Double]) -> Double { let s = v.sorted(); return s[s.count / 2] }
