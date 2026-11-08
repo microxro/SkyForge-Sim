@@ -102,6 +102,22 @@ public enum WorldShaders {
         return lit / 9.0;
     }
 
+    /// Cook–Torrance GGX for dielectric paint and glass (F0 = 0.04), with a sky-tinted
+    /// environment term so the airframe never looks like flat plastic.
+    static float3 pbrDielectric(float3 albedo, float3 n, float3 v, float3 l, float rough, float3 sun, float3 env, float vis) {
+        float3 h = normalize(l + v);
+        float nl = max(0.0, dot(n, l)), nv = max(1e-4, dot(n, v)), nh = max(0.0, dot(n, h)), vh = max(0.0, dot(v, h));
+        float a = rough * rough, a2 = a * a;
+        float dd = nh * nh * (a2 - 1.0) + 1.0;
+        float D = a2 / (3.14159265 * dd * dd);
+        float k = (rough + 1.0) * (rough + 1.0) / 8.0;
+        float G = (nl / (nl * (1.0 - k) + k)) * (nv / (nv * (1.0 - k) + k));
+        float F = 0.04 + 0.96 * pow(1.0 - vh, 5.0);
+        float spec = D * G * F / max(1e-4, 4.0 * nl * nv);
+        float Fv = 0.04 + 0.96 * pow(1.0 - nv, 5.0);
+        return albedo * (1.0 - F) * sun * nl * vis + sun * spec * nl * vis + env * Fv * (1.0 - rough * 0.7);
+    }
+
     static float3 acesW(float3 x) {
         const float a = 2.51, b = 0.03, c = 2.43, d = 0.59, e = 0.14;
         return saturate((x * (a * x + b)) / (x * (c * x + d) + e));
@@ -131,11 +147,15 @@ public enum WorldShaders {
             float wrap = max(0.0, ndl * 0.55 + 0.45);
             float back = pow(max(0.0, dot(dir, toSun)), 4.0) * 0.35;
             col = in.albedo * (u.sunColour.rgb * (wrap + back) * vis + ambient * 0.85);
+        } else if (m == 6.0 || m == 5.0) {                   // aircraft paint / glass: GGX
+            float rough = m == 6.0 ? 0.32 : 0.06;
+            float3 env = mix(u.ambientGround.rgb, u.skyHorizon.rgb, saturate(reflect(dir, n).z * 0.5 + 0.5));
+            col = pbrDielectric(in.albedo, n, -dir, toSun, rough, u.sunColour.rgb, env, vis) + in.albedo * ambient * (m == 6.0 ? 1.0 : 0.3);
         } else {
             col = in.albedo * (u.sunColour.rgb * max(0.0, ndl) * vis + ambient);
-            if (m == 6.0 || m == 3.0) {                      // paint, road: Blinn-Phong highlight
+            if (m == 3.0) {                      // road: Blinn-Phong highlight
                 float3 h = normalize(toSun - dir);
-                float spec = pow(max(0.0, dot(n, h)), m == 6.0 ? 80.0 : 20.0) * (m == 6.0 ? 0.6 : 0.08);
+                float spec = pow(max(0.0, dot(n, h)), 20.0) * 0.08;
                 col += u.sunColour.rgb * spec * vis;
             }
         }
