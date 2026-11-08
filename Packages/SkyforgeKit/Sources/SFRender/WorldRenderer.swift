@@ -141,6 +141,27 @@ public final class WorldRenderer {
     public var clouds: CloudLayer = .clear
     /// Cloud march steps per ray (device tier knob).
     public var cloudSteps = 64
+    /// Cloud march resolution divisor (2 = half resolution).
+    public var cloudDownsample = 2
+    /// Dynamic resolution: the scene renders at this fraction of the output size and is upscaled
+    /// in the tone-map pass (FXAA runs at the output size).
+    public var renderScale: Float = 1
+    private var scaledDepth: MTLTexture?
+
+    /// Per-device-tier render settings (the app and the CI frame-time test use the same presets).
+    public struct Settings: Sendable, Equatable {
+        public var renderScale: Float, cloudSteps: Int, cloudDownsample: Int, bloomIntensity: Float
+        public init(renderScale: Float, cloudSteps: Int, cloudDownsample: Int, bloomIntensity: Float) {
+            self.renderScale = renderScale; self.cloudSteps = cloudSteps; self.cloudDownsample = cloudDownsample; self.bloomIntensity = bloomIntensity
+        }
+        public static let low = Settings(renderScale: 1, cloudSteps: 40, cloudDownsample: 2, bloomIntensity: 0.04)
+        public static let medium = Settings(renderScale: 1, cloudSteps: 48, cloudDownsample: 2, bloomIntensity: 0.05)
+        public static let high = Settings(renderScale: 0.85, cloudSteps: 56, cloudDownsample: 3, bloomIntensity: 0.05)
+    }
+
+    public func apply(_ s: Settings) {
+        renderScale = s.renderScale; cloudSteps = s.cloudSteps; cloudDownsample = s.cloudDownsample; bloomIntensity = s.bloomIntensity
+    }
     private var cloudRenderer: CloudRenderer?
     private let sky: PhysicalSkyRenderer
     private var environment: (buffer: MTLBuffer, count: Int, origin: SIMD3<Double>, cells: [MeshCell])?
@@ -536,9 +557,16 @@ public final class WorldRenderer {
             d.storageMode = .private
             return device.makeTexture(descriptor: d)
         }
-        sceneTarget = target(sceneTarget, .rgba16Float, colour.width, colour.height)
+        let scale = max(0.25, min(1, renderScale))
+        let sw = max(8, Int((Float(colour.width) * scale).rounded())), sh = max(8, Int((Float(colour.height) * scale).rounded()))
+        sceneTarget = target(sceneTarget, .rgba16Float, sw, sh)
         guard let scene = sceneTarget else { throw RendererError.commandQueue }
-        try encodeScene(cmd: cmd, colour: scene, depth: depth, camera: c, aircraftPosition: aircraftPosition, aircraftBodyToENU: aircraftBodyToENU)
+        var sceneDepth = depth
+        if sw != depth.width || sh != depth.height {
+            if scaledDepth?.width != sw || scaledDepth?.height != sh { scaledDepth = try makeDepth(width: sw, height: sh) }
+            sceneDepth = scaledDepth!
+        }
+        try encodeScene(cmd: cmd, colour: scene, depth: sceneDepth, camera: c, aircraftPosition: aircraftPosition, aircraftBodyToENU: aircraftBodyToENU)
         func pass(_ t: MTLTexture, load: MTLLoadAction, label: String, _ body: (MTLRenderCommandEncoder) -> Void) throws {
             let pd = MTLRenderPassDescriptor()
             pd.colorAttachments[0].texture = t
@@ -553,7 +581,7 @@ public final class WorldRenderer {
         // Bloom chain: up to 6 half-resolution levels down, then tent-upsampled and summed back up.
         var levelCount = 0
         if bloomIntensity > 0 {
-            var w = colour.width / 2, h = colour.height / 2, levels: [MTLTexture] = []
+            var w = sw / 2, h = sh / 2, levels: [MTLTexture] = []
             while levels.count < 6 && w >= 8 && h >= 8 {
                 let existing = levels.count < bloomLevels.count ? bloomLevels[levels.count] : nil
                 guard let t = target(existing, .rgba16Float, w, h) else { throw RendererError.commandQueue }
@@ -802,6 +830,7 @@ public final class WorldRenderer {
             if cloudRenderer == nil { cloudRenderer = try CloudRenderer(device: device, colorFormat: .rgba16Float) }
             let cr = cloudRenderer!
             cr.steps = cloudSteps
+            cr.downsample = cloudDownsample
             var cu = CloudUniforms(layer: clouds, steps: cloudSteps)
             let r = simd_normalize(simd_cross(fwd, upHint))
             let up = simd_cross(r, fwd)

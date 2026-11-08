@@ -15,12 +15,25 @@ import SFPreview
 /// macOS GPU, not a phone or Mac: device frame times stay unverified until measured on hardware.
 @Suite(.serialized) struct FrameTimeTests {
     struct Tier { let name: String; let width: Int; let height: Int; let sky: QuickFlightDetail; let real: RealWorldDetail
-        let cloudSteps: Int; let budgetMs: Double }
-    /// Budgets: 30 fps for low (33.3 ms), 60 fps for high (16.7 ms) at the tier's render size.
+        let settings: WorldRenderer.Settings; let budgetMs: Double }
+    /// Budgets: 30 fps for low (33.3 ms), 60 fps for high (16.7 ms) at the tier's output size, with the
+    /// tier's render settings (the same presets the app applies).
     static let tiers = [
-        Tier(name: "low", width: 1_280, height: 720, sky: .phone, real: .phone, cloudSteps: 40, budgetMs: 33.3),
-        Tier(name: "high", width: 1_920, height: 1_080, sky: .desktop, real: .desktop, cloudSteps: 80, budgetMs: 16.7),
+        Tier(name: "low", width: 1_280, height: 720, sky: .phone, real: .phone, settings: .low, budgetMs: 33.3),
+        Tier(name: "high", width: 1_920, height: 1_080, sky: .desktop, real: .desktop, settings: .high, budgetMs: 16.7),
     ]
+
+    /// Prints what each feature costs at the high tier (clouds, shadows, bloom, render scale), for tuning.
+    func breakdown(_ scene: String, _ r: WorldRenderer, _ t: Tier, _ bench: () throws -> [Double]) rethrows {
+        guard t.name == "high" else { return }
+        let base = Self.median(try bench())
+        r.clouds = .clear; let noClouds = Self.median(try bench()); r.clouds = .fairWeather
+        r.shadowsEnabled = false; let noShadows = Self.median(try bench()); r.shadowsEnabled = true
+        r.bloomIntensity = 0; let noBloom = Self.median(try bench()); r.bloomIntensity = t.settings.bloomIntensity
+        r.renderScale = 1; let full = Self.median(try bench()); r.renderScale = t.settings.renderScale
+        print(String(format: "SKYFORGE_FRAMECOST scene=%@ tier=high base=%.2f clouds=%.2f shadows=%.2f bloom=%.2f scale1=%.2f (ms)",
+                     scene, base, base - noClouds, base - noShadows, base - noBloom, full))
+    }
 
     static func median(_ v: [Double]) -> Double { let s = v.sorted(); return s[s.count / 2] }
 
@@ -39,11 +52,13 @@ import SFPreview
             let r = try WorldRenderer(lighting: .physicalPreset(.goldenHour, azimuthDegrees: 255, cameraHeightMetres: cam.position.z))
             try r.setEnvironment(world.buildEnvironment(detail: t.sky))
             try r.setAircraft(QuickFlightWorld.aircraftMesh())
-            r.clouds = .fairWeather; r.cloudSteps = t.cloudSteps
+            r.clouds = .fairWeather; r.apply(t.settings)
             let c = session.bodyToENUColumns
-            let ms = try r.benchmark(width: t.width, height: t.height, camera: WorldCamera(position: cam.position, target: cam.target), frames: 30,
-                                     aircraftPosition: session.positionENU, aircraftBodyToENU: simd_double3x3(columns: (c.0, c.1, c.2)))
+            let bench = { try r.benchmark(width: t.width, height: t.height, camera: WorldCamera(position: cam.position, target: cam.target), frames: 30,
+                                          aircraftPosition: session.positionENU, aircraftBodyToENU: simd_double3x3(columns: (c.0, c.1, c.2))) }
+            let ms = try bench()
             report("skyworld", t, ms)
+            try breakdown("skyworld", r, t, bench)
             #expect(Self.median(ms) < t.budgetMs, "SkyWorld \(t.name): median \(Self.median(ms)) ms over \(t.budgetMs) ms")
         }
     }
@@ -58,11 +73,13 @@ import SFPreview
             let r = try WorldRenderer(lighting: .physicalPreset(.midday, azimuthDegrees: 200, cameraHeightMetres: cam.position.z))
             try r.setRealWorld(RealWorldRenderData(region: region))
             try r.setAircraft(QuickFlightWorld.aircraftMesh())
-            r.clouds = .fairWeather(fieldElevation: Float(region.runwayElevation)); r.cloudSteps = t.cloudSteps
+            r.clouds = .fairWeather(fieldElevation: Float(region.runwayElevation)); r.apply(t.settings)
             let c = session.bodyToENUColumns
-            let ms = try r.benchmark(width: t.width, height: t.height, camera: WorldCamera(position: cam.position, target: cam.target), frames: 30,
-                                     aircraftPosition: session.positionENU, aircraftBodyToENU: simd_double3x3(columns: (c.0, c.1, c.2)))
+            let bench = { try r.benchmark(width: t.width, height: t.height, camera: WorldCamera(position: cam.position, target: cam.target), frames: 30,
+                                          aircraftPosition: session.positionENU, aircraftBodyToENU: simd_double3x3(columns: (c.0, c.1, c.2))) }
+            let ms = try bench()
             report("real-\(a.ident)", t, ms)
+            try breakdown("real-\(a.ident)", r, t, bench)
             #expect(Self.median(ms) < t.budgetMs, "\(a.ident) \(t.name): median \(Self.median(ms)) ms over \(t.budgetMs) ms")
         }
     }

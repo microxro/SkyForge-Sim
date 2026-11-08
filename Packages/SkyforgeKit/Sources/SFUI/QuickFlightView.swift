@@ -91,7 +91,7 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
         try? renderer?.setCockpit(Cockpit.mesh(), screen: Cockpit.pfdCorners.map { SIMD3<Float>(Float($0.x), Float($0.y), Float($0.z)) })
         // Fair-weather cumulus; march quality by device tier (the march runs at half resolution).
         renderer?.clouds = .fairWeather
-        renderer?.cloudSteps = tier == .low ? 40 : (tier == .medium ? 56 : 80)
+        renderer?.apply(tier == .low ? .low : (tier == .medium ? .medium : .high))
         switch location {
         case .skyWorld:
             let detail: QuickFlightDetail = tier == .low ? .phone : (tier == .medium ? .tablet : .desktop)

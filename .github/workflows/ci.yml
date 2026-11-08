@@ -29,6 +29,10 @@ jobs:
         run: "! grep -E 'Packages/SkyforgeKit/(Sources|Tests)/.*warning:' build.log"
       - name: Test
         run: swift test --package-path Packages/SkyforgeKit
+      - name: Soak memory (30 simulated minutes, run alone so resident memory is attributable)
+        env:
+          SKYFORGE_SOAK_MEMORY: "1"
+        run: swift test --package-path Packages/SkyforgeKit --filter SoakTests
       - name: Project lint
         run: |
           apt-get update -qq && apt-get install -y -qq python3 >/dev/null

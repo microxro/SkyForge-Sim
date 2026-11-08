@@ -76,7 +76,9 @@ func residentBytes() -> Int? {
         #expect(maxDistance > 15_000, "the box crossed the near mosaic and many tiles: max \(Int(maxDistance)) m from the field")
         #expect(maxDistance < p.farHalf, "stayed inside the region")
         print(String(format: "soak: 30 min, max distance %.1f km, min AGL %.0f m", maxDistance / 1_000, minAGL))
-        if let m0 = memStart, let m1 = residentBytes() {
+        // Process-wide memory is only meaningful when the soak runs alone (tests run in parallel):
+        // CI runs `swift test --filter SoakTests` with SKYFORGE_SOAK_MEMORY=1 as a separate step.
+        if ProcessInfo.processInfo.environment["SKYFORGE_SOAK_MEMORY"] == "1", let m0 = memStart, let m1 = residentBytes() {
             print("soak: resident \(m0 / 1_048_576) MB → \(m1 / 1_048_576) MB")
             #expect(m1 - m0 < 64 * 1_048_576, "memory growth \((m1 - m0) / 1_048_576) MB")
         }
