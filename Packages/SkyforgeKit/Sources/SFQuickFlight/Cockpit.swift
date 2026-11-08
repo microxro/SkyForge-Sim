@@ -72,7 +72,7 @@ public enum Cockpit {
             quad(SIMD3(panelX, y, panelTop), SIMD3(-0.6, y, panelTop), SIMD3(-0.6, y, 0.2), SIMD3(panelX, y, 0.2), trim)
             box(SIMD3(-0.6, side > 0 ? y - 0.07 : y, panelTop - 0.012), SIMD3(panelX, side > 0 ? y : y + 0.07, panelTop + 0.02), charcoal)
             // Windscreen pillar from the glare shield corner to the roof, and the door post behind the pilot.
-            beam(SIMD3(1.46, side * (w - 0.01), panelTop - 0.03), SIMD3(0.78, side * (w - 0.02), -1.02), 0.025, charcoal)
+            beam(SIMD3(1.46, side * (w - 0.01), panelTop - 0.03), SIMD3(0.78, side * (w - 0.02), -1.02), 0.016, charcoal)
             beam(SIMD3(-0.35, side * (w + 0.01), panelTop), SIMD3(-0.35, side * (w - 0.02), -1.02), 0.035, trim)
         }
         // Headliner (the wing centre section is above it).
