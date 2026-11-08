@@ -117,7 +117,10 @@ public enum PreviewRenderer {
                         let body = albedo * (ambient * 0.6 + L.sunColour * max(0, toSun.z) * 0.15)
                         // Wind-roughened open water reflects a blurred, dimmer sky than a mirror would.
                         let reflScale: Float = imagery ? 0.5 : 1
-                        colour = body + (refl * reflScale - body) * min(1, fres * (imagery ? 0.8 : 1))
+                        // Ripples tilt facets toward the horizon, so rough water reflects some sky even seen
+                        // from above (floor 0.10; art review: flat dark river).
+                        let fresEff = imagery ? fres * 0.8 : 0.10 + 0.90 * fres
+                        colour = body + (refl * reflScale - body) * min(1, fresEff)
                     case Material.foliage.rawValue:
                         let wrap = max(0, ndl * 0.55 + 0.45)
                         let back = powf(max(0, fdot(dir, toSun)), 4) * 0.35

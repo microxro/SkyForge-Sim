@@ -213,8 +213,12 @@ public struct SceneBuilder {
             return
         }
         guard let river = terrain.river else { return }
-        // Smooth ribbon along the centre-line, wider than the channel so banks hide the edge.
-        let w = river.width / 2 + 6
+        // Smooth ribbon along the centre-line, wider than the channel so banks hide the edge. Split at
+        // the centre so the banks get a lighter shallow tint, and the width breathes along the river
+        // (art review: uniform dark canal).
+        let w0 = river.width / 2 + 6
+        let shallow: SIMD3<Float> = srgb(66, 82, 64)
+        func width(_ c: SIMD2<Double>) -> Double { w0 * (0.9 + 0.2 * (macroNoise.fbm(c.x / 380 + 11, c.y / 380, octaves: 2) * 0.5 + 0.5)) }
         for i in 0..<(river.points.count - 1) {
             let a = river.points[i], b = river.points[i + 1]
             if ((a - centre) * (a - centre)).sum() > halfExtent * halfExtent * 4 { continue }
@@ -227,11 +231,15 @@ public struct SceneBuilder {
                 let c0 = a + (b - a) * t0, c1 = a + (b - a) * t1
                 let n0 = normalize2(na + (nb - na) * t0), n1 = normalize2(na + (nb - na) * t1)
                 let z0 = terrain.waterHeight(c0.x, c0.y), z1 = terrain.waterHeight(c1.x, c1.y)
-                let q0 = SIMD3(c0.x - n0.x * w, c0.y - n0.y * w, z0), q1 = SIMD3(c1.x - n1.x * w, c1.y - n1.y * w, z1)
-                let q2 = SIMD3(c1.x + n1.x * w, c1.y + n1.y * w, z1), q3 = SIMD3(c0.x + n0.x * w, c0.y + n0.y * w, z0)
-                soup.add(q0, q1, q2, na: up, nb: up, nc: up, colour: deep, material: .water)
-                soup.add(q0, q2, q3, na: up, nb: up, nc: up, colour: deep, material: .water)
-                stats["water", default: 0] += 2
+                let wa = width(c0), wb = width(c1)
+                let q0 = SIMD3(c0.x - n0.x * wa, c0.y - n0.y * wa, z0), q1 = SIMD3(c1.x - n1.x * wb, c1.y - n1.y * wb, z1)
+                let q2 = SIMD3(c1.x + n1.x * wb, c1.y + n1.y * wb, z1), q3 = SIMD3(c0.x + n0.x * wa, c0.y + n0.y * wa, z0)
+                let m0 = SIMD3(c0.x, c0.y, z0), m1 = SIMD3(c1.x, c1.y, z1)
+                soup.add(q0, q1, m1, na: up, nb: up, nc: up, ca: shallow, cb: shallow, cc: deep, material: .water)
+                soup.add(q0, m1, m0, na: up, nb: up, nc: up, ca: shallow, cb: deep, cc: deep, material: .water)
+                soup.add(m0, m1, q2, na: up, nb: up, nc: up, ca: deep, cb: deep, cc: shallow, material: .water)
+                soup.add(m0, q2, q3, na: up, nb: up, nc: up, ca: deep, cb: shallow, cc: shallow, material: .water)
+                stats["water", default: 0] += 4
             }
         }
         _ = step

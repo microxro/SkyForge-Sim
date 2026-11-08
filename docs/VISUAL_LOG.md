@@ -147,3 +147,4 @@ Open defects (next passes): near-field ground is flat colour (needs detail textu
 - a 5.50, d 5.33, e 5.50, f 5.83, j 4.83 → **5.40** (was 5.30). The rebuilt river is the biggest single gain since anti-aliasing; lobed crowns read as trees.
 - Applied: crease-aware smooth normals (50°) for the aircraft in previews and in Quick Flight, so the fuselage shades smoothly and the GGX lobe can glint.
 - Open: per-pixel parcels with thin hedgerows (d, e), river water shading and width variation (d), airport layout and terrain relief (j), slope detail (f), distant edges (a).
+- River water: ribbon split at the centre with a lighter shallow tint at the banks, width varying ±10 % along the river, and a 10 % reflection floor for wind-roughened water (seen from above it now carries sky colour instead of flat navy).
