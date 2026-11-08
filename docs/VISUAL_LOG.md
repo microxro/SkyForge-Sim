@@ -99,3 +99,5 @@ Open defects (next passes): near-field ground is flat colour (needs detail textu
 - metal_clouds: fair-weather cumulus over the SkyWorld runway, flat bases, lit tops, aerial fade toward the horizon; terrain untouched. **8.0**.
 - metal_roll90: camera rolled 90°, sky and terrain both rotate (the sky pass previously used a mirrored ENU→sky mapping, now a proper rotation with roll).
 - metal_cockpit (first try): panel, pillars and PFD correct, but the view was filled by the fuselage interior. Cause: aircraft normals pointed inward, so the back-face discard removed the outer skin. Fixed in caee43d with winding tests.
+- metal_cockpit (after caee43d): runway ahead through the windscreen, pillars, glare shield, panel and live PFD. Reads as a cockpit; pillars are heavy and the panel is flat-shaded. **6.5**.
+- Cloud shadows: the first CI frame showed no shadow because the test patch is under a clear gap (the CPU model agrees: 0 of 1,024 samples shaded). Over 20 km the model shades 15 % of the ground at coverage 0.42 and 61 % at 0.6. The shadow samples moved into the lower half of the slab and the test now looks at a patch the CPU model puts about one third in shadow.

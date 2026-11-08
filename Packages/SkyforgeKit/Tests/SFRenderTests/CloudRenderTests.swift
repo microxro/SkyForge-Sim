@@ -91,7 +91,9 @@ import SFQuickFlight
         r.shadowsEnabled = false
         try r.setEnvironment(world.buildEnvironment(detail: dt))
         // Below the layer, looking steeply down at the ground: no cloud pixels in view, only their shadows.
-        let eye = SIMD3<Double>(0, -400, world.runwayElevation + 800)
+        // Ground patch x ±800 m, y 1.9–3.5 km: the CPU model puts it about a third under cloud
+        // shadow at coverage 0.6 (the area around the runway itself happens to be clear).
+        let eye = SIMD3<Double>(0, 1_600, world.runwayElevation + 800)
         let cam = WorldCamera(position: eye, target: eye + SIMD3(0, 600, -800))
         let w = 240, h = 160
         let clear = try r.render(width: w, height: h, camera: cam)

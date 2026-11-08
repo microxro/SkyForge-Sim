@@ -244,7 +244,7 @@ public enum WorldShaders {
             float3 wp = in.rel + u.cameraLocal.xyz;
             float thick = u.clouds.shape.y, od = 0.0;
             for (int k = 0; k < 3; k++) {
-                float z = u.clouds.shape.x + thick * (0.2 + 0.25 * float(k));
+                float z = u.clouds.shape.x + thick * (0.12 + 0.18 * float(k));   // the lower half holds the mass
                 float t = (z - wp.z) / toSun.z;
                 if (t > 0.0) od += cl_density(wp + toSun * t, u.clouds);
             }
