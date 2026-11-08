@@ -49,3 +49,4 @@ Every gate run, CI run and manual verification. Newest at the bottom.
 - 2026-11-08 CI run 42441951368 (153f54f): green. macOS runner has a Metal device; `metalOffscreenSkyMatchesCPUReference` passed (31 s incl. pipeline compile). First execution of SKYFORGE Metal code.
 - 2026-11-08T03:30:30Z gate fast on Linux x86_64: PASS (HEAD 4a2ec0b)
 - 2026-11-08T03:33:20Z gate fast on Linux x86_64: PASS (HEAD e7ec488)
+- 2026-11-08T03:43:47Z gate fast on Linux x86_64: PASS (HEAD 26b9136)

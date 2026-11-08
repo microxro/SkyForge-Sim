@@ -9,6 +9,7 @@ import Foundation
 import SFPreview
 import SFInstruments
 import SFAtmosphere
+import SFQuickFlight
 
 func fail(_ msg: String, code: Int32 = 2) -> Never {
     FileHandle.standardError.write(Data((msg + "\n").utf8))
@@ -61,6 +62,17 @@ if args.first == "sky" {
     catch { fail("sfpreview: cannot write \(args[1]): \(error)", code: 1) }
     print(String(format: "sfpreview: sky el %.1f° -> %@ (LUTs %.2fs, total %.2fs, exposure %.1f)", el, args[1], lutTime,
                  Date().timeIntervalSince(start), SkyPreview.autoExposure(model)))
+    exit(0)
+}
+
+if args.first == "quickflight-stats" {
+    let world = QuickFlightWorld()
+    for (name, d) in [("phone", QuickFlightDetail.phone), ("tablet", .tablet), ("desktop", .desktop)] {
+        let t0 = Date()
+        let soup = world.buildEnvironment(detail: d)
+        let mb = Double(soup.triangleCount * 3 * 20) / 1_048_576
+        print(String(format: "quickflight %@: %d triangles, %.0f MB at 20 B/vertex, built in %.1fs", name, soup.triangleCount, mb, Date().timeIntervalSince(t0)))
+    }
     exit(0)
 }
 

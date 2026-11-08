@@ -1,0 +1,159 @@
+// SKYFORGE — Apache-2.0
+// Quick Flight screen: Metal world (sky, terrain, SkyWorld objects, aircraft), the SF-1 Trainer
+// flight model at 120 Hz, touch/keyboard/gamepad input and a compact SF-1000 PFD overlay.
+#if canImport(SwiftUI) && canImport(MetalKit)
+import SwiftUI
+import MetalKit
+import simd
+import SFRender
+import SFPreview
+import SFInput
+import SFInstruments
+import SFQuickFlight
+import SFPlatform
+
+@MainActor
+final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
+    enum Status: Equatable { case loading(String), ready, failed(String) }
+    @Published var status: Status = .loading("Building the airfield…")
+    @Published var hud = InstrumentData()
+    @Published var crashed = false
+
+    let world = QuickFlightWorld()
+    private(set) var session: QuickFlightSession
+    var touch = InputMapper.DeviceState()
+    private var renderer: WorldRenderer?
+    private var depth: MTLTexture?
+    private var last: CFTimeInterval?
+    private var hudCounter = 0
+    private let start: QuickFlightStart
+
+    init(start: QuickFlightStart) {
+        self.start = start
+        session = QuickFlightSession(world: world, start: start)
+        super.init()
+    }
+
+    func attach(_ view: MTKView) {
+        guard let device = view.device ?? MTLCreateSystemDefaultDevice() else { status = .failed("No Metal device."); return }
+        view.device = device
+        view.colorPixelFormat = .bgra8Unorm
+        view.depthStencilPixelFormat = .invalid
+        view.framebufferOnly = false
+        view.preferredFramesPerSecond = 60
+        view.delegate = self
+        let tier = DeviceTierDetector.detect(device: device)
+        let detail: QuickFlightDetail = tier == .low ? .phone : (tier == .medium ? .tablet : .desktop)
+        let lighting = LightingSetup.physicalPreset(.goldenHour, azimuthDegrees: 255, cameraHeightMetres: world.runwayElevation + 50)
+        do { renderer = try WorldRenderer(device: device, colorFormat: .bgra8Unorm, lighting: lighting) }
+        catch { status = .failed("Renderer: \(error)"); return }
+        let world = self.world
+        Task.detached(priority: .userInitiated) {
+            let soup = world.buildEnvironment(detail: detail)
+            let aircraft = QuickFlightWorld.aircraftMesh()
+            await MainActor.run {
+                do {
+                    try self.renderer?.setEnvironment(soup)
+                    try self.renderer?.setAircraft(aircraft)
+                    self.status = .ready
+                } catch { self.status = .failed("Upload: \(error)") }
+            }
+        }
+    }
+
+    func restart(_ s: QuickFlightStart) {
+        session = QuickFlightSession(world: world, start: s)
+        crashed = false
+    }
+
+    func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) { depth = nil }
+
+    func draw(in view: MTKView) {
+        let now = CACurrentMediaTime()
+        let dt = min(0.1, last.map { now - $0 } ?? 0)
+        last = now
+        guard status == .ready, let r = renderer, let drawable = view.currentDrawable,
+              let cmd = r.queue.makeCommandBuffer() else { return }
+        var device = GameControllerInput.poll()
+        device.analog.merge(touch.analog) { a, b in abs(a) > abs(b) ? a : b }
+        device.pressed.formUnion(touch.pressed)
+        session.update(realDt: dt, device: device)
+        let tex = drawable.texture
+        if depth == nil || depth!.width != tex.width || depth!.height != tex.height {
+            depth = try? r.makeDepth(width: tex.width, height: tex.height)
+        }
+        guard let depth else { return }
+        let cam = session.chaseCamera()
+        let c = session.bodyToENUColumns
+        try? r.encode(cmd: cmd, colour: tex, depth: depth, camera: WorldCamera(position: cam.position, target: cam.target),
+                      aircraftPosition: session.positionENU, aircraftBodyToENU: simd_double3x3(columns: (c.0, c.1, c.2)))
+        cmd.present(drawable)
+        cmd.commit()
+        hudCounter += 1
+        if hudCounter % 2 == 0 { hud = session.data; crashed = session.crashed }
+    }
+}
+
+#if os(macOS)
+struct QuickFlightMetalView: NSViewRepresentable {
+    let controller: QuickFlightController
+    func makeNSView(context: Context) -> MTKView { let v = MTKView(); controller.attach(v); return v }
+    func updateNSView(_ nsView: MTKView, context: Context) {}
+}
+#else
+struct QuickFlightMetalView: UIViewRepresentable {
+    let controller: QuickFlightController
+    func makeUIView(context: Context) -> MTKView { let v = MTKView(); controller.attach(v); return v }
+    func updateUIView(_ uiView: MTKView, context: Context) {}
+}
+#endif
+
+public struct QuickFlightView: View {
+    @StateObject private var controller: QuickFlightController
+    @Environment(\.dismiss) private var dismiss
+
+    public init(start: QuickFlightStart = .runway) {
+        _controller = StateObject(wrappedValue: QuickFlightController(start: start))
+    }
+
+    public var body: some View {
+        ZStack {
+            QuickFlightMetalView(controller: controller).ignoresSafeArea()
+            VStack {
+                HStack(alignment: .top) {
+                    Button("Close") { dismiss() }.buttonStyle(.borderedProminent)
+                    Menu("Restart") {
+                        Button("On the runway") { controller.restart(.runway) }
+                        Button("On a 3° final") { controller.restart(.final) }
+                    }
+                    .buttonStyle(.bordered)
+                    Spacer()
+                    InstrumentCanvas(PFD.draw(controller.hud, options: PFDOptions()))
+                        .frame(maxWidth: 360)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+                .padding()
+                Spacer()
+                #if os(iOS)
+                TouchFlightControls { controller.touch = $0 }
+                #else
+                Text("W/S pitch · A/D roll · Q/E rudder · gamepad right trigger throttle · F/Shift+F flaps")
+                    .font(.caption).padding(8).background(.black.opacity(0.4)).foregroundStyle(.white)
+                #endif
+            }
+            switch controller.status {
+            case .loading(let msg): ProgressView(msg).padding().background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+            case .failed(let msg): Text(msg).padding().background(.red.opacity(0.8), in: RoundedRectangle(cornerRadius: 12))
+            case .ready: EmptyView()
+            }
+            if controller.crashed {
+                VStack(spacing: 12) {
+                    Text("Crashed").font(.title.bold())
+                    Button("Restart on the runway") { controller.restart(.runway) }.buttonStyle(.borderedProminent)
+                }
+                .padding(24).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+            }
+        }
+    }
+}
+#endif

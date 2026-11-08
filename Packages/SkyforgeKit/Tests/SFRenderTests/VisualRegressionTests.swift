@@ -173,3 +173,37 @@ import SFAtmosphere
     }
 }
 #endif
+
+#if canImport(Metal)
+import SFQuickFlight
+import simd
+
+@Suite struct WorldRenderTests {
+    @Test(.enabled(if: SkyRegressionTests.hasDevice, "no Metal device on this host"))
+    func quickFlightFrameRenders() throws {
+        let world = QuickFlightWorld()
+        var d = QuickFlightDetail.phone
+        d.objectRadius = 600; d.nearHalfExtent = 1_000; d.midHalfExtent = 3_000; d.farHalfExtent = 8_000
+        let soup = world.buildEnvironment(detail: d)
+        let session = QuickFlightSession(world: world, start: .final)
+        let cam = session.chaseCamera()
+        let lighting = LightingSetup.physicalPreset(.goldenHour, azimuthDegrees: 255, cameraHeightMetres: cam.position.z)
+        let r = try WorldRenderer(lighting: lighting)
+        try r.setEnvironment(soup)
+        try r.setAircraft(QuickFlightWorld.aircraftMesh())
+        let c = session.bodyToENUColumns
+        let w = 320, h = 180
+        let img = try r.render(width: w, height: h, camera: WorldCamera(position: cam.position, target: cam.target),
+                               aircraftPosition: session.positionENU, aircraftBodyToENU: simd_double3x3(columns: (c.0, c.1, c.2)))
+        _ = VisualRegression.check(name: "metal_quickflight_320x180", rgb: img, width: w, height: h, goldenDir: goldenDir)
+        func px(_ x: Int, _ y: Int) -> SIMD3<Int> { let i = 3 * (y * w + x); return SIMD3(Int(img[i]), Int(img[i + 1]), Int(img[i + 2])) }
+        let top = px(w / 4, 3), bottom = px(w / 4, h - 3)
+        #expect(top.z > top.x, "sky at top is blue: \(top)")
+        #expect(bottom.z < bottom.x || bottom.z < bottom.y, "ground at bottom is not sky: \(bottom)")
+        // The white aircraft sits in the lower middle of a chase view.
+        var bright = 0
+        for y in (h / 3)..<h { for x in (w / 3)..<(2 * w / 3) where px(x, y).x > 180 && px(x, y).y > 180 && px(x, y).z > 170 { bright += 1 } }
+        #expect(bright > 30, "aircraft pixels \(bright)")
+    }
+}
+#endif

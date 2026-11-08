@@ -4,7 +4,7 @@ Legend: [x] done and verified, [ ] not done. Unchecked items are not available i
 
 ## CURRENT
 - CURRENT: P1.3 visual passes toward 8/10 (aircraft in frame, ground detail)
-- Next 3: P1.5b MSL LUTs (Metal verified in CI now) · P1.5c shadows/PBR · P1.3 pass 5 (near-field ground detail)
+- Next 3: P1.12 Quick Flight (verify Metal frame in CI) · P1.5c-2 cascaded shadows · P1.3 pass 5 (near-field ground detail)
 
 ## P0 Bootstrap
 - [x] P0.1 Save master prompt to docs/MASTER_PROMPT.md
@@ -27,8 +27,9 @@ Legend: [x] done and verified, [ ] not done. Unchecked items are not available i
 - [x] P1.4 Biome model and first SkyWorld layers (procedural terrain recipes, rivers, street grid + rural roads, parcels, houses/warehouses/strip malls/farms, parking lots, Poisson-like vegetation) with determinism and placement tests
 - [ ] P1.5 Hillaire sky LUTs (Metal) + cascaded shadows + PBR aircraft
   - [x] P1.5a Hillaire atmosphere CPU reference (transmittance/multi-scattering/sky-view LUTs, sun disc, aerial perspective), previews m_sky_*, 7 tests
-  - [ ] P1.5b MSL compute port of the LUTs verified against the CPU reference on a Metal device (kernels + generator + CI test written; awaiting CI result)
-  - [ ] P1.5c cascaded shadow maps + PBR aircraft (Metal)
+  - [x] P1.5b MSL compute port of the LUTs verified against the CPU reference on a Metal device (CI run 42443252872)
+  - [x] P1.5c-1 Metal physical sky pass (sky-view LUT + sun disc) verified against SkyModel in CI; app sky preview uses it
+  - [ ] P1.5c-2 cascaded shadow maps + PBR aircraft (Metal)
 - [x] P1.6a OurAirports parsing (RFC 4180 CSV), airports/runways/navaids model, runway geometry checks, labelled synthetic 3° ILS, nearest airport, bearing/distance (Vincenty)
 - [x] P1.6b-1 Visual runway generation (surface, shoulders, Annex 14 markings, designators) + terrain flattening; preview scene (j)
 - [x] P1.6b-2 Bundled compact OurAirports snapshot (2.6 MB, pure-Swift inflate) + validated atomic updater with injectable transport (UI button pending P1.9 UI work)
@@ -42,3 +43,5 @@ Legend: [x] done and verified, [ ] not done. Unchecked items are not available i
 
 ## P2–P5
 See docs/MASTER_PROMPT.md §16. Not started.
+
+- [ ] P1.12 Quick Flight vertical slice (SFQuickFlight + Metal WorldRenderer + SwiftUI screen)

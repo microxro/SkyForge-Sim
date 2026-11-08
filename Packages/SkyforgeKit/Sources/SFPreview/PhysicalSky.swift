@@ -8,11 +8,12 @@ public struct PhysicalSky: Sendable {
     public let model: SkyModel
     /// Renderer units per unit of solar irradiance (sun colour = transmittance × ks).
     public let ks: Float
-    let nAz = 16, nEl = 32, nD = 32
-    let maxDistanceKm: Double
-    let inscatter: [SIMD3<Float>]
-    let transmit: [SIMD3<Float>]
-    let sunAzimuth: Double   // radians, in the renderer frame (atan2(y, x))
+    public let nAz = 16, nEl = 32, nD = 32
+    public let maxDistanceKm: Double
+    /// Aerial tables, index (el · nAz + az) · nD + distance slice (renderer units / transmittance).
+    public let inscatter: [SIMD3<Float>]
+    public let transmit: [SIMD3<Float>]
+    public let sunAzimuth: Double   // radians, in the renderer frame (atan2(y, x))
 
     /// `toSun` in the renderer frame (x east, y north, z up).
     public init(toSun: SIMD3<Float>, viewHeightMetres: Double, turbidity: Double = 1, ks: Float = 3.4, maxDistanceKm: Double = 90) {

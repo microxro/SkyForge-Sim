@@ -1,4 +1,4 @@
-LAST_UPDATE: 2026-11-08T03:27:14Z
+LAST_UPDATE: 2026-11-08T03:43:47Z
 
 # SKYFORGE state
 
@@ -50,4 +50,4 @@ P0 accepted (CI fully green). P1 in progress: P1.1, P1.2, P1.2b-2, P1.4, P1.7b, 
 - Nothing known. Last CI run 42441951368 green on all jobs.
 
 ## Last green SHA
-- 153f54f (CI run 42441951368: linux, macOS package tests incl. offscreen Metal sky vs CPU reference, iOS Simulator and macOS app builds)
+- 26b9136 (CI run 42443252872: linux; macOS tests incl. GPU Hillaire LUTs vs CPU, GPU physical sky pass vs SkyModel, offscreen sky; iOS Simulator and macOS app builds)
