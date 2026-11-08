@@ -25,6 +25,8 @@ public struct CloudLayer: Sendable, Equatable {
     }
 
     public static let fairWeather = CloudLayer()
+    /// Fair-weather cumulus based about 1,100 m above a field (never below the default 1,400 m AMSL).
+    public static func fairWeather(fieldElevation: Float) -> CloudLayer { CloudLayer(base: max(1_400, fieldElevation + 1_100)) }
     public static let clear = CloudLayer(coverage: 0)
 
     public var top: Float { base + thickness }

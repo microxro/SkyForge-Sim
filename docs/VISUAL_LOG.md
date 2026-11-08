@@ -191,3 +191,17 @@ Open defects (next passes): near-field ground is flat colour (needs detail textu
 - Rock at visible scale: buttresses and couloirs (45 × 160 m), dark fall-line streaks and pale ledge bands.
 - Swirl fix: all steep-ground noise is now triplanar on the vertical planes (horizontal axis × world height). Rotating world coordinates by the local fall direction had produced a wood-grain swirl, because tiny angle changes times kilometre-scale coordinates warp the pattern. Mirrored on Metal.
 - CI: 42d95de failed to compile a Metal-only test on macOS (type-checker timeout in an array literal); split into simple statements.
+
+## Bold Mode
+
+### 2026-11-08 Baseline: first Metal frames of real showcase airports (CI run 42505456889, docs/previews/ci)
+- Reviewed by me before the art director sees them:
+  - Foreground ground is very blurry. The test used a 1.5 km near layer, and in the app the 2 km final also sits at the edge of the near imagery (far-field Sentinel-2 underneath).
+  - A tall terrain "wall" across LSZS: heights switched abruptly from the z14 to the z10 elevation mosaic at the near-square edge.
+  - Clouds at ground level at Samedan (1,707 m): the fair-weather layer used an absolute 1,400 m base.
+- Fixes:
+  - Near imagery, heights and the fine terrain ring now centre 900 m toward the approach.
+  - Near and far heights blend over the outer 15 %.
+  - Cloud base is the field elevation + 1,100 m.
+  - CI review frames use the phone tier from re-recorded packs.
+  - The macOS CI tests run in release, so the loads take seconds.

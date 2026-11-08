@@ -144,7 +144,7 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
                         self.world = region
                         self.session = QuickFlightSession(world: region, start: start)
                         self.attribution = region.attribution + (weather.map { ["Weather: \($0.raw) (aviationweather.gov)"] } ?? [])
-                        if let w = weather { self.renderer?.clouds = w.layer }
+                        self.renderer?.clouds = weather?.layer ?? .fairWeather(fieldElevation: Float(region.runwayElevation))
                         self.status = .ready
                     } catch { self.status = .failed("Upload: \(error)") }
                 }

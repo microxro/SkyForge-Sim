@@ -70,11 +70,18 @@ public struct RealWorldRegion: FlightWorld {
         let along = (d * runwayDirection).sum()
         let across = abs(d.x * runwayDirection.y - d.y * runwayDirection.x)
         let over = max(max(-along, along - runwayLengthMetres), across - runwayWidthMetres)
+        // Near (z14) heights blend into the far (z10) mosaic over the outer 15 % of the near square, so
+        // there is no cliff where the two elevation models disagree (mountains: tens of metres).
+        let ex = nearHeights.halfExtent - max(abs(x - nearHeights.centre.x), abs(y - nearHeights.centre.y))
+        let blendWidth = 0.15 * nearHeights.halfExtent
         let natural: Double
-        if abs(x - nearHeights.centre.x) < nearHeights.halfExtent && abs(y - nearHeights.centre.y) < nearHeights.halfExtent {
+        if ex <= 0 {
+            natural = max(0, farHeights.height(x, y))
+        } else if ex >= blendWidth {
             natural = max(0, nearHeights.height(x, y))
         } else {
-            natural = max(0, farHeights.height(x, y))
+            let t = ex / blendWidth, w = t * t * (3 - 2 * t)
+            natural = max(0, farHeights.height(x, y) + (nearHeights.height(x, y) - farHeights.height(x, y)) * w)
         }
         if over <= 0 { return runwayElevation }
         let t = min(1, over / 60)
@@ -99,7 +106,10 @@ public struct RealWorldRegion: FlightWorld {
         let elevFt = rwy.low.elevationFeet ?? apt.elevationFeet ?? 0
         progress("Elevation")
         let ts = TerrainStreamer(transport: transport, cache: cache, baseline: try? GlobalDEM.bundled())
-        async let hNear = HeightMosaic.build(origin: origin, centre: .zero, halfExtent: detail.nearHalf, size: 512, zoom: 14, streamer: ts)
+        // The sharp near layer sits 900 m toward the approach, so both the final-approach start
+        // (2 km before the threshold) and the departure end lie well inside it.
+        let nearCentre = -(v / max(len, 1)) * 900
+        async let hNear = HeightMosaic.build(origin: origin, centre: nearCentre, halfExtent: detail.nearHalf, size: 512, zoom: 14, streamer: ts)
         async let hFar = HeightMosaic.build(origin: origin, centre: .zero, halfExtent: detail.farHalf, size: 512, zoom: 10, streamer: ts)
         progress("Imagery")
         let usgs = USGSImageryProvider()
@@ -107,13 +117,14 @@ public struct RealWorldRegion: FlightWorld {
         let farProvider = Sentinel2CloudlessProvider()
         let sNear = ImageryStreamer(provider: nearProvider, transport: transport, cache: cache)
         let sFar = ImageryStreamer(provider: farProvider, transport: transport, cache: cache)
-        async let iNear = ImageryMosaic.build(origin: origin, centre: .zero, halfExtent: detail.nearHalf, size: detail.imageryNearSize,
+        async let iNear = ImageryMosaic.build(origin: origin, centre: nearCentre, halfExtent: detail.nearHalf, size: detail.imageryNearSize,
                                               provider: nearProvider, streamer: sNear)
         async let iFar = ImageryMosaic.build(origin: origin, centre: .zero, halfExtent: detail.farHalf, size: detail.imageryFarSize,
                                              provider: farProvider, streamer: sFar)
+        async let osmFetch = OSMService(transport: transport, cache: cache).data(around: origin, halfExtent: min(detail.nearHalf, 3_000))
         let (hn, hf, inr, ifr) = await (hNear, hFar, iNear, iFar)
         progress("Buildings")
-        let osm = await OSMService(transport: transport, cache: cache).data(around: origin, halfExtent: min(detail.nearHalf, 3_000))
+        let osm = await osmFetch
         progress("Land cover")
         var attribution = [nearProvider.attribution]
         if farProvider.id != nearProvider.id { attribution.append(farProvider.attribution) }
@@ -148,15 +159,20 @@ public struct RealWorldRegion: FlightWorld {
     public func terrainChunks(quads: Int = 48) -> [TerrainChunk] {
         var chunks: [TerrainChunk] = []
         let d = detail
-        func ring(half: Double, step: Double, skip: Double, lower: Float) {
+        let nc = nearHeights.centre
+        // Ring squares: the near ring follows the near mosaic's centre; mid and far are centred on the field.
+        func ring(centre: SIMD2<Double>, half: Double, step: Double, skipCentre: SIMD2<Double>, skip: Double, lower: Float) {
             let cellsPerSide = Int((2 * half / step).rounded())
             let chunksPerSide = (cellsPerSide + quads - 1) / quads
+            // Snap the ring origin to its step so neighbouring rings share vertex lines.
+            let ox = (centre.x / step).rounded() * step - half, oy = (centre.y / step).rounded() * step - half
             for cj in 0..<chunksPerSide {
                 for ci in 0..<chunksPerSide {
-                    let x0 = -half + Double(ci * quads) * step, y0 = -half + Double(cj * quads) * step
+                    let x0 = ox + Double(ci * quads) * step, y0 = oy + Double(cj * quads) * step
                     let span = Double(quads) * step
                     // Skip chunks fully inside the finer ring.
-                    if skip > 0 && x0 >= -skip && x0 + span <= skip && y0 >= -skip && y0 + span <= skip { continue }
+                    if skip > 0 && x0 >= skipCentre.x - skip && x0 + span <= skipCentre.x + skip
+                        && y0 >= skipCentre.y - skip && y0 + span <= skipCentre.y + skip { continue }
                     let n = quads + 1
                     var pos = [SIMD3<Float>](), nrm = [SIMD3<Float>]()
                     pos.reserveCapacity(n * n); nrm.reserveCapacity(n * n)
@@ -184,9 +200,9 @@ public struct RealWorldRegion: FlightWorld {
                 }
             }
         }
-        ring(half: d.nearHalf, step: d.nearStep, skip: 0, lower: 0)
-        ring(half: d.midHalf, step: d.midStep, skip: d.nearHalf - d.midStep, lower: 0.4)
-        ring(half: d.farHalf, step: d.farStep, skip: d.midHalf - d.farStep, lower: 1.5)
+        ring(centre: nc, half: d.nearHalf, step: d.nearStep, skipCentre: .zero, skip: 0, lower: 0)
+        ring(centre: .zero, half: d.midHalf, step: d.midStep, skipCentre: nc, skip: d.nearHalf - d.midStep, lower: 0.4)
+        ring(centre: .zero, half: d.farHalf, step: d.farStep, skipCentre: .zero, skip: d.midHalf - d.farStep, lower: 1.5)
         return chunks
     }
 
@@ -216,7 +232,7 @@ public struct RealWorldRegion: FlightWorld {
                 defer { x += cell }
                 if x * x + y * y > r * r { continue }
                 var rng = SplitMix64(seed: Hash.int(Int((x / cell).rounded()), Int((y / cell).rounded()), seed: 0x7EE5))
-                let px = x + Hash.unit(rng.next()) * cell, py = y + Hash.unit(rng.next()) * cell
+                let px = nearHeights.centre.x + x + Hash.unit(rng.next()) * cell, py = nearHeights.centre.y + y + Hash.unit(rng.next()) * cell
                 guard let c = near.sample(px, py), let g = ground.ground(px, py) else { continue }
                 let lc = LandCover.classify(c)
                 if Hash.unit(rng.next()) > Double(lc.forest) * 0.9 || g.water > 0.3 { continue }
@@ -228,7 +244,9 @@ public struct RealWorldRegion: FlightWorld {
             }
             y += cell
         }
-        out.sort { ($0.position.x * $0.position.x + $0.position.y * $0.position.y) < ($1.position.x * $1.position.x + $1.position.y * $1.position.y) }
+        let c = SIMD2<Float>(Float(nearHeights.centre.x), Float(nearHeights.centre.y))
+        func d2(_ t: TreeInstance) -> Float { let d = SIMD2(t.position.x, t.position.y) - c; return (d * d).sum() }
+        out.sort { d2($0) < d2($1) }
         if out.count > detail.maxTrees { out.removeLast(out.count - detail.maxTrees) }
         return out
     }

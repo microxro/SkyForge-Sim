@@ -58,7 +58,7 @@ import SFPreview
             let r = try WorldRenderer(lighting: .physicalPreset(.midday, azimuthDegrees: 200, cameraHeightMetres: cam.position.z))
             try r.setRealWorld(RealWorldRenderData(region: region))
             try r.setAircraft(QuickFlightWorld.aircraftMesh())
-            r.clouds = .fairWeather; r.cloudSteps = t.cloudSteps
+            r.clouds = .fairWeather(fieldElevation: Float(region.runwayElevation)); r.cloudSteps = t.cloudSteps
             let c = session.bodyToENUColumns
             let ms = try r.benchmark(width: t.width, height: t.height, camera: WorldCamera(position: cam.position, target: cam.target), frames: 30,
                                      aircraftPosition: session.positionENU, aircraftBodyToENU: simd_double3x3(columns: (c.0, c.1, c.2)))

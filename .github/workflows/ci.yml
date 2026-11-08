@@ -51,7 +51,8 @@ jobs:
         env:
           SKYFORGE_VISUAL_OUT: ${{ github.workspace }}/visual-out
           SKYFORGE_VISUAL_LOG: "1"
-        run: swift test --package-path Packages/SkyforgeKit
+        # Release build with testing enabled: real-airport loads (JPEG decode, mosaics) are CPU-heavy.
+        run: swift test -c release -Xswiftc -enable-testing --package-path Packages/SkyforgeKit
       - name: Build iOS Simulator
         run: |
           set -o pipefail

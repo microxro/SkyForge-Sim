@@ -12,16 +12,11 @@ import SFPreview
 /// Metal frames of the bundled showcase airports, loaded fully offline from their tile packs
 /// (art-director review frames; logged as SKYFORGE_PNG in CI).
 @Suite struct ShowcaseRenderTests {
-    /// Same metres per pixel as the packed phone tier (same zooms), over a smaller area.
-    static var detail: RealWorldDetail {
-        let p = RealWorldDetail.phone
-        return RealWorldDetail(nearHalf: 1_500, nearStep: 16, midHalf: 6_000, midStep: 80, farHalf: 16_000, farStep: 400,
-                               imageryNearSize: Int(Double(p.imageryNearSize) * 1_500 / p.nearHalf),
-                               imageryFarSize: Int(Double(p.imageryFarSize) * 16_000 / p.farHalf), treeRadius: 1_200, maxTrees: 20_000)
-    }
+    /// The packed phone tier (what a phone flies).
+    static var detail: RealWorldDetail { .phone }
 
     @Test(.enabled(if: SkyRegressionTests.hasDevice, "no Metal device on this host"),
-          arguments: ["KMRY", "KASE", "LSZS"])
+          arguments: ["KMRY", "KASE", "KBFI", "LSZS", "NZQN"])
     func showcaseFrame(ident: String) async throws {
         let region = try await RealWorldRegion.load(airport: ident, detail: Self.detail,
                                                     transport: Showcase.transport(for: ident, fallback: nil), cache: nil)
@@ -32,7 +27,7 @@ import SFPreview
         let r = try WorldRenderer(lighting: lighting)
         try r.setRealWorld(data)
         try r.setAircraft(QuickFlightWorld.aircraftMesh())
-        r.clouds = .fairWeather
+        r.clouds = .fairWeather(fieldElevation: Float(region.runwayElevation))
         let c = session.bodyToENUColumns
         let w = 640, h = 360
         let img = try r.render(width: w, height: h, camera: WorldCamera(position: cam.position, target: cam.target),
