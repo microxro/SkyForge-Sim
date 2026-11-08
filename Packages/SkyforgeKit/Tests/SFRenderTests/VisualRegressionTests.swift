@@ -104,3 +104,37 @@ func expectGolden(_ name: String, rgb: [UInt8], width: Int, height: Int, toleran
     }
     #endif
 }
+
+#if canImport(Metal)
+import SFAtmosphere
+
+@Suite struct AtmosphereGPUTests {
+    static func relErr(_ gpu: [SIMD3<Float>], _ cpu: [SIMD3<Float>], floor: Float) -> (mean: Float, max: Float) {
+        var sum: Float = 0, mx: Float = 0
+        for (g, c) in zip(gpu, cpu) {
+            for k in 0..<3 {
+                let e = abs(g[k] - c[k]) / max(abs(c[k]), floor)
+                sum += e; mx = max(mx, e)
+            }
+        }
+        return (sum / Float(gpu.count * 3), mx)
+    }
+
+    @Test(.enabled(if: SkyRegressionTests.hasDevice, "no Metal device on this host"))
+    func gpuLUTsMatchCPUReference() throws {
+        let p = AtmosphereParameters()
+        let sunZenithCos = sin(10 * Double.pi / 180), h = 0.5
+        let gen = try AtmosphereLUTGenerator()
+        let tex = try gen.generate(p, viewHeightKm: h, sunZenithCos: sunZenithCos)
+        let tCPU = SkyAtmosphere.computeTransmittance(p)
+        let msCPU = SkyAtmosphere.computeMultiScattering(p, transmittance: tCPU)
+        let svCPU = SkyAtmosphere.computeSkyView(p, transmittance: tCPU, multiScattering: msCPU, viewHeightKm: h, sunZenithCos: sunZenithCos)
+        let t = Self.relErr(try gen.readBack(tex.transmittance), tCPU.data, floor: 1e-3)
+        let m = Self.relErr(try gen.readBack(tex.multiScattering), msCPU.data, floor: 1e-6)
+        let s = Self.relErr(try gen.readBack(tex.skyView), svCPU.data, floor: 1e-5)
+        #expect(t.mean < 1e-3 && t.max < 2e-2, "transmittance \(t)")
+        #expect(m.mean < 1e-2 && m.max < 5e-2, "multi-scattering \(m)")
+        #expect(s.mean < 1e-2 && s.max < 8e-2, "sky-view \(s)")
+    }
+}
+#endif
