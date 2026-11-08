@@ -89,7 +89,10 @@ public struct TerrainRecipe: Sendable {
         switch kind {
         case .suburbanPlain:
             let rolling = noise.fbm(x / 2_600, y / 2_600, octaves: 4) * 22
-            return 40 + rolling + fine
+            // Low wooded hills in some regions (up to ~160 m, 6 km features): from the air the plain
+            // read as perfectly flat; now the horizon has relief while most farmland stays level.
+            let hills = max(0, noise.fbm(x / 6_000 + 31, y / 6_000 - 17, octaves: 4) - 0.1) * 230
+            return 40 + rolling + hills + fine
         case .forestRiver:
             let hills = noise.fbm(x / 1_800, y / 1_800, octaves: 5) * 90 + 120
             let d = riverDistance(x, y)
