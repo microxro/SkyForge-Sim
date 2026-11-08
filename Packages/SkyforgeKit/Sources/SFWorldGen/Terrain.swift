@@ -95,7 +95,10 @@ public struct TerrainRecipe: Sendable {
             let d = riverDistance(x, y)
             let valley = smoothstep(0, 700, d)
             let bed = 60.0
-            let channel = river.map { d < $0.width / 2 + 4 ? -4.0 * (1 - d / ($0.width / 2 + 4)) - 2.5 : 0 } ?? 0
+            // Smooth channel that stays below the water surface out past the water ribbon (half-width + 6 m),
+            // so the ribbon's smooth edge is the visible waterline; the old profile stepped 2.5 m at
+            // half-width + 4 m and the step sawtoothed on the terrain grid (art review).
+            let channel = river.map { -6.5 * (1 - smoothstep($0.width / 2 + 4, $0.width / 2 + 16, d)) } ?? 0
             return lerp(bed, hills, valley) + fine * valley + channel
         case .coastline:
             // Land rises inland (to the west); a noisy coastline runs north-south near x = 600.
@@ -107,7 +110,7 @@ public struct TerrainRecipe: Sendable {
             return base + cliffs + fine
         case .mountainValley:
             let d = riverDistance(x, y)
-            let channel = d < 24 ? 3.5 * (1 - d / 24) + 1.5 : 0
+            let channel = 4.5 * (1 - smoothstep(18, 30, d))   // continuous; below the surface under the ribbon
             let bankFade = smoothstep(10, 60, d)   // keep micro-detail out of the river channel
             return mountainBase(x, y) - channel + fine * 2 * bankFade
         }
@@ -156,7 +159,7 @@ public struct TerrainRecipe: Sendable {
     /// Whether a point is open water (sea or river).
     public func isWater(_ x: Double, _ y: Double) -> Bool {
         if height(x, y) < seaLevel { return true }
-        if let r = river, riverDistance(x, y) < r.width / 2 { return true }
+        if let r = river, riverDistance(x, y) < r.width / 2 + 7 { return true }   // the water ribbon's extent
         return false
     }
 

@@ -136,3 +136,7 @@ Open defects (next passes): near-field ground is flat colour (needs detail textu
 - a 5.50, d 5.00, e 5.50, f 5.50, j 4.50 → **5.20** (was 5.10). House variety and organic strata worked; (j) showed evenly spaced wavy bands over the foreground.
 - Diagnosis by elimination: the bands survived removing micro-relief and halving terrain fine noise, and vanished with a larger shadow bias, so they were shadow acne at a 6° sun. CPU bias now texel·(1.2 + min(24, 1.6·tanθ)); Metal texel·(0.8 + min(16, 1.4·tanθ)). Mowing stripes are a smooth low-contrast sinusoid (the 40 m square wave aliased on the vertex grid); terrain fine noise gentler (0.6 m at 220 m).
 - Mountains: bounce light on steep shaded terrain (0.10 × sun × steepness × shade) keeps faces readable; rock albedo neutral grey-brown.
+
+### 2026-11-08 Art-director re-review (round 6) and river fix
+- a 5.50, d 5.00, e 5.50, f 5.67, j 4.83 → **5.30** (was 5.20). Acne bands gone; bounce light helped (f).
+- River waterline (top defect): the channel profile stepped 2.5 m at half-width + 4 m, just inside the 6 m-wider water ribbon, so terrain poked through the ribbon in a grid sawtooth. Channels are now continuous smoothsteps that stay below the surface past the ribbon edge (forest river −6.5 m fading over 12 m; mountain river 4.5 m over 18–30 m), so the ribbon's smooth edge is the waterline and the exposed slope beyond it reads as wet bank. `isWater` covers the ribbon extent. Waterlines in (d) and (f) are now smooth.
