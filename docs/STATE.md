@@ -1,4 +1,4 @@
-LAST_UPDATE: 2026-11-08T21:55:38Z
+LAST_UPDATE: 2026-11-08T22:53:39Z
 
 # SKYFORGE state
 
@@ -10,7 +10,9 @@ Bold Mode (docs/BOLD_MODE.md) is in progress.
   - Near layer centred toward the approach; near/far height blend.
   - OSM runtime client and meshes. Unit-tested; OSM is unreachable from the build environment, so no showcase pack carries OSM yet (ADR-0016).
   - HDR scene buffer with bloom, SSAO (CI compile pending), water waves and foam, prop disc (CI pending).
-  - Tier render presets and the CI GPU frame-time test. Low tier is within budget on the CI GPU; the high tier is being optimised.
+  - Tier render presets and the CI GPU frame-time test, run alone in its own CI step. All tiers are within budget on the CI virtual GPU (run 42531565329): KMRY high 16.11 ms and SkyWorld high 12.41 ms against 16.7 ms. Device numbers are unverified.
+  - Sharp z17 approach imagery for US airports (ADR-0017); depth-aware FXAA.
+  - Art rounds on Metal frames: 3.83, then 4.08. Review frames now 1280×720.
   - 30-minute soak test.
 - Fixed 2026-11-08: broken showcase Metal frames. Causes: (1) the CI GPU assembled real-terrain chunks wrongly with `baseVertex`/`baseInstance`; now absolute indices and buffer offsets (debba5b); (2) imagery grading crushed shadows (41a9679); (3) the colour water classifier flagged shadowed slopes, roofs and asphalt (f9824ad: slope, area and runway filters). Frame-time tests now run alone in their own CI step (873eaf5).
 - Open:
