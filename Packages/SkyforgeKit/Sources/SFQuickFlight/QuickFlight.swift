@@ -99,7 +99,7 @@ public struct QuickFlightWorld: FlightWorld {
                 for t in chunk.trees {
                     let dx = t.position.x - focus.x, dy = t.position.y - focus.y
                     let dist = (dx * dx + dy * dy).squareRoot()
-                    if dist > r { continue }
+                    if !SceneBuilder.keepTree(t.position, dist: dist, radius: r) { continue }
                     b.addTree(t, detail: dist < d.treeDetailRadius ? 2 : 1)
                 }
             }

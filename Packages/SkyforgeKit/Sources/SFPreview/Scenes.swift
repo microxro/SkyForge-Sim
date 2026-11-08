@@ -136,7 +136,7 @@ public enum PreviewScenes {
                     let along = (d * fwd2.xy).sum()
                     if along < -30 { continue }
                     let dist = (d * d).sum().squareRoot()
-                    if dist > r { continue }
+                    if !SceneBuilder.keepTree(t.position, dist: dist, radius: r) { continue }
                     b.addTree(t, detail: dist < s.treeDetailRadius * 1.8 ? 2 : 1)
                 }
             }

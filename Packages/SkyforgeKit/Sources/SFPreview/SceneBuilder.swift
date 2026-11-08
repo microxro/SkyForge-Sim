@@ -74,9 +74,13 @@ public struct SceneBuilder {
         let snow = Float(smoothstep(-1, -4, t) * (1 - smoothstep(0.52, 0.72, slope)))   // holds up to ~35°
         c = c + (srgb(236, 240, 246) - c) * snow
         if terrain.kind == .coastline && z < 4 && z > terrain.seaLevel - 1 { c = srgb(206, 190, 150) }
-        if let r = terrain.river, rd < r.width / 2 + 14 {
-            let bank = Float(1 - smoothstep(r.width / 2, r.width / 2 + 14, rd))
-            c = c + (srgb(112, 100, 78) - c) * bank
+        if let r = terrain.river, rd < r.width / 2 + 26 {
+            // Wider bank with wet mud at the waterline (art review: dark water against grass made the
+            // vertex-spacing waterline read as sawtooth; a low-contrast bank hides it).
+            let bank = Float(1 - smoothstep(r.width / 2 + 4, r.width / 2 + 26, rd))
+            c = c + (srgb(112, 102, 80) - c) * bank
+            let wet = Float(1 - smoothstep(r.width / 2 - 2, r.width / 2 + 9, rd))
+            c = c + (srgb(58, 60, 50) - c) * wet
         }
         if let a = airfield, slope < 0.2 { c = airfieldGrass(x, y, a, current: c) }
         // Macro variation breaks up uniformity (no visible tiling).
@@ -475,6 +479,16 @@ public struct SceneBuilder {
     }
 
     // MARK: Trees
+
+    /// Whether a tree at distance `dist` from the object focus survives the edge fade: density thins
+    /// smoothly over the outer quarter of `radius` (art review: forests stopped at a hard ring).
+    public static func keepTree(_ p: SIMD3<Double>, dist: Double, radius r: Double) -> Bool {
+        if dist > r { return false }
+        let edge = (r - dist) / (0.25 * r)
+        if edge >= 1 { return true }
+        let h = Hash.unit(Hash.combine(UInt64(bitPattern: Int64(p.x * 4)), UInt64(bitPattern: Int64(p.y * 4)) ^ 0x7E3D))
+        return h < edge * edge * (3 - 2 * edge)
+    }
 
     public mutating func addTree(_ t: Tree, detail: Int) {
         let p = t.position

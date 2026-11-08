@@ -129,3 +129,5 @@ Open defects (next passes): near-field ground is flat colour (needs detail textu
 - Fixes: strata warped by noise with uneven spacing and half the contrast; CPU micro-relief normals 0.3 → 0.12 (matches Metal; low sun had turned them into blotches) and grass albedo detail calmer.
 - Open from the review: per-pixel land-cover evaluation (field borders still step at vertex spacing), river rebuilt like the coast, house variants, impostors beyond draw distance.
 - Houses: 30 % take colours from other regional schemes, headings jitter ±4°, 35 % get a lower side wing or garage (L-shaped plans); (a) no longer reads as clones.
+- Tree density now thins smoothly over the outer quarter of the object radius (Quick Flight and previews) instead of stopping at a ring.
+- River bank widened to 26 m with wet mud at the waterline: the vertex-spacing sawtooth remains in shape but no longer reads as dark water against bright grass. A true fix needs per-pixel water edges or a finer mesh along the river.
