@@ -302,6 +302,33 @@ public enum WorldShaders {
             float gy = groundNoise(w + float2(0, e), 2.0) - groundNoise(w - float2(0, e), 2.0);
             n = normalize(n + float3(-gx, -gy, 0.0) * (0.12 * wFine * fade));
         }
+        if (m == 7.0 && in.material == 7.0 && n.z < 0.9) {
+            // Steep ground: fall-line gullies, rock tone variation, scrub and scree (as SFPreview), each
+            // octave faded by pixel footprint so big slopes keep detail far away.
+            float steep = smoothstep(0.9, 0.7, n.z);
+            float2 w = fieldW;      // true region metres: rotated gully coordinates must not jump at the 4 km wrap
+            float2 hz = n.xy; float hl = length(hz);
+            float2 fall = hl > 1e-4 ? hz / hl : float2(1, 0), perp = float2(-fall.y, fall.x);
+            float along = dot(fall, w), across = dot(perp, w);
+            float gw = saturate(1.0 - fieldFp * 2.5 / 16.0) * steep;
+            if (gw > 0.0) {
+                float g = groundNoise(float2(across, along * 0.2) + 51.0, 16.0);
+                float gp = groundNoise(float2(across + 1.5, along * 0.2) + 51.0, 16.0);
+                float dg = (gp - g) / 1.5 * 16.0;
+                n = normalize(n + float3(perp * (-dg * 0.35 * gw), 0.0));
+                albedo *= 1.0 - 0.28 * max(0.0, -g) * gw;
+            }
+            float big = groundNoise(w - 13.0, 64.0) * saturate(1.0 - fieldFp * 2.5 / 64.0);
+            float small = groundNoise(w + 3.0, 8.0) * saturate(1.0 - fieldFp * 2.5 / 8.0);
+            albedo *= 1.0 + (0.22 * big + 0.10 * small) * steep;
+            if (dot(albedo, float3(0.3, 0.6, 0.1)) < 0.3) {
+                float patch = groundNoise(w + 71.0, 32.0) * saturate(1.0 - fieldFp * 2.5 / 32.0);
+                float scrub = smoothstep(0.08, 0.32, patch) * steep;
+                float scree = smoothstep(-0.2, -0.42, patch) * steep;
+                albedo = mix(albedo, float3(0.050, 0.072, 0.030), scrub * 0.75);
+                albedo *= 1.0 + 0.35 * scree;
+            }
+        }
         float ndl = dot(n, toSun);
         float vis = toSun.z > -0.05 ? shadowVisibility(u, sm, in.rel, n, dist, max(0.0f, ndl)) : 0.0;
         if (u.clouds.shape.z > 0.0 && toSun.z > 0.05 && vis > 0.0) {

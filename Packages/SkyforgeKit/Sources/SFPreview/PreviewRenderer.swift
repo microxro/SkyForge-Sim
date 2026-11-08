@@ -106,6 +106,41 @@ public enum PreviewRenderer {
                         let gy = Float(groundNoise.fbm(wx / 2.2, (wy + e) / 2.2, octaves: 2) - groundNoise.fbm(wx / 2.2, (wy - e) / 2.2, octaves: 2))
                         n = simd_normalize(n + SIMD3(-gx, -gy, 0) * (0.12 * fade))   // as Metal; low sun turned 0.3 into blotches
                     }
+                    if mat == Material.terrain.rawValue && !imagery && n.z < 0.9 {
+                        // Steep ground: rock texture and fall-line gullies per pixel, each octave faded by
+                        // pixel footprint rather than distance, so big slopes keep detail kilometres away
+                        // (art review: the shaded valley wall in (f) was one flat tone).
+                        let steep = Float(smoothstep(0.9, 0.7, Double(n.z)))
+                        let fpx = dist / focal
+                        let wx = Double(p.x) + origin.x, wy = Double(p.y) + origin.y
+                        let h = SIMD2<Float>(n.x, n.y), hl = (h * h).sum().squareRoot()
+                        let fall = hl > 1e-4 ? h / hl : SIMD2<Float>(1, 0), perp = SIMD2<Float>(-fall.y, fall.x)
+                        let along = Double(fall.x) * wx + Double(fall.y) * wy, across = Double(perp.x) * wx + Double(perp.y) * wy
+                        func w(_ cell: Float) -> Float { max(0, min(1, 1 - fpx * 2.5 / cell)) }
+                        let gw = w(14) * steep
+                        if gw > 0 {
+                            let e = 1.5
+                            let g = Float(groundNoise.fbm(across / 14 + 51, along / 70, octaves: 2))
+                            let gp = Float(groundNoise.fbm((across + e) / 14 + 51, along / 70, octaves: 2))
+                            let dg = (gp - g) / Float(e) * 14
+                            let tilt = perp * (-dg * 0.35 * gw)
+                            n = simd_normalize(n + SIMD3(tilt.x, tilt.y, 0))
+                            albedo *= 1 - 0.28 * max(0, -g) * gw            // darker gully floors (also in shade)
+                        }
+                        let big = Float(groundNoise.fbm(wx / 60 - 13, wy / 60 + 29, octaves: 2)) * w(60)
+                        let small = Float(groundNoise.fbm(wx / 9 + 3, wy / 9 - 7, octaves: 2)) * w(9)
+                        albedo *= 1 + (0.22 * big + 0.10 * small) * steep
+                        // Scrub patches and pale scree on dark (non-snow) slopes: albedo variety reads even
+                        // where the slope is in shadow and normal detail cannot.
+                        let luma = albedo.x * 0.3 + albedo.y * 0.6 + albedo.z * 0.1
+                        if luma < 0.3 {
+                            let patch = Float(groundNoise.fbm(wx / 45 + 71, wy / 45 - 37, octaves: 3)) * w(45)
+                            let scrub = Float(smoothstep(0.08, 0.32, Double(patch))) * steep
+                            let scree = Float(smoothstep(-0.2, -0.42, Double(patch))) * steep
+                            albedo = albedo + (SIMD3<Float>(0.050, 0.072, 0.030) - albedo) * (scrub * 0.75)
+                            albedo *= 1 + 0.35 * scree
+                        }
+                    }
                     var colour: SIMD3<Float>
                     let ndl = fdot(n, toSun)
                     let vis = toSun.z > -0.05 ? shadow.visibility(p, normalDotLight: max(0, ndl)) : 0
