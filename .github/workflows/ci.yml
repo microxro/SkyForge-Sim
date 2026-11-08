@@ -57,6 +57,10 @@ jobs:
           SKYFORGE_VISUAL_LOG: "1"
         # Release build with testing enabled: real-airport loads (JPEG decode, mosaics) are CPU-heavy.
         run: swift test -c release -Xswiftc -enable-testing --package-path Packages/SkyforgeKit
+      - name: GPU frame time (run alone so no other test shares the GPU)
+        env:
+          SKYFORGE_FRAMETIME: "1"
+        run: swift test -c release -Xswiftc -enable-testing --package-path Packages/SkyforgeKit --filter FrameTimeTests
       - name: Build iOS Simulator
         run: |
           set -o pipefail

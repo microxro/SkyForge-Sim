@@ -139,3 +139,4 @@ Method: `FrameTimeTests`, 30 frames after 3 warm-up frames; command-buffer GPU t
 - KMRY low: median 8.55 ms. High: median 14.83 ms; clouds 3.19, shadows 3.36, bloom 0.34, SSAO 0.45.
 - Diagnostic: real-terrain chunks drawn with `baseVertex` came out wrong on this GPU (fixed in debba5b with absolute indices).
 - Device numbers: unverified (no hardware run).
+- 2026-11-08T21:46:31Z gate fast on Linux x86_64: PASS (HEAD 850bcad)

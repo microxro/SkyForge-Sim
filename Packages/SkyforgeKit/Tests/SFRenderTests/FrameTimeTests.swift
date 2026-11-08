@@ -13,7 +13,10 @@ import SFPreview
 /// timestamps over 30 frames after warm-up; the median is asserted against the tier budget and every
 /// number is printed as `SKYFORGE_FRAMETIME` for VERIFICATION_LOG. The CI runner's GPU is a virtual
 /// macOS GPU, not a phone or Mac: device frame times stay unverified until measured on hardware.
-@Suite(.serialized) struct FrameTimeTests {
+/// Runs only with SKYFORGE_FRAMETIME=1 (its own CI step): in the full parallel run other GPU tests share
+/// the device and the medians swing by 30 % or more (CI run 42526257169).
+@Suite(.serialized, .enabled(if: ProcessInfo.processInfo.environment["SKYFORGE_FRAMETIME"] == "1", "set SKYFORGE_FRAMETIME=1"))
+struct FrameTimeTests {
     struct Tier { let name: String; let width: Int; let height: Int; let sky: QuickFlightDetail; let real: RealWorldDetail
         let settings: WorldRenderer.Settings; let budgetMs: Double }
     /// Budgets: 30 fps for low (33.3 ms), 60 fps for high (16.7 ms) at the tier's output size, with the
