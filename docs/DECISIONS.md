@@ -41,3 +41,8 @@
 
 ## ADR-0011 CLI target name
 - Decision: the preview CLI target is `SFPreviewCLI` (product `sfpreview`), because `sfpreview` and `SFPreview` collide on case-insensitive macOS file systems. `tools/check_paths.py` guards against case-only collisions.
+
+## ADR-0012 Five-hourly "continue" pulse
+- Context: the user, on 2026-11-08, asked for a command that sends "continue" every 5 hours, in addition to `autoContinueAtUsageLimit`.
+- Decision: a session-bound scheduled task (`trig_01VkukC5znseCkMfBGwFqndn`, cron `33 */5 * * *` UTC). This supersedes the "no scheduled task" part of ADR-0002 at the user's explicit request.
+- Consequence: an idle session is woken at most every 5 hours; the Stop hook still drives continuation while a turn is running.

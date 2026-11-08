@@ -1,9 +1,9 @@
-LAST_UPDATE: 2026-11-07T23:09:49Z
+LAST_UPDATE: 2026-11-08T02:35:31Z
 
 # SKYFORGE state
 
 ## Phase
-P0 accepted (CI fully green). P1 in progress: P1.1, P1.2, P1.4, P1.6a, P1.2b-1, P1.6b, P1.7, P1.8a, P1.11 done; P1.3 renderer done with visuals below target.
+P0 accepted (CI fully green). P1 in progress: P1.1, P1.2, P1.2b-2, P1.4, P1.6a, P1.2b-1, P1.6b, P1.7, P1.8a, P1.11 done; P1.3 renderer done with visuals below target.
 
 ## Environment facts (recorded at session start)
 - Host: Linux x86_64, Ubuntu 24.04.5 LTS, 4 CPUs, 15 GB RAM (Claude Code on the web sandbox).
@@ -15,7 +15,9 @@ P0 accepted (CI fully green). P1 in progress: P1.1, P1.2, P1.4, P1.6a, P1.2b-1, 
 
 ## Auto-resume
 - Project hooks installed in `.claude/settings.json` (SessionStart, Stop guard, StopFailure, PreCompact).
-- `autoContinueAtUsageLimit: true` is set in the session's user settings (`~/.claude/settings.json`); the user asked for this instead of a scheduled task, so no "SKYFORGE resume" scheduled task was created (ADR-0002).
+- `autoContinueAtUsageLimit: true` is set in the session's user settings (`~/.claude/settings.json`); the user asked for this instead of a scheduled task, (ADR-0002).
+- 2026-11-08: the user then explicitly asked for a scheduled task that sends "continue" every 5 hours; created as `trig_01VkukC5znseCkMfBGwFqndn` ("SKYFORGE continue pulse", cron `33 */5 * * *` UTC, bound to this session).
+- PR #1 was merged by the owner at 2026-11-07T23:13Z (commit 50fdfb9). Follow-up work restarts the branch from main and goes into a new PR.
 - Fallback: send the message "continue" to resume.
 
 ## What works (verified on Linux)

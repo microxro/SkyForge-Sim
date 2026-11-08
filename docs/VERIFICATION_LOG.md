@@ -31,3 +31,10 @@ Every gate run, CI run and manual verification. Newest at the bottom.
 - 2026-11-07T23:07:39Z gate ci on Linux x86_64: PASS (HEAD 1a25cce)
 - 2026-11-07 Linux: GlobalDEM tests PASS (SHA-256 matches manifest; Himalaya > 4.5 km, Dead Sea < −200 m, Pacific < −2 km, Denver 1.4–1.9 km).
 - 2026-11-07T23:10:58Z gate fast on Linux x86_64: PASS (HEAD 8890222)
+2026-11-07T23:45:04Z compaction; last commit 765faf4
+2026-11-08T01:37:28Z compaction; last commit 765faf4
+2026-11-08T01:37:29Z compaction; last commit 765faf4
+2026-11-08T01:37:31Z compaction; last commit 765faf4
+2026-11-08T01:37:32Z compaction; last commit 765faf4
+2026-11-08T02:31:39Z compaction; last commit 765faf4
+- 2026-11-08T02:35:15Z gate fast on Linux x86_64: PASS (HEAD 50fdfb9)

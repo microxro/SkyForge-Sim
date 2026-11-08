@@ -4,7 +4,7 @@ Legend: [x] done and verified, [ ] not done. Unchecked items are not available i
 
 ## CURRENT
 - CURRENT: P1.3 visual passes toward 8/10 (aircraft in frame, ground detail)
-- Next 3: P1.2b-2 Terrarium streaming · P1.9 gauges · P1.7b live METAR fetch
+- Next 3: P1.9 gauges · P1.7b live METAR fetch · P1.8b touch/tilt + bind UI
 
 ## P0 Bootstrap
 - [x] P0.1 Save master prompt to docs/MASTER_PROMPT.md
@@ -22,7 +22,7 @@ Legend: [x] done and verified, [ ] not done. Unchecked items are not available i
 - [ ] P1.1b Optional JSBSim offline oracle comparison in tools/jsbsim_oracle/
 - [x] P1.2 Terrain core: pure-Swift inflate + PNG decoder, Terrarium decode (verified on a real tile), Web Mercator tile math, bilinear height queries, CDLOD quadtree selection with morph ranges
 - [x] P1.2b-1 Bundled global DEM baseline (11.7 MB, Terrarium z4 → 4096x2048 equirectangular, tiled zlib, SHA-256 manifest, on-demand decode)
-- [ ] P1.2b-2 Terrarium streaming + content-store cache (injectable transport) feeding CDLOD
+- [x] P1.2b-2 Terrarium streaming + content-store cache (injectable transport) feeding CDLOD
 - [ ] P1.3 CPU preview renderer (§8.6) with scenes (a) suburban golden hour, (d) forest and river, (e) coastline, (f) mountain valley — renderer done, 4 scenes rendered and reviewed (avg 6.2/10 after pass 2, aircraft in scene a); open until avg ≥ 8
 - [x] P1.4 Biome model and first SkyWorld layers (procedural terrain recipes, rivers, street grid + rural roads, parcels, houses/warehouses/strip malls/farms, parking lots, Poisson-like vegetation) with determinism and placement tests
 - [ ] P1.5 Hillaire sky LUTs (Metal) + cascaded shadows + PBR aircraft
