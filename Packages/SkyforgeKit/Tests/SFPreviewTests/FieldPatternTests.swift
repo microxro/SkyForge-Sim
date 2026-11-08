@@ -44,3 +44,42 @@ import SFWorldGen
         #expect(b.soup.vertexField.contains { $0 > 0.5 }, "farmland somewhere in a 3 km tile")
     }
 }
+
+@Suite struct TownImpostorTests {
+    let pattern = FieldPattern(seed: 99, autumn: false)
+    let lawn = SIMD3<Float>(0.10, 0.12, 0.06)
+
+    @Test func nearDetailHasRoofsStreetsAndLawnAndFarIsTheMean() {
+        var roofs = 0, streets = 0, lawns = 0
+        var sum = SIMD3<Float>.zero
+        let n = 200
+        for i in 0..<n {
+            for j in 0..<n {
+                let c = pattern.town(Float(i) * 1.7, Float(j) * 2.3, footprint: 0.3, lawn: lawn)
+                sum += c
+                if c == lawn { lawns += 1 } else if c == FieldPattern.street { streets += 1 } else if FieldPattern.roofs.contains(c) { roofs += 1 }
+            }
+        }
+        let total = Float(n * n)
+        #expect(Float(roofs) / total > 0.04 && Float(roofs) / total < 0.15, "roof share \(roofs)")
+        #expect(Float(streets) / total > 0.08 && Float(streets) / total < 0.22, "street share \(streets)")
+        #expect(Float(lawns) / total > 0.5)
+        // The far-field colour is close to the area average of the detailed pattern.
+        let far = pattern.town(10, 10, footprint: 40, lawn: lawn), avg = sum / total
+        #expect(abs(far.x - avg.x) < 0.012 && abs(far.y - avg.y) < 0.012 && abs(far.z - avg.z) < 0.012, "far \(far) avg \(avg)")
+    }
+
+    @Test func impostorOnlyBeyondTheBuildingRadius() {
+        var b = SceneBuilder(generator: WorldGenerator(terrain: TerrainRecipe(kind: .suburbanPlain, seed: 1)), origin: .zero)
+        b.townImpostor = (SIMD2(0, 0), 1_000)
+        b.addTerrain(centre: SIMD2(0, 0), halfExtent: 3_000, step: 60, far: true)
+        var inside = 0, outside = 0
+        for t in 0..<b.soup.triangleCount {
+            let p = b.soup.positions[3 * t]
+            let d = (p.x * p.x + p.y * p.y).squareRoot()
+            if b.soup.field(t, 0) < -0.5 { if d < 850 { inside += 1 } else { outside += 1 } }
+        }
+        #expect(inside == 0)
+        #expect(outside > 0, "suburb impostor beyond 1 km")
+    }
+}

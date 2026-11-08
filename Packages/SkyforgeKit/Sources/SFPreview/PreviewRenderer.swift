@@ -82,6 +82,13 @@ public enum PreviewRenderer {
                         imagery = true
                         if g.water > 0.5 { mat = Material.water.rawValue; albedo = g.albedo * 0.7 }
                     }
+                    if mat == Material.terrain.rawValue && !imagery, let fpat = fields, gb.field[idx] < -0.003 {
+                        // Suburb impostor beyond the building radius: lots, roofs, trees and streets per pixel.
+                        let footprint = dist / focal / max(0.15, abs(fdot(dir, n)))
+                        let wx = Float(Double(p.x) + origin.x), wy = Float(Double(p.y) + origin.y)
+                        let t = fpat.town(wx, wy, footprint: footprint, lawn: albedo)
+                        albedo += (t - albedo) * min(1, -gb.field[idx])
+                    }
                     if mat == Material.terrain.rawValue && !imagery, let fpat = fields, gb.field[idx] > 0.003 {
                         // Field parcels and hedgerows per pixel (the vertex grid blurred and stepped them).
                         let footprint = dist / focal / max(0.15, abs(fdot(dir, n)))

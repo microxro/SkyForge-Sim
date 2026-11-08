@@ -13,6 +13,9 @@ public struct SceneBuilder {
     public private(set) var stats: [String: Int] = [:]
     /// Runway whose surroundings are mown airfield grass (set before `addTerrain`).
     public var airfield: RunwaySpec?
+    /// Beyond this radius around `centre` (where real buildings stop), built-up far terrain carries a
+    /// per-pixel suburb impostor (`FieldPattern.town`) instead of the 25 m vertex mottle. Set before `addTerrain`.
+    public var townImpostor: (centre: SIMD2<Double>, radius: Double)?
 
     public init(generator: WorldGenerator, origin: SIMD3<Double>) {
         self.generator = generator
@@ -37,7 +40,7 @@ public struct SceneBuilder {
         FieldPattern(seed: UInt32(truncatingIfNeeded: Hash.combine(terrain.seed, 0xF1E1D)) & 0xFF_FFFF, autumn: generator.season == .autumn)
     }
 
-    /// Vertex albedo and field weight (0…1: how much `FieldPattern` parcels show here).
+    /// Vertex albedo and field weight (0…1: how much `FieldPattern` parcels show here; −1…0: suburb impostor).
     func groundSample(_ x: Double, _ y: Double, _ z: Double, normal n: SIMD3<Double>, far: Bool = false) -> (colour: SIMD3<Float>, field: Float) {
         var field: Float = 0
         let slope = acos(min(1, n.z))
@@ -72,6 +75,13 @@ public struct SceneBuilder {
             else if pick < 0.42 { c = srgb(96, 96, 98) }
             else if pick < 0.62 { c = generator.season == .autumn ? srgb(118, 92, 52) : srgb(62, 84, 44) }
             else { c = lawn }
+            if let ti = townImpostor {
+                // Field weight < 0 marks the impostor; the vertex keeps the plain lawn it draws on.
+                let d = ((SIMD2(x, y) - ti.centre) * (SIMD2(x, y) - ti.centre)).sum().squareRoot()
+                let w = Float(smoothstep(ti.radius * 0.9, ti.radius * 1.05, d) * smoothstep(0.32, 0.40, settle))
+                c = c + (lawn * Float(0.94 + 0.08 * macroNoise.fbm(x / 120, y / 120, octaves: 2)) - c) * w
+                field = -w
+            }
         } else if slope < 0.12 && (biome == .grassland || biome == .temperateForest) {
             if terrain.kind == .mountainValley {
                 c = srgb(84, 108, 58) * Float(0.9 + 0.12 * macroNoise.fbm(x / 90, y / 90, octaves: 2))   // alpine meadow

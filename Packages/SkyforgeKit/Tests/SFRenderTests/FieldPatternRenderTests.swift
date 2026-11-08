@@ -33,6 +33,18 @@ import SFQuickFlight
     }
 
     @Test(.enabled(if: SkyRegressionTests.hasDevice, "no Metal device on this host"))
+    func gpuTownImpostorMatchesCPU() throws {
+        let r = try WorldRenderer(lighting: .preset(.midday))
+        let pattern = FieldPattern(seed: 0x00AB_CDEF, autumn: false)
+        let pts = (0..<4_096).map { i in SIMD3<Float>(Float(i % 64) * 3.7 - 120, Float(i / 64) * 4.3 - 140, [0.2, 1, 6, 20][i % 4]) }
+        let gpu = try r.fieldFactors(points: pts, pattern: pattern, town: true)
+        let lawn = SIMD3<Float>(0.10, 0.12, 0.06)
+        let bad = pts.indices.filter { simd_length(gpu[$0] - pattern.town(pts[$0].x, pts[$0].y, footprint: pts[$0].z, lawn: lawn)) > 0.005 }.count
+        print("town impostor GPU vs CPU: \(bad)/\(pts.count) differ")
+        #expect(bad <= pts.count / 200)
+    }
+
+    @Test(.enabled(if: SkyRegressionTests.hasDevice, "no Metal device on this host"))
     func skyWorldEnvironmentCarriesFields() throws {
         var dt = QuickFlightDetail.phone
         dt.objectRadius = 400; dt.nearHalfExtent = 800; dt.midHalfExtent = 2_000; dt.farHalfExtent = 4_000

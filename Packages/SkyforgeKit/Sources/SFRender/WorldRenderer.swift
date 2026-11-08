@@ -223,14 +223,14 @@ public final class WorldRenderer {
     }
 
     /// `FieldPattern.factor` evaluated by the world shader's code (CI compares it with the CPU).
-    public func fieldFactors(points: [SIMD3<Float>], pattern: FieldPattern) throws -> [SIMD3<Float>] {
+    public func fieldFactors(points: [SIMD3<Float>], pattern: FieldPattern, town: Bool = false) throws -> [SIMD3<Float>] {
         let n = points.count
         guard n > 0 else { return [] }
         guard let k = worldLibrary.makeFunction(name: "field_factors") else { throw RendererError.shaderCompile("missing field_factors") }
         let kernel: MTLComputePipelineState
         do { kernel = try device.makeComputePipelineState(function: k) } catch { throw RendererError.pipeline(String(describing: error)) }
         let pts = points.map { SIMD4<Float>($0, 0) }
-        var params = SIMD4<Float>(Float(pattern.seed), pattern.autumn ? 1 : 0, 0, 0)
+        var params = SIMD4<Float>(Float(pattern.seed), pattern.autumn ? 1 : 0, town ? 1 : 0, 0)
         guard let ib = device.makeBuffer(bytes: pts, length: n * 16, options: .storageModeShared),
               let ob = device.makeBuffer(length: n * 16, options: .storageModeShared),
               let cmd = queue.makeCommandBuffer(), let enc = cmd.makeComputeCommandEncoder() else { throw RendererError.commandQueue }

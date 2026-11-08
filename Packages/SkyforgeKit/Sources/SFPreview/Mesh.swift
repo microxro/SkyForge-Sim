@@ -16,8 +16,8 @@ public struct TriangleSoup: Sendable {
     /// Optional per-vertex albedo (3 per triangle) for smooth colour transitions; empty when every
     /// triangle is flat-coloured. Once used it covers all triangles (flat ones repeat `albedo`).
     public var vertexAlbedo: [SIMD3<Float>] = []
-    /// Optional per-vertex field weight (3 per triangle, 0…1): where `FieldPattern` parcels are drawn
-    /// per pixel on terrain. Empty means no fields; once used it covers all triangles.
+    /// Optional per-vertex field weight (3 per triangle, −1…1): where `FieldPattern` parcels (> 0) or the
+    /// suburb impostor (< 0) are drawn per pixel on terrain. Empty means no fields; once used it covers all triangles.
     public var vertexField: [Float] = []
     /// The parcel pattern `vertexField` refers to (set by SceneBuilder).
     public var fieldPattern: FieldPattern?

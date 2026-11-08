@@ -1,4 +1,4 @@
-LAST_UPDATE: 2026-11-08T16:10:45Z
+LAST_UPDATE: 2026-11-08T16:24:06Z
 
 # SKYFORGE state
 
@@ -57,4 +57,4 @@ P0 accepted (CI fully green). P1 in progress: P1.1, P1.2, P1.2b-2, P1.4, P1.7b, 
 - Nothing known. Speckle fixed in f8afa50 (CI frame reviewed).
 
 ## Last green SHA
-- a037dcf (CI run 42495922983: all jobs green; fields under the approach)
+- 4312654 (CI run 42498676220: all jobs green; per-pixel field parcels, GPU mirror verified)

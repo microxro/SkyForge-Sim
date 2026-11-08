@@ -10,7 +10,7 @@ public enum WorldShaders {
 
     struct WorldVertex {
         packed_float3 position;   // relative to the mesh origin (m), z up
-        char4 normal;             // snorm8 xyz, w = field weight (0…127)
+        char4 normal;             // snorm8 xyz, w = field weight (−127…127; < 0 suburb impostor)
         uchar4 colour;            // sqrt-encoded linear albedo rgb, material id in a
     };
 
@@ -77,7 +77,7 @@ public enum WorldShaders {
         float3 c = float3(w.colour.rgb) / 255.0;
         o.albedo = c * c;
         o.material = float(w.colour.a);
-        o.field = max(0.0, float(w.normal.w)) / 127.0;
+        o.field = float(w.normal.w) / 127.0;      // > 0 field parcels, < 0 suburb impostor
         return o;
     }
 
@@ -221,11 +221,50 @@ public enum WorldShaders {
         return col + (float3(0.24, 0.30, 0.38) - col) * hedgeAmount;
     }
 
-    /// CI check: FieldPattern factors on the GPU (in: x, y, footprint; params: seed, autumn).
+    constant float3 fpRoofs[5] = { float3(0.050, 0.050, 0.055), float3(0.170, 0.060, 0.040), float3(0.080, 0.090, 0.100),
+        float3(0.250, 0.090, 0.050), float3(0.200, 0.200, 0.190) };
+    /// Mirror of SFPreview.FieldPattern.town (suburb impostor beyond the building radius).
+    static float3 townColour(float x, float y, float footprint, float3 lawn, uint seed) {
+        const float3 street = float3(0.060, 0.060, 0.065);
+        float c = cos(0.55f), s = sin(0.55f);
+        float u = c * x + s * y, v = -s * x + c * y;
+        float bu = floor(u / 90.0), bv = floor(v / 140.0);
+        float lu = u - bu * 90.0, lv = v - bv * 140.0;
+        float roadEdge = min(min(lu, 90.0 - lu), min(lv, 140.0 - lv));
+        float3 mean = street * 0.14 + float3(0.150, 0.098, 0.087) * 0.075 + lawn * 0.765;
+        float fp = max(0.05, footprint);
+        float detailW = 1.0 - min(1.0, max(0.0, (fp - 3.0) / 12.0));
+        if (detailW <= 0.0) return mean;
+        float3 col;
+        if (roadEdge < 4.0) {
+            col = street;
+        } else {
+            float row = lv < 70.0 ? 0.0 : 1.0;
+            float lotI = floor((lu - 4.0) / 18.0);
+            uint h = fp_hash(int(bu) * 8 + int(lotI), int(bv) * 2 + int(row), seed ^ 0x70E1u);
+            float lx = lu - 4.0 - lotI * 18.0 - 9.0;
+            float ly = (row == 0.0 ? lv - 4.0 : 136.0 - lv) - 22.0;
+            float jx = (fp_unit(h) - 0.5) * 3.0, jy = (fp_unit(h >> 8) - 0.5) * 4.0;
+            bool built = fp_unit(h >> 16) < 0.86;
+            if (built && abs(lx - jx) < 5.0 && abs(ly - jy) < 6.0) {
+                col = fpRoofs[h % 5u];
+            } else {
+                col = lawn;
+                if (built && abs(lx - jx) < 5.0 && ly - jy > 6.0 && ly - jy < 9.0) col *= 0.55;
+                float tx = lx - (fp_unit(h >> 4) - 0.5) * 10.0, ty = ly - 18.0;
+                if (fp_unit(h >> 12) < 0.45 && tx * tx + ty * ty < 16.0) col = lawn * float3(0.45, 0.55, 0.45);
+            }
+        }
+        return mean + (col - mean) * detailW;
+    }
+
+    /// CI check: FieldPattern factors (or town colours on lawn 0.10/0.12/0.06 when params.z = 1) on the GPU
+    /// (in: x, y, footprint; params: seed, autumn, town).
     kernel void field_factors(const device float4* pts [[buffer(0)]], device float4* out [[buffer(1)]],
                               constant float4& params [[buffer(2)]], uint i [[thread_position_in_grid]]) {
         float4 p = pts[i];
-        out[i] = float4(fieldFactor(p.x, p.y, p.z, uint(params.x), params.y > 0.5), 0.0);
+        out[i] = params.z > 0.5 ? float4(townColour(p.x, p.y, p.z, float3(0.10, 0.12, 0.06), uint(params.x)), 0.0)
+                                : float4(fieldFactor(p.x, p.y, p.z, uint(params.x), params.y > 0.5), 0.0);
     }
 
     /// Cook–Torrance GGX for dielectric paint and glass (F0 = 0.04), with a sky-tinted
@@ -282,6 +321,9 @@ public enum WorldShaders {
         }
         float2 fieldW = in.rel.xy + u.cameraLocal.xy;
         float fieldFp = length(fwidth(fieldW));              // derivatives outside divergent branches
+        if (m == 7.0 && in.material == 7.0 && u.skyHorizon.w > 0.5 && in.field < -0.003) {
+            albedo = mix(albedo, townColour(fieldW.x, fieldW.y, fieldFp, albedo, uint(u.ambientGround.w)), min(1.0, -in.field));
+        }
         if (m == 7.0 && in.material == 7.0 && u.skyHorizon.w > 0.5 && in.field > 0.003) {
             // Field parcels with crisp hedgerows per pixel (the vertex grid blurred and stepped them).
             float3 f = fieldFactor(fieldW.x, fieldW.y, fieldFp, uint(u.ambientGround.w), u.skyHorizon.w > 1.5);

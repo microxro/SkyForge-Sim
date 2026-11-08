@@ -87,4 +87,50 @@ public struct FieldPattern: Sendable, Equatable {
         let hedgeAmount = cover * strength * gaps
         return col + (Self.hedge - col) * hedgeAmount
     }
+
+    // MARK: Built-up impostor
+
+    /// Roofs of distant houses (linear albedo): dark grey, red-brown, slate, terracotta, light grey.
+    static let roofs: [SIMD3<Float>] = [SIMD3(0.050, 0.050, 0.055), SIMD3(0.170, 0.060, 0.040), SIMD3(0.080, 0.090, 0.100),
+                                        SIMD3(0.250, 0.090, 0.050), SIMD3(0.200, 0.200, 0.190)]
+    static let street = SIMD3<Float>(0.060, 0.060, 0.065)
+
+    /// Suburb beyond the object radius as seen from far away: 90 × 140 m blocks bounded by 8 m streets,
+    /// two rows of 18 m lots, a 10 × 12 m house per lot with a hashed roof, and some lots with a tree.
+    /// Returns the albedo replacing `lawn`; detail averages out as the pixel footprint grows.
+    public func town(_ x: Float, _ y: Float, footprint: Float, lawn: SIMD3<Float>) -> SIMD3<Float> {
+        let c = cos(Self.angle + 0.2), s = sin(Self.angle + 0.2)
+        let u = c * x + s * y, v = -s * x + c * y
+        let bu = (u / 90).rounded(.down), bv = (v / 140).rounded(.down)
+        let lu = u - bu * 90, lv = v - bv * 140                       // metres within the block
+        let roadEdge = min(min(lu, 90 - lu), min(lv, 140 - lv))
+        // Area average: streets 14 %, roofs 7.5 %, lawn the rest less tree and shadow darkening.
+        let mean = Self.street * 0.14 + SIMD3<Float>(0.150, 0.098, 0.087) * 0.075 + lawn * 0.765
+        let fp = max(0.05, footprint)
+        let detailW = 1 - min(1, max(0, (fp - 3) / 12))
+        if detailW <= 0 { return mean }
+        var col: SIMD3<Float>
+        if roadEdge < 4 {
+            col = Self.street
+        } else {
+            // Lots: two rows (split at lv = 70), 18 m wide along u.
+            let row: Float = lv < 70 ? 0 : 1
+            let lotI = ((lu - 4) / 18).rounded(.down)
+            let h = Self.hash(Int32(bu) &* 8 &+ Int32(lotI), Int32(bv) &* 2 &+ Int32(row), seed ^ 0x70E1)
+            let lx = lu - 4 - lotI * 18 - 9                            // −9…9 across the lot
+            let ly = (row == 0 ? lv - 4 : 136 - lv) - 22               // house set back from the street
+            let jx = (Self.unit(h) - 0.5) * 3, jy = (Self.unit(h >> 8) - 0.5) * 4
+            let inHouse = abs(lx - jx) < 5 && abs(ly - jy) < 6 && Self.unit(h >> 16) < 0.86
+            if inHouse {
+                col = Self.roofs[Int(h % UInt32(Self.roofs.count))]
+            } else {
+                col = lawn
+                // Shadowed side of the house and a tree in some back gardens.
+                if abs(lx - jx) < 5 && ly - jy > 6 && ly - jy < 9 && Self.unit(h >> 16) < 0.86 { col *= 0.55 }
+                let tx = lx - (Self.unit(h >> 4) - 0.5) * 10, ty = ly - 18
+                if Self.unit(h >> 12) < 0.45 && tx * tx + ty * ty < 16 { col = lawn * SIMD3(0.45, 0.55, 0.45) }
+            }
+        }
+        return mean + (col - mean) * detailW
+    }
 }
