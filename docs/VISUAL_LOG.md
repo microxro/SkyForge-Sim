@@ -118,3 +118,8 @@ Open defects (next passes): near-field ground is flat colour (needs detail textu
 - Applied now: eight summer broadleaf and four conifer greens (crowns no longer one lime tone); rock from 24° and snow only below ~30° slope (peaks show grey rock faces); field parcels warped by low-frequency noise with soft hedgerow margins. Previews re-rendered.
 - Coast: near-shore water grid coloured by depth (foam at the waterline, turquoise shallows, deep blue beyond 28 m); visible as a lighter near-shore band in (e). The cliff is still faceted.
 - Airport kit (Quick Flight and j): parallel taxiway with stubs and centre lines, concrete apron, four hangars, approach light bars with a 300 m crossbar, PAPI; airport flatten zone widened to ±200 m so the kit sits on level, tree-free ground.
+
+### 2026-11-08 Art-director re-review (round 3) and fixes
+- a 5.17, d 5.00, e 5.17, f 5.33, j 4.50 → **5.03** (was 4.87). Airport kit made (j) read as an airport; tree variety helped (d).
+- Root cause of the blocky land-cover borders and stepped shallows: every triangle carried one averaged colour. `TriangleSoup` now has optional per-vertex albedo, interpolated perspective-correctly by the CPU rasterizer and packed per vertex for Metal; terrain and shore water use it.
+- Mountains: rock darker grey-brown with strata and lichen variation; snow holds up to ~35°. Grass detail calmed again (mid 0.05, dry tint 0.3).

@@ -39,7 +39,7 @@ public struct GBuffer: Sendable {
 struct ScreenTri {
     var p0: SIMD3<Float>, p1: SIMD3<Float>, p2: SIMD3<Float>   // x, y pixels; z = 1/depth
     var n0: SIMD3<Float>, n1: SIMD3<Float>, n2: SIMD3<Float>
-    var colour: SIMD3<Float>
+    var c0: SIMD3<Float>, c1: SIMD3<Float>, c2: SIMD3<Float>
     var material: UInt8
     var minY: Int32, maxY: Int32
 }
@@ -66,17 +66,17 @@ enum Raster {
             let na = soup.normals[3 * t], nb = soup.normals[3 * t + 1], nc = soup.normals[3 * t + 2]
             if a.z < near && b.z < near && c.z < near { continue }
             let mat = soup.material[t].rawValue
-            let col = soup.albedo[t]
+            let ca = soup.colour(t, 0), cb = soup.colour(t, 1), cc = soup.colour(t, 2)
             // Clip against the near plane (Sutherland–Hodgman on one plane).
-            var verts: [(SIMD3<Float>, SIMD3<Float>)] = []
-            let input = [(a, na), (b, nb), (c, nc)]
+            var verts: [(SIMD3<Float>, SIMD3<Float>, SIMD3<Float>)] = []
+            let input = [(a, na, ca), (b, nb, cb), (c, nc, cc)]
             for i in 0..<3 {
-                let (p, pn) = input[i], (q, qn) = input[(i + 1) % 3]
+                let (p, pn, pc) = input[i], (q, qn, qc) = input[(i + 1) % 3]
                 let pin = p.z >= near, qin = q.z >= near
-                if pin { verts.append((p, pn)) }
+                if pin { verts.append((p, pn, pc)) }
                 if pin != qin {
                     let s = (near - p.z) / (q.z - p.z)
-                    verts.append((p + (q - p) * s, pn + (qn - pn) * s))
+                    verts.append((p + (q - p) * s, pn + (qn - pn) * s, pc + (qc - pc) * s))
                 }
             }
             guard verts.count >= 3 else { continue }
@@ -88,7 +88,7 @@ enum Raster {
                 let area = (s1.x - s0.x) * (s2.y - s0.y) - (s1.y - s0.y) * (s2.x - s0.x)
                 if abs(area) < 1e-6 { continue }
                 out.append(ScreenTri(p0: s0, p1: s1, p2: s2, n0: verts[0].1, n1: verts[k].1, n2: verts[k + 1].1,
-                                     colour: col, material: mat,
+                                     c0: verts[0].2, c1: verts[k].2, c2: verts[k + 1].2, material: mat,
                                      minY: Int32(max(0, Int(minYf.rounded(.down)))), maxY: Int32(min(height - 1, Int(maxYf.rounded(.up))))))
             }
         }
@@ -146,7 +146,7 @@ enum Raster {
                             // Perspective-correct normal interpolation.
                             let n = (t.n0 * (w0 * t.p0.z) + t.n1 * (w1 * t.p1.z) + t.n2 * (w2 * t.p2.z)) / invZ
                             np[idx] = n
-                            ap[idx] = t.colour
+                            ap[idx] = (t.c0 * (w0 * t.p0.z) + t.c1 * (w1 * t.p1.z) + t.c2 * (w2 * t.p2.z)) / invZ
                             mp[idx] = t.material
                         }
                     }
@@ -186,7 +186,7 @@ public struct ShadowMap: Sendable {
             let minYf = min(s[0].y, s[1].y, s[2].y), maxYf = max(s[0].y, s[1].y, s[2].y)
             let minX = min(s[0].x, s[1].x, s[2].x), maxX = max(s[0].x, s[1].x, s[2].x)
             if maxX < 0 || minX >= Float(size) || maxYf < 0 || minYf >= Float(size) { continue }
-            tris.append(ScreenTri(p0: s[0], p1: s[1], p2: s[2], n0: .zero, n1: .zero, n2: .zero, colour: .zero, material: 0,
+            tris.append(ScreenTri(p0: s[0], p1: s[1], p2: s[2], n0: .zero, n1: .zero, n2: .zero, c0: .zero, c1: .zero, c2: .zero, material: 0,
                                   minY: Int32(max(0, Int(minYf.rounded(.down)))), maxY: Int32(min(size - 1, Int(maxYf.rounded(.up))))))
         }
         let n = size

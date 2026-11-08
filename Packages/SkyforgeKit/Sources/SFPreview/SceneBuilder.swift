@@ -61,10 +61,13 @@ public struct SceneBuilder {
         }
         // Rock on steep slopes, snow by temperature and slope.
         let rock = Float(smoothstep(0.42, 0.75, slope))
-        c = c + (GroundPalette.colour(.rock, season: generator.season) - c) * rock
+        // Rock: darker grey-brown with horizontal strata and patchy lichen tones (art review: pale clay).
+        let strata = Float(0.82 + 0.22 * sin(z / 14 + macroNoise.fbm(x / 160, y / 160) * 3) + 0.10 * macroNoise.fbm(x / 40, y / 40, octaves: 2))
+        let rockCol = srgb(98, 92, 84) * strata
+        c = c + (rockCol - c) * rock
         let t = BiomeClassifier.temperature(latitude: generator.latitude, elevation: z + macroNoise.fbm(x / 400, y / 400) * 120)
         // Snow only holds on gentler slopes; steep faces stay rock (art review: peaks read as clay).
-        let snow = Float(smoothstep(-1, -4, t) * (1 - smoothstep(0.38, 0.62, slope)))
+        let snow = Float(smoothstep(-1, -4, t) * (1 - smoothstep(0.52, 0.72, slope)))   // holds up to ~35°
         c = c + (srgb(236, 240, 246) - c) * snow
         if terrain.kind == .coastline && z < 4 && z > terrain.seaLevel - 1 { c = srgb(206, 190, 150) }
         if let r = terrain.river, rd < r.width / 2 + 14 {
@@ -144,10 +147,11 @@ public struct SceneBuilder {
                 let i00 = j * (n + 1) + i, i10 = i00 + 1, i01 = i00 + n + 1, i11 = i01 + 1
                 let p00 = SIMD3(x, y, heights[i00]), p10 = SIMD3(x + step, y, heights[i10])
                 let p01 = SIMD3(x, y + step, heights[i01]), p11 = SIMD3(x + step, y + step, heights[i11])
-                let c1 = (colours[i00] + colours[i10] + colours[i11]) / 3
-                let c2 = (colours[i00] + colours[i11] + colours[i01]) / 3
-                soup.add(p00, p10, p11, na: normals[i00], nb: normals[i10], nc: normals[i11], colour: c1, material: .terrain)
-                soup.add(p00, p11, p01, na: normals[i00], nb: normals[i11], nc: normals[i01], colour: c2, material: .terrain)
+                // Per-vertex colours (art review: per-triangle averages made land-cover borders blocky).
+                soup.add(p00, p10, p11, na: normals[i00], nb: normals[i10], nc: normals[i11],
+                         ca: colours[i00], cb: colours[i10], cc: colours[i11], material: .terrain)
+                soup.add(p00, p11, p01, na: normals[i00], nb: normals[i11], nc: normals[i01],
+                         ca: colours[i00], cb: colours[i11], cc: colours[i01], material: .terrain)
                 count += 2
             }
         }
@@ -186,8 +190,8 @@ public struct SceneBuilder {
                     let p00 = SIMD3(xa, ya, z + 0.02), p10 = SIMD3(xa + step, ya, z + 0.02)
                     let p01 = SIMD3(xa, ya + step, z + 0.02), p11 = SIMD3(xa + step, ya + step, z + 0.02)
                     let c00 = colour(d00), c10 = colour(d10), c01 = colour(d01), c11 = colour(d11)
-                    soup.add(p00, p10, p11, na: up, nb: up, nc: up, colour: (c00 + c10 + c11) / 3, material: .water)
-                    soup.add(p00, p11, p01, na: up, nb: up, nc: up, colour: (c00 + c11 + c01) / 3, material: .water)
+                    soup.add(p00, p10, p11, na: up, nb: up, nc: up, ca: c00, cb: c10, cc: c11, material: .water)
+                    soup.add(p00, p11, p01, na: up, nb: up, nc: up, ca: c00, cb: c11, cc: c01, material: .water)
                     cells += 1
                 }
             }

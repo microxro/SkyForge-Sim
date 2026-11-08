@@ -214,6 +214,10 @@ extension RealWorldScenes {
             var b = SceneBuilder(generator: WorldGenerator(terrain: TerrainRecipe(kind: .suburbanPlain, seed: 1)), origin: soup.origin)
             b.addAircraft(at: pos, heading: atan2(fwdH.x, fwdH.y) + rig.headingOffset, pitch: rig.pitch, roll: rig.roll, accent: srgb(28, 62, 118))
             let a = b.soup
+            if !a.vertexAlbedo.isEmpty || !soup.vertexAlbedo.isEmpty {
+                if soup.vertexAlbedo.isEmpty { soup.vertexAlbedo = soup.albedo.flatMap { [$0, $0, $0] } }
+                soup.vertexAlbedo += a.vertexAlbedo.isEmpty ? a.albedo.flatMap { [$0, $0, $0] } : a.vertexAlbedo
+            }
             soup.positions += a.positions; soup.normals += a.normals; soup.albedo += a.albedo; soup.material += a.material
             counts["aircraft"] = 1
         }

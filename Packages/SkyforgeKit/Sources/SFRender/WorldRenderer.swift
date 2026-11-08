@@ -350,8 +350,9 @@ public final class WorldRenderer {
         func c(_ x: Float) -> UInt8 { UInt8(max(0, min(255, (max(0, x).squareRoot() * 255).rounded()))) }
         for i in 0..<soup.triangleCount {
             let t = order?[i] ?? i
-            let a = soup.albedo[t], m = soup.material[t].rawValue
+            let m = soup.material[t].rawValue
             for k in 0..<3 {
+                let a = soup.colour(t, k)
                 let p = soup.positions[3 * t + k], n = soup.normals[3 * t + k]
                 out.append(PackedWorldVertex(px: p.x, py: p.y, pz: p.z, nx: q(n.x), ny: q(n.y), nz: q(n.z), nw: 0,
                                              r: c(a.x), g: c(a.y), b: c(a.z), material: m))
