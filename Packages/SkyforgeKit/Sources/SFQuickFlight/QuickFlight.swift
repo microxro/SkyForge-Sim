@@ -88,18 +88,23 @@ public struct QuickFlightWorld: FlightWorld {
         b.addWater(centre: focus, halfExtent: d.nearHalfExtent * 1.4, step: 10)
         let r = d.objectRadius
         let cs = WorldGenerator.chunkSize
-        for cy in Int(((focus.y - r) / cs).rounded(.down))...Int(((focus.y + r) / cs).rounded(.down)) {
-            for cx in Int(((focus.x - r) / cs).rounded(.down))...Int(((focus.x + r) / cs).rounded(.down)) {
+        // Objects around the airfield and around the final approach (the 3 nm final start is ~4 km from
+        // the runway centre, beyond the object radius, so its whole foreground used to be bare fields).
+        let foci = [focus, runway.threshold - runwayDirection * 2_600]
+        func nearest(_ p: SIMD2<Double>) -> (dist: Double, focus: SIMD2<Double>) {
+            foci.map { f -> (Double, SIMD2<Double>) in let d = p - f; return ((d * d).sum().squareRoot(), f) }.min { $0.0 < $1.0 }!
+        }
+        let lo = SIMD2(foci.map(\.x).min()! - r, foci.map(\.y).min()! - r), hi = SIMD2(foci.map(\.x).max()! + r, foci.map(\.y).max()! + r)
+        for cy in Int((lo.y / cs).rounded(.down))...Int((hi.y / cs).rounded(.down)) {
+            for cx in Int((lo.x / cs).rounded(.down))...Int((hi.x / cs).rounded(.down)) {
+                let centre = SIMD2((Double(cx) + 0.5) * cs, (Double(cy) + 0.5) * cs)
+                if nearest(centre).dist > r + cs { continue }
                 let chunk = generator.generateChunk(cx: cx, cy: cy)
-                b.addRoads(chunk.roads, near: focus, radius: r * 1.3)
-                for bl in chunk.buildings {
-                    let dx = bl.center.x - focus.x, dy = bl.center.y - focus.y
-                    if dx * dx + dy * dy < r * r { b.addBuilding(bl) }
-                }
+                b.addRoads(chunk.roads, near: nearest(centre).focus, radius: r * 1.3)
+                for bl in chunk.buildings where nearest(bl.center).dist < r { b.addBuilding(bl) }
                 for lot in chunk.parkingLots { b.addParkingLot(lot) }
                 for t in chunk.trees {
-                    let dx = t.position.x - focus.x, dy = t.position.y - focus.y
-                    let dist = (dx * dx + dy * dy).squareRoot()
+                    let dist = nearest(SIMD2(t.position.x, t.position.y)).dist
                     if !SceneBuilder.keepTree(t.position, dist: dist, radius: r) { continue }
                     b.addTree(t, detail: dist < d.treeDetailRadius ? 2 : 1)
                 }

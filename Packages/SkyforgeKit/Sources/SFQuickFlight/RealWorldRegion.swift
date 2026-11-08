@@ -380,7 +380,10 @@ public struct RealWorldRegion: FlightWorld {
                 if nearRunway(px, py) || inBuilding(px, py) { continue }
                 let h = 9 + Hash.unit(rng.next()) * 10
                 let conifer = Hash.unit(rng.next()) < 0.55
-                let tint = g.albedo * 1.9 * Float(0.85 + 0.3 * Hash.unit(rng.next()))
+                var tint = g.albedo * 1.9 * Float(0.85 + 0.3 * Hash.unit(rng.next()))
+                // Foliage albedo floor (hue kept): dark Sentinel-2 forest gave near-black crowns (LSZS).
+                let tl = 0.2126 * tint.x + 0.7152 * tint.y + 0.0722 * tint.z
+                if tl < 0.05 { tint *= 0.05 / max(tl, 0.002) }
                 out.append(TreeInstance(position: SIMD3(Float(px), Float(py), Float(height(px, py))), height: Float(h), conifer: conifer, colour: tint))
             }
             y += cell

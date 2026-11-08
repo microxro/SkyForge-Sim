@@ -174,3 +174,4 @@ Method: `FrameTimeTests`, 30 frames after 3 warm-up frames; command-buffer GPU t
 - Margin on KMRY high is still small (about 0.6 ms, with ±0.4 ms run-to-run noise).
 - 2026-11-08T23:10:15Z gate fast on Linux x86_64: PASS (HEAD 9eac060)
 - 2026-11-08T23:31:50Z gate fast on Linux x86_64: PASS (HEAD 7474025)
+- 2026-11-08T23:38:09Z gate fast on Linux x86_64: PASS (HEAD ea82990)

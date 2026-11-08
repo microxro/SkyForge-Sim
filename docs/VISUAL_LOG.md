@@ -236,3 +236,18 @@ The clarity and micro-detail changes are not visible at 640×360.
 Round-3 structural change, chosen with the reviewer:
 - A z17 USGS approach layer at about 1 m/px (a8f0977, ADR-0017).
 - Next: SkyWorld relief and trees in the Metal path, procedural buildings tinted from the photo, aircraft exposure and shadow.
+
+## Bold round 3 — 1280×720 Metal frames (9f8c54a, run 42533862905)
+KMRY 5.0, KASE 6.0, KBFI 4.0, LSZS 4.5, NZQN 5.0, SkyWorld 4.5 (full-detail frame). **Average 4.83 (+0.75).**
+Findings:
+- The z17 layer and the full-HD frames show.
+- Photo trees and their baked shadows double the 3D trees (KMRY).
+- KBFI boxes are still pale.
+- LSZS is dark.
+- SkyWorld is flat, its tree belts read as walls, and the approach foreground had no objects.
+- A CPU reference render of the KMRY camera matches the GPU softness, so the GPU path is clean.
+Round-4 batch:
+1. Camera-following z18 detail streaming (ea82990).
+2. Photo tree and shadow suppression in the near band, where the 3D trees and shadow map take over.
+3. Foliage albedo floor for tree tints.
+4. SkyWorld objects also around the final approach.
