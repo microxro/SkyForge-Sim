@@ -53,7 +53,7 @@ public enum PreviewScenes {
         let rwyDir = SIMD2(sin(rwyHeading), cos(rwyHeading))
         let rwyElevation = recipe.height(rwyThreshold.x + rwyDir.x * 750, rwyThreshold.y + rwyDir.y * 750)
         if scene == .airportFinal {
-            recipe.flattenZones = [(centre: rwyThreshold + rwyDir * 750, halfLength: 850, halfWidth: 90, heading: rwyHeading, elevation: rwyElevation)]
+            recipe.flattenZones = [(centre: rwyThreshold + rwyDir * 750, halfLength: 850, halfWidth: 200, heading: rwyHeading, elevation: rwyElevation)]
         }
         let gen = WorldGenerator(terrain: recipe, latitude: 47, season: .summer)   // art review: autumn crowns clashed with green grass
         func cam(_ x: Double, _ y: Double, agl: Double, lookX: Double, lookY: Double, lookAGL: Double, fov: Double = 70) -> PreviewCamera {
@@ -141,7 +141,7 @@ public enum PreviewScenes {
                 }
             }
         }
-        if let rwy = s.runway { b.addRunway(rwy, elevation: s.runwayElevation) }
+        if let rwy = s.runway { b.addRunway(rwy, elevation: s.runwayElevation); b.addAirportKit(rwy, elevation: s.runwayElevation) }
         if let rig = s.aircraft {
             let fwdH = normalize(SIMD3(cam.forward.x, cam.forward.y, 0))
             let pos = cam.position + fwdH * rig.ahead - SIMD3(0, 0, rig.below) + SIMD3(fwdH.y, -fwdH.x, 0) * rig.right

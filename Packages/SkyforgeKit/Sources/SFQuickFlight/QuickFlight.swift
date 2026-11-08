@@ -105,6 +105,7 @@ public struct QuickFlightWorld: FlightWorld {
             }
         }
         b.addRunway(runway, elevation: runwayElevation)
+        b.addAirportKit(runway, elevation: runwayElevation)
         return b.soup
     }
 

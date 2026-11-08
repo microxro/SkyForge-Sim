@@ -392,6 +392,56 @@ public struct SceneBuilder {
         stats["runwayQuads", default: 0] += 1
     }
 
+    /// Airport furniture around a runway: parallel taxiway with stubs, apron, hangars, approach
+    /// lighting and a PAPI (art review: a lone runway rectangle read as "no sense of place").
+    public mutating func addAirportKit(_ spec: RunwaySpec, elevation: Double) {
+        let dir = SIMD2(sin(spec.heading), cos(spec.heading)), side = SIMD2(dir.y, -dir.x)   // side = right of the runway
+        func p(_ along: Double, _ across: Double, _ dz: Double) -> SIMD3<Double> {
+            let q = spec.threshold + dir * along + side * across
+            return SIMD3(q.x, q.y, elevation + dz)
+        }
+        func slab(_ a0: Double, _ a1: Double, _ c0: Double, _ c1: Double, _ dz: Double, _ col: SIMD3<Float>) {
+            soup.addQuad(p(a0, c0, dz), p(a1, c0, dz), p(a1, c1, dz), p(a0, c1, dz), colour: col, material: .road)
+        }
+        let L = spec.length, hw = spec.width / 2
+        let asphalt = srgb(70, 70, 72), concrete = srgb(150, 148, 140), yellow = srgb(196, 160, 40)
+        // Parallel taxiway (15 m) at 75 m, centre line, and three stubs to the runway edge.
+        slab(-20, L + 20, 67.5, 82.5, 0.08, asphalt)
+        slab(-20, L + 20, 74.7, 75.3, 0.11, yellow)
+        for a in [10.0, L / 2, L - 10] {
+            slab(a - 7.5, a + 7.5, hw, 67.5, 0.07, asphalt)
+            slab(a - 0.3, a + 0.3, hw + 2, 75, 0.10, yellow)
+        }
+        // Apron and hangars.
+        let a0 = L * 0.38, a1 = L * 0.64
+        slab(a0, a1, 82.5, 145, 0.06, concrete)
+        for k in 0..<4 {
+            let ac = a0 + 40 + Double(k) * ((a1 - a0 - 80) / 3)
+            let wall = k % 2 == 0 ? srgb(176, 180, 184) : srgb(150, 158, 170)
+            addBox({ x, y, z in p(ac + x, 170 + y, z) }, hx: 16, hy: 13, z0: -0.5, z1: 8, colour: wall)
+            // Low-pitched dark roof.
+            soup.addQuad(p(ac - 16, 157, 8), p(ac + 16, 157, 8), p(ac + 16, 170, 10), p(ac - 16, 170, 10), colour: srgb(70, 74, 80))
+            soup.addQuad(p(ac - 16, 170, 10), p(ac + 16, 170, 10), p(ac + 16, 183, 8), p(ac - 16, 183, 8), colour: srgb(70, 74, 80))
+        }
+        // Approach lighting: centre-line bars every 30 m to 420 m, crossbar at 300 m.
+        let light = srgb(240, 236, 220)
+        for k in 1...14 {
+            let a = -30.0 * Double(k)
+            for o in [-2.0, 0, 2.0] {
+                addBox({ x, y, z in p(a + x, o + y, z) }, hx: 0.35, hy: 0.35, z0: 0, z1: 0.8 + Double(k) * 0.05, colour: light)
+            }
+        }
+        for o in stride(from: -15.0, through: 15.0, by: 3) where abs(o) > 3 {
+            addBox({ x, y, z in p(-300 + x, o + y, z) }, hx: 0.35, hy: 0.35, z0: 0, z1: 1.4, colour: light)
+        }
+        // PAPI: four units left of the runway at 300 m.
+        for k in 0..<4 {
+            addBox({ x, y, z in p(300 + x, -(hw + 15 + Double(k) * 9) + y, z) }, hx: 0.8, hy: 1.2, z0: 0, z1: 0.9,
+                   colour: k < 2 ? srgb(232, 232, 228) : srgb(210, 40, 36))
+        }
+        stats["airportKit", default: 0] += 1
+    }
+
     // MARK: Aircraft
 
     /// Adds the procedural aircraft at a world position (ENU) with heading (rad from north, clockwise), pitch and roll.
