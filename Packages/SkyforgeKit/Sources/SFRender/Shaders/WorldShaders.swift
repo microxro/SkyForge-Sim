@@ -28,13 +28,31 @@ public enum WorldShaders {
         float4 cascadeSplits;     // far edge (m) of cascade 0, 1; texel size (m) of cascade 0, 1
         float4 cascadeDepth;      // light-space depth range (m) of cascade 0, 1
         float4 cameraPos;         // camera world x, y modulo 4096 m (noise period), z, unused
+        float4 cameraLocal;       // camera x, y, z in region metres (imagery lookup), unused
+        float4 imageryNear;       // centre x, y, half extent, 1 if present
+        float4 imageryFar;        // centre x, y, half extent, 1 if present
     };
+
+    struct TerrainVertex { packed_float3 position; char4 normal; };
+    struct TreeInstanceGPU { packed_float3 position; float height; packed_float3 colour; float kind; };
 
     struct ShadowUniforms { float4x4 lightViewProj; float4x4 model; };
 
     vertex float4 shadow_vertex(const device WorldVertex* v [[buffer(0)]], constant ShadowUniforms& u [[buffer(1)]],
                                 uint vid [[vertex_id]]) {
         return u.lightViewProj * (u.model * float4(float3(v[vid].position), 1.0));
+    }
+
+    vertex float4 shadow_terrain_vertex(const device TerrainVertex* v [[buffer(0)]], constant ShadowUniforms& u [[buffer(1)]],
+                                        uint vid [[vertex_id]]) {
+        return u.lightViewProj * (u.model * float4(float3(v[vid].position), 1.0));
+    }
+
+    vertex float4 shadow_tree_vertex(const device TerrainVertex* v [[buffer(0)]], constant ShadowUniforms& u [[buffer(1)]],
+                                     const device TreeInstanceGPU* inst [[buffer(2)]], uint vid [[vertex_id]], uint iid [[instance_id]]) {
+        TreeInstanceGPU t = inst[iid];
+        float3 p = float3(v[vid].position) * t.height + float3(t.position);
+        return u.lightViewProj * (u.model * float4(p, 1.0));
     }
 
     struct WorldVarying {
@@ -59,6 +77,37 @@ public enum WorldShaders {
         o.material = float(w.colour.a);
         return o;
     }
+
+    vertex WorldVarying terrain_vertex(const device TerrainVertex* v [[buffer(0)]], constant WorldUniforms& u [[buffer(1)]],
+                                       uint vid [[vertex_id]]) {
+        TerrainVertex w = v[vid];
+        float4 p = u.model * float4(float3(w.position), 1.0);
+        WorldVarying o;
+        o.position = u.viewProj * p;
+        o.rel = p.xyz;
+        o.normal = normalize(float3(w.normal.xyz) / 127.0);
+        o.albedo = float3(0.15, 0.17, 0.12);
+        o.material = 8.0;                       // real terrain: albedo from imagery in the fragment shader
+        return o;
+    }
+
+    vertex WorldVarying tree_vertex(const device TerrainVertex* v [[buffer(0)]], constant WorldUniforms& u [[buffer(1)]],
+                                    const device TreeInstanceGPU* inst [[buffer(2)]], uint vid [[vertex_id]], uint iid [[instance_id]]) {
+        TreeInstanceGPU t = inst[iid];
+        TerrainVertex w = v[vid];
+        float3 local = float3(w.position);
+        float4 p = u.model * float4(local * t.height + float3(t.position), 1.0);
+        WorldVarying o;
+        o.position = u.viewProj * p;
+        o.rel = p.xyz;
+        o.normal = normalize(float3(w.normal.xyz) / 127.0);
+        // Trunk vertices (marked by a negative normal w) are bark-coloured.
+        o.albedo = w.normal.w < 0 ? float3(0.06, 0.045, 0.03) : float3(t.colour) * (0.85 + 0.3 * saturate(local.z));
+        o.material = w.normal.w < 0 ? 0.0 : 2.0;
+        return o;
+    }
+
+    constexpr sampler imgSampler(filter::linear, mip_filter::linear, address::clamp_to_edge, coord::normalized);
 
     constexpr sampler tbl(filter::linear, address::clamp_to_edge, coord::normalized);
 
@@ -143,14 +192,33 @@ public enum WorldShaders {
 
     fragment float4 world_fragment(WorldVarying in [[stage_in]], constant WorldUniforms& u [[buffer(1)]],
                                    texture3d<float> ins [[texture(0)]], texture3d<float> tr [[texture(1)]],
-                                   depth2d_array<float> sm [[texture(2)]]) {
+                                   depth2d_array<float> sm [[texture(2)]],
+                                   texture2d<float> imgNear [[texture(3)]], texture2d<float> imgFar [[texture(4)]],
+                                   texture2d<float> waterMask [[texture(5)]]) {
         float dist = length(in.rel);
         float3 dir = in.rel / max(dist, 1e-3);
         float3 n = normalize(in.normal);
         if (dot(n, dir) > 0.0) n = -n;                       // two-sided, robust to winding
         float3 toSun = u.sunDir.xyz;
         float3 albedo = in.albedo;
-        if (in.material == 7.0 && dist < 1400.0) {
+        float m = in.material;
+        bool imageryWater = false;
+        if (m == 8.0) {
+            float2 w = in.rel.xy + u.cameraLocal.xy;
+            float2 nuv = (w - (u.imageryNear.xy - u.imageryNear.z)) / (2.0 * u.imageryNear.z);
+            nuv.y = 1.0 - nuv.y;                                   // row 0 = north edge
+            float2 fuv = (w - (u.imageryFar.xy - u.imageryFar.z)) / (2.0 * u.imageryFar.z);
+            fuv.y = 1.0 - fuv.y;
+            bool inNear = u.imageryNear.w > 0.5 && all(nuv > 0.002) && all(nuv < 0.998);
+            float3 c = inNear ? imgNear.sample(imgSampler, nuv).rgb
+                              : (u.imageryFar.w > 0.5 ? imgFar.sample(imgSampler, fuv).rgb : float3(0.12, 0.14, 0.10));
+            // Same photo→albedo conversion as SFPreview.ImageryGround (textures are sRGB, so c is linear).
+            albedo = pow(max(c, 0.0), 1.12) * 0.72;
+            float wm = inNear ? waterMask.sample(imgSampler, nuv).r : 0.0;
+            if (saturate((wm - 0.35) / 0.25) > 0.5) { imageryWater = true; albedo *= 0.7; }
+            m = imageryWater ? 1.0 : 7.0;
+        }
+        if (m == 7.0 && dist < (in.material == 8.0 ? 350.0 : 1400.0)) {
             // Per-pixel ground detail (as SFPreview). Each octave fades out once its cell shrinks
             // below about two pixels (screen-space footprint from fwidth), so it never aliases.
             float2 w = in.rel.xy + u.cameraPos.xy;
@@ -168,7 +236,6 @@ public enum WorldShaders {
         float ndl = dot(n, toSun);
         float vis = toSun.z > -0.05 ? shadowVisibility(u, sm, in.rel, n, dist, max(0.0f, ndl)) : 0.0;
         float3 ambient = mix(u.ambientGround.rgb, u.ambientSky.rgb, n.z * 0.5 + 0.5);
-        float m = in.material;
         float3 col;
         if (m == 1.0) {                                      // water
             float3 r = reflect(dir, float3(0, 0, 1));
@@ -176,7 +243,8 @@ public enum WorldShaders {
             float fres = 0.02 + 0.98 * pow(1.0 - cosT, 5.0);
             float3 refl = u.skyHorizon.rgb + u.sunColour.rgb * pow(max(0.0, dot(r, toSun)), 600.0) * 30.0 * vis;
             float3 body = albedo * (ambient * 0.6 + u.sunColour.rgb * max(0.0, toSun.z) * 0.15);
-            col = mix(body, refl, min(1.0, fres));
+            float reflScale = imageryWater ? 0.5 : 1.0;          // wind-roughened open water
+            col = mix(body, refl * reflScale, min(1.0, fres * (imageryWater ? 0.8 : 1.0)));
         } else if (m == 2.0) {                               // foliage: wrap + back-scatter
             float wrap = max(0.0, ndl * 0.55 + 0.45);
             float back = pow(max(0.0, dot(dir, toSun)), 4.0) * 0.35;

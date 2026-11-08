@@ -18,6 +18,26 @@ public struct RecipeTerrain: TerrainHeightProvider {
     public func elevation(north: Double, east: Double) -> Double { recipe.height(east, north) }
 }
 
+/// Anything Quick Flight can fly over: terrain heights and a runway to start from.
+public protocol FlightWorld: Sendable {
+    var runwayThreshold: SIMD2<Double> { get }      // low-numbered threshold, world x east / y north (m)
+    var runwayHeading: Double { get }               // true heading from that threshold (rad)
+    var runwayLengthMetres: Double { get }
+    var runwayElevation: Double { get }             // m AMSL
+    func height(_ x: Double, _ y: Double) -> Double
+}
+
+extension FlightWorld {
+    public var runwayDirection: SIMD2<Double> { SIMD2(sin(runwayHeading), cos(runwayHeading)) }
+}
+
+/// Flight-model terrain backed by any FlightWorld.
+public struct FlightWorldTerrain: TerrainHeightProvider {
+    public let world: any FlightWorld
+    public init(_ w: any FlightWorld) { world = w }
+    public func elevation(north: Double, east: Double) -> Double { world.height(east, north) }
+}
+
 public enum QuickFlightStart: String, Sendable, CaseIterable {
     case runway, final
 }
@@ -37,7 +57,7 @@ public struct QuickFlightDetail: Sendable, Equatable {
                                                   farHalfExtent: 28_000, farStep: 140, objectRadius: 2_400, treeDetailRadius: 550)
 }
 
-public struct QuickFlightWorld: Sendable {
+public struct QuickFlightWorld: FlightWorld {
     public let generator: WorldGenerator
     public let runway: RunwaySpec
     public let runwayElevation: Double
@@ -50,8 +70,10 @@ public struct QuickFlightWorld: Sendable {
         runwayElevation = s.runwayElevation
     }
 
-    /// Unit vector along the runway (from the low-numbered threshold), world x east / y north.
-    public var runwayDirection: SIMD2<Double> { SIMD2(sin(runway.heading), cos(runway.heading)) }
+    public var runwayThreshold: SIMD2<Double> { runway.threshold }
+    public var runwayHeading: Double { runway.heading }
+    public var runwayLengthMetres: Double { runway.length }
+    public func height(_ x: Double, _ y: Double) -> Double { recipe.height(x, y) }
     public var runwayCentre: SIMD2<Double> { runway.threshold + runwayDirection * runway.length / 2 }
 
     /// Static environment mesh around the airfield (no view culling: the camera moves).
@@ -102,7 +124,7 @@ public struct QuickFlightWorld: Sendable {
 }
 
 public struct QuickFlightSession: Sendable {
-    public let world: QuickFlightWorld
+    public let world: any FlightWorld
     public let model = FlightModel(config: .sf1Trainer)
     public let environment: FlightEnvironment
     public private(set) var state: AircraftState
@@ -115,20 +137,20 @@ public struct QuickFlightSession: Sendable {
     private var lastFlapAction = false
     public static let dt = 1.0 / 120
 
-    public init(world: QuickFlightWorld = QuickFlightWorld(), start: QuickFlightStart = .runway) {
+    public init(world: any FlightWorld = QuickFlightWorld(), start: QuickFlightStart = .runway) {
         self.world = world
-        environment = FlightEnvironment(terrain: RecipeTerrain(world.recipe))
+        environment = FlightEnvironment(terrain: FlightWorldTerrain(world))
         let dir = world.runwayDirection
-        let hdg = world.runway.heading
+        let hdg = world.runwayHeading
         switch start {
         case .runway:
-            let p = world.runway.threshold + dir * 60
+            let p = world.runwayThreshold + dir * 60
             state = AircraftState(positionNED: SIMD3(p.y, p.x, -(world.runwayElevation + 1.22)), velocityBody: .zero,
                                   attitude: Quaternion(roll: 0, pitch: 0, yaw: hdg), bodyRates: .zero)
             inputs.brakes = 0
         case .final:
             let dist = 2_000.0
-            let p = world.runway.threshold - dir * dist
+            let p = world.runwayThreshold - dir * dist
             let alt = world.runwayElevation + 15 + dist * tan(3 * Double.pi / 180)
             let trim = model.trimLevel(trueAirspeed: 34, altitude: alt, flaps: 0.5, environment: environment)
             var s = trim.state
@@ -195,7 +217,7 @@ public struct QuickFlightSession: Sendable {
         let fwd = SIMD3(sin(e.yaw), cos(e.yaw), 0)
         let p = positionENU
         var cam = p - fwd * distance + SIMD3(0, 0, height)
-        let ground = world.recipe.height(cam.x, cam.y) + 2
+        let ground = world.height(cam.x, cam.y) + 2
         cam.z = max(cam.z, ground)
         return (cam, p + fwd * 30 + SIMD3(0, 0, 1))
     }

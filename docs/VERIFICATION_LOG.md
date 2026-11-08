@@ -57,3 +57,5 @@ Every gate run, CI run and manual verification. Newest at the bottom.
 - 2026-11-08T04:13:29Z gate fast on Linux x86_64: PASS (HEAD 28f80d3)
 - 2026-11-08T04:29:44Z gate fast on Linux x86_64: PASS (HEAD b52fdf2)
 - 2026-11-08T04:57:12Z gate fast on Linux x86_64: PASS (HEAD ac9bd29)
+2026-11-08T05:01:33Z compaction; last commit b7c85a7
+- 2026-11-08T05:04:34Z gate fast on Linux x86_64: PASS (HEAD b7c85a7)

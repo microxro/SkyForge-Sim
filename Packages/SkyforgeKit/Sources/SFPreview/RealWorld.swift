@@ -18,9 +18,9 @@ public struct ImageryGround: GroundAlbedo {
     public let far: ImageryMosaic?
     /// Water score averaged over 8 × 8 imagery pixels (≈16 m) so shorelines are smooth and dark
     /// roofs or tree shadows in town are not mistaken for ponds.
-    let waterMask: [Float]
-    let maskSize: Int
-    static let block = 8
+    public let waterMask: [Float]
+    public let maskSize: Int
+    public static let block = 8
 
     public init(near: ImageryMosaic, far: ImageryMosaic?) {
         self.near = near; self.far = far
