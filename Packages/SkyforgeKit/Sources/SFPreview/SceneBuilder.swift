@@ -67,7 +67,7 @@ public struct SceneBuilder {
         let spacing = 11 + 7 * macroNoise.fbm(x / 900 + 3, y / 900, octaves: 1)
         let band = sin(warpZ / spacing) * (0.5 + 0.5 * macroNoise.fbm(x / 120, y / 120, octaves: 2))
         let strata = Float(0.86 + 0.08 * band + 0.10 * macroNoise.fbm(x / 40, y / 40, octaves: 2))
-        let rockCol = srgb(98, 92, 84) * strata
+        let rockCol = srgb(104, 100, 94) * strata   // neutral grey-brown (review: lilac cast)
         c = c + (rockCol - c) * rock
         let t = BiomeClassifier.temperature(latitude: generator.latitude, elevation: z + macroNoise.fbm(x / 400, y / 400) * 120)
         // Snow only holds on gentler slopes; steep faces stay rock (art review: peaks read as clay).

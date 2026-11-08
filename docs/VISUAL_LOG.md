@@ -135,3 +135,4 @@ Open defects (next passes): near-field ground is flat colour (needs detail textu
 ### 2026-11-08 Art-director re-review (round 5) and fixes
 - a 5.50, d 5.00, e 5.50, f 5.50, j 4.50 → **5.20** (was 5.10). House variety and organic strata worked; (j) showed evenly spaced wavy bands over the foreground.
 - Diagnosis by elimination: the bands survived removing micro-relief and halving terrain fine noise, and vanished with a larger shadow bias, so they were shadow acne at a 6° sun. CPU bias now texel·(1.2 + min(24, 1.6·tanθ)); Metal texel·(0.8 + min(16, 1.4·tanθ)). Mowing stripes are a smooth low-contrast sinusoid (the 40 m square wave aliased on the vertex grid); terrain fine noise gentler (0.6 m at 220 m).
+- Mountains: bounce light on steep shaded terrain (0.10 × sun × steepness × shade) keeps faces readable; rock albedo neutral grey-brown.

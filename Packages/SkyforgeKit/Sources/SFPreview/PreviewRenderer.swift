@@ -131,6 +131,12 @@ public enum PreviewRenderer {
                     default:
                         let diff = max(0, ndl)
                         colour = albedo * (L.sunColour * diff * vis + ambient)
+                        if mat == Material.terrain.rawValue {
+                            // Steep shaded terrain also sees the sunlit valley and opposite slopes: a bounce
+                            // term keeps shadowed faces readable (art review: near-black mountain faces).
+                            let steep = max(0, 1 - n.z)
+                            colour += albedo * L.sunColour * (0.10 * steep * (1 - vis * diff))
+                        }
                         if mat == Material.paint.rawValue || mat == Material.road.rawValue {
                             let h = simd_normalize(toSun - dir)
                             let spec = powf(max(0, fdot(n, h)), mat == Material.paint.rawValue ? 80 : 20) * (mat == Material.paint.rawValue ? 0.6 : 0.08)
