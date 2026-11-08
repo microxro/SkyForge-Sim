@@ -204,6 +204,17 @@ import simd
         var bright = 0
         for y in (h / 3)..<h { for x in (w / 3)..<(2 * w / 3) where px(x, y).x > 180 && px(x, y).y > 180 && px(x, y).z > 170 { bright += 1 } }
         #expect(bright > 30, "aircraft pixels \(bright)")
+        // No speckle: mean horizontal neighbour difference over the bottom-left ground patch
+        // (away from the aircraft). The unfiltered noise in 28f80d3 measured far above this.
+        var sum = 0, n = 0
+        for y in (2 * h / 3)..<h {
+            for x in 1..<(w / 3) {
+                let a = px(x, y), b = px(x - 1, y)
+                sum += abs(a.x - b.x) + abs(a.y - b.y) + abs(a.z - b.z); n += 3
+            }
+        }
+        let grad = Double(sum) / Double(n)
+        #expect(grad < 9, "ground speckle \(grad) levels per pixel")
     }
 }
 #endif

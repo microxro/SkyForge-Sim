@@ -151,16 +151,19 @@ public enum WorldShaders {
         float3 toSun = u.sunDir.xyz;
         float3 albedo = in.albedo;
         if (in.material == 7.0 && dist < 1400.0) {
-            // Per-pixel ground detail (as SFPreview): clumps, patches, dry/lush, micro-relief; faded out.
-            float fade = 1.0 - dist / 1400.0;
+            // Per-pixel ground detail (as SFPreview). Each octave fades out once its cell shrinks
+            // below about two pixels (screen-space footprint from fwidth), so it never aliases.
             float2 w = in.rel.xy + u.cameraPos.xy;
+            float fp = length(fwidth(w));
+            float wFine = saturate(1.0 - fp / 1.0), wMid = saturate(1.0 - fp / 4.0), wDry = saturate(1.0 - fp / 16.0);
+            float fade = 1.0 - dist / 1400.0;
             float fine = groundNoise(w, 2.0), mid = groundNoise(w + 17.0, 8.0), dry = groundNoise(w - 31.0, 32.0);
-            albedo *= 1.0 + (fine * 0.16 + mid * 0.12) * fade;
-            albedo *= 1.0 + (float3(1.10, 1.02, 0.80) - 1.0) * (max(0.0, dry) * 0.9 * fade);
+            albedo *= 1.0 + (fine * 0.08 * wFine + mid * 0.06 * wMid) * fade;
+            albedo *= 1.0 + (float3(1.10, 1.02, 0.80) - 1.0) * (max(0.0, dry) * 0.45 * wDry * fade);
             float e = 0.6;
             float gx = groundNoise(w + float2(e, 0), 2.0) - groundNoise(w - float2(e, 0), 2.0);
             float gy = groundNoise(w + float2(0, e), 2.0) - groundNoise(w - float2(0, e), 2.0);
-            n = normalize(n + float3(-gx, -gy, 0.0) * (0.5 * fade));
+            n = normalize(n + float3(-gx, -gy, 0.0) * (0.12 * wFine * fade));
         }
         float ndl = dot(n, toSun);
         float vis = toSun.z > -0.05 ? shadowVisibility(u, sm, in.rel, n, dist, max(0.0f, ndl)) : 0.0;

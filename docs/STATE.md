@@ -1,4 +1,4 @@
-LAST_UPDATE: 2026-11-08T03:52:37Z
+LAST_UPDATE: 2026-11-08T04:13:29Z
 
 # SKYFORGE state
 
@@ -47,10 +47,10 @@ P0 accepted (CI fully green). P1 in progress: P1.1, P1.2, P1.2b-2, P1.4, P1.7b, 
 - Quick Flight interactivity (touch/keyboard/gamepad in the running app), frame time and memory on real devices.
 - RESOLVED 2026-11-08: GitHub's macos-26 runner exposes a Metal device. CI run 42441951368 ran `metalOffscreenSkyMatchesCPUReference` and it passed, so Metal shaders now execute and are verified in CI on every PR.
 - SwiftUI `InstrumentCanvas`/`InstrumentDemoView`, `TouchFlightControls`, `BindingsView` and the CoreMotion `MotionTiltInput` compile only in CI; never run.
-- Apple-only code now COMPILES in CI (iOS Simulator + macOS, Xcode 26.6) but has never RUN: the Metal sky renderer, SwiftUI menu and device tiers need a simulator/device run (no Metal device on CI runners) or Mac day.
+- SwiftUI screens and device tiers compile in CI but have never run interactively (Metal passes do run offscreen in CI).
 
 ## Broken
-- Nothing known. Last CI run 42441951368 green on all jobs.
+- Metal ground detail in 28f80d3 speckles at low resolution (seen in the CI frame; fix with fwidth-based octave fading pushed next).
 
 ## Last green SHA
-- 4c71c8b (CI run 42443928244: linux; macOS tests incl. GPU Hillaire LUTs, GPU sky pass, offscreen Quick Flight world frame; iOS Simulator and macOS app builds)
+- 28f80d3 (CI run 42445160602: all jobs incl. Metal shadows, GGX aircraft, ground detail)

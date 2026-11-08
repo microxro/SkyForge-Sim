@@ -80,3 +80,7 @@ Open defects (next passes): near-field ground is flat colour (needs detail textu
 - Near-field grass now reads as grass instead of flat paint (a, d, e, j).
 - Scores: a 7.5, d 7.3, e 7.2, f 7.8, j 7.0 → average **7.4**.
 - Open: river banks still step along the 8 m water grid (d); tree crowns are low-poly at close range (j); buildings lack facade detail (a).
+
+### 2026-11-08 Metal frames reviewed from the CI log
+- First look at the GPU Quick Flight frames (recovered from base64 in the job log). Shadows correct (aircraft shadow down-sun on the runway). Defect: the ported ground detail speckled heavily at 320×180 (unfiltered 2 m noise, ±1 amplitude, strong micro-normals); neighbour-difference metric 21.6.
+- Fix: amplitudes halved to match the CPU noise range, micro-relief ×0.24, and each octave fades by its screen-space footprint (`fwidth`). New CI assertion: metric < 9.
