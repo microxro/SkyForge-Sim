@@ -229,3 +229,10 @@ Round-2 batch:
 4. Foam at 0.18 and only where wavelets resolve.
 5. Trees thinned with distance instead of cut (bac5be8).
 Next structural candidate: a higher-resolution inner imagery layer (z17 USGS) around the approach in the packs.
+
+## Bold round 2 — CI Metal frames (16a6845, run 42528493894)
+KMRY 4.5, KASE 5.5, KBFI 3.5, LSZS 4.0 (+1.0: trees in the foreground), NZQN 4.5 (+0.5: shore rim gone), SkyWorld 2.5. **Average 4.08 (+0.25).**
+The clarity and micro-detail changes are not visible at 640×360.
+Round-3 structural change, chosen with the reviewer:
+- A z17 USGS approach layer at about 1 m/px (a8f0977, ADR-0017).
+- Next: SkyWorld relief and trees in the Metal path, procedural buildings tinted from the photo, aircraft exposure and shadow.
