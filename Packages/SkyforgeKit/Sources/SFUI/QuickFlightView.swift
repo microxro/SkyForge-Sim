@@ -23,12 +23,14 @@ public enum QuickFlightLocation: Hashable, Sendable {
     case realAirport(ident: String, name: String)
 
     public static let merrittIsland = QuickFlightLocation.realAirport(ident: "KCOI", name: "Merritt Island, Florida")
+    /// The default start: the first showcase airport (imagery and elevation ship in the app).
+    public static let defaultStart = QuickFlightLocation.realAirport(ident: Showcase.defaultAirport.ident, name: Showcase.defaultAirport.name)
 
     /// METAR stations for the live sky, nearest first (KCOI itself does not report; Titusville and Melbourne do).
     public var metarStations: [String] {
         switch self {
         case .skyWorld: []
-        case .realAirport(let ident, _): ident == "KCOI" ? ["KCOI", "KTIX", "KMLB"] : [ident]
+        case .realAirport(let ident, _): Showcase.airports.first { $0.ident == ident }?.metarStations ?? [ident]
         }
     }
 
@@ -50,6 +52,8 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
     @Published var cockpit = false
     private var pfdBusy = false
     @Published var attribution: [String] = []
+    /// SkyWorld detail for this device tier (used directly, or as the offline fallback).
+    private var skyWorldDetail: QuickFlightDetail = .phone
 
     private(set) var world: any FlightWorld = QuickFlightWorld()
     private(set) var session: QuickFlightSession
@@ -77,6 +81,7 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
         view.preferredFramesPerSecond = 60
         view.delegate = self
         let tier = DeviceTierDetector.detect(device: device)
+        skyWorldDetail = tier == .low ? .phone : (tier == .medium ? .tablet : .desktop)
         let real: Bool
         if case .realAirport = location { real = true } else { real = false }
         let lighting = real ? LightingSetup.physicalPreset(.midday, azimuthDegrees: 200, cameraHeightMetres: 300)
@@ -120,7 +125,9 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
             do {
                 let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
                 let cache = try? KeyedCache(root: caches.appendingPathComponent("SkyforgeTiles", isDirectory: true))
-                let region = try await RealWorldRegion.load(airport: ident, detail: detail, transport: URLSessionTransport(),
+                // Bundled showcase tiles first (offline), then the network, then the on-disk cache.
+                let transport = Showcase.transport(for: ident, fallback: URLSessionTransport())
+                let region = try await RealWorldRegion.load(airport: ident, detail: detail, transport: transport,
                                                             cache: cache) { msg in
                     Task { @MainActor in self.status = .loading(msg) }
                 }
@@ -142,7 +149,11 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
                     } catch { self.status = .failed("Upload: \(error)") }
                 }
             } catch {
-                await MainActor.run { self.status = .failed("Could not load \(name): \(error.localizedDescription)") }
+                // Offline fallback: fly the procedural SkyWorld airfield instead of stopping.
+                await MainActor.run {
+                    self.attribution = ["Could not load \(name) (\(error.localizedDescription)); flying the offline SkyWorld airfield instead."]
+                    self.loadSkyWorld(detail: self.skyWorldDetail)
+                }
             }
         }
     }

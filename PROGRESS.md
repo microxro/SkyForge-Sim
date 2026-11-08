@@ -3,8 +3,34 @@
 Legend: [x] done and verified, [ ] not done. Unchecked items are not available in the app.
 
 ## CURRENT
-- CURRENT: P1.3 visual passes toward 8/10 (SkyWorld ground and cockpit polish)
-- Next 3: cockpit polish (thinner pillars, panel shading) · SkyWorld ground colour/detail on Metal · P1 acceptance review
+- CURRENT: Bold Mode (docs/BOLD_MODE.md). Phase A: real-world airports by default.
+- Next 3: A2 generalised airport region + showcase fixtures · A3 OSM buildings/roads · A4 imagery colour match
+
+## Bold Mode (user directive 2026-11-08, docs/BOLD_MODE.md)
+### Phase A — Real world first
+- [ ] A1 Real-world airport is the default Quick Flight start (SkyWorld = offline fallback)
+- [x] A2 Any OurAirports airport: USGS near / Sentinel-2 far / Terrarium DEM / water / trees; stream + cache; ancestor-tile fallback; SkyWorld fallback on failure
+- [x] A2b Bundled showcase airports: KMRY, KASE, KBFI, LSZS, NZQN, KCOI (43 MB tile packs, SHA-256 manifests, offline load test)
+- [ ] A3 OSM buildings (extruded footprints, height tags or default), roads; ODbL attribution; procedural fallback
+- [ ] A4 Imagery: USGS↔Sentinel-2 colour match at the seam, de-haze/contrast curve, mipmaps + anisotropic filtering
+- [ ] A5 Real DEM relief with CDLOD morphing (no cracks/popping), per-pixel detail normals + micro-albedo on imagery
+### Phase B — Renderer quality
+- [ ] B6a Bloom + sun glare (energy conserving)
+- [ ] B6b TAA or FXAA+SMAA by tier
+- [ ] B6c Contact shadows / SSAO
+- [ ] B6d 3–4 stabilised shadow cascades on high tier
+- [ ] B7 Aircraft PBR textures (panel lines, rivets, registration), glint, prop disc blur, cockpit textures and lighting
+- [ ] B8 Water: normal-mapped waves, sky/cloud reflections, shoreline foam from the water mask
+- [ ] B9 Cloud self-shadowing quality per tier
+### Phase C — Performance (measured)
+- [ ] C10 CI GPU frame-time test per tier on the macOS Metal runner (numbers in VERIFICATION_LOG)
+- [ ] C11 Building LOD + instancing, GPU culling where useful, texture streaming with memory cap, no main-thread stalls (measured)
+- [ ] C12 60 fps high / 30 fps low targets documented; device numbers unverified until run on hardware
+### Phase D — Correctness
+- [ ] D13 Tests for every new feature (unit, GPU-vs-CPU parity, Metal smoke)
+- [ ] D15 30-minute soak test across tile boundaries (no crash, no NaN, bounded memory)
+- [ ] D16 Stub/dishonest-code audit at the end of each phase
+- [ ] Done: art ≥ 8 on Metal frames (≥3 real airports + 1 SkyWorld), frame-time + soak pass, attribution + licence audit, PR before/after
 
 ## P0 Bootstrap
 - [x] P0.1 Save master prompt to docs/MASTER_PROMPT.md

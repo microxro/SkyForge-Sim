@@ -106,6 +106,36 @@ if args.first == "quickflight-stats" {
     exit(0)
 }
 
+if args.first == "pack-airport" {
+    // sfpreview pack-airport <IDENT> <out-dir> [phone|tablet]: records every tile a real-world load of the
+    // airport fetches (imagery, elevation) into an offline tile pack for the app bundle.
+    guard args.count >= 3 else { fail("usage: sfpreview pack-airport <IDENT> <out-dir> [phone|tablet]") }
+    let ident = args[1].uppercased(), outDir = URL(fileURLWithPath: args[2])
+    let detail: RealWorldDetail = args.count > 3 && args[3] == "tablet" ? .tablet : .phone
+    let sem = DispatchSemaphore(value: 0)
+    nonisolated(unsafe) var result: Result<(RealWorldRegion, [URL: Data]), Error>?
+    Task.detached {
+        let rec = RecordingTransport(CurlTransport())
+        do {
+            let region = try await RealWorldRegion.load(airport: ident, detail: detail, transport: rec, cache: nil)
+            result = .success((region, await rec.responses))
+        } catch { result = .failure(error) }
+        sem.signal()
+    }
+    sem.wait()
+    switch result! {
+    case .failure(let e): fail("sfpreview: pack-airport \(ident) failed: \(e)", code: 1)
+    case .success(let (region, responses)):
+        do { try TilePack.write(name: "\(ident) \(region.name)", responses: responses, attribution: region.attribution, to: outDir) }
+        catch { fail("sfpreview: cannot write pack: \(error)", code: 1) }
+        let bytes = responses.values.reduce(0) { $0 + $1.count }
+        let cov = region.ground.near.coverage.filter { $0 > 0 }.count * 100 / max(1, region.ground.near.coverage.count)
+        print(String(format: "sfpreview: pack %@ (%@): %d responses, %.1f MB, near imagery z%d %d%% covered",
+                     ident, region.name, responses.count, Double(bytes) / 1_048_576, region.ground.near.zoom, cov))
+    }
+    exit(0)
+}
+
 if args.first == "real" {
     // sfpreview real <out.png> [width] [time]   (fetches imagery/elevation once, cached in .skyforge/cache)
     guard args.count >= 2 else { fail("usage: sfpreview real <out.png> [width] [time]") }

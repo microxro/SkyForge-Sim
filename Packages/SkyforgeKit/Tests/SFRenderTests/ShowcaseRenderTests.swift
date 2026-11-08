@@ -1,0 +1,49 @@
+// SKYFORGE — Apache-2.0
+#if canImport(Metal)
+import Testing
+import Foundation
+import Metal
+import simd
+@testable import SFRender
+import SFQuickFlight
+import SFContent
+import SFPreview
+
+/// Metal frames of the bundled showcase airports, loaded fully offline from their tile packs
+/// (art-director review frames; logged as SKYFORGE_PNG in CI).
+@Suite struct ShowcaseRenderTests {
+    /// Same metres per pixel as the packed phone tier (same zooms), over a smaller area.
+    static var detail: RealWorldDetail {
+        let p = RealWorldDetail.phone
+        return RealWorldDetail(nearHalf: 1_500, nearStep: 16, midHalf: 6_000, midStep: 80, farHalf: 16_000, farStep: 400,
+                               imageryNearSize: Int(Double(p.imageryNearSize) * 1_500 / p.nearHalf),
+                               imageryFarSize: Int(Double(p.imageryFarSize) * 16_000 / p.farHalf), treeRadius: 1_200, maxTrees: 20_000)
+    }
+
+    @Test(.enabled(if: SkyRegressionTests.hasDevice, "no Metal device on this host"),
+          arguments: ["KMRY", "KASE", "LSZS"])
+    func showcaseFrame(ident: String) async throws {
+        let region = try await RealWorldRegion.load(airport: ident, detail: Self.detail,
+                                                    transport: Showcase.transport(for: ident, fallback: nil), cache: nil)
+        let data = RealWorldRenderData(region: region, chunkQuads: 32)
+        let session = QuickFlightSession(world: region, start: .final)
+        let cam = session.chaseCamera()
+        let lighting = LightingSetup.physicalPreset(.midday, azimuthDegrees: 200, cameraHeightMetres: cam.position.z)
+        let r = try WorldRenderer(lighting: lighting)
+        try r.setRealWorld(data)
+        try r.setAircraft(QuickFlightWorld.aircraftMesh())
+        r.clouds = .fairWeather
+        let c = session.bodyToENUColumns
+        let w = 640, h = 360
+        let img = try r.render(width: w, height: h, camera: WorldCamera(position: cam.position, target: cam.target),
+                               aircraftPosition: session.positionENU, aircraftBodyToENU: simd_double3x3(columns: (c.0, c.1, c.2)))
+        _ = VisualRegression.check(name: "metal_real_\(ident)_640x360", rgb: img, width: w, height: h, goldenDir: goldenDir)
+        // Textured photo ground in the lower half (not a flat fill or the missing-imagery colour).
+        var lo = Int.max, hi = 0
+        for y in (h * 2 / 3)..<h { for x in stride(from: 0, to: w, by: 4) {
+            let i = 3 * (y * w + x); let s = Int(img[i]) + Int(img[i + 1]) + Int(img[i + 2]); lo = min(lo, s); hi = max(hi, s)
+        } }
+        #expect(hi - lo > 60, "\(ident) ground contrast \(hi - lo)")
+    }
+}
+#endif

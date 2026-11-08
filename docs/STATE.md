@@ -1,8 +1,10 @@
-LAST_UPDATE: 2026-11-08T17:12:21Z
+LAST_UPDATE: 2026-11-08T17:30:39Z
 
 # SKYFORGE state
 
 ## Phase
+Bold Mode (docs/BOLD_MODE.md) in progress: Phase A. A real-world showcase airport (KMRY, bundled tile pack, offline) is the default Quick Flight start. Six showcase packs are bundled; other airports stream after a prompt; SkyWorld is the offline fallback. OSM is blocked in the build environment (ADR-0016).
+
 P0 accepted (CI fully green). P1 in progress: P1.1, P1.2, P1.2b-2, P1.4, P1.7b, P1.8b, P1.9, P1.10, P1.12, P1.5, P1.6a, P1.2b-1, P1.6b, P1.7, P1.8a, P1.11 done; P1.3 renderer done with visuals below target (independent art review 6.00/10 vs commercial sims after 11 rounds; open: per-pixel land cover, tree crowns, impostors).
 
 ## Environment facts (recorded at session start)
@@ -57,4 +59,4 @@ P0 accepted (CI fully green). P1 in progress: P1.1, P1.2, P1.2b-2, P1.4, P1.7b, 
 - Nothing known. Speckle fixed in f8afa50 (CI frame reviewed).
 
 ## Last green SHA
-- 7ba1a62 (CI run 42500629858: all jobs green; crop rows, seams)
+- ee36845 (CI run 42503914209: all jobs green; parcel grid, row relief, triplanar rock)

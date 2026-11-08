@@ -56,3 +56,19 @@
 - Context: the user compared SKYFORGE with MSFS 2024 and asked for realism; procedural colour alone cannot reach that look. MSFS's ground comes from licensed aerial imagery, which is not available to us.
 - Decision: free sources only, without keys or accounts: USGS orthoimagery (public domain, ≈0.3–1 m, US) and Sentinel-2 cloudless 2016 (CC BY 4.0, 10 m, worldwide). Pure-Swift baseline JPEG decoder so previews/tests run on Linux; tiles cached in the content store; land cover (water/forest/built-up) derived from colour drives water shading and 3D tree placement on top of the imagery.
 - Consequence: US regions approach photographic ground detail; elsewhere 10 m imagery plus procedural detail. Attribution is required in the app (Settings → Attributions) for the Sentinel-2 layer.
+
+## ADR-0015 Bold Mode: real-world airports by default, bundled showcase tile packs
+- Context: the user's Bold Mode directive (docs/BOLD_MODE.md) asks for real-world airports as the default start, offline showcase airports, and streaming elsewhere. The bundle limit is 150 MB (MASTER_PROMPT §… bundle ≤ 150 MB).
+- Decision: `TilePack` (SFContent) holds the recorded HTTP responses (imagery JPEG, Terrarium PNG) of a real-world load, content-addressed with a SHA-256 manifest. `TilePackTransport` serves pack hits and falls back to the network, so the loader is unchanged. `sfpreview pack-airport` records a pack at the phone tier.
+- Six showcase airports, 43 MB in total (the bundle is ≈ 57 MB with the DEM and nav data):
+  - KMRY Monterey (US coast, the default start);
+  - KASE Aspen (US mountains);
+  - KBFI Boeing Field (US city);
+  - LSZS Samedan (Alps) and NZQN Queenstown (Southern Alps), Sentinel-2 only;
+  - KCOI Merritt Island.
+- Missing imagery tiles fall back to up to three coarser ancestors, so higher tiers fly offline on the packed zoom and partial caches still cover the ground.
+- Other airports from the bundled OurAirports data stream after an explicit download prompt (Guideline 4.2.3). When a load fails, the app flies the offline SkyWorld airfield and says so on screen.
+
+## ADR-0016 OSM data access from the build environment
+- Context: A3 needs OpenStreetMap buildings and roads (ODbL). The cloud build environment's proxy refuses every OSM host: overpass-api.de, its mirrors, api.openstreetmap.org, planet and Geofabrik. overpass-api.de was added to the allow-list (approved by the user on 2026-11-08), but its TLS handshake is still reset upstream.
+- Decision: the app queries Overpass at runtime (keyless and free, ODbL attribution on screen), and tests use fixtures. Showcase packs gain OSM layers once the build environment can reach an OSM source; until then they carry imagery and elevation only, and buildings fall back to procedural ones. Overture Maps is not used, because its building layer mixes in Microsoft ML footprints, which the directive forbids.

@@ -151,6 +151,18 @@ public struct ImageryMosaic: Sendable {
             } }
             for await (t, img) in g { if let img { tiles[t] = img } }
         }
+        // Offline or a hole in the provider: fall back to ancestors (up to 3 levels coarser), so a
+        // bundled pack built at a lower zoom, or a partial cache, still covers the area.
+        var missing = Set<TileCoord>()
+        for ty in t0.y...t1.y { for tx in t0.x...t1.x where tiles[TileCoord(z: z, x: tx, y: ty)] == nil {
+            for k in 1...3 where z - k >= 0 { missing.insert(TileCoord(z: z - k, x: tx >> k, y: ty >> k)) }
+        } }
+        if !missing.isEmpty {
+            await withTaskGroup(of: (TileCoord, RGBImage?).self) { g in
+                for t in missing { g.addTask { (t, await streamer.tile(t).0) } }
+                for await (t, img) in g { if let img { tiles[t] = img } }
+            }
+        }
         var rgb = [UInt8](repeating: 0, count: size * size * 3)
         var cov = [UInt8](repeating: 0, count: size * size)
         let n = Double(1 << z)
@@ -161,9 +173,14 @@ public struct ImageryMosaic: Sendable {
                 let ll = origin.coordinate(east: x, north: y)
                 let fx = (ll.longitude + 180) / 360 * n
                 let fy = (1 - asinh(tan(ll.latitude * .pi / 180)) / .pi) / 2 * n
-                let tx = Int(fx.rounded(.down)), ty = Int(fy.rounded(.down))
-                guard let img = tiles[TileCoord(z: z, x: tx, y: ty)] else { continue }
-                let px = (fx - Double(tx)) * Double(img.width) - 0.5, py = (fy - Double(ty)) * Double(img.height) - 0.5
+                var lx = fx, ly = fy, found: (RGBImage, Int, Int)?
+                for k in 0...3 where z - k >= 0 {
+                    let tx = Int(lx.rounded(.down)), ty = Int(ly.rounded(.down))
+                    if let img = tiles[TileCoord(z: z - k, x: tx, y: ty)] { found = (img, tx, ty); break }
+                    lx /= 2; ly /= 2
+                }
+                guard let (img, tx, ty) = found else { continue }
+                let px = (lx - Double(tx)) * Double(img.width) - 0.5, py = (ly - Double(ty)) * Double(img.height) - 0.5
                 let x0 = max(0, min(img.width - 1, Int(px.rounded(.down)))), y0 = max(0, min(img.height - 1, Int(py.rounded(.down))))
                 let x1 = min(img.width - 1, x0 + 1), y1 = min(img.height - 1, y0 + 1)
                 let ax = max(0, min(1, px - Double(x0))), ay = max(0, min(1, py - Double(y0)))
