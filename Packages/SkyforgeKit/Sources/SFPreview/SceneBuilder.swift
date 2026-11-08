@@ -511,7 +511,20 @@ public struct SceneBuilder {
         } else {
             let cz = p.z + t.height - t.crownRadius * 1.05
             if detail >= 2 { addCone(SIMD3(p.x, p.y, p.z - 0.5), radius: 0.3, top: cz, sides: 4, colour: trunk, material: .opaque) }
-            addBlob(SIMD3(p.x, p.y, cz), rx: t.crownRadius, rz: t.crownRadius * 1.1, detail: detail, colour: col)
+            if detail >= 2 {
+                // Clustered crown: a main mass plus 2–3 offset lobes, so silhouettes break up like real canopies.
+                let h = Hash.combine(UInt64(bitPattern: Int64(p.x * 7)), UInt64(bitPattern: Int64(p.y * 7)))
+                let r = t.crownRadius
+                addBlob(SIMD3(p.x, p.y, cz), rx: r * 0.86, rz: r * 0.95, detail: detail, colour: col)
+                let lobes = 2 + Int(h % 2)
+                for k in 0..<lobes {
+                    let a = Double(k) / Double(lobes) * 2 * .pi + Double(h % 628) / 100
+                    let off = SIMD3(cos(a) * r * 0.5, sin(a) * r * 0.5, r * (0.1 + 0.25 * Double((h >> (8 + k)) & 1)))
+                    addBlob(SIMD3(p.x, p.y, cz) + off, rx: r * 0.58, rz: r * 0.62, detail: 1, colour: col * Float(0.94 + 0.08 * Double(k)))
+                }
+            } else {
+                addBlob(SIMD3(p.x, p.y, cz), rx: t.crownRadius, rz: t.crownRadius * 1.1, detail: detail, colour: col)
+            }
         }
         stats["trees", default: 0] += 1
     }
@@ -552,7 +565,9 @@ public struct SceneBuilder {
         for (a, b, d) in tris {
             func p(_ u: SIMD3<Double>) -> SIMD3<Double> { let l = lump(u); return c + SIMD3(u.x * rx * l, u.y * rx * l, u.z * rz * l) }
             func n(_ u: SIMD3<Double>) -> SIMD3<Float> { SIMD3(Float(u.x), Float(u.y), Float(u.z)) }
-            soup.add(p(a), p(b), p(d), na: n(a), nb: n(b), nc: n(d), colour: colour, material: .foliage)
+            // Darker underside (self-shadowed inner canopy), lighter sunlit top (art review: toy spheres).
+            func col(_ u: SIMD3<Double>) -> SIMD3<Float> { colour * Float(0.72 + 0.34 * (u.z * 0.5 + 0.5)) }
+            soup.add(p(a), p(b), p(d), na: n(a), nb: n(b), nc: n(d), ca: col(a), cb: col(b), cc: col(d), material: .foliage)
         }
     }
 }
