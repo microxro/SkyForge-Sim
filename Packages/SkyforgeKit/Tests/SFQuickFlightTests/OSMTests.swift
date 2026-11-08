@@ -380,8 +380,9 @@ private func faceNormal(_ a: SIMD3<Float>, _ b: SIMD3<Float>, _ c: SIMD3<Float>)
                                 imageryNearSize: Int(Double(p.imageryNearSize) * 600 / p.nearHalf),
                                 imageryFarSize: Int(Double(p.imageryFarSize) * 8_000 / p.farHalf), treeRadius: 600, maxTrees: 50_000)
         var region = try await RealWorldRegion.load(airport: a.ident, detail: d, transport: Showcase.transport(for: a.ident, fallback: nil), cache: nil)
-        #expect(region.osm == nil, "offline and uncached: no OSM, imagery only")
-        #expect(region.osmMesh() == nil)
+        #expect(region.osm == nil, "offline and uncached: no OSM")
+        #expect(region.buildings == region.fallbackBuildings, "procedural fallback stands in for OSM")
+        region.fallbackBuildings = []
         // A large building over the field centre must clear the trees there.
         let square = [SIMD2<Double>(-300, -300), SIMD2(300, -300), SIMD2(300, 300), SIMD2(-300, 300)]
         let before = region.trees().filter { abs(Double($0.position.x)) < 300 && abs(Double($0.position.y)) < 300 }.count
@@ -391,5 +392,27 @@ private func faceNormal(_ a: SIMD3<Float>, _ b: SIMD3<Float>, _ c: SIMD3<Float>)
         #expect(after == 0, "no trees inside the footprint (had \(before))")
         let mesh = try #require(region.osmMesh())
         #expect(mesh.triangleCount >= 10, "walls and roof")
+    }
+}
+
+
+@Suite struct ProceduralFallbackTests {
+    /// Boeing Field (city): built-up imagery grows fallback buildings, never on the runway/apron or water.
+    @Test func cityAirportGrowsFallbackBuildingsOffTheAirfield() async throws {
+        let ident = "KBFI"
+        let p = RealWorldDetail.phone
+        let d = RealWorldDetail(nearHalf: 1_200, nearStep: 40, midHalf: 3_000, midStep: 200, farHalf: 8_000, farStep: 1_000,
+                                imageryNearSize: Int(Double(p.imageryNearSize) * 1_200 / p.nearHalf),
+                                imageryFarSize: Int(Double(p.imageryFarSize) * 8_000 / p.farHalf), treeRadius: 300, maxTrees: 1_000)
+        let region = try await RealWorldRegion.load(airport: ident, detail: d, transport: Showcase.transport(for: ident, fallback: nil), cache: nil)
+        let b = region.fallbackBuildings
+        #expect(b.count > 50, "fallback buildings in Seattle: \(b.count)")
+        for x in b {
+            let c = OSMGeometry.centroid(x.footprint)
+            #expect(!region.apronOrRunway(c.x, c.y))
+            if let g = region.ground.ground(c.x, c.y) { #expect(g.water < 0.5) }
+            #expect(OSMGeometry.signedArea(x.footprint) > 0, "counter-clockwise footprint")
+        }
+        #expect(region.proceduralBuildings() == b, "deterministic")
     }
 }

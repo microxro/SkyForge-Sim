@@ -61,6 +61,11 @@ public struct RealWorldRegion: FlightWorld {
     /// OpenStreetMap buildings and roads around the airfield (nil when Overpass was unreachable and
     /// nothing was cached; the renderer then shows imagery only).
     public var osm: OSMData? = nil
+    /// Procedural buildings placed on built-up imagery where OSM has none (empty when OSM has buildings).
+    public var fallbackBuildings: [OSMBuilding] = []
+
+    /// Buildings to draw and to keep trees out of: OSM where available, otherwise the procedural fallback.
+    public var buildings: [OSMBuilding] { (osm?.buildings.isEmpty == false) ? osm!.buildings : fallbackBuildings }
 
     public enum LoadError: Error, Equatable { case unknownAirport(String), noRunwayGeometry(String) }
 
@@ -135,14 +140,16 @@ public struct RealWorldRegion: FlightWorld {
                                runwayLengthMetres: len, runwayWidthMetres: rwy.widthMetres, runwayElevation: elevFt * Units.feetToMetres,
                                nearHeights: hn, farHeights: hf, ground: ImageryGround(near: inr, far: ifr, grade: true), attribution: attribution, detail: detail)
         region.osm = osm
+        if osm?.buildings.isEmpty != false { region.fallbackBuildings = region.proceduralBuildings() }
         return region
     }
 
     /// OSM buildings and roads as one mesh in local metres (nil without OSM data).
     public func osmMesh() -> TriangleSoup? {
-        guard let o = osm, !(o.buildings.isEmpty && o.roads.isEmpty) else { return nil }
-        let roads = OSMMeshBuilder.roads(o.roads) { self.height($0, $1) }
-        let buildings = OSMMeshBuilder.buildings(o.buildings) { self.height($0, $1) }
+        let roadList = osm?.roads ?? [], buildingList = buildings
+        guard !(roadList.isEmpty && buildingList.isEmpty) else { return nil }
+        let roads = OSMMeshBuilder.roads(roadList) { self.height($0, $1) }
+        let buildings = OSMMeshBuilder.buildings(buildingList) { self.height($0, $1) }
         var soup = TriangleSoup(origin: .zero)
         let perVertex = !roads.vertexAlbedo.isEmpty || !buildings.vertexAlbedo.isEmpty
         for part in [roads, buildings] {
@@ -151,6 +158,64 @@ public struct RealWorldRegion: FlightWorld {
             if perVertex { soup.vertexAlbedo += part.vertexAlbedo.isEmpty ? part.albedo.flatMap { [$0, $0, $0] } : part.vertexAlbedo }
         }
         return soup
+    }
+
+    /// Procedural fallback: low buildings on built-up imagery that shows building texture (local contrast)
+    /// and a nearby cast shadow, so parking lots and concrete aprons stay flat. Roofs take the photo's
+    /// colour and footprints follow the local edge direction. Deterministic.
+    public func proceduralBuildings(radius: Double = 2_400, cell: Double = 18, maxCount: Int = 6_000) -> [OSMBuilding] {
+        let near = ground.near
+        var out: [OSMBuilding] = []
+        func lum(_ c: SIMD3<Float>) -> Float { 0.2126 * c.x + 0.7152 * c.y + 0.0722 * c.z }
+        let c0 = nearHeights.centre
+        var y = -radius
+        while y < radius {
+            var x = -radius
+            while x < radius {
+                defer { x += cell }
+                let px = c0.x + x, py = c0.y + y
+                if x * x + y * y > radius * radius || out.count >= maxCount { continue }
+                guard let c = near.sample(px, py) else { continue }
+                let lc = LandCover.classify(c)
+                if lc.urban < 0.5 || lc.water > 0.2 || lc.forest > 0.3 { continue }
+                if let g = ground.ground(px, py), g.water > 0.2 { continue }        // the renderer's smoothed water mask
+                if apronOrRunway(px, py) { continue }
+                // 5 × 5 samples at 3 m: contrast, darkest value, structure tensor.
+                var sum: Float = 0, sq: Float = 0, darkest: Float = 1, n: Float = 0
+                var jxx: Float = 0, jyy: Float = 0, jxy: Float = 0
+                for j in -2...2 { for i in -2...2 {
+                    guard let s = near.sample(px + Double(i) * 3, py + Double(j) * 3) else { continue }
+                    let l = lum(s); sum += l; sq += l * l; darkest = min(darkest, l); n += 1
+                    if let sx = near.sample(px + Double(i) * 3 + 1.5, py + Double(j) * 3),
+                       let sy = near.sample(px + Double(i) * 3, py + Double(j) * 3 + 1.5) {
+                        let gx = lum(sx) - l, gy = lum(sy) - l
+                        jxx += gx * gx; jyy += gy * gy; jxy += gx * gy
+                    }
+                } }
+                guard n > 20 else { continue }
+                let mean = sum / n, variance = sq / n - mean * mean
+                if variance < 0.004 || darkest > 0.16 { continue }
+                let heading = 0.5 * Double(atan2(2 * jxy, jxx - jyy))   // dominant edge direction
+                var rng = SplitMix64(seed: Hash.int(Int((px / cell).rounded()), Int((py / cell).rounded()), seed: 0xB01D))
+                let hx = 4.5 + Hash.unit(rng.next()) * 3.5, hy = 4.5 + Hash.unit(rng.next()) * 3.5
+                let jx = (Hash.unit(rng.next()) - 0.5) * (cell - 2 * hx) * 0.8, jy = (Hash.unit(rng.next()) - 0.5) * (cell - 2 * hy) * 0.8
+                let cx = px + jx, cy = py + jy, ch = cos(heading), sh = sin(heading)
+                let fp = [(-hx, -hy), (hx, -hy), (hx, hy), (-hx, hy)].map { SIMD2(cx + ch * $0.0 - sh * $0.1, cy + sh * $0.0 + ch * $0.1) }
+                let roof = SIMD3(Float(powf(c.x, 2.2)), Float(powf(c.y, 2.2)), Float(powf(c.z, 2.2))) * 0.9
+                out.append(OSMBuilding(id: -Int64(out.count + 1), footprint: fp, heightMetres: 5 + Hash.unit(rng.next()) * 4,
+                                       kind: "house", roofColour: roof, tags: ["source": "procedural fallback"]))
+            }
+            y += cell
+        }
+        return out
+    }
+
+    /// The runway, its strip and a 250 m apron band either side (no fallback buildings there).
+    func apronOrRunway(_ x: Double, _ y: Double) -> Bool {
+        let d = SIMD2(x, y) - runwayThreshold
+        let along = (d * runwayDirection).sum()
+        let across = abs(d.x * runwayDirection.y - d.y * runwayDirection.x)
+        return along > -400 && along < runwayLengthMetres + 400 && across < 250
     }
 
     // MARK: meshes
@@ -213,7 +278,7 @@ public struct RealWorldRegion: FlightWorld {
         let r = detail.treeRadius, cell = 7.0
         // OSM footprints by 40 m grid cell, so trees never grow through buildings.
         var footprints: [SIMD2<Int>: [[SIMD2<Double>]]] = [:]
-        for b in osm?.buildings ?? [] {
+        for b in buildings {
             let xs = b.footprint.map(\.x), ys = b.footprint.map(\.y)
             guard let x0 = xs.min(), let x1 = xs.max(), let y0 = ys.min(), let y1 = ys.max() else { continue }
             for cy in Int((y0 / 40).rounded(.down))...Int((y1 / 40).rounded(.down)) {
