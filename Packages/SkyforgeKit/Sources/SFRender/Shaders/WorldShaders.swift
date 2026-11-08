@@ -22,8 +22,19 @@ public enum WorldShaders {
         float4 ambientSky;        // rgb, max aerial distance (km)
         float4 ambientGround;     // rgb, unused
         float4 skyHorizon;        // rgb (water reflection), unused
-        float4 tableDims;         // nD, nAz, nEl, unused
+        float4 tableDims;         // nD, nAz, nEl, cascade count
+        float4x4 shadow0;         // camera-relative world → cascade 0 clip (orthographic)
+        float4x4 shadow1;
+        float4 cascadeSplits;     // far edge (m) of cascade 0, 1; texel size (m) of cascade 0, 1
+        float4 cascadeDepth;      // light-space depth range (m) of cascade 0, 1
     };
+
+    struct ShadowUniforms { float4x4 lightViewProj; float4x4 model; };
+
+    vertex float4 shadow_vertex(const device WorldVertex* v [[buffer(0)]], constant ShadowUniforms& u [[buffer(1)]],
+                                uint vid [[vertex_id]]) {
+        return u.lightViewProj * (u.model * float4(float3(v[vid].position), 1.0));
+    }
 
     struct WorldVarying {
         float4 position [[position]];
@@ -68,19 +79,44 @@ public enum WorldShaders {
         if (fk < 0.0) { float f = fk + 1.0; L *= f; T = 1.0 + (T - 1.0) * f; }
     }
 
+    constexpr sampler shadowCmp(filter::linear, address::clamp_to_edge, compare_func::less_equal);
+
+    /// 3×3 PCF with hardware comparison, cascade chosen by distance; 1 = lit.
+    static float shadowVisibility(constant WorldUniforms& u, depth2d_array<float> sm, float3 rel, float3 n, float dist, float ndl) {
+        if (u.tableDims.w < 1.0) return 1.0;
+        int c = dist < u.cascadeSplits.x ? 0 : (dist < u.cascadeSplits.y ? 1 : -1);
+        if (c < 0) return 1.0;
+        float texel = c == 0 ? u.cascadeSplits.z : u.cascadeSplits.w;
+        // Normal offset + slope-scaled bias (as the CPU preview).
+        float tanT = sqrt(max(0.0, 1.0 - ndl * ndl)) / max(ndl, 0.05);
+        float3 p = rel + n * texel * 1.5;
+        float4 lp = (c == 0 ? u.shadow0 : u.shadow1) * float4(p, 1.0);
+        float2 uv = lp.xy * float2(0.5, -0.5) + 0.5;
+        if (any(uv < 0.0) || any(uv > 1.0)) return 1.0;
+        float bias = texel * (0.5 + min(6.0, tanT)) / (c == 0 ? u.cascadeDepth.x : u.cascadeDepth.y);
+        float z = lp.z - bias;
+        float2 ts = 1.0 / float2(sm.get_width(), sm.get_height());
+        float lit = 0.0;
+        for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++)
+            lit += sm.sample_compare(shadowCmp, uv + float2(x, y) * ts, uint(c), z);
+        return lit / 9.0;
+    }
+
     static float3 acesW(float3 x) {
         const float a = 2.51, b = 0.03, c = 2.43, d = 0.59, e = 0.14;
         return saturate((x * (a * x + b)) / (x * (c * x + d) + e));
     }
 
     fragment float4 world_fragment(WorldVarying in [[stage_in]], constant WorldUniforms& u [[buffer(1)]],
-                                   texture3d<float> ins [[texture(0)]], texture3d<float> tr [[texture(1)]]) {
+                                   texture3d<float> ins [[texture(0)]], texture3d<float> tr [[texture(1)]],
+                                   depth2d_array<float> sm [[texture(2)]]) {
         float dist = length(in.rel);
         float3 dir = in.rel / max(dist, 1e-3);
         float3 n = normalize(in.normal);
         if (dot(n, dir) > 0.0) n = -n;                       // two-sided, robust to winding
         float3 toSun = u.sunDir.xyz;
         float ndl = dot(n, toSun);
+        float vis = toSun.z > -0.05 ? shadowVisibility(u, sm, in.rel, n, dist, max(0.0f, ndl)) : 0.0;
         float3 ambient = mix(u.ambientGround.rgb, u.ambientSky.rgb, n.z * 0.5 + 0.5);
         float m = in.material;
         float3 col;
@@ -88,19 +124,19 @@ public enum WorldShaders {
             float3 r = reflect(dir, float3(0, 0, 1));
             float cosT = max(0.0, -dir.z);
             float fres = 0.02 + 0.98 * pow(1.0 - cosT, 5.0);
-            float3 refl = u.skyHorizon.rgb + u.sunColour.rgb * pow(max(0.0, dot(r, toSun)), 600.0) * 30.0;
+            float3 refl = u.skyHorizon.rgb + u.sunColour.rgb * pow(max(0.0, dot(r, toSun)), 600.0) * 30.0 * vis;
             float3 body = in.albedo * (ambient * 0.6 + u.sunColour.rgb * max(0.0, toSun.z) * 0.15);
             col = mix(body, refl, min(1.0, fres));
         } else if (m == 2.0) {                               // foliage: wrap + back-scatter
             float wrap = max(0.0, ndl * 0.55 + 0.45);
             float back = pow(max(0.0, dot(dir, toSun)), 4.0) * 0.35;
-            col = in.albedo * (u.sunColour.rgb * (wrap + back) + ambient * 0.85);
+            col = in.albedo * (u.sunColour.rgb * (wrap + back) * vis + ambient * 0.85);
         } else {
-            col = in.albedo * (u.sunColour.rgb * max(0.0, ndl) + ambient);
+            col = in.albedo * (u.sunColour.rgb * max(0.0, ndl) * vis + ambient);
             if (m == 6.0 || m == 3.0) {                      // paint, road: Blinn-Phong highlight
                 float3 h = normalize(toSun - dir);
                 float spec = pow(max(0.0, dot(n, h)), m == 6.0 ? 80.0 : 20.0) * (m == 6.0 ? 0.6 : 0.08);
-                col += u.sunColour.rgb * spec;
+                col += u.sunColour.rgb * spec * vis;
             }
         }
         float3 L, T;

@@ -207,3 +207,39 @@ import simd
     }
 }
 #endif
+
+#if canImport(Metal)
+@Suite struct WorldShadowTests {
+    @Test(.enabled(if: SkyRegressionTests.hasDevice, "no Metal device on this host"))
+    func sunShadowsDarkenTheScene() throws {
+        let world = QuickFlightWorld()
+        var d = QuickFlightDetail.phone
+        d.objectRadius = 500; d.nearHalfExtent = 900; d.midHalfExtent = 2_500; d.farHalfExtent = 6_000
+        let soup = world.buildEnvironment(detail: d)
+        // Low chase view over the runway with a low sun: trees and the aircraft cast long shadows.
+        let session = QuickFlightSession(world: world, start: .runway)
+        let cam = session.chaseCamera(distance: 30, height: 12)
+        let lighting = LightingSetup.physicalPreset(.goldenHour, azimuthDegrees: 255, cameraHeightMetres: cam.position.z)
+        let r = try WorldRenderer(lighting: lighting)
+        try r.setEnvironment(soup)
+        try r.setAircraft(QuickFlightWorld.aircraftMesh())
+        let c = session.bodyToENUColumns
+        let m = simd_double3x3(columns: (c.0, c.1, c.2))
+        let w = 320, h = 180
+        let wc = WorldCamera(position: cam.position, target: cam.target)
+        let lit = try r.render(width: w, height: h, camera: wc, aircraftPosition: session.positionENU, aircraftBodyToENU: m)
+        r.shadowsEnabled = false
+        let flat = try r.render(width: w, height: h, camera: wc, aircraftPosition: session.positionENU, aircraftBodyToENU: m)
+        _ = VisualRegression.check(name: "metal_shadows_320x180", rgb: lit, width: w, height: h, goldenDir: goldenDir)
+        var darker = 0, brighter = 0
+        for p in 0..<(w * h) {
+            let a = Int(lit[3 * p]) + Int(lit[3 * p + 1]) + Int(lit[3 * p + 2])
+            let b = Int(flat[3 * p]) + Int(flat[3 * p + 1]) + Int(flat[3 * p + 2])
+            if a < b - 24 { darker += 1 }
+            if a > b + 6 { brighter += 1 }
+        }
+        #expect(darker > w * h / 50, "shadowed pixels \(darker)")   // ≥ 2 % of the frame in shadow
+        #expect(brighter < w * h / 200, "shadows never brighten: \(brighter)")
+    }
+}
+#endif

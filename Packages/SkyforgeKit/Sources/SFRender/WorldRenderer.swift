@@ -17,6 +17,50 @@ struct WorldUniforms {
     var ambientGround: SIMD4<Float>
     var skyHorizon: SIMD4<Float>
     var tableDims: SIMD4<Float>
+    var shadow0: simd_float4x4
+    var shadow1: simd_float4x4
+    var cascadeSplits: SIMD4<Float>
+    var cascadeDepth: SIMD4<Float>
+}
+
+struct ShadowUniforms {
+    var lightViewProj: simd_float4x4
+    var model: simd_float4x4
+}
+
+/// Two-cascade sun shadow setup in camera-relative coordinates.
+struct ShadowCascades {
+    static let size = 2048
+    static let halfExtents: [Float] = [220, 2_200]
+    static let depthRanges: [Float] = [3_000, 10_000]
+    static let splits: [Float] = [380, 3_600]
+
+    /// Orthographic light matrix centred `ahead` metres along the horizontal camera forward,
+    /// snapped to whole texels so shadows do not shimmer as the camera moves.
+    static func matrix(cascade c: Int, toSun s: SIMD3<Float>, forward f: SIMD3<Float>, cameraWorld: SIMD3<Double>) -> simd_float4x4 {
+        let zL = simd_normalize(s)
+        var xL = simd_cross(SIMD3<Float>(0, 0, 1), zL)
+        if simd_length(xL) < 1e-3 { xL = SIMD3(1, 0, 0) }
+        xL = simd_normalize(xL)
+        let yL = simd_cross(zL, xL)
+        let fh = simd_normalize(SIMD3(f.x, f.y, 0) + SIMD3(0, 0, 1e-6))
+        let half = halfExtents[c], range = depthRanges[c]
+        let centre = fh * half * 0.6
+        // Snap in light space using absolute world position, so the grid is fixed to the world.
+        let texel = 2 * half / Float(size)
+        let worldC = SIMD3<Double>(Double(centre.x), Double(centre.y), Double(centre.z)) + cameraWorld
+        func snap(_ axis: SIMD3<Float>) -> Float {
+            let a = SIMD3<Double>(Double(axis.x), Double(axis.y), Double(axis.z))
+            let d = (worldC * a).sum()
+            let snapped = (d / Double(texel)).rounded() * Double(texel)
+            return Float(snapped - (cameraWorld * a).sum())
+        }
+        let cx = snap(xL), cy = snap(yL), cz = simd_dot(centre, zL)
+        let view = simd_float4x4(rows: [SIMD4(xL, -cx), SIMD4(yL, -cy), SIMD4(zL, -cz), SIMD4(0, 0, 0, 1)])
+        let proj = simd_float4x4(rows: [SIMD4(1 / half, 0, 0, 0), SIMD4(0, 1 / half, 0, 0),
+                                        SIMD4(0, 0, -1 / range, 0.5), SIMD4(0, 0, 0, 1)])
+        return proj * view
+    }
 }
 
 /// 20-byte vertex matching `WorldVertex` in WorldShaders.
@@ -40,6 +84,11 @@ public final class WorldRenderer {
     public let queue: MTLCommandQueue
     private let pipeline: MTLRenderPipelineState
     private let depthState: MTLDepthStencilState
+    private let shadowPipeline: MTLRenderPipelineState
+    private let shadowDepthState: MTLDepthStencilState
+    private var shadowMap: MTLTexture?
+    /// Sun shadows (two cascades). Low-tier devices may turn this off.
+    public var shadowsEnabled = true
     private let sky: PhysicalSkyRenderer
     private var environment: (buffer: MTLBuffer, count: Int, origin: SIMD3<Double>)?
     private var aircraft: (buffer: MTLBuffer, count: Int)?
@@ -75,6 +124,32 @@ public final class WorldRenderer {
         ds.isDepthWriteEnabled = true
         guard let dss = device.makeDepthStencilState(descriptor: ds) else { throw RendererError.commandQueue }
         depthState = dss
+        guard let sv = lib.makeFunction(name: "shadow_vertex") else { throw RendererError.shaderCompile("missing shadow_vertex") }
+        let sd = MTLRenderPipelineDescriptor()
+        sd.label = "SunShadow"
+        sd.vertexFunction = sv
+        sd.fragmentFunction = nil
+        sd.depthAttachmentPixelFormat = .depth32Float
+        do { shadowPipeline = try device.makeRenderPipelineState(descriptor: sd) }
+        catch { throw RendererError.pipeline(String(describing: error)) }
+        let sds = MTLDepthStencilDescriptor()
+        sds.depthCompareFunction = .lessEqual
+        sds.isDepthWriteEnabled = true
+        guard let sdss = device.makeDepthStencilState(descriptor: sds) else { throw RendererError.commandQueue }
+        shadowDepthState = sdss
+    }
+
+    private func shadowTexture() throws -> MTLTexture {
+        if let t = shadowMap { return t }
+        let d = MTLTextureDescriptor()
+        d.textureType = .type2DArray
+        d.pixelFormat = .depth32Float
+        d.width = ShadowCascades.size; d.height = ShadowCascades.size; d.arrayLength = 2
+        d.usage = [.renderTarget, .shaderRead]
+        d.storageMode = .private
+        guard let t = device.makeTexture(descriptor: d) else { throw RendererError.commandQueue }
+        shadowMap = t
+        return t
     }
 
     static func pack(_ soup: TriangleSoup) -> [PackedWorldVertex] {
@@ -160,6 +235,39 @@ public final class WorldRenderer {
         let fwdD = simd_normalize(c.target - c.position)
         let fwd = SIMD3<Float>(Float(fwdD.x), Float(fwdD.y), Float(fwdD.z))
         let L = lighting
+        let toSunF = simd_normalize(L.toSun)
+        let cascades = (0..<2).map { ShadowCascades.matrix(cascade: $0, toSun: toSunF, forward: fwd, cameraWorld: c.position) }
+        let sm = try shadowTexture()
+        let doShadows = shadowsEnabled && toSunF.z > -0.05
+        for ci in 0..<2 {
+            let sp = MTLRenderPassDescriptor()
+            sp.depthAttachment.texture = sm
+            sp.depthAttachment.slice = ci
+            sp.depthAttachment.loadAction = .clear
+            sp.depthAttachment.clearDepth = 1
+            sp.depthAttachment.storeAction = .store
+            guard let se = cmd.makeRenderCommandEncoder(descriptor: sp) else { throw RendererError.commandQueue }
+            if doShadows {
+                se.setRenderPipelineState(shadowPipeline)
+                se.setDepthStencilState(shadowDepthState)
+                se.setCullMode(.none)
+                se.setDepthBias(0, slopeScale: 1.5, clamp: 0)
+                if let e = environment {
+                    let o = e.origin - c.position
+                    var su = ShadowUniforms(lightViewProj: cascades[ci], model: Self.translation(o))
+                    se.setVertexBuffer(e.buffer, offset: 0, index: 0)
+                    se.setVertexBytes(&su, length: MemoryLayout<ShadowUniforms>.stride, index: 1)
+                    se.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: e.count)
+                }
+                if let a = aircraft, let p = aircraftPosition, let m = aircraftBodyToENU {
+                    var su = ShadowUniforms(lightViewProj: cascades[ci], model: Self.modelMatrix(m, p - c.position))
+                    se.setVertexBuffer(a.buffer, offset: 0, index: 0)
+                    se.setVertexBytes(&su, length: MemoryLayout<ShadowUniforms>.stride, index: 1)
+                    se.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: a.count)
+                }
+            }
+            se.endEncoding()
+        }
         // Sky (clears colour). SkyView uses y-up (x east, y up, z north).
         let skyPass = MTLRenderPassDescriptor()
         skyPass.colorAttachments[0].texture = colour
@@ -193,36 +301,46 @@ public final class WorldRenderer {
         let (ins, tr) = try aerialTables()
         enc.setFragmentTexture(ins, index: 0)
         enc.setFragmentTexture(tr, index: 1)
+        enc.setFragmentTexture(sm, index: 2)
         let viewProj = Self.reversedZProjection(fovY: Float(fovY), aspect: Float(aspect), near: 0.5) * Self.view(forward: fwd)
         let sunAz = Float(atan2(Double(toSun.y), Double(toSun.x)))
         let dims = tables?.key ?? SIMD4(1, 1, 1, 1000)
         func uniforms(model: simd_float4x4) -> WorldUniforms {
             WorldUniforms(viewProj: viewProj, model: model, sunDir: SIMD4(toSun, sunAz), sunColour: SIMD4(L.sunColour, L.exposure),
                           ambientSky: SIMD4(L.ambientSky, dims.w), ambientGround: SIMD4(L.ambientGround, 0),
-                          skyHorizon: SIMD4(L.skyHorizon, 0), tableDims: SIMD4(dims.x, dims.y, dims.z, 0))
+                          skyHorizon: SIMD4(L.skyHorizon, 0), tableDims: SIMD4(dims.x, dims.y, dims.z, doShadows ? 2 : 0),
+                          shadow0: cascades[0], shadow1: cascades[1],
+                          cascadeSplits: SIMD4(ShadowCascades.splits[0], ShadowCascades.splits[1],
+                                               2 * ShadowCascades.halfExtents[0] / Float(ShadowCascades.size),
+                                               2 * ShadowCascades.halfExtents[1] / Float(ShadowCascades.size)),
+                          cascadeDepth: SIMD4(ShadowCascades.depthRanges[0], ShadowCascades.depthRanges[1], 0, 0))
         }
         if let e = environment {
             let o = e.origin - c.position
-            var u = uniforms(model: simd_float4x4(columns: (SIMD4(1, 0, 0, 0), SIMD4(0, 1, 0, 0), SIMD4(0, 0, 1, 0),
-                                                           SIMD4(Float(o.x), Float(o.y), Float(o.z), 1))))
+            var u = uniforms(model: Self.translation(o))
             enc.setVertexBuffer(e.buffer, offset: 0, index: 0)
             enc.setVertexBytes(&u, length: MemoryLayout<WorldUniforms>.stride, index: 1)
             enc.setFragmentBytes(&u, length: MemoryLayout<WorldUniforms>.stride, index: 1)
             enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: e.count)
         }
         if let a = aircraft, let p = aircraftPosition, let m = aircraftBodyToENU {
-            let o = p - c.position
-            let c0 = m.columns.0, c1 = m.columns.1, c2 = m.columns.2
-            var u = uniforms(model: simd_float4x4(columns: (SIMD4(Float(c0.x), Float(c0.y), Float(c0.z), 0),
-                                                           SIMD4(Float(c1.x), Float(c1.y), Float(c1.z), 0),
-                                                           SIMD4(Float(c2.x), Float(c2.y), Float(c2.z), 0),
-                                                           SIMD4(Float(o.x), Float(o.y), Float(o.z), 1))))
+            var u = uniforms(model: Self.modelMatrix(m, p - c.position))
             enc.setVertexBuffer(a.buffer, offset: 0, index: 0)
             enc.setVertexBytes(&u, length: MemoryLayout<WorldUniforms>.stride, index: 1)
             enc.setFragmentBytes(&u, length: MemoryLayout<WorldUniforms>.stride, index: 1)
             enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: a.count)
         }
         enc.endEncoding()
+    }
+
+    static func translation(_ o: SIMD3<Double>) -> simd_float4x4 {
+        simd_float4x4(columns: (SIMD4(1, 0, 0, 0), SIMD4(0, 1, 0, 0), SIMD4(0, 0, 1, 0), SIMD4(Float(o.x), Float(o.y), Float(o.z), 1)))
+    }
+
+    static func modelMatrix(_ m: simd_double3x3, _ o: SIMD3<Double>) -> simd_float4x4 {
+        let c0 = m.columns.0, c1 = m.columns.1, c2 = m.columns.2
+        return simd_float4x4(columns: (SIMD4(Float(c0.x), Float(c0.y), Float(c0.z), 0), SIMD4(Float(c1.x), Float(c1.y), Float(c1.z), 0),
+                                       SIMD4(Float(c2.x), Float(c2.y), Float(c2.z), 0), SIMD4(Float(o.x), Float(o.y), Float(o.z), 1)))
     }
 
     public func makeDepth(width: Int, height: Int) throws -> MTLTexture {
