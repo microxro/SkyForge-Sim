@@ -111,3 +111,8 @@ Open defects (next passes): near-field ground is flat colour (needs detail textu
 - Common defects: aliasing on aircraft, river banks and runway; loud high-frequency ground mottle; checkerboard dither in clouds; hard draw-distance cut-offs for trees and towns; faceted coast cliffs; no shoreline foam or shallow water; snow covering rock in (f); no airport furniture in (j); autumn trees clash with summer grass.
 - Fixes in this pass: FXAA on the Metal frame; tent-filtered cloud upsample; CPU previews at 3×3 supersampling; ground detail amplitudes calmed (0.16/0.12 → 0.07/0.08, micro-normals 0.9 → 0.3, fade 1.4 km → 0.7 km); cloud preview at 192 steps. Previews re-rendered.
 - Scenes switched to a summer palette (autumn crowns clashed with summer grass); previews re-rendered.
+
+### 2026-11-08 Art-director re-review (round 2)
+- a 5.17, d 4.83, e 5.00, f 5.33, j 4.00 → **4.87** (was 4.43); n 5.67; r 5.50. Aliasing, cloud step artefacts and ground mottle confirmed fixed.
+- Remaining top fixes: smooth land-cover/water masks (stair-stepped river and field borders), per-instance tree colour variety, shoreline (beach, foam, shallow gradient, smooth cliff), slope/altitude mountain material, impostors for distant trees and towns; then an airport kit for (j), cloud multiple scattering and sun bloom, house variety.
+- Applied now: eight summer broadleaf and four conifer greens (crowns no longer one lime tone); rock from 24° and snow only below ~30° slope (peaks show grey rock faces); field parcels warped by low-frequency noise with soft hedgerow margins. Previews re-rendered.

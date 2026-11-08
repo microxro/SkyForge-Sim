@@ -60,10 +60,11 @@ public struct SceneBuilder {
                 : fieldColour(x, y, base: c)
         }
         // Rock on steep slopes, snow by temperature and slope.
-        let rock = Float(smoothstep(0.55, 0.9, slope))
+        let rock = Float(smoothstep(0.42, 0.75, slope))
         c = c + (GroundPalette.colour(.rock, season: generator.season) - c) * rock
         let t = BiomeClassifier.temperature(latitude: generator.latitude, elevation: z + macroNoise.fbm(x / 400, y / 400) * 120)
-        let snow = Float(smoothstep(-1, -4, t) * (1 - smoothstep(0.7, 1.0, slope)))
+        // Snow only holds on gentler slopes; steep faces stay rock (art review: peaks read as clay).
+        let snow = Float(smoothstep(-1, -4, t) * (1 - smoothstep(0.38, 0.62, slope)))
         c = c + (srgb(236, 240, 246) - c) * snow
         if terrain.kind == .coastline && z < 4 && z > terrain.seaLevel - 1 { c = srgb(206, 190, 150) }
         if let r = terrain.river, rd < r.width / 2 + 14 {
@@ -93,7 +94,9 @@ public struct SceneBuilder {
     func fieldColour(_ x: Double, _ y: Double, base: SIMD3<Float>) -> SIMD3<Float> {
         // Patchwork of fields in rotated 160 x 240 m parcels, colour by crop and season.
         let a = 0.35, c = cos(a), s = sin(a)
-        let u = c * x + s * y, v = -s * x + c * y
+        // Low-frequency warp so parcel borders curve like real field boundaries.
+        let wu = macroNoise.fbm(x / 420 + 7, y / 420, octaves: 2) * 28, wv = macroNoise.fbm(x / 420, y / 420 - 9, octaves: 2) * 28
+        let u = c * x + s * y + wu, v = -s * x + c * y + wv
         let iu = Int((u / 160).rounded(.down)), iv = Int((v / 240).rounded(.down))
         let h = Hash.int(iu, iv, seed: Hash.combine(terrain.seed, 0xF1E1D))
         // Muted, art-directed crop palette (stubble, ploughed soil, winter wheat, pasture).
@@ -106,6 +109,11 @@ public struct SceneBuilder {
         let fu = u / 160 - Double(iu), fv = v / 240 - Double(iv)
         let along = Hash.unit(Hash.mix(h)) < 0.5 ? fu : fv
         col *= Float(0.96 + 0.06 * along)
+        // Soft hedgerow margins instead of hard parcel steps on the vertex grid (art review).
+        let edge = min(fu * 160, (1 - fu) * 160, fv * 240, (1 - fv) * 240)
+        let w = Float(smoothstep(0, 14, edge))
+        let hedge = base * 0.92
+        col = hedge + (col - hedge) * w
         return base * 0.25 + col * 0.75
     }
 

@@ -452,7 +452,10 @@ public struct WorldGenerator: Sendable {
     }
 
     func treeColour(conifer: Bool, pick: Double) -> LinearRGB {
-        if conifer { return pick < 0.5 ? srgb(38, 58, 40) : srgb(46, 66, 44) }
+        if conifer {
+            let options = [srgb(34, 52, 38), srgb(42, 62, 42), srgb(30, 48, 40), srgb(48, 64, 46)]
+            return options[min(options.count - 1, Int(pick * Double(options.count)))]
+        }
         switch season {
         case .autumn:
             // Early autumn: mostly lingering greens with muted ochres and a few rusts (no rainbow);
@@ -462,7 +465,9 @@ public struct WorldGenerator: Sendable {
             return options[min(options.count - 1, Int(pick * Double(options.count)))]
         case .winter: return srgb(92, 82, 70)
         default:
-            let options = [srgb(66, 98, 46), srgb(80, 110, 52), srgb(58, 86, 44), srgb(94, 118, 58)]
+            // Summer broadleaf: dark, olive, blue- and yellow-greens (art review: one lime tone read as plastic).
+            let options = [srgb(56, 84, 42), srgb(70, 96, 46), srgb(48, 74, 40), srgb(84, 104, 52), srgb(62, 82, 50),
+                           srgb(76, 90, 44), srgb(52, 78, 48), srgb(90, 110, 56)]
             return options[min(options.count - 1, Int(pick * Double(options.count)))]
         }
     }
