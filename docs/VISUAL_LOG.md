@@ -128,3 +128,4 @@ Open defects (next passes): near-field ground is flat colour (needs detail textu
 - a 5.17, d 5.00, e 5.50, f 5.33, j 4.50 → **5.10** (was 5.03). Coast clearly better (beach, foam fringe, smooth shallows); even rock strata read as contour lines.
 - Fixes: strata warped by noise with uneven spacing and half the contrast; CPU micro-relief normals 0.3 → 0.12 (matches Metal; low sun had turned them into blotches) and grass albedo detail calmer.
 - Open from the review: per-pixel land-cover evaluation (field borders still step at vertex spacing), river rebuilt like the coast, house variants, impostors beyond draw distance.
+- Houses: 30 % take colours from other regional schemes, headings jitter ±4°, 35 % get a lower side wing or garage (L-shaped plans); (a) no longer reads as clones.

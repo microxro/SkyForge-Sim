@@ -64,9 +64,21 @@ public struct RegionPalette: Sendable {
     public var walls: [LinearRGB]
     public var roofs: [LinearRGB]
     public var cars: [LinearRGB]
+    /// Every scheme's colours, for a minority of houses that break the regional palette.
+    /// Static (not stored) so the palette struct, copied into every generator, stays small.
+    public var allWalls: [LinearRGB] { Self.allWallColours }
+    public var allRoofs: [LinearRGB] { Self.allRoofColours }
+    static let allWallColours: [LinearRGB] = schemeList.flatMap { $0.walls }
+    static let allRoofColours: [LinearRGB] = schemeList.flatMap { $0.roofs }
 
     public init(seed: UInt64) {
-        let schemes: [(walls: [LinearRGB], roofs: [LinearRGB])] = [
+        let schemes = Self.schemeList
+        walls = schemes[Int(Hash.mix(seed) % UInt64(schemes.count))].walls
+        roofs = schemes[Int(Hash.mix(seed) % UInt64(schemes.count))].roofs
+        cars = [srgb(200, 200, 204), srgb(40, 42, 46), srgb(120, 24, 28), srgb(30, 52, 92), srgb(150, 150, 148), srgb(226, 226, 222)]
+    }
+
+    static let schemeList: [(walls: [LinearRGB], roofs: [LinearRGB])] = [
             // Warm brick and cream, slate and terracotta roofs
             ([srgb(150, 82, 62), srgb(176, 104, 78), srgb(222, 208, 182), srgb(196, 178, 150), srgb(132, 72, 56)],
              [srgb(72, 74, 80), srgb(150, 76, 52), srgb(96, 84, 78), srgb(60, 62, 66)]),
@@ -77,11 +89,6 @@ public struct RegionPalette: Sendable {
             ([srgb(176, 168, 152), srgb(150, 146, 140), srgb(206, 200, 186), srgb(124, 112, 96), srgb(168, 150, 124)],
              [srgb(58, 60, 64), srgb(78, 76, 72), srgb(92, 70, 58), srgb(46, 48, 52)]),
         ]
-        let s = schemes[Int(Hash.mix(seed) % UInt64(schemes.count))]
-        walls = s.walls
-        roofs = s.roofs
-        cars = [srgb(200, 200, 204), srgb(40, 42, 46), srgb(120, 24, 28), srgb(30, 52, 92), srgb(150, 150, 148), srgb(226, 226, 222)]
-    }
 }
 
 /// Everything generated for one 1 km chunk.
@@ -328,13 +335,37 @@ public struct WorldGenerator: Sendable {
                     lastColour = ci
                     let roof: RoofType = rng.unit() < 0.62 ? .gabled : (rng.unit() < 0.8 ? .hipped : .flat)
                     let floors = rng.unit() < 0.3 ? 2.0 : 1.0
+                    // Variety (art review: clone houses): 30 % of houses take colours from other schemes,
+                    // headings jitter a few degrees, and some get a side wing (L-shaped plan).
+                    let offPalette = rng.unit() < 0.3
+                    let wallC = offPalette ? palette.allWalls[Int(rng.next() % UInt64(palette.allWalls.count))] : palette.walls[ci]
+                    let roofC = offPalette ? palette.allRoofs[Int(rng.next() % UInt64(palette.allRoofs.count))]
+                                           : palette.roofs[Int(rng.next() % UInt64(palette.roofs.count))]
+                    let heading = localHeading(p) + rng.range(-0.07, 0.07)
+                    let wallColour = wallC * Float(rng.range(0.9, 1.08)), roofColour = roofC * Float(rng.range(0.85, 1.1))
+                    let wallH = floors * 2.9 + rng.range(0.2, 0.6)
                     chunk.buildings.append(Building(
-                        center: p, halfSize: SIMD2(d / 2, w / 2), heading: localHeading(p),
-                        baseHeight: terrain.height(p.x, p.y), wallHeight: floors * 2.9 + rng.range(0.2, 0.6),
+                        center: p, halfSize: SIMD2(d / 2, w / 2), heading: heading,
+                        baseHeight: terrain.height(p.x, p.y), wallHeight: wallH,
                         roof: roof, roofPitch: rng.range(0.45, 0.8), kind: .house,
-                        wallColour: palette.walls[ci] * Float(rng.range(0.9, 1.08)),
-                        roofColour: palette.roofs[Int(rng.next() % UInt64(palette.roofs.count))] * Float(rng.range(0.85, 1.1)),
+                        wallColour: wallColour, roofColour: roofColour,
                         variant: UInt32(truncatingIfNeeded: rng.next())))
+                    if rng.unit() < 0.35 {
+                        // Side wing / garage: lower, set back, same materials.
+                        let ww = rng.range(4, 6), wd = rng.range(5, 7)
+                        let sideSign: Double = rng.unit() < 0.5 ? -1 : 1
+                        let off = SIMD2(cos(heading), sin(heading)) * 0 + SIMD2(-sin(heading), cos(heading)) * (sideSign * (w / 2 + ww / 2 - 0.3))
+                        let back = SIMD2(cos(heading), sin(heading)) * (side == 0 ? 1.5 : -1.5)
+                        let q = p + off + back
+                        if !terrain.isWater(q.x, q.y) && streetDistance(q.x, q.y).distance > 4.5 + max(ww, wd) / 2 {
+                            chunk.buildings.append(Building(
+                                center: q, halfSize: SIMD2(wd / 2, ww / 2), heading: heading,
+                                baseHeight: terrain.height(q.x, q.y), wallHeight: 2.6,
+                                roof: rng.unit() < 0.5 ? .flat : .gabled, roofPitch: 0.4, kind: .house,
+                                wallColour: wallColour * 0.96, roofColour: roofColour,
+                                variant: UInt32(truncatingIfNeeded: rng.next())))
+                        }
+                    }
                 }
                 v += frontage
             }

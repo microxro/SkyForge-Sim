@@ -81,3 +81,6 @@ Every gate run, CI run and manual verification. Newest at the bottom.
 - 2026-11-08T12:36:46Z gate fast on Linux x86_64: PASS (HEAD 6366c4d)
 - 2026-11-08T12:47:37Z gate fast on Linux x86_64: PASS (HEAD 3ec8ed6)
 - 2026-11-08T12:54:08Z gate fast on Linux x86_64: PASS (HEAD bb86f49)
+- 2026-11-08T12:57:24Z gate fast on Linux x86_64: FAIL (HEAD 3ee4868)
+- 2026-11-08T12:57:46Z gate fast on Linux x86_64: FAIL (HEAD 3ee4868)
+- 2026-11-08T13:03:15Z gate fast on Linux x86_64: PASS (HEAD 3ee4868)
