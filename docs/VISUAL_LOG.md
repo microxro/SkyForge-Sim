@@ -74,3 +74,9 @@ Open defects (next passes): near-field ground is flat colour (needs detail textu
 - Removed the 4.8 m crop-row term, which aliased at vertex spacing into dark moiré bands (e, d); fields use a gentle per-parcel gradient.
 - Slope-scaled shadow bias (tan θ, capped at 10 texels) removes acne at grazing sun. The remaining banding in (j) at sunrise is real micro-relief under a 6° sun (it vanishes at midday).
 - Scores: a 7.2, d 7.0, e 7.0, f 7.7, j 6.8 → average **7.1** (was 6.1 at the start of the day).
+
+### 2026-11-08 P1.3 pass 5: per-pixel ground detail
+- New `Material.terrain`; the shader adds clump (1.5 m), patch (6 m) and dry/lush (40 m) albedo variation plus micro-relief normals, faded out by 1.4 km so it never aliases. Shade time 0.2 → 0.5 s at 1280×720×4.
+- Near-field grass now reads as grass instead of flat paint (a, d, e, j).
+- Scores: a 7.5, d 7.3, e 7.2, f 7.8, j 7.0 → average **7.4**.
+- Open: river banks still step along the 8 m water grid (d); tree crowns are low-poly at close range (j); buildings lack facade detail (a).

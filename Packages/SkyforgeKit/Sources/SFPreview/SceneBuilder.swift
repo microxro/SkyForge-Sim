@@ -121,8 +121,8 @@ public struct SceneBuilder {
                 let p01 = SIMD3(x, y + step, heights[i01]), p11 = SIMD3(x + step, y + step, heights[i11])
                 let c1 = (colours[i00] + colours[i10] + colours[i11]) / 3
                 let c2 = (colours[i00] + colours[i11] + colours[i01]) / 3
-                soup.add(p00, p10, p11, na: normals[i00], nb: normals[i10], nc: normals[i11], colour: c1, material: .opaque)
-                soup.add(p00, p11, p01, na: normals[i00], nb: normals[i11], nc: normals[i01], colour: c2, material: .opaque)
+                soup.add(p00, p10, p11, na: normals[i00], nb: normals[i10], nc: normals[i11], colour: c1, material: .terrain)
+                soup.add(p00, p11, p01, na: normals[i00], nb: normals[i11], nc: normals[i01], colour: c2, material: .terrain)
                 count += 2
             }
         }

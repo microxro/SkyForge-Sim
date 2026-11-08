@@ -5,7 +5,7 @@ import SFMath
 import SFWorldGen
 
 public enum Material: UInt8, Sendable {
-    case opaque = 0, water = 1, foliage = 2, road = 3, emissive = 4, glass = 5, paint = 6
+    case opaque = 0, water = 1, foliage = 2, road = 3, emissive = 4, glass = 5, paint = 6, terrain = 7
 }
 
 public struct TriangleSoup: Sendable {

@@ -47,6 +47,7 @@ public enum PreviewRenderer {
         var hdr = [SIMD3<Float>](repeating: .zero, count: W * H)
         let cloudNoise = GradientNoise2D(seed: 0xC10D)
         let rippleNoise = GradientNoise2D(seed: 0x21BB)
+        let groundNoise = GradientNoise2D(seed: 0x6D7A)
         let toSun = simd_normalize(L.toSun)
         let camAltitude = Float(camera.position.z)
         let gb = g
@@ -70,8 +71,25 @@ public enum PreviewRenderer {
                     n = nl > 0 ? n / nl : SIMD3(0, 0, 1)
                     // Two-sided shading: normals always face the viewer (robust to winding).
                     if fdot(n, dir) > 0 { n = -n }
-                    let albedo = gb.albedo[idx]
+                    var albedo = gb.albedo[idx]
                     let mat = gb.material[idx]
+                    if mat == Material.terrain.rawValue && dist < 1_400 {
+                        // Per-pixel ground detail the vertex grid cannot carry: clumps (1.5 m), patches
+                        // (6 m), dry/lush variation (40 m), and micro-relief shading; faded with distance
+                        // so it never aliases.
+                        let fade = 1 - dist / 1_400
+                        let wx = Double(p.x) + origin.x, wy = Double(p.y) + origin.y
+                        let fine = Float(groundNoise.fbm(wx / 1.5, wy / 1.5, octaves: 2))
+                        let mid = Float(groundNoise.fbm(wx / 6 + 17, wy / 6 - 9, octaves: 2))
+                        let dry = Float(groundNoise.fbm(wx / 40 - 31, wy / 40 + 5, octaves: 2))
+                        albedo *= 1 + (fine * 0.16 + mid * 0.12) * fade
+                        let dryTint = SIMD3<Float>(1.10, 1.02, 0.80)
+                        albedo *= SIMD3<Float>(repeating: 1) + (dryTint - SIMD3<Float>(repeating: 1)) * (max(0, dry) * 0.9 * fade)
+                        let e: Double = 0.6
+                        let gx = Float(groundNoise.fbm((wx + e) / 2.2, wy / 2.2, octaves: 2) - groundNoise.fbm((wx - e) / 2.2, wy / 2.2, octaves: 2))
+                        let gy = Float(groundNoise.fbm(wx / 2.2, (wy + e) / 2.2, octaves: 2) - groundNoise.fbm(wx / 2.2, (wy - e) / 2.2, octaves: 2))
+                        n = simd_normalize(n + SIMD3(-gx, -gy, 0) * (0.9 * fade))
+                    }
                     var colour: SIMD3<Float>
                     let ndl = fdot(n, toSun)
                     let vis = toSun.z > -0.05 ? shadow.visibility(p, normalDotLight: max(0, ndl)) : 0
