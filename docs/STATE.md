@@ -1,9 +1,9 @@
-LAST_UPDATE: 2026-11-08T04:13:29Z
+LAST_UPDATE: 2026-11-08T04:20:33Z
 
 # SKYFORGE state
 
 ## Phase
-P0 accepted (CI fully green). P1 in progress: P1.1, P1.2, P1.2b-2, P1.4, P1.7b, P1.8b, P1.9, P1.10, P1.12, P1.5a/b/c-1, P1.6a, P1.2b-1, P1.6b, P1.7, P1.8a, P1.11 done; P1.3 renderer done with visuals below target.
+P0 accepted (CI fully green). P1 in progress: P1.1, P1.2, P1.2b-2, P1.4, P1.7b, P1.8b, P1.9, P1.10, P1.12, P1.5, P1.6a, P1.2b-1, P1.6b, P1.7, P1.8a, P1.11 done; P1.3 renderer done with visuals below target.
 
 ## Environment facts (recorded at session start)
 - Host: Linux x86_64, Ubuntu 24.04.5 LTS, 4 CPUs, 15 GB RAM (Claude Code on the web sandbox).
@@ -50,7 +50,7 @@ P0 accepted (CI fully green). P1 in progress: P1.1, P1.2, P1.2b-2, P1.4, P1.7b, 
 - SwiftUI screens and device tiers compile in CI but have never run interactively (Metal passes do run offscreen in CI).
 
 ## Broken
-- Metal ground detail in 28f80d3 speckles at low resolution (seen in the CI frame; fix with fwidth-based octave fading pushed next).
+- Nothing known. Speckle fixed in f8afa50 (CI frame reviewed).
 
 ## Last green SHA
-- 28f80d3 (CI run 42445160602: all jobs incl. Metal shadows, GGX aircraft, ground detail)
+- f8afa50 (CI run 42445934343: all jobs green, 146 tests incl. Metal frames)
