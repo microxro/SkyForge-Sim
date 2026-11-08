@@ -123,6 +123,7 @@ public struct QuickFlightWorld: FlightWorld {
             soup.addFlat(body(s.positions[3 * t]), body(s.positions[3 * t + 1]), body(s.positions[3 * t + 2]),
                          colour: s.albedo[t], material: s.material[t])
         }
+        soup.smoothNormals(triangles: 0..<soup.triangleCount)
         return soup
     }
 }

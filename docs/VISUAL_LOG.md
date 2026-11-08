@@ -142,3 +142,8 @@ Open defects (next passes): near-field ground is flat colour (needs detail textu
 - River waterline (top defect): the channel profile stepped 2.5 m at half-width + 4 m, just inside the 6 m-wider water ribbon, so terrain poked through the ribbon in a grid sawtooth. Channels are now continuous smoothsteps that stay below the surface past the ribbon edge (forest river −6.5 m fading over 12 m; mountain river 4.5 m over 18–30 m), so the ribbon's smooth edge is the waterline and the exposed slope beyond it reads as wet bank. `isWater` covers the ribbon extent. Waterlines in (d) and (f) are now smooth.
 - Aircraft paint in the CPU previews now uses the same GGX dielectric as Metal plus a sky/ground environment term and slightly lower albedo: glossy gradients and sky reflections instead of flat over-exposed white.
 - Tree crowns: near broadleaf trees are a main mass plus 2–3 offset lobes; all crowns get per-vertex shading (darker underside, lighter top) so they read as canopies rather than toy spheres.
+
+### 2026-11-08 Art-director re-review (round 7)
+- a 5.50, d 5.33, e 5.50, f 5.83, j 4.83 → **5.40** (was 5.30). The rebuilt river is the biggest single gain since anti-aliasing; lobed crowns read as trees.
+- Applied: crease-aware smooth normals (50°) for the aircraft in previews and in Quick Flight, so the fuselage shades smoothly and the GGX lobe can glint.
+- Open: per-pixel parcels with thin hedgerows (d, e), river water shading and width variation (d), airport layout and terrain relief (j), slope detail (f), distant edges (a).

@@ -464,6 +464,8 @@ public struct SceneBuilder {
             let ned = q.rotate(b)
             return p + SIMD3(ned.y, ned.x, -ned.z)                   // NED -> ENU
         }
+        let first = soup.triangleCount
+        defer { soup.smoothNormals(triangles: first..<soup.triangleCount) }
         for t in AircraftMesh.build() {
             let colour: SIMD3<Float>, mat: Material
             switch t.part {

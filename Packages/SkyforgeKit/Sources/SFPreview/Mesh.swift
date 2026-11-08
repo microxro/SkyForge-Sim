@@ -63,3 +63,33 @@ public struct TriangleSoup: Sendable {
         addFlat(a, c, d, colour: colour, material: m)
     }
 }
+
+extension TriangleSoup {
+    /// Replaces normals of triangles `range` with crease-aware smooth normals: each vertex averages the
+    /// face normals of triangles sharing its position whose normals are within `creaseDegrees`
+    /// (art review: faceted, flat-normal aircraft).
+    public mutating func smoothNormals(triangles range: Range<Int>, creaseDegrees: Float = 50) {
+        let creaseCos = cos(creaseDegrees * .pi / 180)
+        func dotf(_ a: SIMD3<Float>, _ b: SIMD3<Float>) -> Float { (a * b).sum() }
+        func lenf(_ a: SIMD3<Float>) -> Float { dotf(a, a).squareRoot() }
+        func key(_ p: SIMD3<Float>) -> SIMD3<Int32> { SIMD3(Int32((p.x * 1000).rounded()), Int32((p.y * 1000).rounded()), Int32((p.z * 1000).rounded())) }
+        var face = [SIMD3<Float>](repeating: .zero, count: range.count)
+        var incident: [SIMD3<Int32>: [Int]] = [:]
+        for (i, t) in range.enumerated() {
+            let a = positions[3 * t], b = positions[3 * t + 1], c = positions[3 * t + 2]
+            let e1 = b - a, e2 = c - a
+            let n = SIMD3(e1.y * e2.z - e1.z * e2.y, e1.z * e2.x - e1.x * e2.z, e1.x * e2.y - e1.y * e2.x)
+            let l = lenf(n)
+            face[i] = l > 0 ? n / l : SIMD3(0, 0, 1)
+            for k in 0..<3 { incident[key(positions[3 * t + k]), default: []].append(i) }
+        }
+        for (i, t) in range.enumerated() {
+            for k in 0..<3 {
+                var sum = SIMD3<Float>.zero
+                for j in incident[key(positions[3 * t + k])] ?? [] where dotf(face[j], face[i]) >= creaseCos { sum += face[j] }
+                let l = lenf(sum)
+                normals[3 * t + k] = l > 0 ? sum / l : face[i]
+            }
+        }
+    }
+}
