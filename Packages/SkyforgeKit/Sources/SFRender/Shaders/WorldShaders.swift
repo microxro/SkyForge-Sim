@@ -144,7 +144,7 @@ public enum WorldShaders {
         float4 lp = (c == 0 ? u.shadow0 : u.shadow1) * float4(p, 1.0);
         float2 uv = lp.xy * float2(0.5, -0.5) + 0.5;
         if (any(uv < 0.0) || any(uv > 1.0)) return 1.0;
-        float bias = texel * (0.5 + min(6.0, tanT)) / (c == 0 ? u.cascadeDepth.x : u.cascadeDepth.y);
+        float bias = texel * (0.8 + min(16.0, tanT * 1.4)) / (c == 0 ? u.cascadeDepth.x : u.cascadeDepth.y);   // low-sun acne (art review)
         float z = lp.z - bias;
         float2 ts = 1.0 / float2(sm.get_width(), sm.get_height());
         float lit = 0.0;

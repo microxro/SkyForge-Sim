@@ -131,3 +131,7 @@ Open defects (next passes): near-field ground is flat colour (needs detail textu
 - Houses: 30 % take colours from other regional schemes, headings jitter ±4°, 35 % get a lower side wing or garage (L-shaped plans); (a) no longer reads as clones.
 - Tree density now thins smoothly over the outer quarter of the object radius (Quick Flight and previews) instead of stopping at a ring.
 - River bank widened to 26 m with wet mud at the waterline: the vertex-spacing sawtooth remains in shape but no longer reads as dark water against bright grass. A true fix needs per-pixel water edges or a finer mesh along the river.
+
+### 2026-11-08 Art-director re-review (round 5) and fixes
+- a 5.50, d 5.00, e 5.50, f 5.50, j 4.50 → **5.20** (was 5.10). House variety and organic strata worked; (j) showed evenly spaced wavy bands over the foreground.
+- Diagnosis by elimination: the bands survived removing micro-relief and halving terrain fine noise, and vanished with a larger shadow bias, so they were shadow acne at a 6° sun. CPU bias now texel·(1.2 + min(24, 1.6·tanθ)); Metal texel·(0.8 + min(16, 1.4·tanθ)). Mowing stripes are a smooth low-contrast sinusoid (the 40 m square wave aliased on the vertex grid); terrain fine noise gentler (0.6 m at 220 m).

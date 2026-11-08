@@ -244,7 +244,7 @@ public struct ShadowMap: Sendable {
         // reaches ~10 for a 6° sun on flat ground (the old linear term left acne bands at sunrise).
         let ndl = max(0.05, normalDotLight)
         let tanT = (1 - ndl * ndl).squareRoot() / ndl
-        let bias = texel * (1.2 + min(10, tanT))
+        let bias = texel * (1.2 + min(24, tanT * 1.6))
         var lit: Float = 0
         let ix = Int(sx), iy = Int(sy)
         for oy in -1...1 {

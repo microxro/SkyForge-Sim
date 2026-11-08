@@ -97,7 +97,8 @@ public struct SceneBuilder {
         let outside = max(0, -along - 500, along - a.length - 500)
         let w = Float((1 - smoothstep(120, 170, across)) * (1 - smoothstep(0, 120, outside)))
         if w <= 0 { return c }
-        let stripe = Int((across / 40).rounded(.down)) % 2 == 0 ? Float(1.0) : 0.9
+        // Smooth, low-contrast mowing stripes (a hard 40 m square wave aliased into waves on the vertex grid).
+        let stripe = Float(0.965 + 0.035 * sin(across / 40 * Double.pi))
         let grass = srgb(88, 116, 60) * stripe * Float(0.95 + 0.08 * macroNoise.fbm(x / 60, y / 60, octaves: 2))
         return c + (grass - c) * w
     }

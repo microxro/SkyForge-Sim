@@ -85,7 +85,7 @@ public struct TerrainRecipe: Sendable {
     }
 
     func naturalHeight(_ x: Double, _ y: Double) -> Double {
-        let fine = detail.fbm(x / 140, y / 140, octaves: 3) * 1.2
+        let fine = detail.fbm(x / 220, y / 220, octaves: 3) * 0.6   // gentler: 1.2 m at 140 m banded under a low sun
         switch kind {
         case .suburbanPlain:
             let rolling = noise.fbm(x / 2_600, y / 2_600, octaves: 4) * 22
