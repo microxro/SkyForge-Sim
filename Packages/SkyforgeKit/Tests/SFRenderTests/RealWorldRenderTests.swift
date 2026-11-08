@@ -72,5 +72,42 @@ actor FixtureImageryTransport: HTTPTransport {
         for y in (h / 2)..<h { for x in 0..<(w / 3) { let s = px(x, y).x + px(x, y).y + px(x, y).z; lo = min(lo, s); hi = max(hi, s) } }
         #expect(hi - lo > 40, "ground contrast \(hi - lo)")
     }
+
+    /// Four flat 2×2 km chunks seen straight down must cover the whole frame: every chunk's triangles
+    /// come from its own vertices (the CI GPU assembled later chunks from the wrong ones with `baseVertex`).
+    @Test(.enabled(if: SkyRegressionTests.hasDevice, "no Metal device on this host"))
+    func everyChunkUsesItsOwnVertices() throws {
+        var chunks: [RealWorldRenderData.Chunk] = []
+        let q = 8
+        for (cx, cy) in [(-1, -1), (0, -1), (-1, 0), (0, 0)] {
+            var pos: [SIMD3<Float>] = [], nrm: [SIMD3<Float>] = []
+            for j in 0...q { for i in 0...q {
+                pos.append(SIMD3(Float(cx * 2_000 + i * 2_000 / q), Float(cy * 2_000 + j * 2_000 / q), 0)); nrm.append(SIMD3(0, 0, 1))
+            } }
+            var idx: [UInt32] = []
+            for j in 0..<q { for i in 0..<q {
+                let a = UInt32(j * (q + 1) + i), b = a + 1, c = a + UInt32(q + 1), e = c + 1
+                idx += [a, b, e, a, e, c]
+            } }
+            chunks.append(.init(positions: pos, normals: nrm, indices: idx,
+                                boundsMin: SIMD3(Float(cx * 2_000), Float(cy * 2_000), 0), boundsMax: SIMD3(Float(cx * 2_000 + 2_000), Float(cy * 2_000 + 2_000), 0)))
+        }
+        let data = RealWorldRenderData(chunks: chunks, trees: [], near: nil, far: nil, waterMask: nil)
+        let r = try WorldRenderer(lighting: LightingSetup.physicalPreset(.midday, azimuthDegrees: 200, cameraHeightMetres: 900))
+        try r.setRealWorld(data)
+        let w = 96, h = 96
+        let img = try r.render(width: w, height: h, camera: WorldCamera(position: SIMD3(0, -1, 900), target: SIMD3(0, 0, 0)))
+        #expect(r.lastDrawnChunks == 4)
+        // Each quadrant is one chunk; all four must look alike (a broken chunk shows bright sky instead).
+        var means: [SIMD3<Double>] = []
+        for (qx, qy) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
+            var m = SIMD3<Double>.zero
+            for y in (qy * h / 2 + 4)..<((qy + 1) * h / 2 - 4) { for x in (qx * w / 2 + 4)..<((qx + 1) * w / 2 - 4) {
+                let i = 3 * (y * w + x); m += SIMD3(Double(img[i]), Double(img[i + 1]), Double(img[i + 2]))
+            } }
+            means.append(m / Double((h / 2 - 8) * (w / 2 - 8)))
+        }
+        for m in means { #expect(abs(m.x - means[0].x) < 20 && abs(m.y - means[0].y) < 20 && abs(m.z - means[0].z) < 20, "quadrant means \(means)") }
+    }
     #endif
 }

@@ -388,8 +388,10 @@ public final class WorldRenderer {
         for c in data.chunks {
             let base = verts.count
             for (p, n) in zip(c.positions, c.normals) { verts.append(PackedTerrainVertex(px: p.x, py: p.y, pz: p.z, nx: q(n.x), ny: q(n.y), nz: q(n.z), nw: 127)) }
-            draws.append((idx.count, c.indices.count, base, c.boundsMin, c.boundsMax))
-            idx += c.indices
+            draws.append((idx.count, c.indices.count, 0, c.boundsMin, c.boundsMax))
+            // Absolute indices: the CI virtual GPU ignored `baseVertex`, so every chunk after the first
+            // assembled triangles from the wrong vertices (missing foreground, slabs across the sky).
+            idx += c.indices.map { $0 + UInt32(base) }
         }
         let meshes = Self.treeMeshes()
         let treeVerts = meshes.conifer + meshes.oak
@@ -744,16 +746,16 @@ public final class WorldRenderer {
                     let lp = Self.clipPlanes(cascades[ci] * su.model)
                     for d in rw.draws where Self.boxVisible(lp, d.min, d.max) {
                         se.drawIndexedPrimitives(type: .triangle, indexCount: d.indexCount, indexType: .uint32, indexBuffer: rw.indices,
-                                                 indexBufferOffset: d.indexOffset * 4, instanceCount: 1, baseVertex: d.baseVertex, baseInstance: 0)
+                                                 indexBufferOffset: d.indexOffset * 4)
                     }
                     if let ib = rw.instances {
                         se.setRenderPipelineState(shadowTreePipeline)
                         se.setVertexBuffer(rw.treeMesh, offset: 0, index: 0)
                         se.setVertexBuffer(ib, offset: 0, index: 2)
                         for cell in treeCells where Self.boxVisible(lp, cell.min, cell.max) {
+                            se.setVertexBufferOffset(cell.start * MemoryLayout<PackedTreeInstance>.stride, index: 2)   // not baseInstance (ignored on the CI GPU)
                             se.drawPrimitives(type: .triangle, vertexStart: cell.kind == 0 ? 0 : rw.oakStart,
-                                              vertexCount: cell.kind == 0 ? rw.coniferCount : rw.oakCount,
-                                              instanceCount: cell.count, baseInstance: cell.start)
+                                              vertexCount: cell.kind == 0 ? rw.coniferCount : rw.oakCount, instanceCount: cell.count)
                         }
                     }
                     se.setRenderPipelineState(shadowPipeline)
@@ -860,7 +862,7 @@ public final class WorldRenderer {
             var drawn = 0
             for d in rw.draws where Self.boxVisible(planes, d.min + o, d.max + o) {
                 enc.drawIndexedPrimitives(type: .triangle, indexCount: d.indexCount, indexType: .uint32, indexBuffer: rw.indices,
-                                          indexBufferOffset: d.indexOffset * 4, instanceCount: 1, baseVertex: d.baseVertex, baseInstance: 0)
+                                          indexBufferOffset: d.indexOffset * 4)
                 drawn += 1
             }
             lastDrawnChunks = drawn
@@ -870,9 +872,9 @@ public final class WorldRenderer {
                 enc.setVertexBuffer(ib, offset: 0, index: 2)
                 var cellsDrawn = 0
                 for cell in treeCells where Self.boxVisible(planes, cell.min + o, cell.max + o) {
+                    enc.setVertexBufferOffset(cell.start * MemoryLayout<PackedTreeInstance>.stride, index: 2)   // not baseInstance (ignored on the CI GPU)
                     enc.drawPrimitives(type: .triangle, vertexStart: cell.kind == 0 ? 0 : rw.oakStart,
-                                       vertexCount: cell.kind == 0 ? rw.coniferCount : rw.oakCount,
-                                       instanceCount: cell.count, baseInstance: cell.start)
+                                       vertexCount: cell.kind == 0 ? rw.coniferCount : rw.oakCount, instanceCount: cell.count)
                     cellsDrawn += 1
                 }
                 lastDrawnTreeCells = cellsDrawn
