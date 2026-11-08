@@ -21,7 +21,7 @@ public enum CloudShaders {
         float4 sun;         // rgb sun colour, w = exposure
         float4 skyAmb;      // rgb, w = aerial table max distance (km)
         float4 groundAmb;   // rgb, w = 1 when aerial tables are valid
-        float4 tableDims;   // nD, nAz, nEl, unused
+        float4 tableDims;   // nD, nAz, nEl, 1 = linear HDR output
         float4 viewport;    // march width, height, full width, full height
         CloudLayerGPU layer;
     };
@@ -203,6 +203,7 @@ public enum CloudShaders {
         if (u.groundAmb.w > 0.5) { cl_aerial(u, ins, tr, dir, r.depth, La, Ta); }
         col = col * Ta + La * a;
         float3 mean = col / a;
+        if (u.tableDims.w > 0.5) return float4(mean * u.sun.w * a, a);           // premultiplied linear HDR
         return float4(pow(cl_aces(mean * u.sun.w), float3(1.0 / 2.2)) * a, a);   // premultiplied
     }
 

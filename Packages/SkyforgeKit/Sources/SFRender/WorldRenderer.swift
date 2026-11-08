@@ -155,6 +155,15 @@ public final class WorldRenderer {
     private var tables: (ins: MTLTexture, tr: MTLTexture, key: SIMD4<Float>)?
     public private(set) var lighting: LightingSetup
     public let colorFormat: MTLPixelFormat
+    /// The scene renders into linear HDR (radiance × exposure); post-processing tone-maps it.
+    public let sceneFormat: MTLPixelFormat = .rgba16Float
+    /// Energy-conserving bloom: the frame is lerped this far toward its blurred self (0 = off).
+    public var bloomIntensity: Float = 0.05
+    private let bloomDownPipeline: MTLRenderPipelineState
+    private let bloomUpPipeline: MTLRenderPipelineState
+    private let tonemapPipeline: MTLRenderPipelineState
+    private var bloomLevels: [MTLTexture] = []
+    private var ldrTarget: MTLTexture?
 
     public init(device: MTLDevice? = MTLCreateSystemDefaultDevice(), colorFormat: MTLPixelFormat = .rgba8Unorm,
                 lighting: LightingSetup) throws {
@@ -164,7 +173,7 @@ public final class WorldRenderer {
         self.queue = queue
         self.colorFormat = colorFormat
         self.lighting = lighting
-        sky = try PhysicalSkyRenderer(device: device, colorFormat: colorFormat)
+        sky = try PhysicalSkyRenderer(device: device, colorFormat: .rgba16Float)
         let lib: MTLLibrary
         do { lib = try device.makeLibrary(source: CloudShaders.common + WorldShaders.source, options: nil) }
         catch { throw RendererError.shaderCompile(String(describing: error)) }
@@ -176,7 +185,7 @@ public final class WorldRenderer {
         d.label = "World"
         d.vertexFunction = v
         d.fragmentFunction = f
-        d.colorAttachments[0].pixelFormat = colorFormat
+        d.colorAttachments[0].pixelFormat = .rgba16Float
         d.depthAttachmentPixelFormat = .depth32Float
         do { pipeline = try device.makeRenderPipelineState(descriptor: d) }
         catch { throw RendererError.pipeline(String(describing: error)) }
@@ -204,7 +213,7 @@ public final class WorldRenderer {
             d.label = label
             d.vertexFunction = vf
             if let f { d.fragmentFunction = lib.makeFunction(name: f) }
-            if colour { d.colorAttachments[0].pixelFormat = colorFormat }
+            if colour { d.colorAttachments[0].pixelFormat = .rgba16Float }
             d.depthAttachmentPixelFormat = .depth32Float
             do { return try device.makeRenderPipelineState(descriptor: d) } catch { throw RendererError.pipeline(String(describing: error)) }
         }
@@ -221,6 +230,22 @@ public final class WorldRenderer {
             fd.fragmentFunction = plib.makeFunction(name: "fxaa_fragment")
             fd.colorAttachments[0].pixelFormat = colorFormat
             fxaaPipeline = try device.makeRenderPipelineState(descriptor: fd)
+            func post(_ f: String, _ label: String, _ format: MTLPixelFormat, additive: Bool = false) throws -> MTLRenderPipelineState {
+                let pd = MTLRenderPipelineDescriptor()
+                pd.label = label
+                pd.vertexFunction = plib.makeFunction(name: "post_vertex")
+                pd.fragmentFunction = plib.makeFunction(name: f)
+                pd.colorAttachments[0].pixelFormat = format
+                if additive, let ca = pd.colorAttachments[0] {
+                    ca.isBlendingEnabled = true
+                    ca.sourceRGBBlendFactor = .one; ca.destinationRGBBlendFactor = .one
+                    ca.sourceAlphaBlendFactor = .one; ca.destinationAlphaBlendFactor = .zero
+                }
+                return try device.makeRenderPipelineState(descriptor: pd)
+            }
+            bloomDownPipeline = try post("bloom_down_fragment", "BloomDown", .rgba16Float)
+            bloomUpPipeline = try post("bloom_up_fragment", "BloomUp", .rgba16Float, additive: true)
+            tonemapPipeline = try post("tonemap_fragment", "Tonemap", colorFormat)
         } catch { throw RendererError.pipeline(String(describing: error)) }
     }
 
@@ -502,28 +527,75 @@ public final class WorldRenderer {
     /// Encodes sky + world + aircraft into a pass whose colour attachment is already set.
     public func encode(cmd: MTLCommandBuffer, colour: MTLTexture, depth: MTLTexture, camera c: WorldCamera,
                        aircraftPosition: SIMD3<Double>?, aircraftBodyToENU: simd_double3x3?) throws {
-        guard antialiasing else {
-            try encodeScene(cmd: cmd, colour: colour, depth: depth, camera: c, aircraftPosition: aircraftPosition, aircraftBodyToENU: aircraftBodyToENU)
-            return
-        }
-        if sceneTarget?.width != colour.width || sceneTarget?.height != colour.height {
-            let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: colorFormat, width: colour.width, height: colour.height, mipmapped: false)
+        func target(_ t: MTLTexture?, _ format: MTLPixelFormat, _ w: Int, _ h: Int) -> MTLTexture? {
+            if let t, t.width == w, t.height == h, t.pixelFormat == format { return t }
+            let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: format, width: w, height: h, mipmapped: false)
             d.usage = [.renderTarget, .shaderRead]
             d.storageMode = .private
-            sceneTarget = device.makeTexture(descriptor: d)
+            return device.makeTexture(descriptor: d)
         }
+        sceneTarget = target(sceneTarget, .rgba16Float, colour.width, colour.height)
         guard let scene = sceneTarget else { throw RendererError.commandQueue }
         try encodeScene(cmd: cmd, colour: scene, depth: depth, camera: c, aircraftPosition: aircraftPosition, aircraftBodyToENU: aircraftBodyToENU)
-        let pp = MTLRenderPassDescriptor()
-        pp.colorAttachments[0].texture = colour
-        pp.colorAttachments[0].loadAction = .dontCare
-        pp.colorAttachments[0].storeAction = .store
-        guard let pe = cmd.makeRenderCommandEncoder(descriptor: pp) else { throw RendererError.commandQueue }
-        pe.label = "FXAA"
-        pe.setRenderPipelineState(fxaaPipeline)
-        pe.setFragmentTexture(scene, index: 0)
-        pe.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
-        pe.endEncoding()
+        func pass(_ t: MTLTexture, load: MTLLoadAction, label: String, _ body: (MTLRenderCommandEncoder) -> Void) throws {
+            let pd = MTLRenderPassDescriptor()
+            pd.colorAttachments[0].texture = t
+            pd.colorAttachments[0].loadAction = load
+            pd.colorAttachments[0].storeAction = .store
+            guard let e = cmd.makeRenderCommandEncoder(descriptor: pd) else { throw RendererError.commandQueue }
+            e.label = label
+            body(e)
+            e.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+            e.endEncoding()
+        }
+        // Bloom chain: up to 6 half-resolution levels down, then tent-upsampled and summed back up.
+        var levelCount = 0
+        if bloomIntensity > 0 {
+            var w = colour.width / 2, h = colour.height / 2, levels: [MTLTexture] = []
+            while levels.count < 6 && w >= 8 && h >= 8 {
+                let existing = levels.count < bloomLevels.count ? bloomLevels[levels.count] : nil
+                guard let t = target(existing, .rgba16Float, w, h) else { throw RendererError.commandQueue }
+                levels.append(t); w /= 2; h /= 2
+            }
+            bloomLevels = levels
+            levelCount = levels.count
+            var bp = SIMD4<Float>(0, 0.5, bloomIntensity, 0)      // no threshold: physically plausible glare
+            for (i, t) in levels.enumerated() {
+                let src = i == 0 ? scene : levels[i - 1]
+                try pass(t, load: .dontCare, label: "BloomDown\(i)") { e in
+                    e.setRenderPipelineState(bloomDownPipeline)
+                    e.setFragmentTexture(src, index: 0)
+                    e.setFragmentBytes(&bp, length: 16, index: 0)
+                }
+            }
+            for i in stride(from: levels.count - 1, to: 0, by: -1) {
+                try pass(levels[i - 1], load: .load, label: "BloomUp\(i)") { e in
+                    e.setRenderPipelineState(bloomUpPipeline)
+                    e.setFragmentTexture(levels[i], index: 0)
+                }
+            }
+        }
+        // Tone map (HDR + bloom → display), then FXAA on the display-referred frame.
+        let toneOut: MTLTexture
+        if antialiasing {
+            ldrTarget = target(ldrTarget, colorFormat, colour.width, colour.height)
+            guard let l = ldrTarget else { throw RendererError.commandQueue }
+            toneOut = l
+        } else { toneOut = colour }
+        var tp = SIMD4<Float>(0, 0, levelCount > 0 ? bloomIntensity : 0, levelCount > 0 ? 1 / Float(levelCount) : 0)
+        let bloomTex = bloomLevels.first ?? scene
+        try pass(toneOut, load: .dontCare, label: "Tonemap") { e in
+            e.setRenderPipelineState(tonemapPipeline)
+            e.setFragmentTexture(scene, index: 0)
+            e.setFragmentTexture(bloomTex, index: 1)
+            e.setFragmentBytes(&tp, length: 16, index: 0)
+        }
+        if antialiasing {
+            try pass(colour, load: .dontCare, label: "FXAA") { e in
+                e.setRenderPipelineState(fxaaPipeline)
+                e.setFragmentTexture(toneOut, index: 0)
+            }
+        }
     }
 
     private func encodeScene(cmd: MTLCommandBuffer, colour: MTLTexture, depth: MTLTexture, camera c: WorldCamera,
@@ -616,7 +688,7 @@ public final class WorldRenderer {
         sv.viewHeightKm = max(0.002, (c.position.z / 50).rounded() * 0.05)   // 50 m bands: LUTs regenerate rarely
         sv.exposure = Double(L.exposure) * Double.pi * 3.4    // renderer units → sky radiance scale (PhysicalSky.ks)
         if L.physical != nil { sky.parameters = L.physical!.model.parameters }
-        try sky.encode(into: cmd, pass: skyPass, view: sv, aspect: aspect)
+        try sky.encode(into: cmd, pass: skyPass, view: sv, aspect: aspect, hdr: true)
 
         let pass = MTLRenderPassDescriptor()
         pass.colorAttachments[0].texture = colour
@@ -725,7 +797,7 @@ public final class WorldRenderer {
         }
         enc.endEncoding()
         if cloudsOn {
-            if cloudRenderer == nil { cloudRenderer = try CloudRenderer(device: device, colorFormat: colorFormat) }
+            if cloudRenderer == nil { cloudRenderer = try CloudRenderer(device: device, colorFormat: .rgba16Float) }
             let cr = cloudRenderer!
             cr.steps = cloudSteps
             var cu = CloudUniforms(layer: clouds, steps: cloudSteps)
@@ -738,7 +810,7 @@ public final class WorldRenderer {
             cu.sun = SIMD4(L.sunColour, L.exposure)
             cu.skyAmb = SIMD4(L.ambientSky, dims.w)
             cu.groundAmb = SIMD4(L.ambientGround, 1)
-            cu.tableDims = SIMD4(dims.x, dims.y, dims.z, 0)
+            cu.tableDims = SIMD4(dims.x, dims.y, dims.z, 1)      // linear HDR into the scene buffer
             try cr.encode(cmd: cmd, colour: colour, depth: depth, uniforms: cu, inscatter: ins, transmit: tr)
         }
     }

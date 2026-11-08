@@ -19,6 +19,63 @@ public enum PostShaders {
 
     constexpr sampler fx(filter::linear, address::clamp_to_edge, coord::normalized);
 
+    // MARK: Bloom (after Jimenez, "Next Generation Post Processing in Call of Duty: Advanced Warfare",
+    // SIGGRAPH 2014): 13-tap downsample with a soft-knee prefilter, 3×3 tent upsample, and an
+    // energy-conserving composite (the scene is lerped toward its blurred self, never added to).
+
+    struct BloomParams { float4 p; };   // threshold, knee, intensity, 1 = first (prefilter) level
+
+    static float3 bl_prefilter(float3 c, float threshold, float knee) {
+        float br = max(c.r, max(c.g, c.b));
+        float rq = clamp(br - threshold + knee, 0.0, 2.0 * knee);
+        rq = rq * rq / (4.0 * knee + 1e-5);
+        float w = max(rq, br - threshold) / max(br, 1e-5);
+        return c * w;
+    }
+
+    static float3 bl_tap(texture2d<float> t, float2 uv) { return min(t.sample(fx, uv).rgb, float3(6.0e4)); }
+
+    fragment float4 bloom_down_fragment(PostVarying in [[stage_in]], texture2d<float> t [[texture(0)]],
+                                        constant BloomParams& bp [[buffer(0)]]) {
+        float2 d = 1.0 / float2(t.get_width(), t.get_height());
+        float2 uv = in.uv;
+        float3 a = bl_tap(t, uv + d * float2(-2, -2)), b = bl_tap(t, uv + d * float2(0, -2)), c = bl_tap(t, uv + d * float2(2, -2));
+        float3 e = bl_tap(t, uv + d * float2(-2, 0)), f = bl_tap(t, uv), g = bl_tap(t, uv + d * float2(2, 0));
+        float3 h = bl_tap(t, uv + d * float2(-2, 2)), i = bl_tap(t, uv + d * float2(0, 2)), j = bl_tap(t, uv + d * float2(2, 2));
+        float3 k = bl_tap(t, uv + d * float2(-1, -1)), l = bl_tap(t, uv + d * float2(1, -1));
+        float3 m = bl_tap(t, uv + d * float2(-1, 1)), n = bl_tap(t, uv + d * float2(1, 1));
+        float3 o = (k + l + m + n) * 0.125 + f * 0.125 + (a + c + h + j) * 0.03125 + (b + e + g + i) * 0.0625;
+        if (bp.p.w > 0.5) o = bl_prefilter(o, bp.p.x, bp.p.y);
+        return float4(o, 1.0);
+    }
+
+    fragment float4 bloom_up_fragment(PostVarying in [[stage_in]], texture2d<float> t [[texture(0)]]) {
+        float2 d = 1.0 / float2(t.get_width(), t.get_height());
+        float2 uv = in.uv;
+        float3 s = t.sample(fx, uv).rgb * 4.0;
+        s += (t.sample(fx, uv + float2(-d.x, 0)).rgb + t.sample(fx, uv + float2(d.x, 0)).rgb
+            + t.sample(fx, uv + float2(0, -d.y)).rgb + t.sample(fx, uv + float2(0, d.y)).rgb) * 2.0;
+        s += t.sample(fx, uv + float2(-d.x, -d.y)).rgb + t.sample(fx, uv + float2(d.x, -d.y)).rgb
+           + t.sample(fx, uv + float2(-d.x, d.y)).rgb + t.sample(fx, uv + float2(d.x, d.y)).rgb;
+        return float4(s / 16.0, 1.0);   // blended additively onto the next larger level
+    }
+
+    static float3 post_aces(float3 x) {
+        const float a = 2.51, b = 0.03, c = 2.43, d = 0.59, e = 0.14;
+        return saturate((x * (a * x + b)) / (x * (c * x + d) + e));
+    }
+
+    /// HDR scene (+ bloom) → ACES → gamma 2.2. Bloom levels were summed, so normalise by their count.
+    fragment float4 tonemap_fragment(PostVarying in [[stage_in]], texture2d<float> scene [[texture(0)]],
+                                     texture2d<float> bloom [[texture(1)]], constant BloomParams& bp [[buffer(0)]]) {
+        float3 c = scene.sample(fx, in.uv).rgb;
+        if (bp.p.z > 0.0) {
+            float3 b = bloom.sample(fx, in.uv).rgb * bp.p.w;    // p.w = 1 / number of summed levels
+            c = mix(c, b, bp.p.z);
+        }
+        return float4(pow(post_aces(max(c, 0.0)), float3(1.0 / 2.2)), 1.0);
+    }
+
     static float fx_luma(float3 c) { return dot(c, float3(0.299, 0.587, 0.114)); }
 
     fragment float4 fxaa_fragment(PostVarying in [[stage_in]], texture2d<float> t [[texture(0)]]) {

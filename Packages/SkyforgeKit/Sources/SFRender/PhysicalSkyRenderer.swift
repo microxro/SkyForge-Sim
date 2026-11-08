@@ -76,7 +76,9 @@ public final class PhysicalSkyRenderer {
     }
 
     /// Encodes the sky into `pass` (any colour target of the pipeline's format).
-    public func encode(into cmd: MTLCommandBuffer, pass: MTLRenderPassDescriptor, view v: SkyView, aspect: Double) throws {
+    /// `hdr`: write linear radiance × exposure (for an HDR scene buffer tone-mapped later) instead of
+    /// tone-mapped, gamma-encoded colour.
+    public func encode(into cmd: MTLCommandBuffer, pass: MTLRenderPassDescriptor, view v: SkyView, aspect: Double, hdr: Bool = false) throws {
         let tex = try textures(for: v)
         guard let enc = cmd.makeRenderCommandEncoder(descriptor: pass) else { throw RendererError.commandQueue }
         let b = v.basis
@@ -85,7 +87,7 @@ public final class PhysicalSkyRenderer {
         func f4(_ x: SIMD3<Double>, _ w: Double) -> SIMD4<Float> { SIMD4(Float(x.x), Float(x.y), Float(x.z), Float(w)) }
         var u = SkyLUTUniforms(forward: f4(b.forward, tan(v.horizontalFOVDeg * .pi / 360)), right: f4(b.right, aspect),
                                up: f4(b.up, v.exposure), sun: f4(sun, atan2(sun.z, sun.x)),
-                               params: SIMD4(Float(parameters.bottomRadius + v.viewHeightKm), 0, 0, Float(parameters.sunAngularRadius)))
+                               params: SIMD4(Float(parameters.bottomRadius + v.viewHeightKm), hdr ? 1 : 0, 0, Float(parameters.sunAngularRadius)))
         var a = AtmosphereGPUParams(parameters, viewHeightKm: v.viewHeightKm, sunZenithCos: sin(el))
         enc.setRenderPipelineState(pipeline)
         enc.setFragmentBytes(&u, length: MemoryLayout<SkyLUTUniforms>.stride, index: 0)

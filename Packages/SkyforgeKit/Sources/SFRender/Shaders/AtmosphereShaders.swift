@@ -209,7 +209,7 @@ extension AtmosphereShaders {
         float4 right;     // xyz, aspect (w/h)
         float4 up;        // xyz, exposure
         float4 sun;       // xyz direction (y up), sun azimuth atan2(z, x)
-        float4 params;    // view radius r (km), unused, unused, sun angular radius
+        float4 params;    // view radius r (km), 1 = linear HDR output (no tone map), unused, sun angular radius
     };
 
     vertex SkyVaryingL sky_lut_vertex(uint vid [[vertex_id]]) {
@@ -249,6 +249,7 @@ extension AtmosphereShaders {
             float mu = sqrt(max(0.0f, 1.0f - rho * rho));
             L += T * a.solar.xyz / (PI * ang * ang) * (0.4f + 0.6f * mu);
         }
+        if (u.params.y > 0.5f) return float4(L * u.up.w, 1.0f);   // HDR scene buffer: tone-mapped in post
         float3 col = acesL(L * u.up.w);
         return float4(pow(col, float3(1.0f / 2.2f)), 1.0f);
     }

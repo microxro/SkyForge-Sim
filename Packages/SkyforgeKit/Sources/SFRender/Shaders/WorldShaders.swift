@@ -328,6 +328,14 @@ public enum WorldShaders {
         return albedo * (1.0 - F) * sun * nl * vis + sun * spec * nl * vis + env * Fv * (1.0 - rough * 0.7);
     }
 
+    /// Inverse of the ACES fit below (y in [0, 0.99]): the HDR value that tone-maps to `y`.
+    static float3 acesInverse(float3 y) {
+        const float a = 2.51, b = 0.03, c = 2.43, d = 0.59, e = 0.14;
+        y = min(y, float3(0.99));
+        float3 A = y * c - a, B = y * d - b, C = y * e;
+        return max(float3(0.0), (-B - sqrt(max(float3(0.0), B * B - 4.0 * A * C))) / (2.0 * A));
+    }
+
     static float3 acesW(float3 x) {
         const float a = 2.51, b = 0.03, c = 2.43, d = 0.59, e = 0.14;
         return saturate((x * (a * x + b)) / (x * (c * x + d) + e));
@@ -489,8 +497,7 @@ public enum WorldShaders {
         float3 L, T;
         aerial(u, ins, tr, dir, dist, L, T);
         col = col * T + L;
-        float3 mapped = acesW(col * u.sunColour.w);
-        return float4(pow(mapped, float3(1.0 / 2.2)), 1.0);
+        return float4(col * u.sunColour.w, 1.0);    // linear HDR (× exposure); tone-mapped in post
     }
 
     // Cockpit display (SF-1000 PFD): display-referred texture on a quad in aircraft body axes.
@@ -515,7 +522,8 @@ public enum WorldShaders {
         float3 c = screen.sample(screenSampler, in.uv).rgb;    // gamma-encoded display pixels
         // Sun glare on the glass: a faint lift when the sun is in front of the panel.
         float glare = pow(saturate(dot(normalize(in.rel), u.sunDir.xyz) * -1.0), 8.0) * 0.06;
-        return float4(c * 0.93 + glare, 1.0);
+        // The scene buffer is linear HDR: invert the post tone map so the panel shows its own pixels.
+        return float4(acesInverse(pow(saturate(c * 0.93 + glare), float3(2.2))), 1.0);
     }
     """
 }
