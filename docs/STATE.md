@@ -1,4 +1,4 @@
-LAST_UPDATE: 2026-11-08T21:25:50Z
+LAST_UPDATE: 2026-11-08T21:55:38Z
 
 # SKYFORGE state
 
@@ -12,7 +12,7 @@ Bold Mode (docs/BOLD_MODE.md) is in progress.
   - HDR scene buffer with bloom, SSAO (CI compile pending), water waves and foam, prop disc (CI pending).
   - Tier render presets and the CI GPU frame-time test. Low tier is within budget on the CI GPU; the high tier is being optimised.
   - 30-minute soak test.
-- Blocking (found 2026-11-08 in CI frames of cb70dfc): the showcase Metal frames are broken: dark ground under floating trees (KMRY, KBFI), a flat blue plane with a stretched wall (KASE), dark slabs overhead (LSZS). CPU geometry checks out (ray casts find no terrain above the LSZS camera; heights and camera are sane). Fixed so far: imagery grading crushed 5 % of near pixels to black (41a9679). GPU isolation frames (diag_*) are in CI to find the missing or wrong layer.
+- Fixed 2026-11-08: broken showcase Metal frames. Causes: (1) the CI GPU assembled real-terrain chunks wrongly with `baseVertex`/`baseInstance`; now absolute indices and buffer offsets (debba5b); (2) imagery grading crushed shadows (41a9679); (3) the colour water classifier flagged shadowed slopes, roofs and asphalt (f9824ad: slope, area and runway filters). Frame-time tests now run alone in their own CI step (873eaf5).
 - Open:
   - Procedural building fallback where OSM is missing; cascades 3–4; aircraft textures; cockpit textures; cloud self-shadow tiers.
   - Art review of the CI Metal frames (target ≥ 8).
