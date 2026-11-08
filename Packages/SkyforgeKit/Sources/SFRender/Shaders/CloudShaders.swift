@@ -82,9 +82,12 @@ public enum CloudShaders {
 
     static float cl_phase(float cosT) { return 0.7 * cl_hg(cosT, 0.6) + 0.3 * cl_hg(cosT, -0.25); }
 
+    // Self-shadow optical depth toward the sun: `drift.z` taps (0 = 6), geometric steps ×1.8 scaled so the
+    // reach stays ~1.7 km at any tap count (fewer taps = coarser, not shorter, shadowing).
     static float cl_lightDepth(float3 p, float3 toSun, CloudLayerGPU c) {
-        float od = 0.0, t = 0.0, step = 40.0;
-        for (int i = 0; i < 6; i++) {
+        int n = c.drift.z > 0.5 ? int(c.drift.z) : 6;
+        float od = 0.0, t = 0.0, step = 40.0 * (pow(1.8, 6.0) - 1.0) / (pow(1.8, float(n)) - 1.0);   // 6 taps: 40 m (CPU reference)
+        for (int i = 0; i < n; i++) {
             float3 q = p + toSun * (t + 0.5 * step);
             od += cl_density(q, c) * step;
             t += step; step *= 1.8;

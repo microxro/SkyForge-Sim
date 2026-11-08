@@ -15,15 +15,15 @@ Legend: [x] done and verified, [ ] not done. Unchecked items are not available i
 - [x] A4 Imagery: USGS↔Sentinel-2 colour match, de-haze/contrast curve, feathered near/far seam, mipmaps + 8× anisotropic filtering
 - [ ] A5 Real DEM relief with CDLOD morphing (no cracks/popping), per-pixel detail normals + micro-albedo on imagery
 ### Phase B — Renderer quality
-- [ ] B6a Bloom + sun glare (energy conserving)
+- [x] B6a Bloom + sun glare (energy conserving; CI ring test)
 - [ ] B6b TAA or FXAA+SMAA by tier
-- [ ] B6c Contact shadows / SSAO
+- [x] B6c Contact shadows / SSAO (depth-only, per-tier strength)
 - [ ] B6d 3–4 stabilised shadow cascades on high tier
 - [ ] B7 Aircraft PBR textures (panel lines, rivets, registration), glint, prop disc blur, cockpit textures and lighting
-- [ ] B8 Water: normal-mapped waves, sky/cloud reflections, shoreline foam from the water mask
-- [ ] B9 Cloud self-shadowing quality per tier
+- [x] B8 Water: normal-mapped waves, sky reflection, sun glitter, shoreline foam from the water mask (flat/size-filtered mask)
+- [x] B9 Cloud self-shadowing quality per tier (6-tap sun march with multiple-scattering term; low tier 4 taps at the same 1.7 km reach; high tier held at 6 by its frame-time budget)
 ### Phase C — Performance (measured)
-- [ ] C10 CI GPU frame-time test per tier on the macOS Metal runner (numbers in VERIFICATION_LOG)
+- [x] C10 CI GPU frame-time test per tier on the macOS Metal runner, run alone (numbers in VERIFICATION_LOG; all within budget)
 - [ ] C11 Building LOD + instancing, GPU culling where useful, texture streaming with memory cap, no main-thread stalls (measured) — texture streaming done (camera-following z18 layer, built off the main thread, one texture at a time; ADR-0018)
 - [ ] C12 60 fps high / 30 fps low targets documented; device numbers unverified until run on hardware
 ### Phase D — Correctness

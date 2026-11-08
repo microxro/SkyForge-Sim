@@ -148,6 +148,8 @@ public final class WorldRenderer {
     public var clouds: CloudLayer = .clear
     /// Cloud march steps per ray (device tier knob).
     public var cloudSteps = 64
+    /// Cloud self-shadow taps toward the sun per march sample (tier setting).
+    public var cloudLightSteps = 6
     /// Cloud march resolution divisor (2 = half resolution).
     public var cloudDownsample = 2
     /// Dynamic resolution: the scene renders at this fraction of the output size and is upscaled
@@ -158,17 +160,22 @@ public final class WorldRenderer {
     /// Per-device-tier render settings (the app and the CI frame-time test use the same presets).
     public struct Settings: Sendable, Equatable {
         public var renderScale: Float, cloudSteps: Int, cloudDownsample: Int, bloomIntensity: Float, ssaoStrength: Float
-        public init(renderScale: Float, cloudSteps: Int, cloudDownsample: Int, bloomIntensity: Float, ssaoStrength: Float) {
+        /// Cloud self-shadow taps per march sample.
+        public var cloudLightSteps: Int
+        public init(renderScale: Float, cloudSteps: Int, cloudDownsample: Int, bloomIntensity: Float, ssaoStrength: Float,
+                    cloudLightSteps: Int = 6) {
+            self.cloudLightSteps = cloudLightSteps
             self.renderScale = renderScale; self.cloudSteps = cloudSteps; self.cloudDownsample = cloudDownsample
             self.bloomIntensity = bloomIntensity; self.ssaoStrength = ssaoStrength
         }
-        public static let low = Settings(renderScale: 1, cloudSteps: 40, cloudDownsample: 2, bloomIntensity: 0.04, ssaoStrength: 0.5)
+        public static let low = Settings(renderScale: 1, cloudSteps: 40, cloudDownsample: 2, bloomIntensity: 0.04, ssaoStrength: 0.5,
+                                         cloudLightSteps: 4)
         public static let medium = Settings(renderScale: 1, cloudSteps: 48, cloudDownsample: 2, bloomIntensity: 0.05, ssaoStrength: 0.7)
         public static let high = Settings(renderScale: 0.75, cloudSteps: 40, cloudDownsample: 4, bloomIntensity: 0.05, ssaoStrength: 0.7)
     }
 
     public func apply(_ s: Settings) {
-        renderScale = s.renderScale; cloudSteps = s.cloudSteps; cloudDownsample = s.cloudDownsample
+        renderScale = s.renderScale; cloudSteps = s.cloudSteps; cloudDownsample = s.cloudDownsample; cloudLightSteps = s.cloudLightSteps
         bloomIntensity = s.bloomIntensity; ssaoStrength = s.ssaoStrength
     }
     private var cloudRenderer: CloudRenderer?
@@ -954,6 +961,7 @@ public final class WorldRenderer {
             let cr = cloudRenderer!
             cr.steps = cloudSteps
             cr.downsample = cloudDownsample
+            cr.lightSteps = cloudLightSteps
             var cu = CloudUniforms(layer: clouds, steps: cloudSteps)
             let r = simd_normalize(simd_cross(fwd, upHint))
             let up = simd_cross(r, fwd)
