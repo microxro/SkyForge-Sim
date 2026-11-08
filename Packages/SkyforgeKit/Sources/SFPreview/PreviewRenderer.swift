@@ -89,13 +89,13 @@ public enum PreviewRenderer {
                         let fine = Float(groundNoise.fbm(wx / 1.5, wy / 1.5, octaves: 2))
                         let mid = Float(groundNoise.fbm(wx / 6 + 17, wy / 6 - 9, octaves: 2))
                         let dry = Float(groundNoise.fbm(wx / 40 - 31, wy / 40 + 5, octaves: 2))
-                        albedo *= 1 + (fine * 0.06 + mid * 0.05) * fade   // calm: art review found the 0.16/0.12 mottle "camouflage"
+                        albedo *= 1 + (fine * 0.05 + mid * 0.03) * fade   // calm: art review found the 0.16/0.12 mottle "camouflage"
                         let dryTint = SIMD3<Float>(1.10, 1.02, 0.80)
                         albedo *= SIMD3<Float>(repeating: 1) + (dryTint - SIMD3<Float>(repeating: 1)) * (max(0, dry) * 0.3 * fade)
                         let e: Double = 0.6
                         let gx = Float(groundNoise.fbm((wx + e) / 2.2, wy / 2.2, octaves: 2) - groundNoise.fbm((wx - e) / 2.2, wy / 2.2, octaves: 2))
                         let gy = Float(groundNoise.fbm(wx / 2.2, (wy + e) / 2.2, octaves: 2) - groundNoise.fbm(wx / 2.2, (wy - e) / 2.2, octaves: 2))
-                        n = simd_normalize(n + SIMD3(-gx, -gy, 0) * (0.3 * fade))
+                        n = simd_normalize(n + SIMD3(-gx, -gy, 0) * (0.12 * fade))   // as Metal; low sun turned 0.3 into blotches
                     }
                     var colour: SIMD3<Float>
                     let ndl = fdot(n, toSun)

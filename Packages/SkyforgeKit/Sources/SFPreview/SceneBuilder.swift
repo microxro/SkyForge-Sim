@@ -62,7 +62,11 @@ public struct SceneBuilder {
         // Rock on steep slopes, snow by temperature and slope.
         let rock = Float(smoothstep(0.42, 0.75, slope))
         // Rock: darker grey-brown with horizontal strata and patchy lichen tones (art review: pale clay).
-        let strata = Float(0.82 + 0.22 * sin(z / 14 + macroNoise.fbm(x / 160, y / 160) * 3) + 0.10 * macroNoise.fbm(x / 40, y / 40, octaves: 2))
+        // Strata warped by noise, uneven spacing and low contrast (art review: even stripes read as contour lines).
+        let warpZ = z + macroNoise.fbm(x / 320, y / 320, octaves: 2) * 60
+        let spacing = 11 + 7 * macroNoise.fbm(x / 900 + 3, y / 900, octaves: 1)
+        let band = sin(warpZ / spacing) * (0.5 + 0.5 * macroNoise.fbm(x / 120, y / 120, octaves: 2))
+        let strata = Float(0.86 + 0.08 * band + 0.10 * macroNoise.fbm(x / 40, y / 40, octaves: 2))
         let rockCol = srgb(98, 92, 84) * strata
         c = c + (rockCol - c) * rock
         let t = BiomeClassifier.temperature(latitude: generator.latitude, elevation: z + macroNoise.fbm(x / 400, y / 400) * 120)

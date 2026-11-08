@@ -123,3 +123,8 @@ Open defects (next passes): near-field ground is flat colour (needs detail textu
 - a 5.17, d 5.00, e 5.17, f 5.33, j 4.50 → **5.03** (was 4.87). Airport kit made (j) read as an airport; tree variety helped (d).
 - Root cause of the blocky land-cover borders and stepped shallows: every triangle carried one averaged colour. `TriangleSoup` now has optional per-vertex albedo, interpolated perspective-correctly by the CPU rasterizer and packed per vertex for Metal; terrain and shore water use it.
 - Mountains: rock darker grey-brown with strata and lichen variation; snow holds up to ~35°. Grass detail calmed again (mid 0.05, dry tint 0.3).
+
+### 2026-11-08 Art-director re-review (round 4) and fixes
+- a 5.17, d 5.00, e 5.50, f 5.33, j 4.50 → **5.10** (was 5.03). Coast clearly better (beach, foam fringe, smooth shallows); even rock strata read as contour lines.
+- Fixes: strata warped by noise with uneven spacing and half the contrast; CPU micro-relief normals 0.3 → 0.12 (matches Metal; low sun had turned them into blotches) and grass albedo detail calmer.
+- Open from the review: per-pixel land-cover evaluation (field borders still step at vertex spacing), river rebuilt like the coast, house variants, impostors beyond draw distance.
