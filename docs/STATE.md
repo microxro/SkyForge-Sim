@@ -1,4 +1,4 @@
-LAST_UPDATE: 2026-11-08T11:13:52Z
+LAST_UPDATE: 2026-11-08T11:39:27Z
 
 # SKYFORGE state
 
@@ -57,4 +57,4 @@ P0 accepted (CI fully green). P1 in progress: P1.1, P1.2, P1.2b-2, P1.4, P1.7b, 
 - Nothing known. Speckle fixed in f8afa50 (CI frame reviewed).
 
 ## Last green SHA
-- 5aee5ff (CI run 42474288474: all jobs green, 185 tests incl. Metal clouds, cloud shadows, cockpit, real-world frames)
+- 6881210 (CI run 42476068114: all jobs green; airfield grass, slimmer cockpit pillars)
