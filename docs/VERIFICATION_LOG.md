@@ -159,3 +159,9 @@ Method: `FrameTimeTests`, 30 frames after 3 warm-up frames; command-buffer GPU t
 - 2026-11-08T22:25:25Z gate fast on Linux x86_64: PASS (HEAD 9b50dd5)
 - 2026-11-08T22:29:34Z gate fast on Linux x86_64: FAIL (HEAD cb21cbb)
 - 2026-11-08T22:32:58Z gate fast on Linux x86_64: PASS (HEAD cb21cbb)
+- 2026-11-08T22:39:23Z gate fast on Linux x86_64: PASS (HEAD 222b853)
+
+## 2026-11-08 CI run 42530207825 (cb21cbb) — isolated GPU frame times: all within budget
+- SkyWorld: low 8.72 ms, high 13.78 ms.
+- KMRY: low 10.35 ms, high 16.43 ms (budget 16.7, thin margin; clouds 3.90, shadows 3.56).
+- Frame check: the z17 approach layer is live (CPU mosaic 1.17 m/px vs 2.9 m/px), but the GPU frames still smeared. The cause is FXAA treating photo texture as edges (spans up to 8 px). Fixed next with depth-aware FXAA.

@@ -18,6 +18,7 @@ public enum PostShaders {
     }
 
     constexpr sampler fx(filter::linear, address::clamp_to_edge, coord::normalized);
+    constexpr sampler fxd(filter::nearest, address::clamp_to_edge, coord::normalized);
 
     // MARK: Bloom (after Jimenez, "Next Generation Post Processing in Call of Duty: Advanced Warfare",
     // SIGGRAPH 2014): 13-tap downsample with a soft-knee prefilter, 3×3 tent upsample, and an
@@ -132,11 +133,22 @@ public enum PostShaders {
 
     static float fx_luma(float3 c) { return dot(c, float3(0.299, 0.587, 0.114)); }
 
-    fragment float4 fxaa_fragment(PostVarying in [[stage_in]], texture2d<float> t [[texture(0)]]) {
-        const float reduceMin = 1.0 / 128.0, reduceMul = 1.0 / 8.0, spanMax = 8.0;
+    // Depth-aware: only geometric edges (silhouettes, building and tree outlines) are antialiased.
+    // Plain FXAA treated photo texture as edges everywhere and smeared the ground imagery along the
+    // detected directions by up to 8 px.
+    fragment float4 fxaa_fragment(PostVarying in [[stage_in]], texture2d<float> t [[texture(0)]],
+                                  depth2d<float> depth [[texture(1)]]) {
+        const float reduceMin = 1.0 / 128.0, reduceMul = 1.0 / 8.0, spanMax = 4.0;
         float2 rcp = 1.0 / float2(t.get_width(), t.get_height());
         float2 uv = in.uv;
         float3 rgbM = t.sample(fx, uv).rgb;
+        float2 drcp = 1.0 / float2(depth.get_width(), depth.get_height());
+        float d0 = depth.sample(fxd, uv), d1 = depth.sample(fxd, uv + float2(-1.0, -1.0) * drcp), d2 = depth.sample(fxd, uv + float2(1.0, -1.0) * drcp);
+        float d3 = depth.sample(fxd, uv + float2(-1.0, 1.0) * drcp), d4 = depth.sample(fxd, uv + float2(1.0, 1.0) * drcp);
+        float dMin = min(d0, min(min(d1, d2), min(d3, d4))), dMax = max(d0, max(max(d1, d2), max(d3, d4)));
+        // Reversed-Z depth ∝ 1/distance, so the ratio is scale-free; sky is 0.
+        bool geomEdge = (dMin <= 0.0 && dMax > 0.0) || (dMin > 0.0 && dMax > dMin * 1.04);
+        if (!geomEdge) return float4(rgbM, 1.0);
         float3 rgbNW = t.sample(fx, uv + float2(-1.0, -1.0) * rcp).rgb;
         float3 rgbNE = t.sample(fx, uv + float2( 1.0, -1.0) * rcp).rgb;
         float3 rgbSW = t.sample(fx, uv + float2(-1.0,  1.0) * rcp).rgb;

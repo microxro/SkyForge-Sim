@@ -702,6 +702,7 @@ public final class WorldRenderer {
             try pass(colour, load: .dontCare, label: "FXAA") { e in
                 e.setRenderPipelineState(fxaaPipeline)
                 e.setFragmentTexture(toneOut, index: 0)
+                e.setFragmentTexture(sceneDepth, index: 1)
             }
         }
     }
@@ -806,7 +807,9 @@ public final class WorldRenderer {
         pass.depthAttachment.loadAction = .clear
         pass.depthAttachment.clearDepth = 0
         let cloudsOn = clouds.coverage > 0
-        pass.depthAttachment.storeAction = cloudsOn ? .store : .dontCare
+        // Stored always: the cloud march, SSAO and the depth-aware FXAA all read scene depth (SSAO used
+        // to read an undefined depth buffer on clear-sky frames).
+        pass.depthAttachment.storeAction = .store
         guard let enc = cmd.makeRenderCommandEncoder(descriptor: pass) else { throw RendererError.commandQueue }
         enc.setRenderPipelineState(pipeline)
         enc.setDepthStencilState(depthState)

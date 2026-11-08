@@ -73,6 +73,29 @@ actor FixtureImageryTransport: HTTPTransport {
         #expect(hi - lo > 40, "ground contrast \(hi - lo)")
     }
 
+    /// FXAA leaves photo texture alone (depth-aware): on ground-only pixels the antialiased frame equals
+    /// the raw one. Plain FXAA smeared imagery along detected "edges" by up to 8 px.
+    @Test(.enabled(if: SkyRegressionTests.hasDevice, "no Metal device on this host"))
+    func fxaaDoesNotSmearGroundTexture() async throws {
+        let region = try await Self.region()
+        let data = RealWorldRenderData(region: region, chunkQuads: 32)
+        let session = QuickFlightSession(world: region, start: .final)
+        let cam = session.chaseCamera()
+        let r = try WorldRenderer(lighting: LightingSetup.physicalPreset(.midday, azimuthDegrees: 200, cameraHeightMetres: cam.position.z))
+        try r.setRealWorld(RealWorldRenderData(chunks: data.chunks, trees: [], near: data.near, far: data.far, waterMask: data.waterMask))
+        r.clouds = .clear
+        let w = 320, h = 180, camera = WorldCamera(position: cam.position, target: cam.target)
+        r.antialiasing = true
+        let on = try r.render(width: w, height: h, camera: camera)
+        r.antialiasing = false
+        let off = try r.render(width: w, height: h, camera: camera)
+        var diff = 0, n = 0
+        for y in (h * 3 / 4)..<(h - 2) { for x in 2..<(w - 2) { for k in 0..<3 {
+            diff += abs(Int(on[3 * (y * w + x) + k]) - Int(off[3 * (y * w + x) + k])); n += 1
+        } } }
+        #expect(Double(diff) / Double(n) < 0.5, "mean |FXAA − raw| on ground: \(Double(diff) / Double(n))")
+    }
+
     /// Four flat 2×2 km chunks seen straight down must cover the whole frame: every chunk's triangles
     /// come from its own vertices (the CI GPU assembled later chunks from the wrong ones with `baseVertex`).
     @Test(.enabled(if: SkyRegressionTests.hasDevice, "no Metal device on this host"))
