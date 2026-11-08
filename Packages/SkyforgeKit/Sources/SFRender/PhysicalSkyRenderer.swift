@@ -22,6 +22,8 @@ public struct SkyView: Sendable, Equatable {
     public var sunAzimuthDeg: Double = 0
     public var viewHeightKm: Double = 0.5
     public var exposure: Double = 10
+    /// Rotation of the image about the view direction (banked cockpit view), radians-free degrees.
+    public var rollDeg: Double = 0
     public init() {}
 
     public var basis: (forward: SIMD3<Double>, right: SIMD3<Double>, up: SIMD3<Double>) {
@@ -29,7 +31,9 @@ public struct SkyView: Sendable, Equatable {
         let f = SIMD3(cos(p) * cos(y), sin(p), cos(p) * sin(y))
         let r = SIMD3(-sin(y), 0, cos(y))
         let u = SIMD3(r.y * f.z - r.z * f.y, r.z * f.x - r.x * f.z, r.x * f.y - r.y * f.x)
-        return (f, r, u)
+        if rollDeg == 0 { return (f, r, u) }
+        let phi = rollDeg * .pi / 180
+        return (f, r * cos(phi) + u * sin(phi), u * cos(phi) - r * sin(phi))
     }
 }
 

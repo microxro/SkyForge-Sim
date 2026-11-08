@@ -85,6 +85,16 @@ if args.first == "clouds" {
     exit(0)
 }
 
+if args.first == "pfd-bench" {
+    // Time the CPU PFD rasterizer at the cockpit texture size (Apple builds update it at ~15 Hz).
+    let w = args.count > 1 ? Int(args[1]) ?? 512 : 512, h = w * 5 / 8
+    var d = InstrumentData(); d.indicatedAirspeedKt = 92; d.indicatedAltitudeFt = 2_350; d.pitchDeg = 4; d.rollDeg = -12; d.headingDeg = 109
+    let t0 = Date()
+    for _ in 0..<20 { _ = Raster2D.render(PFD.draw(d, width: Double(w), height: Double(h)), width: w, height: h) }
+    print(String(format: "pfd %dx%d: %.1f ms per frame", w, h, Date().timeIntervalSince(t0) / 20 * 1_000))
+    exit(0)
+}
+
 if args.first == "quickflight-stats" {
     let world = QuickFlightWorld()
     for (name, d) in [("phone", QuickFlightDetail.phone), ("tablet", .tablet), ("desktop", .desktop)] {

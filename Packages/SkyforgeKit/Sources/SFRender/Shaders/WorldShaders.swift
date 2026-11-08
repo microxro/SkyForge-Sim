@@ -27,7 +27,7 @@ public enum WorldShaders {
         float4x4 shadow1;
         float4 cascadeSplits;     // far edge (m) of cascade 0, 1; texel size (m) of cascade 0, 1
         float4 cascadeDepth;      // light-space depth range (m) of cascade 0, 1
-        float4 cameraPos;         // camera world x, y modulo 4096 m (noise period), z, unused
+        float4 cameraPos;         // camera world x, y modulo 4096 m (noise period), z, w = 1: discard back faces
         float4 cameraLocal;       // camera x, y, z in region metres (imagery lookup), unused
         float4 imageryNear;       // centre x, y, half extent, 1 if present
         float4 imageryFar;        // centre x, y, half extent, 1 if present
@@ -198,6 +198,9 @@ public enum WorldShaders {
         float dist = length(in.rel);
         float3 dir = in.rel / max(dist, 1e-3);
         float3 n = normalize(in.normal);
+        // Cockpit view: the camera is inside the airframe, so its inner (back) faces are skipped and
+        // the cabin opens onto the world; the cowling, wings and struts still render from outside.
+        if (u.cameraPos.w > 0.5 && dot(n, dir) > 0.0) discard_fragment();
         if (dot(n, dir) > 0.0) n = -n;                       // two-sided, robust to winding
         float3 toSun = u.sunDir.xyz;
         float3 albedo = in.albedo;
@@ -266,6 +269,31 @@ public enum WorldShaders {
         col = col * T + L;
         float3 mapped = acesW(col * u.sunColour.w);
         return float4(pow(mapped, float3(1.0 / 2.2)), 1.0);
+    }
+
+    // Cockpit display (SF-1000 PFD): display-referred texture on a quad in aircraft body axes.
+    struct ScreenVertex { packed_float3 position; packed_float2 uv; };
+    struct ScreenVarying { float4 position [[position]]; float2 uv; float3 rel; };
+
+    vertex ScreenVarying screen_vertex(const device ScreenVertex* v [[buffer(0)]], constant WorldUniforms& u [[buffer(1)]],
+                                       uint vid [[vertex_id]]) {
+        ScreenVertex sv = v[vid];
+        float4 p = u.model * float4(float3(sv.position), 1.0);
+        ScreenVarying o;
+        o.position = u.viewProj * p;
+        o.uv = float2(sv.uv);
+        o.rel = p.xyz;
+        return o;
+    }
+
+    constexpr sampler screenSampler(filter::linear, mip_filter::linear, address::clamp_to_edge, coord::normalized);
+
+    fragment float4 screen_fragment(ScreenVarying in [[stage_in]], constant WorldUniforms& u [[buffer(1)]],
+                                    texture2d<float> screen [[texture(0)]]) {
+        float3 c = screen.sample(screenSampler, in.uv).rgb;    // gamma-encoded display pixels
+        // Sun glare on the glass: a faint lift when the sun is in front of the panel.
+        float glare = pow(saturate(dot(normalize(in.rel), u.sunDir.xyz) * -1.0), 8.0) * 0.06;
+        return float4(c * 0.93 + glare, 1.0);
     }
     """
 }

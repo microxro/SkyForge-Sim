@@ -37,6 +37,9 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
     @Published var status: Status = .loading("Building the airfield…")
     @Published var hud = InstrumentData()
     @Published var crashed = false
+    /// In-cockpit view (3D panel with a live SF-1000 PFD) instead of the chase camera.
+    @Published var cockpit = false
+    private var pfdBusy = false
     @Published var attribution: [String] = []
 
     private(set) var world: any FlightWorld = QuickFlightWorld()
@@ -71,6 +74,7 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
                             : LightingSetup.physicalPreset(.goldenHour, azimuthDegrees: 255, cameraHeightMetres: world.runwayElevation + 50)
         do { renderer = try WorldRenderer(device: device, colorFormat: .bgra8Unorm, lighting: lighting) }
         catch { status = .failed("Renderer: \(error)"); return }
+        try? renderer?.setCockpit(Cockpit.mesh(), screen: Cockpit.pfdCorners.map { SIMD3<Float>(Float($0.x), Float($0.y), Float($0.z)) })
         // Fair-weather cumulus; march quality by device tier (the march runs at half resolution).
         renderer?.clouds = .fairWeather
         renderer?.cloudSteps = tier == .low ? 40 : (tier == .medium ? 56 : 80)
@@ -129,6 +133,22 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
         }
     }
 
+    /// Rasterizes the PFD off the main thread (~15 Hz) and uploads it to the cockpit screen.
+    private func refreshCockpitPFD() {
+        guard !pfdBusy else { return }
+        pfdBusy = true
+        let d = session.data
+        Task.detached(priority: .userInitiated) {
+            let w = 512, h = 320
+            let img = Raster2D.render(PFD.draw(d, options: PFDOptions(), width: Double(w), height: Double(h)), width: w, height: h)
+            let bytes = img.bytes()
+            await MainActor.run {
+                self.renderer?.updateCockpitScreen(rgb: bytes, width: w, height: h)
+                self.pfdBusy = false
+            }
+        }
+    }
+
     func restart(_ s: QuickFlightStart) {
         session = QuickFlightSession(world: world, start: s)
         crashed = false
@@ -151,9 +171,18 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
             depth = try? r.makeDepth(width: tex.width, height: tex.height)
         }
         guard let depth else { return }
-        let cam = session.chaseCamera()
+        let camera: WorldCamera
+        r.cockpitView = cockpit
+        if cockpit {
+            let ck = session.cockpitCamera()
+            camera = WorldCamera(position: ck.position, target: ck.target, verticalFOVDeg: 62, up: ck.up, near: 0.05)
+            if hudCounter % 4 == 0 { refreshCockpitPFD() }
+        } else {
+            let cam = session.chaseCamera()
+            camera = WorldCamera(position: cam.position, target: cam.target)
+        }
         let c = session.bodyToENUColumns
-        try? r.encode(cmd: cmd, colour: tex, depth: depth, camera: WorldCamera(position: cam.position, target: cam.target),
+        try? r.encode(cmd: cmd, colour: tex, depth: depth, camera: camera,
                       aircraftPosition: session.positionENU, aircraftBodyToENU: simd_double3x3(columns: (c.0, c.1, c.2)))
         cmd.present(drawable)
         cmd.commit()
@@ -195,10 +224,14 @@ public struct QuickFlightView: View {
                         Button("On a 3° final") { controller.restart(.final) }
                     }
                     .buttonStyle(.bordered)
+                    Button(controller.cockpit ? "Chase view" : "Cockpit view") { controller.cockpit.toggle() }
+                        .buttonStyle(.bordered)
                     Spacer()
-                    InstrumentCanvas(PFD.draw(controller.hud, options: PFDOptions()))
-                        .frame(maxWidth: 360)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                    if !controller.cockpit {
+                        InstrumentCanvas(PFD.draw(controller.hud, options: PFDOptions()))
+                            .frame(maxWidth: 360)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
                 }
                 .padding()
                 Spacer()

@@ -93,8 +93,13 @@ public struct WorldCamera: Sendable, Equatable {
     public var position: SIMD3<Double>   // world (x east, y north, z up)
     public var target: SIMD3<Double>
     public var verticalFOVDeg: Double = 55
-    public init(position: SIMD3<Double>, target: SIMD3<Double>, verticalFOVDeg: Double = 55) {
-        self.position = position; self.target = target; self.verticalFOVDeg = verticalFOVDeg
+    /// Up hint (world); tilt it to bank the view (cockpit). Must not be parallel to the view direction.
+    public var up: SIMD3<Double> = SIMD3(0, 0, 1)
+    /// Near plane (m); the cockpit view uses a few centimetres.
+    public var near: Double = 0.5
+    public init(position: SIMD3<Double>, target: SIMD3<Double>, verticalFOVDeg: Double = 55,
+                up: SIMD3<Double> = SIMD3(0, 0, 1), near: Double = 0.5) {
+        self.position = position; self.target = target; self.verticalFOVDeg = verticalFOVDeg; self.up = up; self.near = near
     }
 }
 
@@ -110,6 +115,11 @@ public final class WorldRenderer {
     private let treePipeline: MTLRenderPipelineState
     private let shadowTerrainPipeline: MTLRenderPipelineState
     private let shadowTreePipeline: MTLRenderPipelineState
+    private let screenPipeline: MTLRenderPipelineState
+    private var cockpit: (buffer: MTLBuffer, count: Int, screen: MTLBuffer)?
+    private var cockpitScreen: MTLTexture?
+    /// Draw from inside the cockpit: interior mesh, PFD screen, airframe back faces skipped.
+    public var cockpitView = false
     private var real: (vertices: MTLBuffer, indices: MTLBuffer, draws: [(indexOffset: Int, indexCount: Int, baseVertex: Int, min: SIMD3<Float>, max: SIMD3<Float>)],
                        treeMesh: MTLBuffer, coniferCount: Int, oakStart: Int, oakCount: Int,
                        instances: MTLBuffer?, coniferInstances: Int, oakInstances: Int)?
@@ -191,6 +201,7 @@ public final class WorldRenderer {
         treePipeline = try pso("tree_vertex", "world_fragment", label: "Trees", colour: true)
         shadowTerrainPipeline = try pso("shadow_terrain_vertex", nil, label: "ShadowTerrain", colour: false)
         shadowTreePipeline = try pso("shadow_tree_vertex", nil, label: "ShadowTrees", colour: false)
+        screenPipeline = try pso("screen_vertex", "screen_fragment", label: "CockpitScreen", colour: true)
     }
 
     private func makeDummy() -> MTLTexture {
@@ -352,6 +363,33 @@ public final class WorldRenderer {
         aircraft = (try makeBuffer(Self.pack(soup)), soup.triangleCount * 3)
     }
 
+    /// Cockpit interior (body axes, like the aircraft) and the display quad corners
+    /// (top-left, top-right, bottom-right, bottom-left as the pilot sees them).
+    public func setCockpit(_ soup: TriangleSoup, screen c: [SIMD3<Float>]) throws {
+        precondition(c.count == 4)
+        let uv: [SIMD2<Float>] = [SIMD2(0, 0), SIMD2(1, 0), SIMD2(1, 1), SIMD2(0, 1)]
+        var v: [Float] = []
+        for i in [0, 1, 2, 0, 2, 3] { v += [c[i].x, c[i].y, c[i].z, uv[i].x, uv[i].y] }
+        guard let sb = device.makeBuffer(bytes: v, length: v.count * 4, options: .storageModeShared) else { throw RendererError.commandQueue }
+        cockpit = (try makeBuffer(Self.pack(soup)), soup.triangleCount * 3, sb)
+    }
+
+    /// Uploads the cockpit display image (RGB8, gamma encoded, row 0 at the top).
+    public func updateCockpitScreen(rgb: [UInt8], width: Int, height: Int) {
+        if cockpitScreen?.width != width || cockpitScreen?.height != height {
+            let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm, width: width, height: height, mipmapped: true)
+            d.usage = [.shaderRead]
+            cockpitScreen = device.makeTexture(descriptor: d)
+        }
+        guard let t = cockpitScreen else { return }
+        var rgba = [UInt8](repeating: 255, count: width * height * 4)
+        for p in 0..<(width * height) { rgba[4 * p] = rgb[3 * p]; rgba[4 * p + 1] = rgb[3 * p + 1]; rgba[4 * p + 2] = rgb[3 * p + 2] }
+        t.replace(region: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0, withBytes: rgba, bytesPerRow: width * 4)
+        if let cmd = queue.makeCommandBuffer(), let blit = cmd.makeBlitCommandEncoder() {
+            blit.generateMipmaps(for: t); blit.endEncoding(); cmd.commit()
+        }
+    }
+
     public func setLighting(_ l: LightingSetup) { lighting = l; tables = nil }
 
     private func aerialTables() throws -> (MTLTexture, MTLTexture) {
@@ -390,8 +428,8 @@ public final class WorldRenderer {
     }
 
     /// View matrix for a camera at the origin (camera-relative rendering), z up world.
-    static func view(forward f: SIMD3<Float>) -> simd_float4x4 {
-        let r = simd_normalize(simd_cross(f, SIMD3(0, 0, 1)))
+    static func view(forward f: SIMD3<Float>, up: SIMD3<Float> = SIMD3(0, 0, 1)) -> simd_float4x4 {
+        let r = simd_normalize(simd_cross(f, up))
         let u = simd_cross(r, f)
         return simd_float4x4(rows: [SIMD4(r, 0), SIMD4(u, 0), SIMD4(-f, 0), SIMD4(0, 0, 0, 1)])
     }
@@ -463,19 +501,27 @@ public final class WorldRenderer {
             }
             se.endEncoding()
         }
-        // Sky (clears colour). SkyView uses y-up (x east, y up, z north).
+        // Sky (clears colour). SkyView uses y-up (x east, y up, z south).
         let skyPass = MTLRenderPassDescriptor()
         skyPass.colorAttachments[0].texture = colour
         skyPass.colorAttachments[0].loadAction = .clear
         skyPass.colorAttachments[0].storeAction = .store
         var sv = SkyView()
-        sv.yawDeg = atan2(fwdD.y, fwdD.x) * 180 / .pi
+        // ENU (e, n, u) → sky frame (x, y up, z) is the proper rotation (e, u, −n); mapping n to +z
+        // would mirror the sky (sun glow on the wrong side of the image).
+        sv.yawDeg = atan2(-fwdD.y, fwdD.x) * 180 / .pi
         sv.pitchDeg = asin(max(-1, min(1, fwdD.z))) * 180 / .pi
+        do {   // bank: roll the sky image to the camera's up vector
+            let rC = simd_normalize(simd_cross(fwdD, c.up)), uC = simd_cross(rC, fwdD)
+            let uSky = SIMD3(uC.x, uC.z, -uC.y)
+            let b = sv.basis
+            sv.rollDeg = atan2(-simd_dot(uSky, b.right), simd_dot(uSky, b.up)) * 180 / .pi
+        }
         let fovY = c.verticalFOVDeg * .pi / 180
         sv.horizontalFOVDeg = 2 * atan(tan(fovY / 2) * aspect) * 180 / .pi
         let toSun = simd_normalize(L.toSun)
         sv.sunElevationDeg = asin(Double(toSun.z)) * 180 / .pi
-        sv.sunAzimuthDeg = atan2(Double(toSun.y), Double(toSun.x)) * 180 / .pi
+        sv.sunAzimuthDeg = atan2(-Double(toSun.y), Double(toSun.x)) * 180 / .pi
         sv.viewHeightKm = max(0.002, (c.position.z / 50).rounded() * 0.05)   // 50 m bands: LUTs regenerate rarely
         sv.exposure = Double(L.exposure) * Double.pi * 3.4    // renderer units → sky radiance scale (PhysicalSky.ks)
         if L.physical != nil { sky.parameters = L.physical!.model.parameters }
@@ -501,7 +547,8 @@ public final class WorldRenderer {
         enc.setFragmentTexture(imageryNear?.tex ?? dummy2D, index: 3)
         enc.setFragmentTexture(imageryFar?.tex ?? dummy2D, index: 4)
         enc.setFragmentTexture(waterTex ?? dummy2D, index: 5)
-        let viewProj = Self.reversedZProjection(fovY: Float(fovY), aspect: Float(aspect), near: 0.5) * Self.view(forward: fwd)
+        let upHint = SIMD3<Float>(Float(c.up.x), Float(c.up.y), Float(c.up.z))
+        let viewProj = Self.reversedZProjection(fovY: Float(fovY), aspect: Float(aspect), near: Float(c.near)) * Self.view(forward: fwd, up: upHint)
         let sunAz = Float(atan2(Double(toSun.y), Double(toSun.x)))
         let dims = tables?.key ?? SIMD4(1, 1, 1, 1000)
         func uniforms(model: simd_float4x4) -> WorldUniforms {
@@ -564,10 +611,23 @@ public final class WorldRenderer {
         }
         if let a = aircraft, let p = aircraftPosition, let m = aircraftBodyToENU {
             var u = uniforms(model: Self.modelMatrix(m, p - c.position))
+            if cockpitView { u.cameraPos.w = 1 }
             enc.setVertexBuffer(a.buffer, offset: 0, index: 0)
             enc.setVertexBytes(&u, length: MemoryLayout<WorldUniforms>.stride, index: 1)
             enc.setFragmentBytes(&u, length: MemoryLayout<WorldUniforms>.stride, index: 1)
             enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: a.count)
+            if cockpitView, let ck = cockpit {
+                u.cameraPos.w = 0
+                enc.setVertexBuffer(ck.buffer, offset: 0, index: 0)
+                enc.setVertexBytes(&u, length: MemoryLayout<WorldUniforms>.stride, index: 1)
+                enc.setFragmentBytes(&u, length: MemoryLayout<WorldUniforms>.stride, index: 1)
+                enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: ck.count)
+                enc.setRenderPipelineState(screenPipeline)
+                enc.setVertexBuffer(ck.screen, offset: 0, index: 0)
+                enc.setFragmentTexture(cockpitScreen ?? dummy2D, index: 0)
+                enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
+                enc.setRenderPipelineState(pipeline)
+            }
         }
         enc.endEncoding()
         if cloudsOn {
@@ -575,11 +635,11 @@ public final class WorldRenderer {
             let cr = cloudRenderer!
             cr.steps = cloudSteps
             var cu = CloudUniforms(layer: clouds, steps: cloudSteps)
-            let r = simd_normalize(simd_cross(fwd, SIMD3<Float>(0, 0, 1)))
+            let r = simd_normalize(simd_cross(fwd, upHint))
             let up = simd_cross(r, fwd)
             let tanV = Float(tan(fovY / 2)), tanH = tanV * Float(aspect)
             cu.camPos = SIMD4(Float(c.position.x), Float(c.position.y), Float(c.position.z), Float(cloudSteps))
-            cu.forward = SIMD4(fwd, 0.5); cu.right = SIMD4(r, tanH); cu.up = SIMD4(up, tanV)
+            cu.forward = SIMD4(fwd, Float(c.near)); cu.right = SIMD4(r, tanH); cu.up = SIMD4(up, tanV)
             cu.toSun = SIMD4(toSun, sunAz)
             cu.sun = SIMD4(L.sunColour, L.exposure)
             cu.skyAmb = SIMD4(L.ambientSky, dims.w)

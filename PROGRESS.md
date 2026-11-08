@@ -22,7 +22,7 @@ Legend: [x] done and verified, [ ] not done. Unchecked items are not available i
 - [ ] P1.13 Real-world ground (user request after MSFS comparison): SFImagery (USGS public-domain + Sentinel-2 2016 CC BY), JPEG decoder, mosaics, land cover, CPU real-world scene (r) done; Metal imagery terrain, instanced trees, culling, app location picker (KCOI) written; awaiting CI Metal frame review
 - [ ] P1.14 Volumetric cumulus clouds (Metal + CPU reference): CPU reference + preview + Metal half-res march written; awaiting CI GPU-vs-CPU check
 - [ ] P1.15 Performance: real terrain chunks culled + instanced trees (done); SkyWorld environment spatial cells with frustum + per-cascade shadow culling (written); tree impostors next
-- [ ] P1.16 Cockpit view: 3D panel with live SF-1000 PFD texture
+- [ ] P1.16 Cockpit view: 3D panel with live SF-1000 PFD texture (written; awaiting CI cockpit frame)
 - [ ] P1.1b Optional JSBSim offline oracle comparison in tools/jsbsim_oracle/
 - [x] P1.2 Terrain core: pure-Swift inflate + PNG decoder, Terrarium decode (verified on a real tile), Web Mercator tile math, bilinear height queries, CDLOD quadtree selection with morph ranges
 - [x] P1.2b-1 Bundled global DEM baseline (11.7 MB, Terrarium z4 → 4096x2048 equirectangular, tiled zlib, SHA-256 manifest, on-demand decode)
