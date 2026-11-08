@@ -23,6 +23,7 @@ public enum PreviewRenderer {
     public static func render(soup: TriangleSoup, camera: PreviewCamera, lighting L: LightingSetup,
                               width: Int, height: Int, supersample ss: Int = 2,
                               shadowCentre: SIMD3<Double>, shadowHalfExtent: Double,
+                              ground: (any GroundAlbedo)? = nil,
                               stats: inout RenderStats) -> PreviewImage {
         let W = width * ss, H = height * ss
         let origin = soup.origin
@@ -72,12 +73,18 @@ public enum PreviewRenderer {
                     // Two-sided shading: normals always face the viewer (robust to winding).
                     if fdot(n, dir) > 0 { n = -n }
                     var albedo = gb.albedo[idx]
-                    let mat = gb.material[idx]
-                    if mat == Material.terrain.rawValue && dist < 1_400 {
+                    var mat = gb.material[idx]
+                    var imagery = false
+                    if mat == Material.terrain.rawValue, let g = ground?.ground(Double(p.x) + origin.x, Double(p.y) + origin.y) {
+                        albedo = g.albedo
+                        imagery = true
+                        if g.water > 0.5 { mat = Material.water.rawValue; albedo = g.albedo * 0.7 }
+                    }
+                    if mat == Material.terrain.rawValue && dist < (imagery ? 350 : 1_400) {
                         // Per-pixel ground detail the vertex grid cannot carry: clumps (1.5 m), patches
                         // (6 m), dry/lush variation (40 m), and micro-relief shading; faded with distance
                         // so it never aliases.
-                        let fade = 1 - dist / 1_400
+                        let fade = (1 - dist / (imagery ? 350 : 1_400)) * (imagery ? 0.5 : 1)
                         let wx = Double(p.x) + origin.x, wy = Double(p.y) + origin.y
                         let fine = Float(groundNoise.fbm(wx / 1.5, wy / 1.5, octaves: 2))
                         let mid = Float(groundNoise.fbm(wx / 6 + 17, wy / 6 - 9, octaves: 2))
@@ -108,7 +115,9 @@ public enum PreviewRenderer {
                         var refl = L.sky(SIMD3(r.x, r.y, abs(r.z)), cloudNoise: cloudNoise)
                         refl += L.sunColour * (powf(max(0, fdot(r, toSun)), 600) * 30 * vis)
                         let body = albedo * (ambient * 0.6 + L.sunColour * max(0, toSun.z) * 0.15)
-                        colour = body + (refl - body) * min(1, fres)
+                        // Wind-roughened open water reflects a blurred, dimmer sky than a mirror would.
+                        let reflScale: Float = imagery ? 0.5 : 1
+                        colour = body + (refl * reflScale - body) * min(1, fres * (imagery ? 0.8 : 1))
                     case Material.foliage.rawValue:
                         let wrap = max(0, ndl * 0.55 + 0.45)
                         let back = powf(max(0, fdot(dir, toSun)), 4) * 0.35

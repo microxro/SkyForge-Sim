@@ -4,7 +4,7 @@ Legend: [x] done and verified, [ ] not done. Unchecked items are not available i
 
 ## CURRENT
 - CURRENT: P1.3 visual passes toward 8/10 (aircraft in frame, ground detail)
-- Next 3: P1.3 pass 6 (river banks, close-range tree crowns, building facades) · P1 acceptance review · P2 breakdown
+- Next 3: P1.13 Metal imagery + real-world Quick Flight · P1.15 performance (instancing, culling) · P1.14 volumetric clouds
 
 ## P0 Bootstrap
 - [x] P0.1 Save master prompt to docs/MASTER_PROMPT.md
@@ -19,6 +19,10 @@ Legend: [x] done and verified, [ ] not done. Unchecked items are not available i
 
 ## P1 Vertical slice with a visual foundation
 - [x] P1.1 SF-1 Trainer FDM at 120 Hz (trim, stall, energy, stability-sign, determinism, fuzz tests) — Linux verified; JSBSim oracle comparison still to do (P1.1b)
+- [ ] P1.13 Real-world ground (user request after MSFS comparison): SFImagery (USGS public-domain + Sentinel-2 2016 CC BY), JPEG decoder, mosaics, land cover, CPU real-world scene (r) done; Metal imagery textures + real-world Quick Flight next
+- [ ] P1.14 Volumetric cumulus clouds (Metal + CPU reference)
+- [ ] P1.15 Performance: indexed chunked terrain with frustum culling, instanced trees with impostors, shadow-caster culling
+- [ ] P1.16 Cockpit view: 3D panel with live SF-1000 PFD texture
 - [ ] P1.1b Optional JSBSim offline oracle comparison in tools/jsbsim_oracle/
 - [x] P1.2 Terrain core: pure-Swift inflate + PNG decoder, Terrarium decode (verified on a real tile), Web Mercator tile math, bilinear height queries, CDLOD quadtree selection with morph ranges
 - [x] P1.2b-1 Bundled global DEM baseline (11.7 MB, Terrarium z4 → 4096x2048 equirectangular, tiled zlib, SHA-256 manifest, on-demand decode)

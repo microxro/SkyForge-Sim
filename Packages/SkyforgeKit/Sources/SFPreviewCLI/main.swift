@@ -10,6 +10,9 @@ import SFPreview
 import SFInstruments
 import SFAtmosphere
 import SFQuickFlight
+import SFImagery
+import SFContent
+import SFTerrainCore
 
 func fail(_ msg: String, code: Int32 = 2) -> Never {
     FileHandle.standardError.write(Data((msg + "\n").utf8))
@@ -76,6 +79,49 @@ if args.first == "quickflight-stats" {
     exit(0)
 }
 
+if args.first == "real" {
+    // sfpreview real <out.png> [width] [time]   (fetches imagery/elevation once, cached in .skyforge/cache)
+    guard args.count >= 2 else { fail("usage: sfpreview real <out.png> [width] [time]") }
+    let w = args.count > 2 ? Int(args[2]) ?? 1_280 : 1_280
+    let tp = args.count > 3 ? TimePreset(rawValue: args[3]) : nil
+    let site = RealWorldSite.merrittIsland
+    let cacheRoot = URL(fileURLWithPath: ProcessInfo.processInfo.environment["SKYFORGE_CACHE"] ?? ".skyforge/cache")
+    let sem = DispatchSemaphore(value: 0)
+    nonisolated(unsafe) var inputs: RealWorldScenes.Inputs?
+    let t0 = Date()
+    Task.detached {   // detached: top-level code runs on the main actor, which sem.wait() blocks
+        let transport = CurlTransport()
+        try? FileManager.default.createDirectory(at: cacheRoot, withIntermediateDirectories: true)
+        let cache = try? KeyedCache(root: cacheRoot)
+        let dem = try? GlobalDEM.bundled()
+        let ts = TerrainStreamer(transport: transport, cache: cache, baseline: dem)
+        let fwd = SIMD2(site.camera.forward.x, site.camera.forward.y)
+        let fl = (fwd * fwd).sum().squareRoot()
+        let focus = SIMD2(site.camera.position.x, site.camera.position.y) + fwd / fl * 2_500
+        let provider: any ImageryProvider = USGSImageryProvider().covers(latitude: site.origin.latitude, longitude: site.origin.longitude)
+            ? USGSImageryProvider() : Sentinel2CloudlessProvider()
+        let farProvider = Sentinel2CloudlessProvider()
+        let isNear = ImageryStreamer(provider: provider, transport: transport, cache: cache)
+        let isFar = ImageryStreamer(provider: farProvider, transport: transport, cache: cache)
+        async let near = ImageryMosaic.build(origin: site.origin, centre: focus, halfExtent: 3_200, size: 3_072, provider: provider, streamer: isNear)
+        async let far = ImageryMosaic.build(origin: site.origin, centre: focus, halfExtent: 40_000, size: 2_048, provider: farProvider, streamer: isFar)
+        async let hNear = HeightMosaic.build(origin: site.origin, centre: focus, halfExtent: 3_200, size: 400, zoom: 14, streamer: ts)
+        async let hFar = HeightMosaic.build(origin: site.origin, centre: focus, halfExtent: 40_000, size: 400, zoom: 10, streamer: ts)
+        inputs = RealWorldScenes.Inputs(heights: await hNear, farHeights: await hFar, near: await near, far: await far)
+        sem.signal()
+    }
+    sem.wait()
+    let fetch = Date().timeIntervalSince(t0)
+    let h = w * 9 / 16
+    let (img, stats, counts) = RealWorldScenes.render(site: site, inputs: inputs!, width: w, height: h, time: tp)
+    do { try img.png().write(to: URL(fileURLWithPath: args[1])) } catch { fail("sfpreview: cannot write \(args[1]): \(error)", code: 1) }
+    let nearCov = inputs!.near.coverage.filter { $0 > 0 }.count * 100 / inputs!.near.coverage.count
+    print(String(format: "sfpreview: real %@ -> %@ (fetch %.1fs, build %.1fs, raster %.1fs, shade %.1fs; %d tris; near imagery z%d %d%% covered) %@",
+                 site.name, args[1], fetch, stats.buildSeconds, stats.rasterSeconds, stats.shadeSeconds, stats.triangles,
+                 inputs!.near.zoom, nearCov, counts.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: " ")))
+    exit(0)
+}
+
 func value(_ flag: String) -> String? {
     guard let i = args.firstIndex(of: flag), i + 1 < args.count else { return nil }
     return args[i + 1]
@@ -104,3 +150,25 @@ print(String(format: "sfpreview: %@ %@ seed %llu -> %@ (%d tris; build %.1fs sha
              scene.rawValue, (time ?? scene.defaultTime).rawValue, seed, out, stats.triangles,
              stats.buildSeconds, stats.shadowSeconds, stats.rasterSeconds, stats.shadeSeconds, total,
              counts.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: " ")))
+
+
+/// Developer-tool transport that shells out to curl, so the CLI honours the host's proxy and CA
+/// configuration on Linux (the app uses URLSessionTransport). Tests never use either.
+struct CurlTransport: HTTPTransport {
+    func get(_ url: URL) async throws -> Data {
+        try await withCheckedThrowingContinuation { cont in
+            DispatchQueue.global().async {
+                let p = Process()
+                p.executableURL = URL(fileURLWithPath: "/usr/bin/curl")
+                p.arguments = ["-sS", "-f", "--max-time", "60", "-A", "SKYFORGE-sfpreview/0.1", url.absoluteString]
+                let pipe = Pipe()
+                p.standardOutput = pipe
+                p.standardError = FileHandle.nullDevice
+                do { try p.run() } catch { cont.resume(throwing: TransportError.offline); return }
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                p.waitUntilExit()
+                if p.terminationStatus == 0 { cont.resume(returning: data) } else { cont.resume(throwing: TransportError.status(Int(p.terminationStatus))) }
+            }
+        }
+    }
+}

@@ -84,3 +84,8 @@ Open defects (next passes): near-field ground is flat colour (needs detail textu
 ### 2026-11-08 Metal frames reviewed from the CI log
 - First look at the GPU Quick Flight frames (recovered from base64 in the job log). Shadows correct (aircraft shadow down-sun on the runway). Defect: the ported ground detail speckled heavily at 320×180 (unfiltered 2 m noise, ±1 amplitude, strong micro-normals); neighbour-difference metric 21.6.
 - Fix: amplitudes halved to match the CPU noise range, micro-relief ×0.24, and each octave fades by its screen-space footprint (`fwidth`). New CI assertion: metric < 9.
+
+### 2026-11-08 P1.13 real-world scene (r) Merritt Island, Florida — response to the user's MSFS 2024 comparison
+- New `sfpreview real`: real Terrarium elevation, USGS orthoimagery (z16, ≈2 m) near, Sentinel-2 cloudless 2016 (≈20 m) to 40 km, imagery converted to albedo (exposure removed), 16 m smoothed water mask from colour, Fresnel water with wind-roughened reflection, ≈19,600 3D pines/oaks grown on forest pixels with canopy colour from the photo, physical sky, chase aircraft at 1,250 ft.
+- Compared with the user's reference (MSFS 2024, same region type): ground now reads as a real place (lagoon, neighbourhoods, tree cover, roads, sports fields). Still behind: no photogrammetry buildings, aircraft is a low-poly model, clouds are a 2D layer, imagery softens within ~300 m.
+- Scores: sharpness 7, lighting 8, colour 8, variety 9, depth 8, cleanliness 7 → **7.8**.
