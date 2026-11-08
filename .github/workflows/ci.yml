@@ -56,7 +56,8 @@ jobs:
           SKYFORGE_VISUAL_OUT: ${{ github.workspace }}/visual-out
           SKYFORGE_VISUAL_LOG: "1"
         # Release build with testing enabled: real-airport loads (JPEG decode, mosaics) are CPU-heavy.
-        run: swift test -c release -Xswiftc -enable-testing --package-path Packages/SkyforgeKit
+        # The full-HD review frames run in the `frames` job so this log stays readable.
+        run: swift test -c release -Xswiftc -enable-testing --package-path Packages/SkyforgeKit --skip ShowcaseRenderTests
       - name: GPU frame time (run alone so no other test shares the GPU)
         env:
           SKYFORGE_FRAMETIME: "1"
@@ -85,3 +86,17 @@ jobs:
           name: visual-regression
           path: visual-out
           if-no-files-found: ignore
+
+  # Art-review frames (five showcase airports and SkyWorld at 1280×720, Metal), logged as SKYFORGE_PNG
+  # lines in their own job so they can be read back without the rest of the test output.
+  frames:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode
+        run: |
+          if [ -d /Applications/Xcode_26.6.app ]; then sudo xcode-select -s /Applications/Xcode_26.6.app; fi
+      - name: Showcase frames
+        env:
+          SKYFORGE_VISUAL_LOG: "1"
+        run: swift test -c release -Xswiftc -enable-testing --package-path Packages/SkyforgeKit --filter ShowcaseRenderTests

@@ -42,10 +42,25 @@ public enum PNGEncoder {
         precondition(rgb.count == width * height * 3, "pixel buffer size mismatch")
         var raw = [UInt8]()
         raw.reserveCapacity((width * 3 + 1) * height)
+        #if canImport(Darwin)
+        // Sub filter (each byte minus the one 3 to its left) and Apple's DEFLATE: rendered frames shrink
+        // several times, which keeps CI logs carrying full-HD review frames readable.
+        for y in 0..<height {
+            raw.append(1)
+            let row = y * width * 3
+            for x in 0..<(width * 3) { raw.append(x < 3 ? rgb[row + x] : rgb[row + x] &- rgb[row + x - 3]) }
+        }
+        if let deflated = try? (Data(raw) as NSData).compressed(using: .zlib) as Data {   // raw RFC 1951 stream
+            var z: [UInt8] = [0x78, 0x9C] + [UInt8](deflated)
+            z += be32(adler32(raw))
+            return png(width: width, height: height, idat: z)
+        }
+        #else
         for y in 0..<height {
             raw.append(0) // filter: none
             raw.append(contentsOf: rgb[(y * width * 3)..<((y + 1) * width * 3)])
         }
+        #endif
         var z: [UInt8] = [0x78, 0x01]
         var i = 0
         repeat {
@@ -58,6 +73,10 @@ public enum PNGEncoder {
             i += n
         } while i < raw.count
         z += be32(adler32(raw))
+        return png(width: width, height: height, idat: z)
+    }
+
+    static func png(width: Int, height: Int, idat z: [UInt8]) -> Data {
         var ihdr = be32(UInt32(width)) + be32(UInt32(height))
         ihdr += [8, 2, 0, 0, 0] // 8-bit, truecolour, deflate, adaptive filter, no interlace
         var png: [UInt8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
