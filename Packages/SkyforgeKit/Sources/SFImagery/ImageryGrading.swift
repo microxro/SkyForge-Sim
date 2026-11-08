@@ -22,22 +22,20 @@ public enum ImageryGrading {
     /// the three) and applies a mild S-curve. `strength` 0 leaves the image unchanged.
     public static func dehaze(_ m: inout ImageryMosaic, strength: Double = 1) {
         let veil = (0..<3).map { percentile(m, channel: $0, fraction: 0.005) }.min() ?? 0
-        let k = min(0.85 * veil, 60) * strength                     // never strip more than ~24 % of range
+        let k = min(0.6 * veil, 40) * strength                      // never strip more than ~16 % of range
         var lut = [UInt8](repeating: 0, count: 256)
         for v in 0..<256 {
             var x = max(0, (Double(v) - k) / (255 - k))
             let s = x * x * (3 - 2 * x)
-            x += (s - x) * 0.18 * strength
+            x += (s - x) * 0.12 * strength
             lut[v] = UInt8(max(0, min(255, (x * 255).rounded())))
         }
         for i in 0..<m.rgb.count { m.rgb[i] = lut[Int(m.rgb[i])] }
     }
 
-    /// Matches `near`'s per-channel mean and (block-averaged) contrast to `far` over their overlap.
-    /// Near detail finer than the far mosaic's pixels is kept: gain is measured on near averaged to
-    /// the far resolution, then applied to all deviations from the mean. Returns (gain, offset) per channel.
-    @discardableResult
-    public static func match(_ near: inout ImageryMosaic, to far: ImageryMosaic) -> [(gain: Double, offset: Double)] {
+    /// Per-channel (mean, variance) of `near` block-averaged to `far`'s resolution, and of `far`, over
+    /// their overlap; nil when they barely overlap.
+    static func overlapStats(_ near: ImageryMosaic, _ far: ImageryMosaic) -> (near: [(Double, Double)], far: [(Double, Double)])? {
         let ratio = max(1, Int((far.metresPerPixel / near.metresPerPixel).rounded()))
         let step = max(ratio, near.size / 256)
         var sn = [Double](repeating: 0, count: 3), sf = sn, qn = sn, qf = sn
@@ -64,19 +62,51 @@ public enum ImageryGrading {
             }
             j += step
         }
-        guard n > 16 else { return [(1, 0), (1, 0), (1, 0)] }
+        guard n > 16 else { return nil }
+        let ns = (0..<3).map { k in (sn[k] / n, max(1, qn[k] / n - (sn[k] / n) * (sn[k] / n))) }
+        let fs = (0..<3).map { k in (sf[k] / n, max(1, qf[k] / n - (sf[k] / n) * (sf[k] / n))) }
+        return (ns, fs)
+    }
+
+    /// Remaps `m` so a channel with (mean, variance) `src` gets `dst`'s mean and contrast. Gain and the
+    /// mean ratio are clamped to 0.75…1.33, and dark pixels are floored at 70 % of their mean-ratio-scaled
+    /// value, so a contrast boost never crushes shadowed forest to black (it did: 5 % of the KMRY/KASE
+    /// near pixels went to 0 with the old 0.6…1.6 linear map).
+    static func remap(_ m: inout ImageryMosaic, from src: [(Double, Double)], to dst: [(Double, Double)]) -> [(gain: Double, offset: Double)] {
         var params: [(gain: Double, offset: Double)] = []
-        for k in 0..<3 {
-            let mn = sn[k] / n, mf = sf[k] / n
-            let vn = max(1, qn[k] / n - mn * mn), vf = max(1, qf[k] / n - mf * mf)
-            let gain = min(1.6, max(0.6, (vf / vn).squareRoot()))
-            params.append((gain, mf - gain * mn))
-        }
         var luts = [[UInt8]](repeating: [UInt8](repeating: 0, count: 256), count: 3)
-        for k in 0..<3 { for v in 0..<256 { luts[k][v] = UInt8(max(0, min(255, (Double(v) * params[k].gain + params[k].offset).rounded()))) } }
-        for p in 0..<(near.size * near.size) {
-            for k in 0..<3 { near.rgb[3 * p + k] = luts[k][Int(near.rgb[3 * p + k])] }
+        for k in 0..<3 {
+            let (ms, vs) = src[k], (md, vd) = dst[k]
+            let gain = min(1.33, max(0.75, (vd / vs).squareRoot()))
+            let offset = md - gain * ms
+            params.append((gain, offset))
+            let ratio = min(1.33, max(0.75, md / max(1, ms)))
+            for v in 0..<256 {
+                let lin = Double(v) * gain + offset, floor = 0.7 * ratio * Double(v)
+                luts[k][v] = UInt8(max(0, min(255, max(lin, floor).rounded())))
+            }
+        }
+        for p in 0..<(m.size * m.size) {
+            for k in 0..<3 { m.rgb[3 * p + k] = luts[k][Int(m.rgb[3 * p + k])] }
         }
         return params
+    }
+
+    /// Matches `near`'s per-channel mean and (block-averaged) contrast to `far` over their overlap.
+    /// Near detail finer than the far mosaic's pixels is kept: gain is measured on near averaged to
+    /// the far resolution, then applied to all deviations from the mean. Returns (gain, offset) per channel.
+    @discardableResult
+    public static func match(_ near: inout ImageryMosaic, to far: ImageryMosaic) -> [(gain: Double, offset: Double)] {
+        guard let s = overlapStats(near, far) else { return [(1, 0), (1, 0), (1, 0)] }
+        return remap(&near, from: s.near, to: s.far)
+    }
+
+    /// The reverse: matches the coarse `far` mosaic to the fine `near` one. The near aerial photo is the
+    /// better albedo reference (Sentinel-2 composites at these zooms come out darker and flatter), and
+    /// the far layer is only seen at distance, so this is what `ImageryGround` uses.
+    @discardableResult
+    public static func match(far: inout ImageryMosaic, to near: ImageryMosaic) -> [(gain: Double, offset: Double)] {
+        guard let s = overlapStats(near, far) else { return [(1, 0), (1, 0), (1, 0)] }
+        return remap(&far, from: s.far, to: s.near)
     }
 }

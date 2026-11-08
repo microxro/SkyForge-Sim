@@ -130,3 +130,5 @@ Method: `FrameTimeTests`, 30 frames after 3 warm-up frames; command-buffer GPU t
 - Fix: tree instances are binned into 400 m cells and culled per view and per cascade; terrain chunks are culled per cascade. The high preset is now 0.8 scale with 48 cloud steps.
 - 2026-11-08T20:39:27Z gate fast on Linux x86_64: PASS (HEAD c536a22)
 - 2026-11-08T20:46:24Z gate fast on Linux x86_64: PASS (HEAD f9f7904)
+2026-11-08T20:46:58Z compaction; last commit cba2288
+- 2026-11-08T21:25:10Z gate fast on Linux x86_64: PASS (HEAD cba2288)

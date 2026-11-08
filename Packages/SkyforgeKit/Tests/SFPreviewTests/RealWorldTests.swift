@@ -69,11 +69,27 @@ actor TileFixtureTransport: HTTPTransport {
             return SIMD3(UInt8(v + 30), UInt8(v - 10), UInt8(v - 30))
         }
         let p = ImageryGrading.match(&near, to: far)
-        #expect(p.allSatisfy { $0.gain > 0.4 && $0.gain < 0.6 || abs($0.gain - 0.6) < 1e-9 }, "contrast halved (gain clamped at 0.6): \(p)")
+        #expect(p.allSatisfy { abs($0.gain - 0.75) < 1e-9 }, "contrast halved, gain clamped at 0.75: \(p)")
         var sum = SIMD3<Double>.zero
         for k in 0..<(256 * 256) { sum += SIMD3(Double(near.rgb[3 * k]), Double(near.rgb[3 * k + 1]), Double(near.rgb[3 * k + 2])) }
         let mean = sum / Double(256 * 256)
         #expect(abs(mean.x - 90) < 4 && abs(mean.y - 120) < 4 && abs(mean.z - 70) < 4, "near mean moved to far's: \(mean)")
+    }
+
+    /// A low-contrast near photo matched to a contrasty far one keeps its shadows (no crush to black).
+    @Test func matchNeverCrushesDarks() {
+        let far = Self.mosaic(size: 64, half: 1_000) { i, j in let v = UInt8(((i / 4 + j / 4) % 2) * 200 + 20); return SIMD3(v, v, v) }
+        var near = Self.mosaic(size: 256, half: 500) { i, j in
+            let x = -500 + (Double(i) + 0.5) * 1000 / 256, y = 500 - (Double(j) + 0.5) * 1000 / 256
+            let fi = Int((x + 1_000) / 2_000 * 64), fj = Int((1_000 - y) / 2_000 * 64)
+            let v = UInt8(((fi / 4 + fj / 4) % 2) * 60 + 70 + (i % 8) * 3 - 12)
+            return SIMD3(v, v, v)
+        }
+        let before = near.rgb
+        ImageryGrading.match(&near, to: far)
+        for k in 0..<near.rgb.count { #expect(Double(near.rgb[k]) >= 0.5 * Double(before[k]), "pixel \(k): \(before[k]) → \(near.rgb[k])") }
+        // Still monotonic.
+        for k in stride(from: 3, to: near.rgb.count, by: 3) where before[k] > before[k - 3] { #expect(near.rgb[k] >= near.rgb[k - 3]) }
     }
 
     @Test func dehazeRemovesAVeilAndKeepsOrder() {
@@ -82,5 +98,17 @@ actor TileFixtureTransport: HTTPTransport {
         ImageryGrading.dehaze(&m)
         #expect(m.rgb.min()! < before.min()!, "veil removed: min \(m.rgb.min()!) < \(before.min()!)")
         for k in stride(from: 3, to: m.rgb.count, by: 3) where before[k] > before[k - 3] { #expect(m.rgb[k] >= m.rgb[k - 3]) }
+    }
+}
+
+@Suite struct ImageryGradingFarTests {
+    /// The far layer takes the near photo's mean; the near photo is left as recorded.
+    @Test func farIsMatchedToNear() {
+        let far = ImageryGradingTests.mosaic(size: 64, half: 1_000) { _, _ in SIMD3(60, 70, 50) }
+        let near = ImageryGradingTests.mosaic(size: 256, half: 500) { i, _ in let v = UInt8(90 + (i % 16)); return SIMD3(v, v, v) }
+        var f = far
+        ImageryGrading.match(far: &f, to: near)
+        // 60 → mean ratio clamp 1.33 (near ≈ 97.5) → the far layer brightens toward the near photo.
+        #expect(f.rgb[0] > 60 && f.rgb[1] > 70 && f.rgb[2] > 50, "\(f.rgb[0...2])")
     }
 }

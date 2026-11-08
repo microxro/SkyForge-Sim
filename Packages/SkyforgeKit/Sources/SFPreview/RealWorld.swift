@@ -22,8 +22,8 @@ public struct ImageryGround: GroundAlbedo {
     public let maskSize: Int
     public static let block = 8
 
-    /// `grade`: de-haze the far mosaic and colour-match the near mosaic to it (after the water mask is
-    /// classified from the untouched photo).
+    /// `grade`: de-haze the far mosaic and colour-match it to the near aerial photo (the near layer and
+    /// the water mask classified from it stay untouched).
     public init(near: ImageryMosaic, far: ImageryMosaic?, grade: Bool = false) {
         let b = Self.block, n = near.size / b
         var mask = [Float](repeating: 0, count: n * n)
@@ -43,9 +43,8 @@ public struct ImageryGround: GroundAlbedo {
         waterMask = mask; maskSize = n
         if grade, var f = far {
             ImageryGrading.dehaze(&f)
-            var nm = near
-            ImageryGrading.match(&nm, to: f)
-            self.near = nm; self.far = f
+            ImageryGrading.match(far: &f, to: near)
+            self.near = near; self.far = f
         } else {
             self.near = near; self.far = far
         }
