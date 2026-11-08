@@ -4,7 +4,7 @@ Legend: [x] done and verified, [ ] not done. Unchecked items are not available i
 
 ## CURRENT
 - CURRENT: P1.3 visual passes toward 8/10 (aircraft in frame, ground detail)
-- Next 3: P1.12 Quick Flight (verify Metal frame in CI) · P1.5c-2 cascaded shadows · P1.3 pass 5 (near-field ground detail)
+- Next 3: P1.5c-2 verify shadows in CI and review frames from the log · P1.5c-3 PBR aircraft material · P1 acceptance review
 
 ## P0 Bootstrap
 - [x] P0.1 Save master prompt to docs/MASTER_PROMPT.md
@@ -44,4 +44,4 @@ Legend: [x] done and verified, [ ] not done. Unchecked items are not available i
 ## P2–P5
 See docs/MASTER_PROMPT.md §16. Not started.
 
-- [ ] P1.12 Quick Flight vertical slice (SFQuickFlight + Metal WorldRenderer + SwiftUI screen)
+- [x] P1.12 Quick Flight vertical slice (SFQuickFlight + Metal WorldRenderer + SwiftUI screen) — headless flight tests on Linux; offscreen Metal frame verified in CI run 42443928244; interactive use on a device unverified
