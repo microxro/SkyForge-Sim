@@ -116,7 +116,9 @@ public struct QuickFlightWorld: FlightWorld {
         let s = b.soup
         for t in 0..<s.triangleCount {
             func body(_ p: SIMD3<Float>) -> SIMD3<Double> { SIMD3(Double(p.y), Double(p.x), Double(-p.z)) }
-            soup.addFlat(body(s.positions[3 * t]), body(s.positions[3 * t + 2]), body(s.positions[3 * t + 1]),
+            // SceneBuilder reversed the winding for its ENU output; keep that order so normals face outward
+            // (the cockpit view discards back faces by normal; test `cabinNormalsPointOutward`).
+            soup.addFlat(body(s.positions[3 * t]), body(s.positions[3 * t + 1]), body(s.positions[3 * t + 2]),
                          colour: s.albedo[t], material: s.material[t])
         }
         return soup

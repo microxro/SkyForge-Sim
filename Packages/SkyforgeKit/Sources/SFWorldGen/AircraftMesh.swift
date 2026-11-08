@@ -60,7 +60,7 @@ public enum AircraftMesh {
             for side in [-1.0, 1.0] {
                 let p0 = SIMD3(a0.x, side * (a0.w + 0.012), a0.z + 0.10), p1 = SIMD3(a1.x, side * (a1.w + 0.012), a1.z + 0.10)
                 let q0 = SIMD3(a0.x, side * (a0.w + 0.012), a0.z + 0.22), q1 = SIMD3(a1.x, side * (a1.w + 0.012), a1.z + 0.22)
-                if side > 0 { quad(p0, p1, q1, q0, .accent) } else { quad(p1, p0, q0, q1, .accent) }
+                if side > 0 { quad(p1, p0, q0, q1, .accent) } else { quad(p0, p1, q1, q0, .accent) }   // outward normals
             }
         }
 

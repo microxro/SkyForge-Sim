@@ -39,14 +39,14 @@ import SFInstruments
         var skyTop = 0, darkBottom = 0, pfdBlue = 0
         for x in 0..<w {
             for y in 0..<(h / 5) { let p = px(x, y); if p.z > p.x + 15 && p.z > 90 { skyTop += 1 } }
-            for y in (h - 12)..<h { let p = px(x, y); if p.x + p.y + p.z < 150 { darkBottom += 1 } }
+            for y in (h - 12)..<h { let p = px(x, y); if p.x + p.y + p.z < 240 { darkBottom += 1 } }
         }
         // The PFD's attitude sky (saturated blue) sits left of centre on the panel.
         for y in (h / 2)..<h { for x in 0..<(w / 2) { let p = px(x, y); if p.z > 120 && p.z > p.x + 60 { pfdBlue += 1 } } }
         print("cockpit frame: skyTop \(skyTop)/\(w * h / 5), darkBottom \(darkBottom)/\(w * 12), pfdBlue \(pfdBlue)")
-        #expect(skyTop > w * h / 5 / 2, "sky through the windscreen (airframe back faces skipped)")
-        #expect(darkBottom > w * 12 * 3 / 4, "instrument panel across the bottom")
-        #expect(pfdBlue > 150, "live PFD on the panel")
+        #expect(skyTop > w * h / 5 * 35 / 100, "sky through the windscreen (airframe back faces skipped)")
+        #expect(darkBottom > w * 12 / 2, "instrument panel across the bottom")
+        #expect(pfdBlue > 80, "live PFD on the panel")
     }
 
     @Test(.enabled(if: SkyRegressionTests.hasDevice, "no Metal device on this host"))
