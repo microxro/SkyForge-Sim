@@ -1,9 +1,9 @@
-LAST_UPDATE: 2026-11-08T13:35:44Z
+LAST_UPDATE: 2026-11-08T13:55:11Z
 
 # SKYFORGE state
 
 ## Phase
-P0 accepted (CI fully green). P1 in progress: P1.1, P1.2, P1.2b-2, P1.4, P1.7b, P1.8b, P1.9, P1.10, P1.12, P1.5, P1.6a, P1.2b-1, P1.6b, P1.7, P1.8a, P1.11 done; P1.3 renderer done with visuals below target (independent art review 5.10/10 vs commercial sims after 4 rounds; open: per-pixel land cover, river banks, impostors).
+P0 accepted (CI fully green). P1 in progress: P1.1, P1.2, P1.2b-2, P1.4, P1.7b, P1.8b, P1.9, P1.10, P1.12, P1.5, P1.6a, P1.2b-1, P1.6b, P1.7, P1.8a, P1.11 done; P1.3 renderer done with visuals below target (independent art review 5.20/10 vs commercial sims after 5 rounds; open: per-pixel land cover, river banks, impostors).
 
 ## Environment facts (recorded at session start)
 - Host: Linux x86_64, Ubuntu 24.04.5 LTS, 4 CPUs, 15 GB RAM (Claude Code on the web sandbox).
@@ -57,4 +57,4 @@ P0 accepted (CI fully green). P1 in progress: P1.1, P1.2, P1.2b-2, P1.4, P1.7b, 
 - Nothing known. Speckle fixed in f8afa50 (CI frame reviewed).
 
 ## Last green SHA
-- 22a7b05 (CI run 42485096243: all jobs green; tree edge fade, river banks)
+- 8a14c05 (CI run 42486622224: all jobs green; low-sun shadow acne fixed on CPU and Metal)
