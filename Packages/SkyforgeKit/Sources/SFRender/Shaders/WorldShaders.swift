@@ -239,6 +239,26 @@ public enum WorldShaders {
         float2 axis = alongU ? float2(c, s) : float2(-s, c);
         return -axis * slope;
     }
+    /// Antialiased seam of width `lw` (m) repeating every `period` m along `coord`; `fp` = pixel footprint.
+    static float panelLine(float coord, float period, float lw, float fp) {
+        float d = abs(fract(coord / period + 0.5) - 0.5) * period;
+        return 1.0 - smoothstep(lw * 0.5, lw * 0.5 + fp, d);
+    }
+    /// Sheet-metal panel seams on the aircraft (body axes: x forward, y right, z down): fuselage frames
+    /// every 0.95 m and a side seam; wing ribs every 0.9 m and two spar lines; tail ribs.
+    static float aircraftPanels(float3 L, float fp) {
+        float lw = 0.012, lines = 0.0;
+        if (abs(L.y) < 0.75 && L.z > -0.95) {                       // fuselage
+            lines = max(panelLine(L.x, 0.95, lw, fp), 1.0 - smoothstep(lw * 0.5, lw * 0.5 + fp, abs(L.z + 0.22)));
+        } else if (L.z < -0.9 && abs(L.y) >= 0.75 && L.x > -1.6) {  // wings
+            float spar = min(abs(L.x - (-0.15)), abs(L.x - (-0.85)));
+            lines = max(panelLine(L.y, 0.9, lw, fp), 1.0 - smoothstep(lw * 0.5, lw * 0.5 + fp, spar));
+        } else {                                                      // tail
+            lines = panelLine(abs(L.y) + abs(L.z), 0.6, lw, fp);
+        }
+        return lines * saturate(1.0 - fp / 0.05);                     // gone once a pixel spans 5 cm
+    }
+
     static float3 fieldFactor(float x, float y, float footprint, uint seed, bool autumn) {
         const float PU = 110.0, PV = 170.0, HW = 1.2;
         float c = cos(0.35f), s = sin(0.35f);
@@ -413,6 +433,7 @@ public enum WorldShaders {
         }
         float2 fieldW = in.rel.xy + u.cameraLocal.xy;
         float fieldFp = length(fwidth(fieldW));              // derivatives outside divergent branches
+        float localFp = length(fwidth(in.local));
         float fieldBand = max(0.12, 2.5 * fwidth(in.field));
         if (m == 7.0 && in.material == 7.0 && u.skyHorizon.w > 0.5 && in.field < -0.003) {
             albedo = mix(albedo, townColour(fieldW.x, fieldW.y, fieldFp, albedo, uint(u.ambientGround.w)), min(1.0, -in.field));
@@ -552,6 +573,8 @@ public enum WorldShaders {
             float back = pow(max(0.0, dot(dir, toSun)), 4.0) * 0.35;
             col = albedo * (u.sunColour.rgb * (wrap + back) * vis + ambient * 0.85);
         } else if (m == 6.0 || m == 5.0) {                   // aircraft paint / glass: GGX
+            // Panel seams on the airframe (aircraft-sized local coordinates only, not painted scenery).
+            if (m == 6.0 && length(in.local) < 9.0 && dist < 150.0) albedo *= 1.0 - 0.45 * aircraftPanels(in.local, localFp);
             float rough = m == 6.0 ? 0.24 : 0.06;   // glossy paint: a visible sun glint
             float3 env = mix(u.ambientGround.rgb, u.skyHorizon.rgb, saturate(reflect(dir, n).z * 0.5 + 0.5));
             col = pbrDielectric(albedo, n, -dir, toSun, rough, u.sunColour.rgb, env, vis) + albedo * ambient * (m == 6.0 ? 1.0 : 0.3);
