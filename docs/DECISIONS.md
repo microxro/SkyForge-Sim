@@ -89,3 +89,23 @@
 - Loading: tiles come from the pack, then the tile cache, then the network. The texture and its mips are built off the main thread and swapped in on the render thread, so no frame stalls.
 - Memory: one detail texture at a time (phone: 2048² RGBA + mips ≈ 22 MB).
 - Evidence: CPU reference renders of the KMRY start view show the GPU sampling path is correct. The remaining softness at 170 m AGL is mostly photo trees and baked shadows at grazing angles, not texel size, so the gain is largest low on approach and on the ground.
+
+## ADR-0019 Review-camera ground is source-limited, not magnification-limited (2026-11-09)
+**Context**
+- Art rounds 4–6 levelled off around 5.0–5.2.
+- The art director attributed this to a magnified ~1 m/px photo filling the bottom 40 % of the frame. They proposed classified detail materials as the structural fix.
+
+**Measurement**
+- **Pixel footprint at the review camera:** the chase view on a 3° final is about 120 m above ground. There a bottom-row pixel spans about 0.4 m across by 1 m in depth.
+- **Imagery resolution:** the z18 USGS layer is about 0.5 m/texel at these latitudes. The ground is therefore sampled at about 1:1, not magnified.
+- **Effect of the materials layer (b7affb8):** it changed the lower half of every review frame by less than 1/255 on average. High-frequency energy was unchanged.
+  - The anti-aliasing gate correctly keeps sub-metre octaves off pixels this large.
+- **Sharpness is limited by the source:**
+  - An earlier CPU reference already matched the GPU softness.
+  - The USGS export at z18 is at or near the service's native resolution, so z19 would oversample.
+
+**Decision**
+- **Keep the materials layer.** It is cheap and correct, and it acts where the ground is magnified: runway start, cockpit view and low flight.
+- **Stop treating near-ground sharpness as the lever for the review frames.** Sharper ground at this camera needs imagery sharper than ~0.5 m. Within the licence rules (keyless, Apache-compatible, no Bing/MSFS) no such source is reachable from the build environment: the NAIP host is blocked, and OSM is unreachable (ADR-0016).
+- **The remaining levers** are lighting, atmosphere, buildings, trees and the aircraft.
+- **Feasibility:** reaching 8/10 against commercial sims on real-airport frames may not be possible within these constraints. Any round that plateaus will be recorded here with its measurements, not hidden.
