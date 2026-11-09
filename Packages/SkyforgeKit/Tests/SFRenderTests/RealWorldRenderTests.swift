@@ -67,6 +67,10 @@ actor FixtureImageryTransport: HTTPTransport {
                 "frustum culling drew \(r.lastDrawnChunks) of \(data.chunks.count) chunks")
         #expect(r.lastDrawnTreeCells > 0 && r.lastDrawnTreeCells <= r.treeCellCount,
                 "tree cells culled: drew \(r.lastDrawnTreeCells) of \(r.treeCellCount)")
+        // Distant cells use the crown-only LOD (at most a quarter of the full mesh's vertices).
+        #expect(r.lastLODTreeCells > 0 && r.lastLODTreeCells <= r.lastDrawnTreeCells, "LOD cells \(r.lastLODTreeCells)")
+        let m = WorldRenderer.treeMeshes()
+        #expect(m.coniferLow.count * 4 <= m.conifer.count && m.oakLow.count * 4 <= m.oak.count)
         // The lower half is textured photo ground, not a flat fill.
         var lo = Int.max, hi = 0
         for y in (h / 2)..<h { for x in 0..<(w / 3) { let s = px(x, y).x + px(x, y).y + px(x, y).z; lo = min(lo, s); hi = max(hi, s) } }

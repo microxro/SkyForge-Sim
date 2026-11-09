@@ -129,11 +129,27 @@ public final class WorldRenderer {
     private var sceneTarget: MTLTexture?
     private var real: (vertices: MTLBuffer, indices: MTLBuffer, draws: [(indexOffset: Int, indexCount: Int, baseVertex: Int, min: SIMD3<Float>, max: SIMD3<Float>)])?
     /// Instanced trees (real world and SkyWorld): shared conifer/broadleaf meshes and per-tree instances.
-    private var trees: (mesh: MTLBuffer, coniferCount: Int, oakStart: Int, oakCount: Int, instances: MTLBuffer)?
+    private var trees: (mesh: MTLBuffer, ranges: [(start: Int, count: Int)], instances: MTLBuffer)?
+    /// Tree cells nearer than this draw the full mesh; farther cells (and the outer shadow cascades) the
+    /// crown-only LOD. 105k SkyWorld desktop trees at full detail cost ~11 ms on the CI GPU.
+    static let treeLODDistance: Float = 650
+
+    /// Vertex range of the tree mesh for a cell: kind 0 conifer / 1 broadleaf, full or LOD.
+    private func treeRange(kind: Int, full: Bool) -> (start: Int, count: Int) {
+        trees!.ranges[(full ? 0 : 2) + kind]
+    }
+
+    /// Squared distance from `p` to a cell's box (0 inside).
+    @inline(__always) static func boxDistance2(_ p: SIMD3<Float>, _ lo: SIMD3<Float>, _ hi: SIMD3<Float>) -> Float {
+        let d = simd_max(simd_max(lo - p, p - hi), SIMD3<Float>(repeating: 0))
+        return simd_dot(d, d)
+    }
     /// Tree instances binned into 400 m cells per kind (contiguous ranges), culled per view and cascade.
     private var treeCells: [(kind: Int, start: Int, count: Int, min: SIMD3<Float>, max: SIMD3<Float>)] = []
     /// Tree cells drawn in the last main pass (of `treeCellCount`).
     public private(set) var lastDrawnTreeCells = 0
+    /// Of those, cells drawn with the distant LOD mesh.
+    public private(set) var lastLODTreeCells = 0
     public var treeCellCount: Int { treeCells.count }
     private var imageryNear: (tex: MTLTexture, centre: SIMD2<Double>, half: Double)?
     private var imageryFar: (tex: MTLTexture, centre: SIMD2<Double>, half: Double)?
@@ -362,7 +378,7 @@ public final class WorldRenderer {
     }
 
     /// Unit-height tree meshes (z 0…1): conifer (bare trunk, crown on top) and broad oak.
-    static func treeMeshes() -> (conifer: [PackedTerrainVertex], oak: [PackedTerrainVertex]) {
+    static func treeMeshes() -> (conifer: [PackedTerrainVertex], oak: [PackedTerrainVertex], coniferLow: [PackedTerrainVertex], oakLow: [PackedTerrainVertex]) {
         func q(_ x: Double) -> Int8 { Int8(max(-127, min(127, (x * 127).rounded()))) }
         func tri(_ out: inout [PackedTerrainVertex], _ a: SIMD3<Double>, _ b: SIMD3<Double>, _ c: SIMD3<Double>, bark: Bool) {
             let n = normalize(cross(b - a, c - a))
@@ -386,7 +402,13 @@ public final class WorldRenderer {
         frustum(&oak, z0: 0.3, r0: 0.18, z1: 0.48, r1: 0.42, sides: 8, bark: false)
         frustum(&oak, z0: 0.48, r0: 0.42, z1: 0.75, r1: 0.36, sides: 8, bark: false)
         frustum(&oak, z0: 0.75, r0: 0.36, z1: 1.0, r1: 0, sides: 8, bark: false)
-        return (conifer, oak)
+        // Distant LOD (beyond `treeLODDistance`, a few pixels tall): crown only, 4 sides, 4–12 triangles
+        // against ~45–50, same silhouette height and width.
+        var coniferLow: [PackedTerrainVertex] = [], oakLow: [PackedTerrainVertex] = []
+        frustum(&coniferLow, z0: 0.4, r0: 0.22, z1: 1.0, r1: 0, sides: 4, bark: false)
+        frustum(&oakLow, z0: 0.3, r0: 0.4, z1: 0.62, r1: 0.4, sides: 4, bark: false)
+        frustum(&oakLow, z0: 0.62, r0: 0.4, z1: 1.0, r1: 0, sides: 4, bark: false)
+        return (conifer, oak, coniferLow, oakLow)
     }
 
     /// A ready GPU imagery texture with its placement, built on any thread (`makeImagery`) and swapped in
@@ -431,7 +453,9 @@ public final class WorldRenderer {
     public func setTrees(_ list: [RealWorldRenderData.Tree]) throws {
         guard !list.isEmpty else { trees = nil; treeCells = []; return }
         let meshes = Self.treeMeshes()
-        let treeVerts = meshes.conifer + meshes.oak
+        let treeVerts = meshes.conifer + meshes.oak + meshes.coniferLow + meshes.oakLow
+        let c0 = meshes.conifer.count, o0 = meshes.oak.count, c1 = meshes.coniferLow.count, o1 = meshes.oakLow.count
+        let ranges = [(0, c0), (c0, o0), (c0 + o0, c1), (c0 + o0 + c1, o1)]
         func cellKey(_ t: RealWorldRenderData.Tree) -> (Int, Int, Int) {
             (t.conifer ? 0 : 1, Int((t.position.x / 400).rounded(.down)), Int((t.position.y / 400).rounded(.down)))
         }
@@ -456,7 +480,7 @@ public final class WorldRenderer {
             throw RendererError.commandQueue
         }
         treeCells = cells
-        trees = (mb, meshes.conifer.count, meshes.conifer.count, meshes.oak.count, ib)
+        trees = (mb, ranges.map { (start: $0.0, count: $0.1) }, ib)
     }
 
     /// Uploads real-world terrain chunks, tree instances and imagery.
@@ -808,10 +832,13 @@ public final class WorldRenderer {
                     se.setVertexBuffer(tr.instances, offset: 0, index: 2)
                     // Only tree cells inside this cascade's light volume can cast into it.
                     let lp = Self.clipPlanes(cascades[ci] * su.model)
+                    let eye = SIMD3<Float>(Float(c.position.x), Float(c.position.y), Float(c.position.z))
+                    let lod2 = Self.treeLODDistance * Self.treeLODDistance
                     for cell in treeCells where Self.boxVisible(lp, cell.min, cell.max) {
+                        // Full mesh only in the near cascade and near cells; LOD crowns cast the rest.
+                        let range = treeRange(kind: cell.kind, full: ci == 0 && Self.boxDistance2(eye, cell.min, cell.max) < lod2)
                         se.setVertexBufferOffset(cell.start * MemoryLayout<PackedTreeInstance>.stride, index: 2)   // not baseInstance (ignored on the CI GPU)
-                        se.drawPrimitives(type: .triangle, vertexStart: cell.kind == 0 ? 0 : tr.oakStart,
-                                          vertexCount: cell.kind == 0 ? tr.coniferCount : tr.oakCount, instanceCount: cell.count)
+                        se.drawPrimitives(type: .triangle, vertexStart: range.start, vertexCount: range.count, instanceCount: cell.count)
                     }
                     se.setRenderPipelineState(shadowPipeline)
                 }
@@ -940,12 +967,18 @@ public final class WorldRenderer {
             enc.setVertexBuffer(tr.mesh, offset: 0, index: 0)
             enc.setVertexBuffer(tr.instances, offset: 0, index: 2)
             var cellsDrawn = 0
+            let eye = SIMD3<Float>(Float(c.position.x), Float(c.position.y), Float(c.position.z))
+            let lod2 = Self.treeLODDistance * Self.treeLODDistance
+            var lodCells = 0
             for cell in treeCells where Self.boxVisible(planes, cell.min + o, cell.max + o) {
+                let full = Self.boxDistance2(eye, cell.min, cell.max) < lod2
+                let range = treeRange(kind: cell.kind, full: full)
                 enc.setVertexBufferOffset(cell.start * MemoryLayout<PackedTreeInstance>.stride, index: 2)   // not baseInstance (ignored on the CI GPU)
-                enc.drawPrimitives(type: .triangle, vertexStart: cell.kind == 0 ? 0 : tr.oakStart,
-                                   vertexCount: cell.kind == 0 ? tr.coniferCount : tr.oakCount, instanceCount: cell.count)
+                enc.drawPrimitives(type: .triangle, vertexStart: range.start, vertexCount: range.count, instanceCount: cell.count)
                 cellsDrawn += 1
+                if !full { lodCells += 1 }
             }
+            lastLODTreeCells = lodCells
             lastDrawnTreeCells = cellsDrawn
             enc.setRenderPipelineState(pipeline)
         }
