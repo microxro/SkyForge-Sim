@@ -513,3 +513,25 @@ Round-19 batch (first round under 0.2 since the structural change; a second woul
 3. **Forest stands:** ~300 m noise sets the conifer share (12–88 %), with darker conifer and lighter broadleaf stand tones; half of each tree's height comes from its stand. Test: the conifer share varies by > 0.4 between 200 m patches.
 4. **Photo sampler:** anisotropy 16 (was 8).
 5. **KBFI fallback buildings:** darker siding and brick wall tones, and a fifth of them two-storey.
+
+## Bold round 19: 12 Metal frames (6fad245, run 42602113280)
+Phone: KMRY 6.75, KASE 6.75, KBFI 6.0, LSZS 6.25, NZQN 6.0, SkyWorld 6.75. **Average 6.42 (+0.13).**
+High: KMRY 6.75, KASE 7.25, KBFI 6.0, LSZS 6.75, NZQN 6.5, SkyWorld 7.0. **Average 6.71 (+0.21).**
+
+Findings:
+- **High-tier clouds:** now match phone (fine detail 1.18 against 1.21), with no pattern.
+- **Shadow toe:** softer, not washed out.
+- **KBFI:** the brick and siding tones sit in the scene.
+- **LSZS stands:** not yet readable as patches.
+- **Anisotropy 16:** made no visible difference.
+- **Process:** phone gained under 0.2 in rounds 18 and 19, so a structural change follows. The art director's pick: baked photo shadows and photo tree blobs are what hold KMRY, KBFI, NZQN and KASE-phone below 7.
+
+Round-20 structural change: **photo trees removed under the 3D trees** (`ImageryDelighting`, applied to the near and detail layers when the render data is built, and to the in-flight detail layer).
+1. **Discs:** one around each placed 3D tree, `h·(0.42 broadleaf | 0.25 conifer) + 0.25·h` for the photo crown plus its shadow, feathered 2.5 m.
+2. **Mask:** inside the discs, photo canopy (green above red and blue, not bright lawn) or shadow (luminance below 0.6–0.85 × its 10 m local mean). Water is excluded, and the mask fades where under 15–35 % of the ground within 25 m is unmasked (closed forest keeps its photo; nothing lit to fill from).
+3. **Fill:** push-pull inpainting (weighted 2×2 pyramid, then bilinear pull), in 512 px tiles with a 64 px apron, so holes take the lit ground next to them rather than an average (the round-13 decal's grey ovals).
+4. **Tests:**
+   - A blob and its shadow under a 3D tree are filled to the ground colour; the same blob without a tree is untouched; lit ground is unchanged.
+   - Water is kept, and closed forest is left alone.
+   - Push-pull fills from neighbours.
+5. **KMRY check on the real pack (phone near):** the golf-course trees and their shadows become fairway, with no ovals. 227k of 4.2M pixels changed; the 0.59 m detail layer changed 620k.

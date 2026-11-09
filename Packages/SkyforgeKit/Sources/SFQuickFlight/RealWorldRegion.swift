@@ -280,6 +280,15 @@ public struct RealWorldRegion: FlightWorld {
         }.map { list[$0] }
     }
 
+    /// Discs the photo's own tree (crown plus its shadow) can occupy around each placed 3D tree.
+    public static func photoCrowns(_ trees: [TreeInstance]) -> [ImageryDelighting.Crown] {
+        trees.map { t in
+            let h = Double(t.height)
+            return ImageryDelighting.Crown(centre: SIMD2(Double(t.position.x), Double(t.position.y)),
+                                           radius: h * (t.conifer ? 0.25 : 0.42) + h * 0.25)
+        }
+    }
+
     /// Whether the sharp camera-following layer exists here (US aerial photo coverage).
     public var detailStreamable: Bool { ground.detail != nil && detail.imageryDetailSize > 0 }
 

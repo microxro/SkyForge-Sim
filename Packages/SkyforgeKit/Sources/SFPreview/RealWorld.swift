@@ -127,7 +127,8 @@ public struct ImageryGround: GroundAlbedo {
         return ImageryGround(near: near, far: far, detail: detail, waterMask: mask, maskSize: n)
     }
 
-    func water(_ x: Double, _ y: Double) -> Float? {
+    /// Smoothed water score at a point, or nil outside the near layer.
+    public func water(_ x: Double, _ y: Double) -> Float? {
         let mpp = near.metresPerPixel * Double(Self.block)
         let fx = (x - (near.centre.x - near.halfExtent)) / mpp - 0.5
         let fy = ((near.centre.y + near.halfExtent) - y) / mpp - 0.5

@@ -12,6 +12,7 @@ import SFInstruments
 import SFQuickFlight
 import SFPlatform
 import SFContent
+import SFImagery
 import SFAtmosphere
 import SFWeather
 
@@ -54,6 +55,7 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
     /// Camera-following sharp imagery (texture streaming): the loaded region, its tile sources and state.
     private var realRegion: RealWorldRegion?
     private var tileTransport: (any HTTPTransport)?
+    private var photoCrowns: [ImageryDelighting.Crown] = []
     private var tileCache: KeyedCache?
     private var detailBusy = false
     private var lastDetailPosition: SIMD3<Double>?
@@ -152,6 +154,7 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
                         try self.renderer?.setAircraft(aircraft)
                         self.world = region
                         self.realRegion = region
+                        self.photoCrowns = data.photoCrowns
                         self.tileTransport = transport
                         self.tileCache = cache
                         self.session = QuickFlightSession(world: region, start: start)
@@ -247,10 +250,11 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
             if (d * d).sum().squareRoot() < cur.half * 0.4 { return }
         }
         detailBusy = true
-        let cache = tileCache
+        let cache = tileCache, crowns = photoCrowns
         nonisolated(unsafe) let builder = r
         Task.detached(priority: .utility) {
-            let mosaic = await region.streamDetail(around: target, transport: transport, cache: cache)
+            var mosaic = await region.streamDetail(around: target, transport: transport, cache: cache)
+            if mosaic != nil { ImageryDelighting.removePhotoTrees(&mosaic!, crowns: crowns) { x, y in region.ground.water(x, y) ?? 0 } }
             let prepared = mosaic.flatMap {
                 try? builder.makeImagery(RealWorldRenderData.Imagery(centre: $0.centre, halfExtent: $0.halfExtent, size: $0.size, rgb: $0.rgb))
             }
