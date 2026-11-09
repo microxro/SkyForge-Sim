@@ -434,3 +434,23 @@ Findings:
 Round-15 batch:
 1. **Multi-lobe crowns:** near broadleaf crowns are a 9-sided main crown plus two offset 7-sided lobes, each with its own ellipsoid normals (97 triangles, against 70). SkyWorld shares the mesh.
 2. **Highlight shoulder:** photo albedo above 0.28 is compressed (0.72 → 0.52), so near-white concrete and roofs no longer blow out.
+
+## Bold round 15: 1280×720 Metal frames (1aaf2da, run 42592435319)
+Scores: KMRY 6.0, KASE 6.75, KBFI 5.5, LSZS 6.0, NZQN 6.0, SkyWorld 6.0. **Average 6.04 (+0.00).**
+
+Findings:
+- Rounds 14 and 15 both gained less than 0.2.
+- **Lobed crowns:** they reach only trees within 350 m, which here means SkyWorld. Their own normals left facets and creases.
+- **Highlight shoulder:** it moved the brightest 1 % by only 5–6 of 255.
+
+Round-16 change, structural:
+- **Review coverage extended to the desktop/high tier.**
+  - The phone-tier review frames never showed the high tier, which has the 4096 px detail imagery, denser terrain and more trees.
+  - They also never covered the frame-budget cuts: cloud steps and light taps, and the 65k and 75k tree caps.
+  - CI now also captures all five airports and SkyWorld with `RealWorldDetail.desktop` and `Settings.high`.
+  - Both tiers are scored and reported.
+
+Same batch:
+1. Highlight shoulder: knee 0.22, slope 0.45.
+2. Lobe normals blended 50/50 with the whole crown's ellipsoid normal.
+3. Wall contact band: the lowest ~0.8 m of ground-standing walls at 0.62 × the wall colour.

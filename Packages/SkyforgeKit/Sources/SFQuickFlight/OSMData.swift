@@ -609,9 +609,16 @@ public enum OSMMeshBuilder {
             let bottom = b.minHeightMetres > 0 ? base + b.minHeightMetres : base - max(0, foundation)
             guard top > bottom else { continue }
             let wall = wallColour(for: b), roof = roofColour(for: b)
+            // Contact band: the lowest ~0.8 m of a ground-standing wall is darker (ground occlusion and grime),
+            // so a box sits on the ground instead of floating on the photo (art round 14).
+            let band = b.minHeightMetres > 0 ? bottom : min(top, base + 0.8)
             for i in ring.indices {
                 let p = ring[i], q = ring[(i + 1) % ring.count]
-                soup.addQuad(SIMD3(p.x, p.y, bottom), SIMD3(q.x, q.y, bottom), SIMD3(q.x, q.y, top), SIMD3(p.x, p.y, top),
+                if band > bottom {
+                    soup.addQuad(SIMD3(p.x, p.y, bottom), SIMD3(q.x, q.y, bottom), SIMD3(q.x, q.y, band), SIMD3(p.x, p.y, band),
+                                 colour: wall * 0.62, material: .opaque)
+                }
+                soup.addQuad(SIMD3(p.x, p.y, band), SIMD3(q.x, q.y, band), SIMD3(q.x, q.y, top), SIMD3(p.x, p.y, top),
                              colour: wall, material: .opaque)
             }
             let tris = OSMGeometry.triangulate(ring)

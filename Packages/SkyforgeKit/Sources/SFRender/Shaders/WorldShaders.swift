@@ -543,9 +543,9 @@ public enum WorldShaders {
             imgForest = smoothstep(0.0, 0.02, c.g - max(c.r, c.b)) * smoothstep(0.10, 0.03, cl);   // dark green canopy
             // Same photo→albedo conversion as SFPreview.ImageryGround (textures are sRGB, so c is linear).
             albedo = pow(max(c, 0.0), 1.12) * 0.72;
-            // Soft shoulder above 0.28 albedo (0.72 → 0.52): photo concrete, roofs and bare ground lit by midday
+            // Soft shoulder above 0.22 albedo (0.72 → 0.45): photo concrete, roofs and bare ground lit by midday
             // sun came out ~240/255 and read as blown out (art round 14).
-            albedo = select(albedo, 0.28 + (albedo - 0.28) * 0.55, albedo > 0.28);
+            albedo = select(albedo, 0.22 + (albedo - 0.22) * 0.45, albedo > 0.22);   // (0.28/0.55 moved the brightest 1 % by only ~5/255, round 15)
             // Canopy albedo floor (hue kept), the same 0.05 as the 3D tree tints: Sentinel-2 forest comes out
             // near-black (~0.03), so the ground between the 3D trees read as a dark smear (LSZS, rounds 4–6).
             float al = dot(albedo, float3(0.2126, 0.7152, 0.0722));

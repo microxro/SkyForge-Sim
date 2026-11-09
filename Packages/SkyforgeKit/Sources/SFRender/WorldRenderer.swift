@@ -396,7 +396,8 @@ public final class WorldRenderer {
             out.append(PackedTerrainVertex(px: Float(p.x), py: Float(p.y), pz: Float(p.z), nx: q(n.x), ny: q(n.y), nz: q(n.z), nw: bark ? -127 : 127))
         }
         func frustum(_ out: inout [PackedTerrainVertex], z0: Double, r0: Double, z1: Double, r1: Double, sides: Int, bark: Bool,
-                     crown: (centre: Double, radius: Double, height: Double)? = nil, offset: SIMD2<Double> = .zero) {
+                     crown: (centre: Double, radius: Double, height: Double)? = nil, offset: SIMD2<Double> = .zero,
+                     whole: (centre: Double, radius: Double, height: Double)? = nil) {
             // Crowns use smooth normals so a near crown shades as one rounded mass, not facets (art rounds
             // 5–6). With `crown`, normals are those of the enclosing ellipsoid, continuous across stacked
             // sections (per-section cone slopes left a crease at every ring); otherwise the cone's own slope.
@@ -404,7 +405,13 @@ public final class WorldRenderer {
             func normalAt(_ a: Double, _ r: Double, _ z: Double) -> SIMD3<Double> {
                 guard let e = crown else { return normalize(SIMD3(cos(a), sin(a), slope)) }
                 let h = max(r, 0.02) / (e.radius * e.radius)
-                return normalize(SIMD3(cos(a) * h, sin(a) * h, (z - e.centre) / (e.height * e.height)))
+                let own = normalize(SIMD3(cos(a) * h, sin(a) * h, (z - e.centre) / (e.height * e.height)))
+                // A lobe blends 50/50 with the whole crown's ellipsoid normal at the same point, so the cluster
+                // shades as one mass with a lumpy outline (own normals alone left facets and dark creases, round 15).
+                guard let wc = whole else { return own }
+                let p = SIMD3(offset.x + r * cos(a), offset.y + r * sin(a), z)
+                let wn = normalize(SIMD3(p.x / (wc.radius * wc.radius), p.y / (wc.radius * wc.radius), (z - wc.centre) / (wc.height * wc.height)))
+                return normalize(own + wn)
             }
             for k in 0..<sides {
                 let a0 = Double(k) / Double(sides) * 2 * .pi, a1 = Double(k + 1) / Double(sides) * 2 * .pi
@@ -424,7 +431,7 @@ public final class WorldRenderer {
                 } else {
                     // Apex: the facet's mid direction (cone) or straight up (ellipsoid), so the tip neither
                     // pinches nor flattens.
-                    let apex = crown == nil ? normalAt((a0 + a1) / 2, 0, z1) : SIMD3<Double>(0, 0, 1)
+                    let apex = (crown == nil || whole != nil) ? normalAt((a0 + a1) / 2, 0, z1) : SIMD3<Double>(0, 0, 1)
                     vert(&out, b0, nb0, bark: false); vert(&out, b1, nb1, bark: false); vert(&out, t1, apex, bark: false)
                 }
             }
@@ -444,8 +451,8 @@ public final class WorldRenderer {
         frustum(&oak, z0: 0.75, r0: 0.33, z1: 0.98, r1: 0, sides: 8, bark: false, crown: oakCrown)
         for (off, zc, rr) in [(SIMD2(0.24, 0.10), 0.60, 0.25), (SIMD2(-0.16, -0.21), 0.66, 0.23)] {
             let lobe = (centre: zc, radius: rr, height: rr * 0.95)
-            frustum(&oak, z0: zc - rr * 0.8, r0: rr * 0.45, z1: zc, r1: rr, sides: 6, bark: false, crown: lobe, offset: off)
-            frustum(&oak, z0: zc, r0: rr, z1: zc + rr * 0.95, r1: 0, sides: 6, bark: false, crown: lobe, offset: off)
+            frustum(&oak, z0: zc - rr * 0.8, r0: rr * 0.45, z1: zc, r1: rr, sides: 6, bark: false, crown: lobe, offset: off, whole: oakCrown)
+            frustum(&oak, z0: zc, r0: rr, z1: zc + rr * 0.95, r1: 0, sides: 6, bark: false, crown: lobe, offset: off, whole: oakCrown)
         }
         // Distant LOD (beyond `treeLODDistance`): crown only, 6 sides, 6–18 triangles
         // against 55–86, same silhouette height and width.

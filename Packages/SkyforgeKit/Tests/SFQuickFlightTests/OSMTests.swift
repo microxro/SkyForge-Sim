@@ -245,8 +245,10 @@ actor ScriptedOSMTransport: HTTPTransport {
                 Issue.record("unexpected sloped triangle \(n)")
             }
         }
-        let edges = rings.map(\.count).reduce(0, +)
-        #expect(walls == 2 * edges)
+        // Ground-standing walls carry a darker contact band below the main wall (4 triangles per edge);
+        // floating parts (min_height) keep 2.
+        let expectedWalls = buildings.map { $0.footprint.count * ($0.minHeightMetres > 0 ? 2 : 4) }.reduce(0, +)
+        #expect(walls == expectedWalls, "\(walls) vs \(expectedWalls)")
         #expect(!hipped.isEmpty && slopes <= 6 * hipped.count && slopes >= 4 * hipped.count, "slopes \(slopes)")
         #expect(roofs == rings.map { $0.count - 2 }.reduce(0, +) - 2 * hipped.count)
         #expect(undersides == 2)   // only the floating part 1010 (a rectangle)
@@ -266,7 +268,7 @@ actor ScriptedOSMTransport: HTTPTransport {
         // A square house gets a pyramid (no degenerate ridge triangles).
         let sq = OSMMeshBuilder.buildings([OSMBuilding(id: 2, footprint: [SIMD2(0, 0), SIMD2(9, 0), SIMD2(9, 9), SIMD2(0, 9)], heightMetres: 5, kind: "house")]) { _, _ in 0 }
         #expect(sq.normals.allSatisfy { $0.x.isFinite && $0.y.isFinite && $0.z.isFinite })
-        #expect(sq.triangleCount == 8 + 4)
+        #expect(sq.triangleCount == 16 + 4)   // walls with contact band + pyramid
         // Long axis on edges 1/3 (first == 1) indexes every edge modulo 4.
         let tall: [SIMD2<Double>] = [SIMD2(0, 0), SIMD2(8, 0), SIMD2(8, 12), SIMD2(0, 12)]
         let hip2 = OSMMeshBuilder.hippedRoof(OSMBuilding(id: 7, footprint: tall, heightMetres: 6, kind: "house"), ring: tall)
