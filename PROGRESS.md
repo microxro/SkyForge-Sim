@@ -19,12 +19,12 @@ Legend: [x] done and verified, [ ] not done. Unchecked items are not available i
 - [ ] B6b TAA or FXAA+SMAA by tier
 - [x] B6c Contact shadows / SSAO (depth-only, per-tier strength)
 - [ ] B6d 3–4 stabilised shadow cascades on high tier
-- [ ] B7 Aircraft PBR textures (panel lines, rivets, registration), glint, prop disc blur, cockpit textures and lighting
+- [ ] B7 Aircraft PBR textures (panel lines, rivets, registration), glint, prop disc blur, cockpit textures and lighting — panel lines, glint, prop disc and registration done; rivets and cockpit textures open
 - [x] B8 Water: normal-mapped waves, sky reflection, sun glitter, shoreline foam from the water mask (flat/size-filtered mask)
 - [x] B9 Cloud self-shadowing quality per tier (6-tap sun march with multiple-scattering term; low tier 4 taps at the same 1.7 km reach; high tier held at 6 by its frame-time budget)
 ### Phase C — Performance (measured)
 - [x] C10 CI GPU frame-time test per tier on the macOS Metal runner, run alone (numbers in VERIFICATION_LOG; all within budget)
-- [ ] C11 Building LOD + instancing, GPU culling where useful, texture streaming with memory cap, no main-thread stalls (measured) — texture streaming done (camera-following z18 layer, built off the main thread, one texture at a time; ADR-0018)
+- [ ] C11 Building LOD + instancing, GPU culling where useful, texture streaming with memory cap, no main-thread stalls (measured) — texture streaming done (camera-following z18 layer, built off the main thread, one texture at a time; ADR-0018); tree distance LOD done
 - [ ] C12 60 fps high / 30 fps low targets documented; device numbers unverified until run on hardware
 ### Phase D — Correctness
 - [ ] D13 Tests for every new feature (unit, GPU-vs-CPU parity, Metal smoke)
