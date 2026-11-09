@@ -685,6 +685,12 @@ public enum WorldShaders {
                                   groundNoise(ww + float2(0.0, 0.7), 14.0) - groundNoise(ww - float2(0.0, 0.7), 14.0)) * 0.9 * wFar
                          + float2(groundNoise(ww + float2(0.2, 0.0) + 31.0, 3.5) - groundNoise(ww - float2(0.2, 0.0) + 31.0, 3.5),
                                   groundNoise(ww + float2(0.0, 0.2) + 31.0, 3.5) - groundNoise(ww - float2(0.0, 0.2) + 31.0, 3.5)) * 0.7 * wNear;
+            // Swell: a 60 m octave on rotated axes, so the 14 m and 3.5 m wavelets no longer tile visibly
+            // across a near lake (art round 12).
+            float wSwell = saturate(1.0 - fieldFp * 2.5 / 60.0);
+            float2 sw = float2(0.8 * ww.x - 0.6 * ww.y, 0.6 * ww.x + 0.8 * ww.y) + 123.0;
+            slope += float2(groundNoise(sw + float2(2.0, 0.0), 60.0) - groundNoise(sw - float2(2.0, 0.0), 60.0),
+                            groundNoise(sw + float2(0.0, 2.0), 60.0) - groundNoise(sw - float2(0.0, 2.0), 60.0)) * 0.9 * wSwell;
             float3 wn = normalize(float3(-slope, 1.0));
             float3 r = reflect(dir, wn);
             r.z = abs(r.z);
@@ -698,7 +704,7 @@ public enum WorldShaders {
             if (imageryWater) {
                 // Shallows: a lighter green-turquoise body across the shore band (the mask's 0.6–0.9 rise), so
                 // a lake edge reads as depth rather than a navy cut-out (art round 11, NZQN).
-                float shallow = 1.0 - smoothstep(0.6, 0.9, shoreWm);
+                float shallow = 1.0 - smoothstep(0.6, 0.97, shoreWm);   // wider band (round 12: read only at mid-distance)
                 body = mix(body, float3(0.05, 0.11, 0.10) * (ambient * 0.8 + u.sunColour.rgb * max(0.0, toSun.z) * 0.35), shallow * 0.6);
                 // Broad sheen toward the sun from many small wave facets (the 900/60 lobes are single glints).
                 refl += u.sunColour.rgb * pow(max(0.0, dot(r, toSun)), 12.0) * 0.12 * vis;

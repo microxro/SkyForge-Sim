@@ -389,3 +389,18 @@ Round-12 batch:
    - Reflection scale 0.85 (was 0.6).
 2. **Lone trees:** trees with fewer than 2 neighbours within 10 m are dropped.
 3. **Crown variety:** ±4 % per-tree red/green hue.
+
+## Bold round 12: 1280×720 Metal frames (28cf4aa, run 42583714104)
+Scores: KMRY 5.75, KASE 6.75, KBFI 5.25, LSZS 6.0, NZQN 5.75, SkyWorld 6.0. **Average 5.92 (+0.04).**
+
+Findings:
+- **What worked:** NZQN water now reflects the sky (lower-half brightness 81 → 97).
+- **KMRY regressed:** the rule "2 neighbours within 10 m" removed real suburban oaks, which stand 10–25 m apart.
+- **Performance cuts not checked:** the review frames do not use the high cloud tier or the desktop tree cap. Their sky and SkyWorld are byte-identical to r11, so these frames cannot judge the cloud-step and tree-cap cuts.
+
+Round-13 batch:
+1. **Lone-tree rule:** a tree needs 1 neighbour within 20 m.
+2. **Tree brightness:** ±8 % jitter, applied after the floor.
+3. **Water:**
+   - A 60 m swell octave on rotated axes, against visible wavelet tiling.
+   - A wider shallows band.

@@ -437,6 +437,8 @@ public struct RealWorldRegion: FlightWorld {
                 // act under the blue clamp and the screen saturation stayed at 18 against 29 (round 10).
                 tint.z = min(tint.z, tint.y * 0.55)
                 tint.x = min(max(tint.x, tint.y * 0.62), tint.y * 0.85)
+                // Brightness ±8 % after the floor (the floor flattened the earlier jitter on dark canopy, round 12).
+                tint *= Float(0.92 + 0.16 * Hash.unit(rng.next()))
                 out.append(TreeInstance(position: SIMD3(Float(px), Float(py), Float(height(px, py))), height: Float(h), conifer: conifer, colour: tint))
             }
             y += cell
@@ -452,8 +454,9 @@ public struct RealWorldRegion: FlightWorld {
 
     /// Keeps trees with at least `minNeighbours` others within `radius` m: real canopy, street rows and park
     /// clusters have neighbours, while a lone tree on a bare lot is usually a dark car or shadow read as a
-    /// crown and stood there as a prop (art round 11, KBFI).
-    static func dropLoneTrees(_ list: [TreeInstance], radius: Float = 10, minNeighbours: Int = 2) -> [TreeInstance] {
+    /// crown and stood there as a prop (art round 11, KBFI). One within 20 m: suburban oaks stand 10–25 m
+    /// apart, and two within 10 m removed half of KMRY's real foreground trees (round 12).
+    static func dropLoneTrees(_ list: [TreeInstance], radius: Float = 20, minNeighbours: Int = 1) -> [TreeInstance] {
         var grid: [SIMD2<Int32>: [Int]] = [:]
         func key(_ t: TreeInstance) -> SIMD2<Int32> { SIMD2(Int32((t.position.x / radius).rounded(.down)), Int32((t.position.y / radius).rounded(.down))) }
         for (i, t) in list.enumerated() { grid[key(t), default: []].append(i) }
