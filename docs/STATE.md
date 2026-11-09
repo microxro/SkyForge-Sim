@@ -1,4 +1,4 @@
-LAST_UPDATE: 2026-11-09T07:42:39Z
+LAST_UPDATE: 2026-11-09T09:49:12Z
 
 # SKYFORGE state
 
@@ -37,6 +37,8 @@ Bold Mode (docs/BOLD_MODE.md) is in progress.
     - Aircraft livery.
   - ADR-0019: the review-camera ground is limited by the imagery source, not by magnification.
   - Round-11 batch (fbb647f), then a frame-time fix (52a48d2) after SkyWorld high reached 17.15 ms.
+  - Rounds 11–15: 5.88, 5.92, 6.00, 6.04, 6.04. Round 16 (structural: review frames also at the desktop/high tier): phone 6.04, high 6.08.
+  - Round-17 batch (6a66ae6): quarter-resolution cloud reconstruction (high-tier checker), water minimum as an area (false ponds on the desktop layer), highlight knee and grade roll-off, SkyWorld relief.
 - Open:
   - Procedural building fallback where OSM is missing; cascades 3–4; aircraft textures; cockpit textures; cloud self-shadow tiers.
   - Art review of the CI Metal frames (target ≥ 8).
