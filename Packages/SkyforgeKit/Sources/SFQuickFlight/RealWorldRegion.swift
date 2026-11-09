@@ -426,6 +426,8 @@ public struct RealWorldRegion: FlightWorld {
                 let h = 9 + Hash.unit(rng.next()) * 10
                 let conifer = Hash.unit(rng.next()) < 0.55
                 var tint = g.albedo * 1.9 * Float(0.85 + 0.3 * Hash.unit(rng.next()))
+                // Per-tree hue: ±4 % on the red/green balance, so neighbouring crowns differ (round 11).
+                tint.x *= Float(0.96 + 0.08 * Hash.unit(rng.next()))
                 // Foliage albedo floor (hue kept): dark Sentinel-2 forest gave near-black crowns (LSZS).
                 let tl = 0.2126 * tint.x + 0.7152 * tint.y + 0.0722 * tint.z
                 if tl < 0.08 { tint *= 0.08 / max(tl, 0.002) }   // (0.05 left dark crowns grey after the tone map)
@@ -445,7 +447,26 @@ public struct RealWorldRegion: FlightWorld {
             return min((a * a).sum(), (b * b).sum())             // thin by distance to the nearer focus
         }
         out.sort { d2($0) < d2($1) }
-        return Self.thin(out, max: detail.maxTrees, d2: d2)
+        return Self.thin(Self.dropLoneTrees(out), max: detail.maxTrees, d2: d2)
+    }
+
+    /// Keeps trees with at least `minNeighbours` others within `radius` m: real canopy, street rows and park
+    /// clusters have neighbours, while a lone tree on a bare lot is usually a dark car or shadow read as a
+    /// crown and stood there as a prop (art round 11, KBFI).
+    static func dropLoneTrees(_ list: [TreeInstance], radius: Float = 10, minNeighbours: Int = 2) -> [TreeInstance] {
+        var grid: [SIMD2<Int32>: [Int]] = [:]
+        func key(_ t: TreeInstance) -> SIMD2<Int32> { SIMD2(Int32((t.position.x / radius).rounded(.down)), Int32((t.position.y / radius).rounded(.down))) }
+        for (i, t) in list.enumerated() { grid[key(t), default: []].append(i) }
+        return list.indices.filter { i in
+            let k = key(list[i]); var n = 0
+            for dy: Int32 in -1...1 { for dx: Int32 in -1...1 {
+                for j in grid[k &+ SIMD2(dx, dy)] ?? [] where j != i {
+                    let d = SIMD2(list[j].position.x - list[i].position.x, list[j].position.y - list[i].position.y)
+                    if (d * d).sum() <= radius * radius { n += 1; if n >= minNeighbours { return true } }
+                }
+            } }
+            return false
+        }.map { list[$0] }
     }
 
     /// Keeps at most `max` trees with full density out to a radius d0 and density ∝ (d0/d)² beyond

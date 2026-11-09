@@ -368,3 +368,24 @@ Round-11 batch:
 2. **Snapping:** trees snap to the greenest point instead of the darkest.
 3. **Livery:** accent-blue fin, tailplane tips and fuselage-top stripe.
 4. **Deferred:** SkyWorld relief in view, because of the risk of terrain under the approach.
+
+## Bold rounds 11: 1280×720 Metal frames (34d36eb, run 42581086411, all green)
+Scores: KMRY 6.0, KASE 6.75, KBFI 5.25, LSZS 6.0, NZQN 5.25, SkyWorld 6.0. **Average 5.88 (+0.30).**
+
+Findings:
+- **What worked:**
+  - The crown saturation fix: LSZS is lit green forest again (saturation 18 → 26).
+  - The livery breaks up the white aircraft in every frame.
+  - The cheaper tree LOD shows no visible regression in stills.
+- **Still open:**
+  - The photo's own shadows sit beside the 3D trees (KMRY).
+  - Lone lollipop trees on bare lots (KBFI).
+  - NZQN's lake is unchanged for eight rounds.
+
+Round-12 batch:
+1. **Lake water:**
+   - A shallow turquoise body across the shore band.
+   - A broad sun sheen.
+   - Reflection scale 0.85 (was 0.6).
+2. **Lone trees:** trees with fewer than 2 neighbours within 10 m are dropped.
+3. **Crown variety:** ±4 % per-tree red/green hue.

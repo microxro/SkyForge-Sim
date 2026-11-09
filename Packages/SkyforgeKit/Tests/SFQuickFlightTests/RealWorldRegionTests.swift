@@ -78,6 +78,18 @@ actor OfflineImageryTransport: HTTPTransport {
 }
 
 @Suite struct TreeThinningTests {
+    /// Clusters and rows survive; a lone tree (a dark car or shadow read as a crown) does not.
+    @Test func loneTreesAreDropped() {
+        func t(_ x: Float, _ y: Float) -> TreeInstance { TreeInstance(position: SIMD3(x, y, 0), height: 10, conifer: false, colour: .one) }
+        let cluster = [t(0, 0), t(6, 0), t(0, 6)]
+        let row = (0..<5).map { t(100 + Float($0) * 8, 0) }
+        let lone = [t(300, 300), t(500, 0), t(507, 0)]   // one alone, one pair (each has a single neighbour)
+        let kept = RealWorldRegion.dropLoneTrees(cluster + row + lone)
+        // A row's two end trees have one neighbour within 10 m each and go; the interior stays.
+        #expect(kept.count == cluster.count + row.count - 2, "\(kept.count)")
+        #expect(!kept.contains { $0.position.x >= 300 })
+    }
+
     /// A dense 2 km forest capped at 5,000 trees keeps every tree near the centre and still reaches the edge.
     @Test func thinningKeepsNearDenseAndReachesFar() {
         var trees: [TreeInstance] = []

@@ -695,8 +695,16 @@ public enum WorldShaders {
             float glitter = pow(max(0.0, dot(r, toSun)), 900.0) * 60.0 + pow(max(0.0, dot(r, toSun)), 60.0) * 0.6;
             float3 refl = skyR + u.sunColour.rgb * glitter * vis;
             float3 body = albedo * (ambient * 0.6 + u.sunColour.rgb * max(0.0, toSun.z) * 0.15);
-            float reflScale = imageryWater ? 0.6 : 1.0;          // wind-roughened open water
-            col = mix(body, refl * reflScale, min(1.0, 0.08 + fres * (imageryWater ? 0.85 : 1.0)));
+            if (imageryWater) {
+                // Shallows: a lighter green-turquoise body across the shore band (the mask's 0.6–0.9 rise), so
+                // a lake edge reads as depth rather than a navy cut-out (art round 11, NZQN).
+                float shallow = 1.0 - smoothstep(0.6, 0.9, shoreWm);
+                body = mix(body, float3(0.05, 0.11, 0.10) * (ambient * 0.8 + u.sunColour.rgb * max(0.0, toSun.z) * 0.35), shallow * 0.6);
+                // Broad sheen toward the sun from many small wave facets (the 900/60 lobes are single glints).
+                refl += u.sunColour.rgb * pow(max(0.0, dot(r, toSun)), 12.0) * 0.12 * vis;
+            }
+            float reflScale = imageryWater ? 0.85 : 1.0;         // lakes mirror most of the sky (0.6 left them navy)
+            col = mix(body, refl * reflScale, min(1.0, 0.08 + fres * (imageryWater ? 0.9 : 1.0)));
             if (imageryWater) {
                 // Shoreline foam: the mask's transition band (wm 0.6–0.7), broken up by noise.
                 float band = 1.0 - smoothstep(0.6, 0.7, shoreWm);   // a thin line, not a white blob
