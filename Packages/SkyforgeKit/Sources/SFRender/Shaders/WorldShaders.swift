@@ -588,6 +588,14 @@ public enum WorldShaders {
             fieldCov = fieldCoverage(fieldW.x, fieldW.y, in.field, uint(u.ambientGround.w), fieldBand, u.fieldGrid, parcels);
             if (fieldCov > 0.0) {
                 float3 f = fieldFactor(fieldW.x, fieldW.y, fieldFp, uint(u.ambientGround.w), u.skyHorizon.w > 1.5);
+                // Within-field variation (soil moisture, growth): ±9 % brightness at ~55 m and a ±4 % green/red
+                // shift at ~35 m, so a parcel is not one flat tone (art round 19, SkyWorld phone). Outside
+                // fieldFactor, which mirrors the CPU FieldPattern exactly; faded where it would alias.
+                uint fs = uint(u.ambientGround.w);
+                float vFade = saturate(1.0 - fieldFp * 4.0 / 35.0);
+                float nB = fp_noise(fieldW.x / 55.0 + 3.1, fieldW.y / 55.0 - 1.7, fs ^ 0x3Cu);
+                float nH = fp_noise(fieldW.x / 35.0 - 5.3, fieldW.y / 35.0 + 2.2, fs ^ 0xC5u);
+                f *= (1.0 + 0.09 * nB * vFade) * float3(1.0 - 0.04 * nH * vFade, 1.0 + 0.02 * nH * vFade, 1.0);
                 albedo *= 1.0 + (f - 1.0) * fieldCov;
                 float2 rt = fieldRowTilt(fieldW.x, fieldW.y, fieldFp, uint(u.ambientGround.w), u.skyHorizon.w > 1.5) * fieldCov;
                 n = normalize(n + float3(rt, 0.0));

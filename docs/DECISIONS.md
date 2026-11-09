@@ -109,3 +109,12 @@
 - **Stop treating near-ground sharpness as the lever for the review frames.** Sharper ground at this camera needs imagery sharper than ~0.5 m. Within the licence rules (keyless, Apache-compatible, no Bing/MSFS) no such source is reachable from the build environment: the NAIP host is blocked, and OSM is unreachable (ADR-0016).
 - **The remaining levers** are lighting, atmosphere, buildings, trees and the aircraft.
 - **Feasibility:** reaching 8/10 against commercial sims on real-airport frames may not be possible within these constraints. Any round that plateaus will be recorded here with its measurements, not hidden.
+
+## ADR-0020 Independent art review paused until 2026-11-14 (2026-11-09)
+- **Context:** the art-director agent stopped during round 20 on its weekly usage limit (resets 2026-11-14 09:00 UTC). The directive requires an independent scorer, and frames I score myself would not be independent or comparable with rounds 5–19.
+- **Decision:**
+  - Round 20 (the de-lighting structural change) stays unscored until the same reviewer can resume from its saved transcript.
+  - Meanwhile, work continues on the reviewer's outstanding round-19 fixes, each verified only for regressions (crops against the previous frames) and for frame time.
+  - No score is claimed for these rounds.
+  - A fresh reviewer on another model was not started: its scale would not match rounds 5–19, and switching the scorer mid-series would make the 0.2 rule meaningless.
+- **Consequence:** rounds 20+ are logged as "unscored" in VISUAL_LOG and scored together when review resumes.

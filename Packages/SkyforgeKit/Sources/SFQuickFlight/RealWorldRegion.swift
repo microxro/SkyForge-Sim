@@ -453,7 +453,7 @@ public struct RealWorldRegion: FlightWorld {
                 if Hash.unit(rng.next()) > Double(canopy) * 0.9 || g.water > 0.3 { continue }
                 if nearRunway(px, py) || inBuilding(px, py) { continue }
                 let sA = standNoise.fbm(px / 320, py / 320, octaves: 2), sB = standNoise.fbm(px / 210 + 17.3, py / 210 - 9.1, octaves: 2)
-                let coniferShare = 0.12 + 0.76 * Double(ss(-0.22, 0.22, Float(sA)))
+                let coniferShare = 0.10 + 0.80 * Double(ss(-0.08, 0.08, Float(sA)))   // crisp stand edges (round 19: blended into one mass)
                 let h = 9 + 10 * (0.5 * Hash.unit(rng.next()) + 0.5 * Double(ss(-0.4, 0.4, Float(sB))))   // half per stand
                 let conifer = Hash.unit(rng.next()) < coniferShare
                 var tint = g.albedo * 1.9 * Float(0.85 + 0.3 * Hash.unit(rng.next()))
@@ -470,8 +470,9 @@ public struct RealWorldRegion: FlightWorld {
                 tint.x = min(max(tint.x, tint.y * 0.62), tint.y * 0.85)
                 // Brightness ±8 % after the floor (the floor flattened the earlier jitter on dark canopy, round 12).
                 tint *= Float(0.92 + 0.16 * Hash.unit(rng.next()))
-                // Stand tone: conifer stands darker and bluer-green, broadleaf stands lighter.
-                tint *= conifer ? SIMD3<Float>(0.86, 0.90, 0.92) : SIMD3<Float>(1.08, 1.07, 1.0)
+                // Stand tone: conifer stands ~22 % darker and bluer-green, broadleaf stands lighter and yellower
+                // (round 19: 0.86–0.90 against 1.07 did not read as separate stands at review distance).
+                tint *= conifer ? SIMD3<Float>(0.74, 0.80, 0.84) : SIMD3<Float>(1.10, 1.10, 0.94)
                 tint *= Float(0.93 + 0.14 * Double(ss(-0.4, 0.4, Float(sB))))
                 out.append(TreeInstance(position: SIMD3(Float(px), Float(py), Float(height(px, py))), height: Float(h), conifer: conifer, colour: tint))
                 // Paved surroundings: most of the ring 4 m out bright and unsaturated (lots, roads, roofs).

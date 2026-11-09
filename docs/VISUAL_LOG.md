@@ -535,3 +535,15 @@ Round-20 structural change: **photo trees removed under the 3D trees** (`Imagery
    - Water is kept, and closed forest is left alone.
    - Push-pull fills from neighbours.
 5. **KMRY check on the real pack (phone near):** the golf-course trees and their shadows become fairway, with no ovals. 227k of 4.2M pixels changed; the 0.59 m detail layer changed 620k.
+
+## Round 20: de-lighting (b10d6c3 → 7deeb4c, run 42619494239). Unscored.
+- **Reviewer:** stopped on its usage limit before scoring (ADR-0020).
+- **Own regression check:**
+  - KMRY near band: fewer dark photo blobs under the 3D trees; the remaining dark patches are shadow-map shadows.
+  - KBFI near band: unchanged (few trees there).
+  - No ovals, rims or smears seen.
+- **Frame times:** within budget (SkyWorld high 16.16 ms, KMRY high 15.52 ms).
+
+Round-21 batch (the reviewer's round-19 fixes 2 and 5; unscored):
+1. **LSZS stands:** crisp edges (the conifer share is a smoothstep over ±0.08 of the noise, was ±0.22, range 10–90 %); conifer stands ~22 % darker and bluer-green, broadleaf stands lighter and yellower.
+2. **SkyWorld fields:** within-field variation, ±9 % brightness at ~55 m and a ±4 % green/red shift at ~35 m, faded where it would alias. Applied after `fieldFactor`, so the CPU mirror test still holds.
