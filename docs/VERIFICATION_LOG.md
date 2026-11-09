@@ -235,3 +235,5 @@ Method: `FrameTimeTests`, 30 frames after 3 warm-up frames; command-buffer GPU t
 - 2026-11-09 run 42619494239 (7deeb4c; code b10d6c3, photo trees removed under the 3D trees at load): SkyWorld low 10.97 / high 16.16 ms, KMRY low 12.53 / high 15.52 ms; budgets 33.3 / 16.7 ms (p95 noisy on the CI virtual GPU: SkyWorld high 70.8 ms). All CI jobs green.
 - 2026-11-09T23:31:45Z gate fast on Linux x86_64: PASS (HEAD 8b9dc01)
 - 2026-11-09T23:40:50Z gate fast on Linux x86_64: PASS (HEAD 1ea9196)
+- 2026-11-09 run 42721244906 (1ea9196, round-21 batch): **apple job failed**, KMRY high 16.71 ms (SkyWorld high 16.67 ms) against 16.7. Fixed in 3b31ac2: high-tier clouds 22 view steps / 3 light taps (26/4).
+- 2026-11-09 run 42722423559 (3b31ac2): SkyWorld low 13.03 / high 16.24 ms, KMRY low 12.80 / high 16.04 ms; budgets 33.3 / 16.7 ms. All CI jobs green. KASE high cloud crop unchanged by the step cut. Margin on high is ~0.5 ms; CI medians vary ~±1 ms run to run.

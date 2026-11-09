@@ -547,3 +547,4 @@ Round-20 structural change: **photo trees removed under the 3D trees** (`Imagery
 Round-21 batch (the reviewer's round-19 fixes 2 and 5; unscored):
 1. **LSZS stands:** crisp edges (the conifer share is a smoothstep over ±0.08 of the noise, was ±0.22, range 10–90 %); conifer stands ~22 % darker and bluer-green, broadleaf stands lighter and yellower.
 2. **SkyWorld fields:** within-field variation, ±9 % brightness at ~55 m and a ±4 % green/red shift at ~35 m, faded where it would alias. Applied after `fieldFactor`, so the CPU mirror test still holds.
+- Round 21 own check (run 42722423559): the LSZS stands and SkyWorld in-field variation are barely visible at review distance; the high-tier clouds are unchanged by the 22/3 step cut. Unscored (ADR-0020).
