@@ -655,7 +655,7 @@ public enum OSMMeshBuilder {
         let houseLike: Set<String> = ["house", "detached", "semidetached_house", "residential", "bungalow", "farm", "cabin", "terrace"]
         guard shape != nil || houseLike.contains(b.kind) else { return nil }
         guard abs(OSMGeometry.signedArea(ring)) <= 400 else { return nil }
-        func len(_ i: Int) -> Double { simdLength(ring[(i + 1) % 4] - ring[i]) }
+        func len(_ i: Int) -> Double { simdLength(ring[(i + 1) % 4] - ring[i % 4]) }
         // Roughly rectangular: opposite edges within 25 % of each other.
         guard abs(len(0) - len(2)) < 0.25 * max(len(0), len(2)), abs(len(1) - len(3)) < 0.25 * max(len(1), len(3)) else { return nil }
         let first = (len(0) + len(2)) >= (len(1) + len(3)) ? 0 : 1

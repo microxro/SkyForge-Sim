@@ -267,6 +267,10 @@ actor ScriptedOSMTransport: HTTPTransport {
         let sq = OSMMeshBuilder.buildings([OSMBuilding(id: 2, footprint: [SIMD2(0, 0), SIMD2(9, 0), SIMD2(9, 9), SIMD2(0, 9)], heightMetres: 5, kind: "house")]) { _, _ in 0 }
         #expect(sq.normals.allSatisfy { $0.x.isFinite && $0.y.isFinite && $0.z.isFinite })
         #expect(sq.triangleCount == 8 + 4)
+        // Long axis on edges 1/3 (first == 1) indexes every edge modulo 4.
+        let tall: [SIMD2<Double>] = [SIMD2(0, 0), SIMD2(8, 0), SIMD2(8, 12), SIMD2(0, 12)]
+        let hip2 = OSMMeshBuilder.hippedRoof(OSMBuilding(id: 7, footprint: tall, heightMetres: 6, kind: "house"), ring: tall)
+        #expect(hip2?.first == 1 && hip2?.short == 8)
         // Flat-tagged, large, non-house and L-shaped buildings keep flat roofs.
         #expect(OSMMeshBuilder.hippedRoof(OSMBuilding(id: 3, footprint: rect, heightMetres: 6, kind: "house", tags: ["roof:shape": "flat"]), ring: rect) == nil)
         let big = rect.map { $0 * 3 }
