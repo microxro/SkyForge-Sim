@@ -876,9 +876,12 @@ public final class WorldRenderer {
         let viewProj = Self.reversedZProjection(fovY: Float(fovY), aspect: Float(aspect), near: Float(c.near)) * Self.view(forward: fwd, up: upHint)
         let sunAz = Float(atan2(Double(toSun.y), Double(toSun.x)))
         let dims = tables?.key ?? SIMD4(1, 1, 1, 1000)
+        // Diffuse light reflected by the cumulus field (sunlit cloud sides and bases): clear-sky ambient alone
+        // left cloud and tree shadows at ~7 % of full sun; real fair-weather shadows read ~15–20 %.
+        let cloudFill = L.sunColour * max(0, toSun.z) * 0.3 * min(1, max(0, clouds.coverage))
         func uniforms(model: simd_float4x4) -> WorldUniforms {
             WorldUniforms(viewProj: viewProj, model: model, sunDir: SIMD4(toSun, sunAz), sunColour: SIMD4(L.sunColour, L.exposure),
-                          ambientSky: SIMD4(L.ambientSky, dims.w), ambientGround: SIMD4(L.ambientGround, Float(fieldPattern?.seed ?? 0)),
+                          ambientSky: SIMD4(L.ambientSky + cloudFill, dims.w), ambientGround: SIMD4(L.ambientGround, Float(fieldPattern?.seed ?? 0)),
                           skyHorizon: SIMD4(L.skyHorizon, fieldPattern.map { $0.autumn ? 2 : 1 } ?? 0), tableDims: SIMD4(dims.x, dims.y, dims.z, doShadows ? 2 : 0),
                           shadow0: cascades[0], shadow1: cascades[1],
                           cascadeSplits: SIMD4(ShadowCascades.splits[0], ShadowCascades.splits[1],
