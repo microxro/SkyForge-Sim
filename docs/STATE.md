@@ -1,4 +1,4 @@
-LAST_UPDATE: 2026-11-08T23:20:25Z
+LAST_UPDATE: 2026-11-09T02:33:12Z
 
 # SKYFORGE state
 
@@ -15,6 +15,12 @@ Bold Mode (docs/BOLD_MODE.md) is in progress.
   - Art rounds on Metal frames: 3.83, then 4.08. Review frames now 1280×720.
   - 30-minute soak test.
 - Fixed 2026-11-08: broken showcase Metal frames. Causes: (1) the CI GPU assembled real-terrain chunks wrongly with `baseVertex`/`baseInstance`; now absolute indices and buffer offsets (debba5b); (2) imagery grading crushed shadows (41a9679); (3) the colour water classifier flagged shadowed slopes, roofs and asphalt (f9824ad: slope, area and runway filters). Frame-time tests now run alone in their own CI step (873eaf5).
+- 2026-11-09 round-5 batch, pending CI:
+  - Tree LOD: crown-only mesh beyond 650 m and in the outer shadow cascade. SkyWorld desktop has 105k tree instances; high tier was 23.69 ms.
+  - Hipped roofs on small houses.
+  - Cumulus fill only inside cloud shadow.
+  - Display colour grade.
+  - Roof colour averaging.
 - Open:
   - Procedural building fallback where OSM is missing; cascades 3–4; aircraft textures; cockpit textures; cloud self-shadow tiers.
   - Art review of the CI Metal frames (target ≥ 8).
