@@ -376,12 +376,21 @@ public struct RealWorldRegion: FlightWorld {
             return list.contains { OSMGeometry.contains($0, SIMD2(x, y)) }
         }
         let near = ground.near
-        var y = -r
-        while y < r {
-            var x = -r
-            while x < r {
+        // Two foci: the near layer's centre, and the final-approach foreground (the showcase start is a 2 km
+        // final, whose foreground lay outside the first disc and kept flat photo trees, art round 8). Grid
+        // offsets stay relative to the near centre so each cell's random stream is the same either way.
+        let c0 = nearHeights.centre
+        let f1 = runwayThreshold - runwayDirection * 2_000 - c0, r1 = r * 0.6
+        func inDisc(_ x: Double, _ y: Double) -> Bool {
+            x * x + y * y <= r * r || ((x - f1.x) * (x - f1.x) + (y - f1.y) * (y - f1.y)) <= r1 * r1
+        }
+        let lo = SIMD2(min(-r, f1.x - r1), min(-r, f1.y - r1)), hi = SIMD2(max(r, f1.x + r1), max(r, f1.y + r1))
+        var y = (lo.y / cell).rounded(.down) * cell
+        while y < hi.y {
+            var x = (lo.x / cell).rounded(.down) * cell
+            while x < hi.x {
                 defer { x += cell }
-                if x * x + y * y > r * r { continue }
+                if !inDisc(x, y) { continue }
                 var rng = SplitMix64(seed: Hash.int(Int((x / cell).rounded()), Int((y / cell).rounded()), seed: 0x7EE5))
                 let px = nearHeights.centre.x + x + Hash.unit(rng.next()) * cell, py = nearHeights.centre.y + y + Hash.unit(rng.next()) * cell
                 guard let c = near.sample(px, py), let g = ground.ground(px, py) else { continue }
@@ -404,8 +413,11 @@ public struct RealWorldRegion: FlightWorld {
             }
             y += cell
         }
-        let c = SIMD2<Float>(Float(nearHeights.centre.x), Float(nearHeights.centre.y))
-        func d2(_ t: TreeInstance) -> Float { let d = SIMD2(t.position.x, t.position.y) - c; return (d * d).sum() }
+        let c = SIMD2<Float>(Float(c0.x), Float(c0.y)), c1 = c + SIMD2<Float>(Float(f1.x), Float(f1.y))
+        func d2(_ t: TreeInstance) -> Float {
+            let p = SIMD2(t.position.x, t.position.y), a = p - c, b = p - c1
+            return min((a * a).sum(), (b * b).sum())             // thin by distance to the nearer focus
+        }
         out.sort { d2($0) < d2($1) }
         return Self.thin(out, max: detail.maxTrees, d2: d2)
     }
@@ -437,7 +449,9 @@ public struct RealWorldRegion: FlightWorld {
         let across = abs(d.x * runwayDirection.y - d.y * runwayDirection.x)
         if along > -60 && along < runwayLengthMetres + 60 && across < runwayWidthMetres / 2 + 75 { return true }
         let past = along < 0 ? -along : along - runwayLengthMetres
-        return past > 0 && past < 1_500 && across < runwayWidthMetres / 2 + 60 + past * 0.15
+        // Approach-light zone only (900 m): farther out, 9–19 m trees sit well under the 34:1 obstacle
+        // surface (~25 m at 900 m), and the 2 km final's foreground had no trees at all.
+        return past > 0 && past < 900 && across < runwayWidthMetres / 2 + 60 + past * 0.15
     }
 }
 
