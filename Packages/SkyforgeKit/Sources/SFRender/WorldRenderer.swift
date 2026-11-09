@@ -396,7 +396,7 @@ public final class WorldRenderer {
             out.append(PackedTerrainVertex(px: Float(p.x), py: Float(p.y), pz: Float(p.z), nx: q(n.x), ny: q(n.y), nz: q(n.z), nw: bark ? -127 : 127))
         }
         func frustum(_ out: inout [PackedTerrainVertex], z0: Double, r0: Double, z1: Double, r1: Double, sides: Int, bark: Bool,
-                     crown: (centre: Double, radius: Double, height: Double)? = nil) {
+                     crown: (centre: Double, radius: Double, height: Double)? = nil, offset: SIMD2<Double> = .zero) {
             // Crowns use smooth normals so a near crown shades as one rounded mass, not facets (art rounds
             // 5–6). With `crown`, normals are those of the enclosing ellipsoid, continuous across stacked
             // sections (per-section cone slopes left a crease at every ring); otherwise the cone's own slope.
@@ -408,8 +408,9 @@ public final class WorldRenderer {
             }
             for k in 0..<sides {
                 let a0 = Double(k) / Double(sides) * 2 * .pi, a1 = Double(k + 1) / Double(sides) * 2 * .pi
-                let b0 = SIMD3(r0 * cos(a0), r0 * sin(a0), z0), b1 = SIMD3(r0 * cos(a1), r0 * sin(a1), z0)
-                let t0 = SIMD3(r1 * cos(a0), r1 * sin(a0), z1), t1 = SIMD3(r1 * cos(a1), r1 * sin(a1), z1)
+                let o = SIMD3(offset.x, offset.y, 0)
+                let b0 = SIMD3(r0 * cos(a0), r0 * sin(a0), z0) + o, b1 = SIMD3(r0 * cos(a1), r0 * sin(a1), z0) + o
+                let t0 = SIMD3(r1 * cos(a0), r1 * sin(a0), z1) + o, t1 = SIMD3(r1 * cos(a1), r1 * sin(a1), z1) + o
                 if bark {
                     tri(&out, b0, b1, t1, bark: bark)
                     if r1 > 0 { tri(&out, b0, t1, t0, bark: bark) }
@@ -434,14 +435,20 @@ public final class WorldRenderer {
         frustum(&conifer, z0: 0.62, r0: 0.22, z1: 0.82, r1: 0.17, sides: 9, bark: false)
         frustum(&conifer, z0: 0.82, r0: 0.17, z1: 1.0, r1: 0, sides: 9, bark: false)
         frustum(&oak, z0: -0.03, r0: 0.03, z1: 0.4, r1: 0.025, sides: 5, bark: true)
-        // Near broadleaf: 12 sides (drawn only within `treeLODDistance`) so the outline reads round.
+        // Near broadleaf (drawn only within `treeLODDistance`): a 9-sided main crown and two offset 7-sided
+        // lobes, each with its own ellipsoid normals, so a crown reads as clumped foliage rather than one
+        // smooth sphere (art round 14). Crown starts low (0.2) so little trunk shows (round 9).
         let oakCrown = (centre: 0.62, radius: 0.44, height: 0.38)
-        // Crown starts low (0.2) so little trunk shows from approach height (round 9: lollipops).
-        frustum(&oak, z0: 0.2, r0: 0.16, z1: 0.48, r1: 0.42, sides: 12, bark: false, crown: oakCrown)
-        frustum(&oak, z0: 0.48, r0: 0.42, z1: 0.75, r1: 0.36, sides: 12, bark: false, crown: oakCrown)
-        frustum(&oak, z0: 0.75, r0: 0.36, z1: 1.0, r1: 0, sides: 12, bark: false, crown: oakCrown)
+        frustum(&oak, z0: 0.2, r0: 0.16, z1: 0.48, r1: 0.40, sides: 9, bark: false, crown: oakCrown)
+        frustum(&oak, z0: 0.48, r0: 0.40, z1: 0.75, r1: 0.33, sides: 9, bark: false, crown: oakCrown)
+        frustum(&oak, z0: 0.75, r0: 0.33, z1: 0.98, r1: 0, sides: 9, bark: false, crown: oakCrown)
+        for (off, zc, rr) in [(SIMD2(0.24, 0.10), 0.60, 0.25), (SIMD2(-0.16, -0.21), 0.66, 0.23)] {
+            let lobe = (centre: zc, radius: rr, height: rr * 0.95)
+            frustum(&oak, z0: zc - rr * 0.8, r0: rr * 0.45, z1: zc, r1: rr, sides: 7, bark: false, crown: lobe, offset: off)
+            frustum(&oak, z0: zc, r0: rr, z1: zc + rr * 0.95, r1: 0, sides: 7, bark: false, crown: lobe, offset: off)
+        }
         // Distant LOD (beyond `treeLODDistance`, a few pixels tall): crown only, 6 sides, 6–18 triangles
-        // against 55–70, same silhouette height and width.
+        // against 55–97, same silhouette height and width.
         var coniferLow: [PackedTerrainVertex] = [], oakLow: [PackedTerrainVertex] = []
         // 6 sides: from 450 m (the LOD distance since round 11) 4-sided crowns read as diamonds.
         frustum(&coniferLow, z0: 0.4, r0: 0.22, z1: 1.0, r1: 0, sides: 6, bark: false)

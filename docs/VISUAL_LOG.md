@@ -422,3 +422,15 @@ Round-14 work:
    - Lifting each tree's shadow toward the ground colour beside it painted flat grey ovals over neighbouring crowns. That is the same flat-fill failure as the round-5 suppression.
 2. **Lone-tree rule by ground class:** trees on paved surroundings (5 of 8 ring samples bright and unsaturated) need 2 neighbours within 10 m. Elsewhere, 1 within 20 m.
 3. **Water sparkles:** the needle specular lobe only applies where wavelets resolve, capped at 12.
+
+## Bold round 14: 1280×720 Metal frames (1f9312c, run 42590247714)
+Scores: KMRY 6.0, KASE 6.75, KBFI 5.5, LSZS 6.0, NZQN 6.0, SkyWorld 6.0. **Average 6.04 (+0.04).**
+
+Findings:
+- **What worked:** the ground-class lone-tree rule cleared KBFI's lot props and kept KMRY's oaks.
+- **Glints:** the specular cap dims them; they now read as plausible glints.
+- **SkyWorld:** unchanged for seven rounds.
+
+Round-15 batch:
+1. **Multi-lobe crowns:** near broadleaf crowns are a 9-sided main crown plus two offset 7-sided lobes, each with its own ellipsoid normals (97 triangles, against 70). SkyWorld shares the mesh.
+2. **Highlight shoulder:** photo albedo above 0.28 is compressed (0.72 → 0.52), so near-white concrete and roofs no longer blow out.
