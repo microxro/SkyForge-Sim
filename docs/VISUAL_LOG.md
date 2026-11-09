@@ -314,3 +314,23 @@ Round-8 batch, reusing the classifier:
 3. **Aircraft paint.** Albedo is capped at 0.52; at 0.66 it sat at the tone-map shoulder.
 
 Not changed: shadow ambient stays physically based. Ambient is not multiplied by the shadow term; it is the clear-sky irradiance.
+
+## Bold round 8: 1280×720 Metal frames (5c2575c, run 42561292621, all CI green)
+Scores: KMRY 5.5, KASE 6.25, KBFI 4.75, LSZS 5.75, NZQN 5.0, SkyWorld 5.75. **Average 5.50 (+0.25).**
+
+What worked:
+- Dense 3D trees on photo canopy gave the largest real-airport gain since the z17 imagery.
+- The cause of the earlier misses: the 2 km final's foreground lay outside the tree disc, and oak and shaded canopy failed the forest score.
+
+New problems:
+- Crowns are cooler and bluer than the photo canopy.
+- Crowns stand beside their photo trees, so trees and shadows appear twice.
+- Some trees stand on shadowed pavement.
+- The aircraft still renders near 245/255.
+
+Round-9 batch:
+1. Trees snap to the darkest point within 3 m, the photo crown's centre.
+2. Dark-canopy placement requires green ≥ blue.
+3. Crown hue is clamped (blue ≤ 0.75 × green, red 0.65–1.05 × green).
+4. Foliage ambient is 0.7 × a sky/ground mix, standing in for occlusion inside the crown.
+5. Aircraft paint albedo capped at 0.40.

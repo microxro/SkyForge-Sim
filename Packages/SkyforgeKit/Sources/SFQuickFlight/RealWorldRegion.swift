@@ -392,7 +392,17 @@ public struct RealWorldRegion: FlightWorld {
                 defer { x += cell }
                 if !inDisc(x, y) { continue }
                 var rng = SplitMix64(seed: Hash.int(Int((x / cell).rounded()), Int((y / cell).rounded()), seed: 0x7EE5))
-                let px = nearHeights.centre.x + x + Hash.unit(rng.next()) * cell, py = nearHeights.centre.y + y + Hash.unit(rng.next()) * cell
+                var px = nearHeights.centre.x + x + Hash.unit(rng.next()) * cell, py = nearHeights.centre.y + y + Hash.unit(rng.next()) * cell
+                // Snap to the darkest point within ±3 m (the photo crown's centre), so the 3D crown covers its
+                // photo tree instead of standing beside it (art round 8: doubled trees and shadows).
+                func lumAt(_ x: Double, _ y: Double) -> Float? { near.sample(x, y).map { 0.2126 * $0.x + 0.7152 * $0.y + 0.0722 * $0.z } }
+                if var best = lumAt(px, py) {
+                    var bx = px, by = py
+                    for (dx, dy) in [(-3.0, 0.0), (3, 0), (0, -3), (0, 3), (-2.1, -2.1), (2.1, -2.1), (-2.1, 2.1), (2.1, 2.1)] {
+                        if let l = lumAt(px + dx, py + dy), l < best { best = l; bx = px + dx; by = py + dy }
+                    }
+                    px = bx; py = by
+                }
                 guard let c = near.sample(px, py), let g = ground.ground(px, py) else { continue }
                 let lc = LandCover.classify(c)
                 // Canopy: the classifier's forest, or dark crowns that are not redder than green. Oak woodland
@@ -400,7 +410,9 @@ public struct RealWorldRegion: FlightWorld {
                 // and stayed flat photo blobs (art round 7); a 3D crown on each hides the soft photo tree.
                 let l = 0.2126 * c.x + 0.7152 * c.y + 0.0722 * c.z
                 func ss(_ e0: Float, _ e1: Float, _ x: Float) -> Float { let t = max(0, min(1, (x - e0) / (e1 - e0))); return t * t * (3 - 2 * t) }
-                let canopy = max(lc.forest, ss(0.30, 0.15, l) * ss(-0.03, 0.02, c.y - c.x) * (1 - lc.water))
+                // Green at least as strong as blue: a shaded crown stays green-dominant, a shadow on asphalt or a
+                // rail bed turns blue (art round 8: trees on roads and lots at KBFI).
+                let canopy = max(lc.forest, ss(0.30, 0.15, l) * ss(-0.03, 0.02, c.y - c.x) * ss(-0.01, 0.02, c.y - c.z) * (1 - lc.water))
                 if Hash.unit(rng.next()) > Double(canopy) * 0.9 || g.water > 0.3 { continue }
                 if nearRunway(px, py) || inBuilding(px, py) { continue }
                 let h = 9 + Hash.unit(rng.next()) * 10
@@ -409,6 +421,10 @@ public struct RealWorldRegion: FlightWorld {
                 // Foliage albedo floor (hue kept): dark Sentinel-2 forest gave near-black crowns (LSZS).
                 let tl = 0.2126 * tint.x + 0.7152 * tint.y + 0.0722 * tint.z
                 if tl < 0.05 { tint *= 0.05 / max(tl, 0.002) }
+                // Foliage hue range: blue no stronger than 0.75 × green, red 0.65–1.05 × green. Shaded photo
+                // canopy carries the sky's blue, which made 3D crowns cool teal against warm olive (round 8).
+                tint.z = min(tint.z, tint.y * 0.75)
+                tint.x = min(max(tint.x, tint.y * 0.65), tint.y * 1.05)
                 out.append(TreeInstance(position: SIMD3(Float(px), Float(py), Float(height(px, py))), height: Float(h), conifer: conifer, colour: tint))
             }
             y += cell

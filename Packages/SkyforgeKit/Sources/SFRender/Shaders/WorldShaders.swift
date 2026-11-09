@@ -707,12 +707,15 @@ public enum WorldShaders {
         } else if (m == 2.0) {                               // foliage: wrap + back-scatter
             float wrap = max(0.0, ndl * 0.55 + 0.45);
             float back = pow(max(0.0, dot(dir, toSun)), 4.0) * 0.35;
-            col = albedo * (u.sunColour.rgb * (wrap + back) * vis + ambient * 0.85);
+            // Inside a crown much of the sky is hidden by the crown itself: less (and less blue) sky light on
+            // foliage, part of it replaced by light bounced from the ground below (art round 8: blue crowns).
+            float3 foliageAmb = mix(ambient, u.ambientGround.rgb, 0.35) * 0.7;
+            col = albedo * (u.sunColour.rgb * (wrap + back) * vis + foliageAmb);
         } else if (m == 6.0 || m == 5.0) {                   // aircraft paint / glass: GGX
             // Panel seams on the airframe (aircraft-sized local coordinates only, not painted scenery).
             // White paint at ~0.66 albedo sat at the tone-map shoulder in midday sun, so the airframe read as a
-            // flat white ribbon (art round 7); 0.52 keeps it white while its form shading shows.
-            if (m == 6.0) albedo = min(albedo, float3(0.52));
+            // flat white ribbon (art rounds 7–8; 0.52 still rendered ~245/255); 0.40 keeps it white while its form shading shows.
+            if (m == 6.0) albedo = min(albedo, float3(0.40));
             if (m == 6.0 && length(in.local) < 9.0 && dist < 150.0) {
                 // Seams stay subtle (they read as dashed road markings at 0.45 on the chase view, round 7).
                 albedo *= 1.0 - 0.22 * aircraftPanels(in.local, localFp);
