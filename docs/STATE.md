@@ -1,4 +1,4 @@
-LAST_UPDATE: 2026-11-09T09:49:12Z
+LAST_UPDATE: 2026-11-09T12:44:12Z
 
 # SKYFORGE state
 
@@ -39,6 +39,9 @@ Bold Mode (docs/BOLD_MODE.md) is in progress.
   - Round-11 batch (fbb647f), then a frame-time fix (52a48d2) after SkyWorld high reached 17.15 ms.
   - Rounds 11–15: 5.88, 5.92, 6.00, 6.04, 6.04. Round 16 (structural: review frames also at the desktop/high tier): phone 6.04, high 6.08.
   - Round-17 batch (6a66ae6): quarter-resolution cloud reconstruction (high-tier checker), water minimum as an area (false ponds on the desktop layer), highlight knee and grade roll-off, SkyWorld relief.
+  - Rounds 17–19 (phone / high): 6.21 / 6.42, 6.29 / 6.50, 6.42 / 6.71. High-tier KASE 7.25 and SkyWorld 7.0.
+    - What landed: water texture test (false lakes on canopy), Bayer + exact-tent clouds at 1/3 resolution (high now matches phone sharpness), highlight shoulder and shadow toe, forest stands, SkyWorld hills.
+  - Structural change (b10d6c3, phone rounds 18–19 under 0.2): photo trees and their baked shadows removed under the 3D trees (`ImageryDelighting`, push-pull inpainting) on the near, detail and in-flight detail layers.
 - Open:
   - Procedural building fallback where OSM is missing; cascades 3–4; aircraft textures; cockpit textures; cloud self-shadow tiers.
   - Art review of the CI Metal frames (target ≥ 8).
