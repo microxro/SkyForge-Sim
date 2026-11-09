@@ -259,6 +259,38 @@ public enum WorldShaders {
         return lines * saturate(1.0 - fp / 0.05);                     // gone once a pixel spans 5 cm
     }
 
+    // Registration "N417SF" (fictitious) on both rear fuselage sides: 5×7 bitmap glyphs, 30 cm tall
+    // (the US minimum for light aircraft), one row per byte, bit 4 = leftmost column.
+    constant uchar regGlyphs[42] = {
+        0x11, 0x19, 0x15, 0x13, 0x11, 0x11, 0x11,   // N
+        0x02, 0x06, 0x0A, 0x12, 0x1F, 0x02, 0x02,   // 4
+        0x04, 0x0C, 0x04, 0x04, 0x04, 0x04, 0x0E,   // 1
+        0x1F, 0x01, 0x02, 0x04, 0x08, 0x08, 0x08,   // 7
+        0x0F, 0x10, 0x10, 0x0E, 0x01, 0x01, 0x1E,   // S
+        0x1F, 0x10, 0x10, 0x1E, 0x10, 0x10, 0x10 }; // F
+    static float regCell(int cu, int cv) {
+        if (cu < 0 || cv < 0 || cv > 6) return 0.0;
+        int g = cu / 6, col = cu % 6;
+        if (g > 5 || col > 4) return 0.0;
+        return float((regGlyphs[g * 7 + cv] >> (4 - col)) & 1u);
+    }
+    /// Coverage of the registration at body-axes point `L` (x fwd, y right, z down) for a pixel footprint
+    /// `fp` metres: bilinear glyph cells thresholded over one pixel, so edges stay smooth at any distance.
+    static float registrationMark(float3 L, float fp) {
+        const float cell = 0.30 / 7.0, zTop = -0.66, xAft = -2.65, xFwd = xAft + 35.0 * cell;
+        if (abs(L.y) < 0.2) return 0.0;
+        float v = (L.z - zTop) / cell;
+        // Reads left to right from either side: aft-to-forward on the right, forward-to-aft on the left.
+        float u = (L.y > 0.0 ? (L.x - xAft) : (xFwd - L.x)) / cell;
+        if (v < -1.0 || v > 8.0 || u < -1.0 || u > 36.0) return 0.0;
+        float fu = u - 0.5, fv = v - 0.5;
+        int iu = int(floor(fu)), iv = int(floor(fv));
+        float tu = fu - floor(fu), tv = fv - floor(fv);
+        float b = mix(mix(regCell(iu, iv), regCell(iu + 1, iv), tu), mix(regCell(iu, iv + 1), regCell(iu + 1, iv + 1), tu), tv);
+        float aa = max(fp / cell, 0.05);
+        return smoothstep(0.5 - aa, 0.5 + aa, b) * mix(1.0, 0.5, saturate(fp / 0.08));
+    }
+
     static float3 fieldFactor(float x, float y, float footprint, uint seed, bool autumn) {
         const float PU = 110.0, PV = 170.0, HW = 1.2;
         float c = cos(0.35f), s = sin(0.35f);
@@ -587,7 +619,10 @@ public enum WorldShaders {
             col = albedo * (u.sunColour.rgb * (wrap + back) * vis + ambient * 0.85);
         } else if (m == 6.0 || m == 5.0) {                   // aircraft paint / glass: GGX
             // Panel seams on the airframe (aircraft-sized local coordinates only, not painted scenery).
-            if (m == 6.0 && length(in.local) < 9.0 && dist < 150.0) albedo *= 1.0 - 0.45 * aircraftPanels(in.local, localFp);
+            if (m == 6.0 && length(in.local) < 9.0 && dist < 150.0) {
+                albedo *= 1.0 - 0.45 * aircraftPanels(in.local, localFp);
+                albedo = mix(albedo, float3(0.012, 0.014, 0.022), registrationMark(in.local, localFp));
+            }
             float rough = m == 6.0 ? 0.24 : 0.06;   // glossy paint: a visible sun glint
             float3 env = mix(u.ambientGround.rgb, u.skyHorizon.rgb, saturate(reflect(dir, n).z * 0.5 + 0.5));
             col = pbrDielectric(albedo, n, -dir, toSun, rough, u.sunColour.rgb, env, vis) + albedo * ambient * (m == 6.0 ? 1.0 : 0.3);
