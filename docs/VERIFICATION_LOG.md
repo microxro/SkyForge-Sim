@@ -224,3 +224,4 @@ Method: `FrameTimeTests`, 30 frames after 3 warm-up frames; command-buffer GPU t
 - 2026-11-09T09:30:11Z gate fast on Linux x86_64: PASS (HEAD 1aaf2da)
 2026-11-09T09:36:52Z compaction; last commit dd41f05
 - 2026-11-09T09:48:35Z gate fast on Linux x86_64: PASS (HEAD dd41f05)
+- 2026-11-09 run 42596319498 (710cdb7, round-17 batch: 3×3 quarter-res cloud composite, SkyWorld relief): SkyWorld low 12.23 / high 16.23 ms (min 15.17), KMRY low 12.34 / high 15.75 ms; budgets 33.3 / 16.7 ms. All CI jobs green.
