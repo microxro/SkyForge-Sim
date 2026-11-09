@@ -193,3 +193,14 @@ Method: `FrameTimeTests`, 30 frames after 3 warm-up frames; command-buffer GPU t
 - 2026-11-09T02:44:28Z gate fast on Linux x86_64: PASS (HEAD 2650165)
 - 2026-11-09T02:52:53Z gate fast on Linux x86_64: PASS (HEAD ab5c88a)
 - 2026-11-09T03:02:28Z gate fast on Linux x86_64: PASS (HEAD 771f03c)
+- 2026-11-09 CI run 42553332470 (771f03c), all jobs green. GPU frame time (CI virtual GPU):
+
+  | Scene | Tier | Resolution | Median | p95 | Budget |
+  |---|---|---|---|---|---|
+  | SkyWorld | low | 1280×720 | 9.07 ms | 9.43 ms | 33.3 ms |
+  | SkyWorld | high | 1920×1080 | 15.12 ms | 15.25 ms | 16.7 ms |
+  | KMRY | low | 1280×720 | 8.61 ms | 8.98 ms | 33.3 ms |
+  | KMRY | high | 1920×1080 | 11.18 ms | 11.42 ms | 16.7 ms |
+
+  - Gains came from the tree distance LOD and from limiting tree shadows in the outer cascade.
+  - Before (run 42548006250): SkyWorld high 23.69 ms, KMRY high 18.27 ms.

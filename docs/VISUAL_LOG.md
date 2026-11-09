@@ -263,3 +263,23 @@ Same run: the frame-time step failed. SkyWorld high was 17.05 ms (baked approach
 - SkyWorld trees are GPU-instanced and cell-culled (`setTrees`).
 - Hedgerow trees along farmed parcels.
 - Detail-layer and suppression samples run only where used, with explicit gradients.
+
+## Bold round 5: 1280×720 Metal frames (commit ab5c88a, run 42552583206)
+Scores: KMRY 4.5, KASE 6.0, KBFI 4.0, LSZS 5.0, NZQN 5.0, SkyWorld 5.5. **Average 5.00 (+0.08).** This is the second round in a row that gained less than 0.2.
+
+Findings:
+- **What worked:**
+  - The cloud-shadow fill light. LSZS's lower half is 34 → 46/255, and crowns and their shadows now read.
+  - The colour grade.
+  - The SkyWorld hedgerows.
+- **KMRY regressed:** the near ground was posterised.
+  - Cause: photo-tree suppression lifted building and terrain shadows to a flat local average and left hard dark rims.
+  - A numpy prototype on KMRY tiles showed the rims survive feathering, because the partly dark edge pixels stay below the darkness test.
+- **KBFI:** walls derived from the roof turned charcoal.
+- **SkyWorld:** near crowns were faceted, and fields turned lime.
+
+Round-6 batch, a structural change of approach:
+1. Suppression removed. The 3D trees stand on the photo's foliage pixels.
+2. Fallback roofs use the brighter half of their samples. Walls use a stucco/siding palette.
+3. Vibrance spares greens.
+4. Tree crowns get smooth radial normals.
