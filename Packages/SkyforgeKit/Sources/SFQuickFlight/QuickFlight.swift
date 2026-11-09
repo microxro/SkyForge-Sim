@@ -49,12 +49,15 @@ public struct QuickFlightDetail: Sendable, Equatable {
     public var farHalfExtent: Double, farStep: Double
     public var objectRadius: Double
     public var treeDetailRadius: Double
+    /// Cap on instanced trees; farther trees are thinned first (`buildEnvironmentInstanced`).
+    public var maxTrees: Int = 1_000_000
     public static let phone = QuickFlightDetail(nearHalfExtent: 2_000, nearStep: 12, midHalfExtent: 7_000, midStep: 48,
                                                 farHalfExtent: 20_000, farStep: 200, objectRadius: 1_600, treeDetailRadius: 300)
     public static let tablet = QuickFlightDetail(nearHalfExtent: 2_500, nearStep: 9, midHalfExtent: 8_000, midStep: 36,
                                                  farHalfExtent: 24_000, farStep: 160, objectRadius: 2_200, treeDetailRadius: 450)
     public static let desktop = QuickFlightDetail(nearHalfExtent: 3_000, nearStep: 8, midHalfExtent: 9_000, midStep: 32,
-                                                  farHalfExtent: 28_000, farStep: 140, objectRadius: 2_400, treeDetailRadius: 550)
+                                                  farHalfExtent: 28_000, farStep: 140, objectRadius: 2_400, treeDetailRadius: 550,
+                                                  maxTrees: 65_000)   // 105k uncapped kept SkyWorld high at its budget
 }
 
 public struct QuickFlightWorld: FlightWorld {
@@ -123,6 +126,15 @@ public struct QuickFlightWorld: FlightWorld {
         }
         let hedges = hedgerowTrees(b.soup.fieldPattern, foci: foci, radius: r)
         if collectTrees { collected += hedges } else { for t in hedges { b.addTree(t, detail: 1) } }
+        if collectTrees && collected.count > d.maxTrees {
+            // Thin only trees farther than 1 km from both foci, by a stable per-tree hash, to the cap.
+            let nearCount = collected.filter { nearest(SIMD2($0.position.x, $0.position.y)).dist <= 1_000 }.count
+            let keepFar = Double(max(0, d.maxTrees - nearCount)) / Double(max(1, collected.count - nearCount))
+            collected = collected.filter { t in
+                nearest(SIMD2(t.position.x, t.position.y)).dist <= 1_000
+                    || Hash.unit(Hash.int(Int(t.position.x * 4), Int(t.position.y * 4), seed: 0x51C7)) < keepFar
+            }
+        }
         b.addRunway(runway, elevation: runwayElevation)
         b.addAirportKit(runway, elevation: runwayElevation)
         return (b.soup, collected)
