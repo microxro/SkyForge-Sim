@@ -533,6 +533,7 @@ public enum WorldShaders {
         }
         float ndl = dot(n, toSun);
         float vis = toSun.z > -0.05 ? shadowVisibility(u, sm, in.rel, n, dist, max(0.0f, ndl)) : 0.0;
+        float cloudShade = 0.0;                    // fraction of sunlight the cumulus removes here
         if (u.clouds.shape.z > 0.0 && toSun.z > 0.05 && vis > 0.0) {
             // Cloud shadow: optical depth along the sun ray through the cumulus slab (3 samples).
             float3 wp = in.rel + u.cameraLocal.xyz;
@@ -543,9 +544,14 @@ public enum WorldShaders {
                 if (t > 0.0) od += cl_density(wp + toSun * t, u.clouds);
             }
             od *= thick / 3.0 / toSun.z;
-            vis *= max(0.12, exp(-0.35 * od));     // multiple scattering keeps cloud shadows soft, never black
+            float ct = max(0.12, exp(-0.35 * od));  // multiple scattering keeps cloud shadows soft, never black
+            vis *= ct;
+            cloudShade = 1.0 - ct;
         }
         float3 ambient = mix(u.ambientGround.rgb, u.ambientSky.rgb, n.z * 0.5 + 0.5);
+        // Fill light under a cumulus: the cloud's lit sides and base scatter sunlight down into its own
+        // shadow, so it reads ~17 % of full sun (sky ambient alone left it at ~7 %). Sunlit ground gets none.
+        ambient += u.sunColour.rgb * (0.35 * toSun.z * cloudShade);
         float3 col;
         if (m == 1.0) {                                      // water
             // Wind waves: two octaves of slope noise (14 m and 3.5 m), faded by pixel footprint so
