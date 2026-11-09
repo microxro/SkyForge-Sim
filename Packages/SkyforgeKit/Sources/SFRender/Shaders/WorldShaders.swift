@@ -718,6 +718,17 @@ public enum WorldShaders {
             // White paint at ~0.66 albedo sat at the tone-map shoulder in midday sun, so the airframe read as a
             // flat white ribbon (art rounds 7–8; 0.52 still rendered ~245/255); 0.40 keeps it white while its form shading shows.
             if (m == 6.0) albedo = min(albedo, float3(0.40));
+            // Livery seen from the chase camera (above and behind): fin, tailplane tips and a stripe down the
+            // fuselage top in the accent blue, so the airframe is not one white silhouette (art round 10).
+            if (m == 6.0 && length(in.local) < 9.0) {
+                float3 L = in.local;
+                float lv = 0.0;
+                if (L.x < -3.4 && abs(L.y) < 0.12 && L.z < -0.8) lv = 1.0;                                 // fin
+                if (L.x < -3.4 && abs(L.y) > 1.05 && L.z > -0.9 && L.z < -0.4) lv = 1.0;                   // tailplane tips
+                if (L.x > -3.6 && L.x < 1.8 && L.z < -0.9 && abs(L.y) < 0.75)                              // fuselage-top stripe
+                    lv = max(lv, 1.0 - smoothstep(0.07, 0.07 + max(localFp, 0.005), abs(L.y)));
+                albedo = mix(albedo, float3(0.012, 0.05, 0.19), lv);
+            }
             if (m == 6.0 && length(in.local) < 9.0 && dist < 150.0) {
                 // Seams stay subtle (they read as dashed road markings at 0.45 on the chase view, round 7).
                 albedo *= 1.0 - 0.22 * aircraftPanels(in.local, localFp);

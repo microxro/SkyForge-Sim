@@ -353,3 +353,18 @@ Round-10 batch:
 2. **Placement:** dark canopy requires green ≥ blue + 0.015–0.04 and green ≥ 0.9 × red.
 3. **Crown shape:** crowns start at 0.2 of the tree's height, so less trunk shows.
 4. **Aircraft:** occlusion darkens the fuselage's lower curve.
+
+## Bold round 10: 1280×720 Metal frames (8d14b3c, run 42563635349)
+Scores: KMRY 5.75, KASE 6.5, KBFI 5.0, LSZS 5.5, NZQN 5.0, SkyWorld 5.75. **Average 5.58 (+0.04).**
+
+Findings:
+- Under 5 % of pixels changed in five of the six frames.
+- **LSZS saturation:** 18 on screen, against 29 in r8. The cause was the 0.25 saturation floor, which could never act while blue was already clamped to ≤ 0.75 × green.
+- **Tree snapping:** snapping to the darkest point drifted trees onto their own baked shadow.
+- **Aircraft:** shading changes don't show from above and behind.
+
+Round-11 batch:
+1. **Crown colour:** blue ≤ 0.55 × green and red 0.62–0.85 × green, which gives saturation of at least ~0.4. Luminance floor 0.08.
+2. **Snapping:** trees snap to the greenest point instead of the darkest.
+3. **Livery:** accent-blue fin, tailplane tips and fuselage-top stripe.
+4. **Deferred:** SkyWorld relief in view, because of the risk of terrain under the approach.

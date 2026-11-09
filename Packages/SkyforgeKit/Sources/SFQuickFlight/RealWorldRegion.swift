@@ -393,13 +393,19 @@ public struct RealWorldRegion: FlightWorld {
                 if !inDisc(x, y) { continue }
                 var rng = SplitMix64(seed: Hash.int(Int((x / cell).rounded()), Int((y / cell).rounded()), seed: 0x7EE5))
                 var px = nearHeights.centre.x + x + Hash.unit(rng.next()) * cell, py = nearHeights.centre.y + y + Hash.unit(rng.next()) * cell
-                // Snap to the darkest point within ±3 m (the photo crown's centre), so the 3D crown covers its
-                // photo tree instead of standing beside it (art round 8: doubled trees and shadows).
-                func lumAt(_ x: Double, _ y: Double) -> Float? { near.sample(x, y).map { 0.2126 * $0.x + 0.7152 * $0.y + 0.0722 * $0.z } }
-                if var best = lumAt(px, py) {
+                // Snap to the greenest point within ±3 m (the photo crown), so the 3D crown covers its photo tree
+                // instead of standing beside it (art round 8). The darkest point (round 9) drifted onto the
+                // tree's own baked shadow, which is darker but grey-blue (round 10).
+                func greenAt(_ x: Double, _ y: Double) -> Float? {
+                    near.sample(x, y).map { c in
+                        let l = 0.2126 * c.x + 0.7152 * c.y + 0.0722 * c.z
+                        return (c.y - 0.5 * (c.x + c.z)) - max(0, l - 0.30)   // green excess; bright ground loses
+                    }
+                }
+                if var best = greenAt(px, py) {
                     var bx = px, by = py
                     for (dx, dy) in [(-3.0, 0.0), (3, 0), (0, -3), (0, 3), (-2.1, -2.1), (2.1, -2.1), (-2.1, 2.1), (2.1, 2.1)] {
-                        if let l = lumAt(px + dx, py + dy), l < best { best = l; bx = px + dx; by = py + dy }
+                        if let gx = greenAt(px + dx, py + dy), gx > best { best = gx; bx = px + dx; by = py + dy }
                     }
                     px = bx; py = by
                 }
@@ -422,19 +428,13 @@ public struct RealWorldRegion: FlightWorld {
                 var tint = g.albedo * 1.9 * Float(0.85 + 0.3 * Hash.unit(rng.next()))
                 // Foliage albedo floor (hue kept): dark Sentinel-2 forest gave near-black crowns (LSZS).
                 let tl = 0.2126 * tint.x + 0.7152 * tint.y + 0.0722 * tint.z
-                if tl < 0.05 { tint *= 0.05 / max(tl, 0.002) }
-                // Foliage hue range: blue ≤ 0.75 × green, red 0.70–0.90 × green, saturation ≥ 0.25. Shaded photo
-                // canopy carries the sky's blue (cool teal crowns, round 8); red up to 1.05 × green turned
-                // alpine forest khaki (round 9).
-                tint.z = min(tint.z, tint.y * 0.75)
-                tint.x = min(max(tint.x, tint.y * 0.70), tint.y * 0.90)
-                let tmax = max(tint.x, tint.y, tint.z), tmin = min(tint.x, tint.y, tint.z)
-                if tmax > 0, (tmax - tmin) / tmax < 0.25 {
-                    let target = tmax * 0.75                        // stretch the weakest channels away from the max
-                    tint = SIMD3(tint.x == tmax ? tint.x : min(tint.x, target + (tint.x - tmin) * 0.5),
-                                 tint.y == tmax ? tint.y : min(tint.y, target + (tint.y - tmin) * 0.5),
-                                 tint.z == tmax ? tint.z : min(tint.z, target))
-                }
+                if tl < 0.08 { tint *= 0.08 / max(tl, 0.002) }   // (0.05 left dark crowns grey after the tone map)
+                // Foliage hue range in linear albedo: blue ≤ 0.55 × green, red 0.62–0.85 × green, so saturation is
+                // at least ~0.4 and survives the tone map. Shaded photo canopy carries the sky's blue (teal crowns,
+                // round 8); red up to 1.05 × green turned alpine forest khaki (round 9); a 0.25 floor could not
+                // act under the blue clamp and the screen saturation stayed at 18 against 29 (round 10).
+                tint.z = min(tint.z, tint.y * 0.55)
+                tint.x = min(max(tint.x, tint.y * 0.62), tint.y * 0.85)
                 out.append(TreeInstance(position: SIMD3(Float(px), Float(py), Float(height(px, py))), height: Float(h), conifer: conifer, colour: tint))
             }
             y += cell
