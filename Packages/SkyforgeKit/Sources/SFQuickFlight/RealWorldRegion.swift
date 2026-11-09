@@ -361,6 +361,7 @@ public struct RealWorldRegion: FlightWorld {
     /// excluding water, the runway strip and its approach surfaces. Nearest the airfield first.
     public func trees() -> [TreeInstance] {
         var out: [TreeInstance] = []
+        var paved: [Bool] = []
         let r = detail.treeRadius, cell = 7.0
         // OSM footprints by 40 m grid cell, so trees never grow through buildings.
         var footprints: [SIMD2<Int>: [[SIMD2<Double>]]] = [:]
@@ -440,6 +441,15 @@ public struct RealWorldRegion: FlightWorld {
                 // Brightness ±8 % after the floor (the floor flattened the earlier jitter on dark canopy, round 12).
                 tint *= Float(0.92 + 0.16 * Hash.unit(rng.next()))
                 out.append(TreeInstance(position: SIMD3(Float(px), Float(py), Float(height(px, py))), height: Float(h), conifer: conifer, colour: tint))
+                // Paved surroundings: most of the ring 4 m out bright and unsaturated (lots, roads, roofs).
+                var bright = 0
+                for (dx, dy) in [(-4.0, 0.0), (4, 0), (0, -4), (0, 4), (-2.8, -2.8), (2.8, -2.8), (-2.8, 2.8), (2.8, 2.8)] {
+                    guard let q = near.sample(px + dx, py + dy) else { continue }
+                    let ql = 0.2126 * q.x + 0.7152 * q.y + 0.0722 * q.z
+                    let qmax = max(q.x, q.y, q.z), qmin = min(q.x, q.y, q.z)
+                    if ql > 0.35 && (qmax - qmin) / max(qmax, 1e-3) < 0.18 { bright += 1 }
+                }
+                paved.append(bright >= 5)
             }
             y += cell
         }
@@ -448,24 +458,30 @@ public struct RealWorldRegion: FlightWorld {
             let p = SIMD2(t.position.x, t.position.y), a = p - c, b = p - c1
             return min((a * a).sum(), (b * b).sum())             // thin by distance to the nearer focus
         }
+        out = Self.dropLoneTrees(out, paved: paved)
         out.sort { d2($0) < d2($1) }
-        return Self.thin(Self.dropLoneTrees(out), max: detail.maxTrees, d2: d2)
+        return Self.thin(out, max: detail.maxTrees, d2: d2)
     }
 
     /// Keeps trees with at least `minNeighbours` others within `radius` m: real canopy, street rows and park
     /// clusters have neighbours, while a lone tree on a bare lot is usually a dark car or shadow read as a
     /// crown and stood there as a prop (art round 11, KBFI). One within 20 m: suburban oaks stand 10–25 m
     /// apart, and two within 10 m removed half of KMRY's real foreground trees (round 12).
-    static func dropLoneTrees(_ list: [TreeInstance], radius: Float = 20, minNeighbours: Int = 1) -> [TreeInstance] {
+    /// `paved[i]` (optional) marks trees on bright, unsaturated surroundings, which need `pavedNeighbours`
+    /// within `pavedRadius` instead (round 13: the loose rule brought KBFI's lot props back).
+    static func dropLoneTrees(_ list: [TreeInstance], paved: [Bool] = [], radius: Float = 20, minNeighbours: Int = 1,
+                              pavedRadius: Float = 10, pavedNeighbours: Int = 2) -> [TreeInstance] {
         var grid: [SIMD2<Int32>: [Int]] = [:]
         func key(_ t: TreeInstance) -> SIMD2<Int32> { SIMD2(Int32((t.position.x / radius).rounded(.down)), Int32((t.position.y / radius).rounded(.down))) }
         for (i, t) in list.enumerated() { grid[key(t), default: []].append(i) }
         return list.indices.filter { i in
+            let strict = i < paved.count && paved[i]
+            let rr = strict ? pavedRadius : radius, need = strict ? pavedNeighbours : minNeighbours
             let k = key(list[i]); var n = 0
             for dy: Int32 in -1...1 { for dx: Int32 in -1...1 {
                 for j in grid[k &+ SIMD2(dx, dy)] ?? [] where j != i {
                     let d = SIMD2(list[j].position.x - list[i].position.x, list[j].position.y - list[i].position.y)
-                    if (d * d).sum() <= radius * radius { n += 1; if n >= minNeighbours { return true } }
+                    if (d * d).sum() <= rr * rr { n += 1; if n >= need { return true } }
                 }
             } }
             return false

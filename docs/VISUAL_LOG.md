@@ -404,3 +404,21 @@ Round-13 batch:
 3. **Water:**
    - A 60 m swell octave on rotated axes, against visible wavelet tiling.
    - A wider shallows band.
+
+## Bold round 13: 1280×720 Metal frames (135c980, run 42585133971, all green)
+Scores: KMRY 6.0, KASE 6.75, KBFI 5.25, LSZS 6.0, NZQN 6.0, SkyWorld 6.0. **Average 6.00 (+0.08), the first round at 6.**
+
+Findings:
+- **What worked:**
+  - The swell octave makes NZQN read as a real lake.
+  - KMRY's tree density is restored.
+- **Still open:**
+  - KBFI's lot props are back.
+  - Single-pixel water sparkles.
+
+Round-14 work:
+1. **Photo-shadow decals: tried, not shipped.**
+   - The direction estimate (a pooled luminance profile around trees) found clear dips at KMRY (east) and KBFI (northwest), and none at KASE.
+   - Lifting each tree's shadow toward the ground colour beside it painted flat grey ovals over neighbouring crowns. That is the same flat-fill failure as the round-5 suppression.
+2. **Lone-tree rule by ground class:** trees on paved surroundings (5 of 8 ring samples bright and unsaturated) need 2 neighbours within 10 m. Elsewhere, 1 within 20 m.
+3. **Water sparkles:** the needle specular lobe only applies where wavelets resolve, capped at 12.

@@ -698,7 +698,9 @@ public enum WorldShaders {
             float fres = 0.02 + 0.98 * pow(1.0 - cosT, 5.0);
             // Sky gradient in the reflection: horizon colour low, deeper sky colour higher up.
             float3 skyR = mix(u.skyHorizon.rgb, u.ambientSky.rgb * 1.6, saturate(pow(r.z, 0.6)));
-            float glitter = pow(max(0.0, dot(r, toSun)), 900.0) * 60.0 + pow(max(0.0, dot(r, toSun)), 60.0) * 0.6;
+            // The needle lobe only where wavelets resolve, and capped: on sub-pixel wavelets it lit single
+            // pixels (fireflies that flicker in motion, art round 13).
+            float glitter = min(pow(max(0.0, dot(r, toSun)), 900.0) * 60.0 * wNear, 12.0) + pow(max(0.0, dot(r, toSun)), 60.0) * 0.6;
             float3 refl = skyR + u.sunColour.rgb * glitter * vis;
             float3 body = albedo * (ambient * 0.6 + u.sunColour.rgb * max(0.0, toSun.z) * 0.15);
             if (imageryWater) {

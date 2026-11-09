@@ -87,6 +87,10 @@ actor OfflineImageryTransport: HTTPTransport {
         let kept = RealWorldRegion.dropLoneTrees(cluster + suburb + lone)
         #expect(kept.count == cluster.count + suburb.count, "\(kept.count)")
         #expect(!kept.contains { $0.position.x >= 300 })
+        // On paved ground the suburban spacing is not enough: 2 within 10 m are needed.
+        let lot = [t(1000, 0), t(1015, 0)], lotCluster = [t(2000, 0), t(2005, 0), t(2000, 5)]
+        let keptPaved = RealWorldRegion.dropLoneTrees(lot + lotCluster, paved: Array(repeating: true, count: 5))
+        #expect(keptPaved.count == lotCluster.count, "\(keptPaved.count)")
     }
 
     /// A dense 2 km forest capped at 5,000 trees keeps every tree near the centre and still reaches the edge.
