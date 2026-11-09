@@ -132,7 +132,7 @@ public final class WorldRenderer {
     private var trees: (mesh: MTLBuffer, ranges: [(start: Int, count: Int)], instances: MTLBuffer)?
     /// Tree cells nearer than this draw the full mesh; farther cells (and the outer shadow cascades) the
     /// crown-only LOD. 105k SkyWorld desktop trees at full detail cost ~11 ms on the CI GPU.
-    static let treeLODDistance: Float = 450
+    static let treeLODDistance: Float = 350
     /// Within the near shadow cascade, full meshes cast only from cells this close (crown silhouettes in the
     /// shadow map matter near the camera; farther, the LOD crown casts the same blob).
     static let treeShadowFullDistance: Float = 250
@@ -435,22 +435,22 @@ public final class WorldRenderer {
         frustum(&conifer, z0: 0.62, r0: 0.22, z1: 0.82, r1: 0.17, sides: 9, bark: false)
         frustum(&conifer, z0: 0.82, r0: 0.17, z1: 1.0, r1: 0, sides: 9, bark: false)
         frustum(&oak, z0: -0.03, r0: 0.03, z1: 0.4, r1: 0.025, sides: 5, bark: true)
-        // Near broadleaf (drawn only within `treeLODDistance`): a 9-sided main crown and two offset 7-sided
+        // Near broadleaf (drawn only within `treeLODDistance`): an 8-sided main crown and two offset 6-sided
         // lobes, each with its own ellipsoid normals, so a crown reads as clumped foliage rather than one
         // smooth sphere (art round 14). Crown starts low (0.2) so little trunk shows (round 9).
         let oakCrown = (centre: 0.62, radius: 0.44, height: 0.38)
-        frustum(&oak, z0: 0.2, r0: 0.16, z1: 0.48, r1: 0.40, sides: 9, bark: false, crown: oakCrown)
-        frustum(&oak, z0: 0.48, r0: 0.40, z1: 0.75, r1: 0.33, sides: 9, bark: false, crown: oakCrown)
-        frustum(&oak, z0: 0.75, r0: 0.33, z1: 0.98, r1: 0, sides: 9, bark: false, crown: oakCrown)
+        frustum(&oak, z0: 0.2, r0: 0.16, z1: 0.48, r1: 0.40, sides: 8, bark: false, crown: oakCrown)
+        frustum(&oak, z0: 0.48, r0: 0.40, z1: 0.75, r1: 0.33, sides: 8, bark: false, crown: oakCrown)
+        frustum(&oak, z0: 0.75, r0: 0.33, z1: 0.98, r1: 0, sides: 8, bark: false, crown: oakCrown)
         for (off, zc, rr) in [(SIMD2(0.24, 0.10), 0.60, 0.25), (SIMD2(-0.16, -0.21), 0.66, 0.23)] {
             let lobe = (centre: zc, radius: rr, height: rr * 0.95)
-            frustum(&oak, z0: zc - rr * 0.8, r0: rr * 0.45, z1: zc, r1: rr, sides: 7, bark: false, crown: lobe, offset: off)
-            frustum(&oak, z0: zc, r0: rr, z1: zc + rr * 0.95, r1: 0, sides: 7, bark: false, crown: lobe, offset: off)
+            frustum(&oak, z0: zc - rr * 0.8, r0: rr * 0.45, z1: zc, r1: rr, sides: 6, bark: false, crown: lobe, offset: off)
+            frustum(&oak, z0: zc, r0: rr, z1: zc + rr * 0.95, r1: 0, sides: 6, bark: false, crown: lobe, offset: off)
         }
-        // Distant LOD (beyond `treeLODDistance`, a few pixels tall): crown only, 6 sides, 6–18 triangles
-        // against 55–97, same silhouette height and width.
+        // Distant LOD (beyond `treeLODDistance`): crown only, 6 sides, 6–18 triangles
+        // against 55–86, same silhouette height and width.
         var coniferLow: [PackedTerrainVertex] = [], oakLow: [PackedTerrainVertex] = []
-        // 6 sides: from 450 m (the LOD distance since round 11) 4-sided crowns read as diamonds.
+        // 6 sides: from the LOD distance (350 m since round 15) 4-sided crowns read as diamonds.
         frustum(&coniferLow, z0: 0.4, r0: 0.22, z1: 1.0, r1: 0, sides: 6, bark: false)
         frustum(&oakLow, z0: 0.3, r0: 0.4, z1: 0.62, r1: 0.4, sides: 6, bark: false, crown: oakCrown)
         frustum(&oakLow, z0: 0.62, r0: 0.4, z1: 1.0, r1: 0, sides: 6, bark: false, crown: oakCrown)
