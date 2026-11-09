@@ -48,7 +48,7 @@ public struct RealWorldDetail: Sendable, Equatable {
                                                imageryNearSize: 3_072, imageryFarSize: 2_048, treeRadius: 2_400, maxTrees: 90_000,
                                                imageryDetailHalf: 600, imageryDetailSize: 2_048)
     public static let desktop = RealWorldDetail(nearHalf: 3_200, nearStep: 12, midHalf: 12_000, midStep: 48, farHalf: 40_000, farStep: 240,
-                                                imageryNearSize: 4_096, imageryFarSize: 2_048, treeRadius: 3_000, maxTrees: 120_000,
+                                                imageryNearSize: 4_096, imageryFarSize: 2_048, treeRadius: 3_000, maxTrees: 90_000,
                                                 imageryDetailHalf: 800, imageryDetailSize: 4_096)
 }
 

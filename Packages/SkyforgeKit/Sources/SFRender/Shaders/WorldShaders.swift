@@ -61,9 +61,8 @@ public enum WorldShaders {
         float u2 = float((h >> 16) & 0xFFu) / 255.0, u3 = float((h >> 24) & 0xFFu) / 255.0;
         crownW = bark ? 1.0 : 0.8 + 0.45 * u0;
         sz = 0.88 + 0.24 * u1;
-        float lean = (u2 - 0.5) * 0.12, la = u3 * 6.2831853;
         float3 sl = float3(local.x * crownW, local.y * crownW, local.z * sz);
-        sl.xy += float2(cos(la), sin(la)) * lean * local.z;   // lean grows with height
+        sl.xy += (float2(u2, u3) - 0.5) * 0.12 * local.z;      // lean (no trig: this runs per vertex, per pass)
         return sl;
     }
 
