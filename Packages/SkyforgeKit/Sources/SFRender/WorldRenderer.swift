@@ -133,6 +133,8 @@ public final class WorldRenderer {
     /// Tree cells nearer than this draw the full mesh; farther cells (and the outer shadow cascades) the
     /// crown-only LOD. 105k SkyWorld desktop trees at full detail cost ~11 ms on the CI GPU.
     static let treeLODDistance: Float = 650
+    /// Tree cells farther than this cast no shadow into the outer cascade.
+    static let treeShadowDistance: Float = 1_200
 
     /// Vertex range of the tree mesh for a cell: kind 0 conifer / 1 broadleaf, full or LOD.
     private func treeRange(kind: Int, full: Bool) -> (start: Int, count: Int) {
@@ -834,9 +836,14 @@ public final class WorldRenderer {
                     let lp = Self.clipPlanes(cascades[ci] * su.model)
                     let eye = SIMD3<Float>(Float(c.position.x), Float(c.position.y), Float(c.position.z))
                     let lod2 = Self.treeLODDistance * Self.treeLODDistance
+                    let farCast2 = Self.treeShadowDistance * Self.treeShadowDistance
                     for cell in treeCells where Self.boxVisible(lp, cell.min, cell.max) {
+                        let d2 = Self.boxDistance2(eye, cell.min, cell.max)
+                        // The outer cascade (~2 m texels) resolves a tree shadow as a texel or two: only cells
+                        // within `treeShadowDistance` cast into it.
+                        if ci > 0 && d2 > farCast2 { continue }
                         // Full mesh only in the near cascade and near cells; LOD crowns cast the rest.
-                        let range = treeRange(kind: cell.kind, full: ci == 0 && Self.boxDistance2(eye, cell.min, cell.max) < lod2)
+                        let range = treeRange(kind: cell.kind, full: ci == 0 && d2 < lod2)
                         se.setVertexBufferOffset(cell.start * MemoryLayout<PackedTreeInstance>.stride, index: 2)   // not baseInstance (ignored on the CI GPU)
                         se.drawPrimitives(type: .triangle, vertexStart: range.start, vertexCount: range.count, instanceCount: cell.count)
                     }
