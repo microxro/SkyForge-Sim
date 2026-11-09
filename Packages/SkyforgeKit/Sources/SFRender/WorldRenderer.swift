@@ -137,7 +137,7 @@ public final class WorldRenderer {
     /// shadow map matter near the camera; farther, the LOD crown casts the same blob).
     static let treeShadowFullDistance: Float = 250
     /// Tree cells farther than this cast no shadow into the outer cascade.
-    static let treeShadowDistance: Float = 1_200
+    static let treeShadowDistance: Float = 1_000   // 1200 left SkyWorld high ~0.5 ms under budget (run 42722423559); shadows past 1 km are a few pixels
 
     /// Vertex range of the tree mesh for a cell: kind 0 conifer / 1 broadleaf, full or LOD.
     private func treeRange(kind: Int, full: Bool) -> (start: Int, count: Int) {
