@@ -232,3 +232,4 @@ Method: `FrameTimeTests`, 30 frames after 3 warm-up frames; command-buffer GPU t
 - 2026-11-09T10:35:43Z gate fast on Linux x86_64: PASS (HEAD 64c880e)
 - 2026-11-09 run 42602113280 (6fad245, round-19 batch: 1/3-resolution high-tier clouds at 26 steps, 16× anisotropy, forest stands): SkyWorld low 10.00 / high 15.36 ms, KMRY low 11.93 / high 15.59 ms; budgets 33.3 / 16.7 ms. All CI jobs green.
 - 2026-11-09T12:43:34Z gate fast on Linux x86_64: PASS (HEAD b74bca4)
+- 2026-11-09 run 42619494239 (7deeb4c; code b10d6c3, photo trees removed under the 3D trees at load): SkyWorld low 10.97 / high 16.16 ms, KMRY low 12.53 / high 15.52 ms; budgets 33.3 / 16.7 ms (p95 noisy on the CI virtual GPU: SkyWorld high 70.8 ms). All CI jobs green.
