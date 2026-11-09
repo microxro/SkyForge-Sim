@@ -1,9 +1,17 @@
 // SKYFORGE — Apache-2.0
 import Testing
 @testable import SFQuickFlight
+import SFWorldGen
 
 @Suite struct AircraftMeshNormalsTests {
     /// The cockpit view discards back faces by normal, so cabin normals must point out of the fuselage.
+    @Test func hingeSeamsAreLightOnTheRenderedAircraft() {
+        let m = QuickFlightWorld.aircraftMesh()
+        let dark = SFWorldGen.srgb(70, 72, 76), light = SFWorldGen.srgb(150, 152, 152)
+        #expect(!m.albedo.contains(dark), "dark sub-pixel seams alias into dashes at chase distance")
+        #expect(m.albedo.contains(light))
+    }
+
     @Test func cabinNormalsPointOutward() {
         let m = QuickFlightWorld.aircraftMesh()
         var out = 0, inward = 0

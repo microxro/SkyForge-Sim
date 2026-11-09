@@ -173,12 +173,17 @@ public struct QuickFlightWorld: FlightWorld {
         // addAircraft maps NED→ENU; undo it so the mesh stays in body axes (x fwd, y right, z down).
         var soup = TriangleSoup(origin: .zero)
         let s = b.soup
+        // Control-surface hinge gaps (2.4 cm strips) are sub-pixel at chase distance, where dark strips
+        // rasterise as broken dashes (art round 7): here they are a light grey close to the paint, so they
+        // still read up close and average out far away.
+        let seamDark = srgb(70, 72, 76), seamLight = srgb(150, 152, 152)
         for t in 0..<s.triangleCount {
             func body(_ p: SIMD3<Float>) -> SIMD3<Double> { SIMD3(Double(p.y), Double(p.x), Double(-p.z)) }
             // SceneBuilder reversed the winding for its ENU output; keep that order so normals face outward
             // (the cockpit view discards back faces by normal; test `cabinNormalsPointOutward`).
+            let colour = s.albedo[t] == seamDark ? seamLight : s.albedo[t]
             soup.addFlat(body(s.positions[3 * t]), body(s.positions[3 * t + 1]), body(s.positions[3 * t + 2]),
-                         colour: s.albedo[t], material: s.material[t])
+                         colour: colour, material: s.material[t])
         }
         soup.smoothNormals(triangles: 0..<soup.triangleCount)
         return soup
