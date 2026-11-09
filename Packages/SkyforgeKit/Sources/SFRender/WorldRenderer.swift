@@ -389,11 +389,17 @@ public final class WorldRenderer {
         func vert(_ out: inout [PackedTerrainVertex], _ p: SIMD3<Double>, _ n: SIMD3<Double>, bark: Bool) {
             out.append(PackedTerrainVertex(px: Float(p.x), py: Float(p.y), pz: Float(p.z), nx: q(n.x), ny: q(n.y), nz: q(n.z), nw: bark ? -127 : 127))
         }
-        func frustum(_ out: inout [PackedTerrainVertex], z0: Double, r0: Double, z1: Double, r1: Double, sides: Int, bark: Bool) {
-            // Crowns use smooth radial normals (the cone's slope tilts them up), so a near crown shades as a
-            // rounded mass instead of flat facets (art round 5); bark keeps face normals.
+        func frustum(_ out: inout [PackedTerrainVertex], z0: Double, r0: Double, z1: Double, r1: Double, sides: Int, bark: Bool,
+                     crown: (centre: Double, radius: Double, height: Double)? = nil) {
+            // Crowns use smooth normals so a near crown shades as one rounded mass, not facets (art rounds
+            // 5–6). With `crown`, normals are those of the enclosing ellipsoid, continuous across stacked
+            // sections (per-section cone slopes left a crease at every ring); otherwise the cone's own slope.
             let slope = (r0 - r1) / max(z1 - z0, 1e-6)
-            func radial(_ a: Double) -> SIMD3<Double> { normalize(SIMD3(cos(a), sin(a), slope)) }
+            func normalAt(_ a: Double, _ r: Double, _ z: Double) -> SIMD3<Double> {
+                guard let e = crown else { return normalize(SIMD3(cos(a), sin(a), slope)) }
+                let h = max(r, 0.02) / (e.radius * e.radius)
+                return normalize(SIMD3(cos(a) * h, sin(a) * h, (z - e.centre) / (e.height * e.height)))
+            }
             for k in 0..<sides {
                 let a0 = Double(k) / Double(sides) * 2 * .pi, a1 = Double(k + 1) / Double(sides) * 2 * .pi
                 let b0 = SIMD3(r0 * cos(a0), r0 * sin(a0), z0), b1 = SIMD3(r0 * cos(a1), r0 * sin(a1), z0)
@@ -403,31 +409,36 @@ public final class WorldRenderer {
                     if r1 > 0 { tri(&out, b0, t1, t0, bark: bark) }
                     continue
                 }
-                let n0 = radial(a0), n1 = radial(a1)
+                let nb0 = normalAt(a0, r0, z0), nb1 = normalAt(a1, r0, z0)
                 if r1 > 0 {
-                    vert(&out, b0, n0, bark: false); vert(&out, b1, n1, bark: false); vert(&out, t1, n1, bark: false)
-                    vert(&out, b0, n0, bark: false); vert(&out, t1, n1, bark: false); vert(&out, t0, n0, bark: false)
+                    let nt0 = normalAt(a0, r1, z1), nt1 = normalAt(a1, r1, z1)
+                    vert(&out, b0, nb0, bark: false); vert(&out, b1, nb1, bark: false); vert(&out, t1, nt1, bark: false)
+                    vert(&out, b0, nb0, bark: false); vert(&out, t1, nt1, bark: false); vert(&out, t0, nt0, bark: false)
                 } else {
-                    // Apex normal: the facet's mid direction, so the tip neither pinches nor flattens.
-                    vert(&out, b0, n0, bark: false); vert(&out, b1, n1, bark: false); vert(&out, t1, radial((a0 + a1) / 2), bark: false)
+                    // Apex: the facet's mid direction (cone) or straight up (ellipsoid), so the tip neither
+                    // pinches nor flattens.
+                    let apex = crown == nil ? normalAt((a0 + a1) / 2, 0, z1) : SIMD3<Double>(0, 0, 1)
+                    vert(&out, b0, nb0, bark: false); vert(&out, b1, nb1, bark: false); vert(&out, t1, apex, bark: false)
                 }
             }
         }
         var conifer: [PackedTerrainVertex] = [], oak: [PackedTerrainVertex] = []
         frustum(&conifer, z0: -0.03, r0: 0.018, z1: 0.6, r1: 0.012, sides: 5, bark: true)
-        frustum(&conifer, z0: 0.52, r0: 0.12, z1: 0.62, r1: 0.22, sides: 7, bark: false)
-        frustum(&conifer, z0: 0.62, r0: 0.22, z1: 0.82, r1: 0.17, sides: 7, bark: false)
-        frustum(&conifer, z0: 0.82, r0: 0.17, z1: 1.0, r1: 0, sides: 7, bark: false)
+        frustum(&conifer, z0: 0.52, r0: 0.12, z1: 0.62, r1: 0.22, sides: 9, bark: false)
+        frustum(&conifer, z0: 0.62, r0: 0.22, z1: 0.82, r1: 0.17, sides: 9, bark: false)
+        frustum(&conifer, z0: 0.82, r0: 0.17, z1: 1.0, r1: 0, sides: 9, bark: false)
         frustum(&oak, z0: -0.03, r0: 0.03, z1: 0.4, r1: 0.025, sides: 5, bark: true)
-        frustum(&oak, z0: 0.3, r0: 0.18, z1: 0.48, r1: 0.42, sides: 8, bark: false)
-        frustum(&oak, z0: 0.48, r0: 0.42, z1: 0.75, r1: 0.36, sides: 8, bark: false)
-        frustum(&oak, z0: 0.75, r0: 0.36, z1: 1.0, r1: 0, sides: 8, bark: false)
+        // Near broadleaf: 12 sides (drawn only within `treeLODDistance`) so the outline reads round.
+        let oakCrown = (centre: 0.62, radius: 0.44, height: 0.38)
+        frustum(&oak, z0: 0.3, r0: 0.18, z1: 0.48, r1: 0.42, sides: 12, bark: false, crown: oakCrown)
+        frustum(&oak, z0: 0.48, r0: 0.42, z1: 0.75, r1: 0.36, sides: 12, bark: false, crown: oakCrown)
+        frustum(&oak, z0: 0.75, r0: 0.36, z1: 1.0, r1: 0, sides: 12, bark: false, crown: oakCrown)
         // Distant LOD (beyond `treeLODDistance`, a few pixels tall): crown only, 4 sides, 4–12 triangles
-        // against ~45–50, same silhouette height and width.
+        // against 55–70, same silhouette height and width.
         var coniferLow: [PackedTerrainVertex] = [], oakLow: [PackedTerrainVertex] = []
         frustum(&coniferLow, z0: 0.4, r0: 0.22, z1: 1.0, r1: 0, sides: 4, bark: false)
-        frustum(&oakLow, z0: 0.3, r0: 0.4, z1: 0.62, r1: 0.4, sides: 4, bark: false)
-        frustum(&oakLow, z0: 0.62, r0: 0.4, z1: 1.0, r1: 0, sides: 4, bark: false)
+        frustum(&oakLow, z0: 0.3, r0: 0.4, z1: 0.62, r1: 0.4, sides: 4, bark: false, crown: oakCrown)
+        frustum(&oakLow, z0: 0.62, r0: 0.4, z1: 1.0, r1: 0, sides: 4, bark: false, crown: oakCrown)
         return (conifer, oak, coniferLow, oakLow)
     }
 

@@ -291,6 +291,72 @@ public enum WorldShaders {
         return smoothstep(0.5 - aa, 0.5 + aa, b) * mix(1.0, 0.5, saturate(fp / 0.08));
     }
 
+    // Near-ground detail materials for real imagery. Within ~800 m a ~1 m/px photo is magnified to
+    // many pixels per texel, so it carries only low-frequency colour; each photo pixel is classified
+    // (grass, dry grass, bare soil, pavement or roof; canopy and water have their own paths) and the
+    // class supplies the high frequencies: blades and clumps, tufts and streaks, pebbles and clods,
+    // aggregate, patches and cracks. Every octave fades once its cell spans about two pixels.
+    struct GroundClasses { float grass, dry, soil, pave; };
+    static GroundClasses classifyGround(float3 c, float forest) {
+        float hi = max(c.r, max(c.g, c.b)), lo = min(c.r, min(c.g, c.b));
+        float chroma = (hi - lo) / max(hi, 1e-3);            // saturation of the linear photo colour
+        float l = dot(c, float3(0.2126, 0.7152, 0.0722));
+        GroundClasses k;
+        k.grass = smoothstep(0.0, 0.03, c.g - max(c.r, c.b) * 0.92) * (1.0 - forest);
+        k.dry = smoothstep(0.08, 0.25, (c.r - c.b) / max(hi, 1e-3)) * smoothstep(0.02, 0.10, l) * (1.0 - k.grass);
+        k.pave = smoothstep(0.22, 0.10, chroma) * (1.0 - k.grass);
+        k.soil = max(0.0, 1.0 - k.grass - k.dry - k.pave) * (1.0 - forest);
+        float sum = max(1e-3, k.grass + k.dry + k.soil + k.pave);
+        float scale = (1.0 - forest) / sum;
+        k.grass *= scale; k.dry *= scale; k.soil *= scale; k.pave *= scale;
+        return k;
+    }
+    /// Multiplicative albedo detail (mean ≈ 1) and a normal tilt for ground classes `k` at world point `w`
+    /// (metres) with pixel footprint `fp` (metres).
+    static float3 groundMaterial(GroundClasses k, float2 w, float fp, thread float2& tilt) {
+        float o1 = saturate(1.0 - fp / 0.15), o2 = saturate(1.0 - fp / 0.6), o3 = saturate(1.0 - fp / 2.5), o4 = saturate(1.0 - fp / 8.0);
+        float3 f = float3(1.0);
+        tilt = float2(0.0);
+        if (k.grass > 0.01) {
+            float blades = groundNoise(w + 5.3, 0.25) * o1, clumps = groundNoise(w - 9.1, 1.2) * o2, tone = groundNoise(w + 23.0, 6.0) * o4;
+            float3 g = float3(1.0 + 0.16 * blades + 0.15 * clumps);
+            g *= mix(float3(1.0), float3(1.10, 1.03, 0.80), saturate(tone) * 0.6);     // sun-bleached patches
+            g *= mix(float3(1.0), float3(0.86, 1.04, 0.92), saturate(-tone) * 0.6);    // lush patches
+            f += (g - 1.0) * k.grass;
+            float e = 0.3;
+            tilt += float2(groundNoise(w + float2(e, 0) - 9.1, 1.2) - groundNoise(w - float2(e, 0) - 9.1, 1.2),
+                           groundNoise(w + float2(0, e) - 9.1, 1.2) - groundNoise(w - float2(0, e) - 9.1, 1.2)) * (0.35 * o2 * k.grass);
+        }
+        if (k.dry > 0.01) {
+            // Tufts and wind-laid streaks (stretched noise along a slowly turning direction).
+            float a = 0.6 + 1.2 * groundNoise(w + 61.0, 30.0);
+            float2 d = float2(cos(a), sin(a)), sw = float2(dot(w, d) / 3.0, dot(w, float2(-d.y, d.x)) * 2.0);
+            float streak = groundNoise(sw + 13.0, 1.0) * o2, tuft = groundNoise(w - 3.7, 0.4) * o1, bare = groundNoise(w + 44.0, 4.0) * o3;
+            float3 g = float3(1.0 + 0.14 * streak + 0.16 * tuft);
+            g *= mix(float3(1.0), float3(0.90, 0.86, 0.80), saturate(bare) * 0.7);      // thin, earthy patches
+            f += (g - 1.0) * k.dry;
+            float e = 0.15;
+            tilt += float2(groundNoise(w + float2(e, 0) - 3.7, 0.4) - groundNoise(w - float2(e, 0) - 3.7, 0.4),
+                           groundNoise(w + float2(0, e) - 3.7, 0.4) - groundNoise(w - float2(0, e) - 3.7, 0.4)) * (0.25 * o1 * k.dry);
+        }
+        if (k.soil > 0.01) {
+            float pebbles = groundNoise(w + 2.9, 0.12) * o1, clods = groundNoise(w - 17.0, 0.7) * o2, blotch = groundNoise(w + 8.0, 3.5) * o3;
+            float3 g = float3((1.0 + 0.14 * pebbles) * (1.0 + 0.12 * clods) * (1.0 + 0.14 * blotch));
+            g *= mix(float3(1.0), float3(0.92, 0.95, 1.02), saturate(-blotch) * 0.5);   // damp, cooler hollows
+            f += (g - 1.0) * k.soil;
+            float e = 0.25;
+            tilt += float2(groundNoise(w + float2(e, 0) - 17.0, 0.7) - groundNoise(w - float2(e, 0) - 17.0, 0.7),
+                           groundNoise(w + float2(0, e) - 17.0, 0.7) - groundNoise(w - float2(0, e) - 17.0, 0.7)) * (0.30 * o2 * k.soil);
+        }
+        if (k.pave > 0.01) {
+            float agg = groundNoise(w + 7.7, 0.08) * o1, patch = groundNoise(w - 29.0, 5.0) * o4, stain = groundNoise(w + 91.0, 2.2) * o3;
+            float crack = 1.0 - smoothstep(0.0, 0.035 + fp * 0.05, abs(groundNoise(w + 37.0, 7.0))) ;   // thin sealed cracks
+            float g = (1.0 + 0.06 * agg) * (1.0 + 0.08 * patch) * (1.0 - 0.10 * saturate(-stain)) * (1.0 - 0.22 * crack * o3);
+            f += (g - 1.0) * k.pave;
+        }
+        return f;
+    }
+
     static float3 fieldFactor(float x, float y, float footprint, uint seed, bool autumn) {
         const float PU = 110.0, PV = 170.0, HW = 1.2;
         float c = cos(0.35f), s = sin(0.35f);
@@ -417,6 +483,8 @@ public enum WorldShaders {
         bool imageryWater = false;
         float shoreWm = 0.0;                                 // water-mask value (imagery water) for shoreline foam
         float imgForest = 0.0;                               // canopy score of the imagery colour (real terrain)
+        float groundMat = 0.0;                               // weight of the near-ground detail materials
+        float2 groundTilt = float2(0.0);                     // their normal tilt (applied after the normal is final)
         if (m == 8.0) {
             float2 w = in.rel.xy + u.cameraLocal.xy;
             float2 nuv = (w - (u.imageryNear.xy - u.imageryNear.z)) / (2.0 * u.imageryNear.z);
@@ -457,6 +525,15 @@ public enum WorldShaders {
             // Same photo→albedo conversion as SFPreview.ImageryGround (textures are sRGB, so c is linear).
             albedo = pow(max(c, 0.0), 1.12) * 0.72;
             float wm = inNear ? waterMask.sample(imgSampler, nuv).r : 0.0;
+            groundMat = (1.0 - smoothstep(500.0, 800.0, dist)) * (1.0 - saturate((wm - 0.2) / 0.2));
+            if (groundMat > 0.0) {
+                GroundClasses k = classifyGround(c, imgForest);
+                float2 tilt;
+                float fpw = length(dwx) + length(dwy);
+                float3 f = groundMaterial(k, in.rel.xy + u.cameraPos.xy, max(fpw, 1e-3), tilt);
+                albedo *= 1.0 + (f - 1.0) * groundMat;
+                groundTilt = tilt * groundMat;
+            }
             if (saturate((wm - 0.35) / 0.25) > 0.5) { imageryWater = true; albedo *= 0.7; shoreWm = wm; }
             m = imageryWater ? 1.0 : 7.0;
         }
@@ -497,7 +574,7 @@ public enum WorldShaders {
             float2 w = in.rel.xy + u.cameraPos.xy;
             float fp = length(fwidth(w));
             float wFine = saturate(1.0 - fp / 1.0), wMid = saturate(1.0 - fp / 4.0), wDry = saturate(1.0 - fp / 16.0);
-            float fade = (1.0 - dist / (in.material == 8.0 ? 900.0 : 1400.0)) * (1.0 - 0.7 * fieldCov);   // fields carry their own rows
+            float fade = (1.0 - dist / (in.material == 8.0 ? 900.0 : 1400.0)) * (1.0 - 0.7 * fieldCov) * (1.0 - groundMat);   // fields and ground materials carry their own
             float fine = groundNoise(w, 2.0), mid = groundNoise(w + 17.0, 8.0), dry = groundNoise(w - 31.0, 32.0);
             albedo *= 1.0 + (fine * 0.08 * wFine + mid * 0.06 * wMid) * fade;
             albedo *= 1.0 + (float3(1.10, 1.02, 0.80) - 1.0) * (max(0.0, dry) * 0.45 * wDry * fade);
@@ -506,6 +583,7 @@ public enum WorldShaders {
             float gy = groundNoise(w + float2(0, e), 2.0) - groundNoise(w - float2(0, e), 2.0);
             n = normalize(n + float3(-gx, -gy, 0.0) * (0.12 * wFine * fade));
         }
+        if (groundMat > 0.0 && !imageryWater) n = normalize(n + float3(-groundTilt, 0.0));
         if (m == 7.0 && in.material == 7.0 && n.z < 0.9) {
             // Steep ground: fall-line gullies, rock tone variation, scrub and scree (as SFPreview), each
             // octave faded by pixel footprint so big slopes keep detail far away.

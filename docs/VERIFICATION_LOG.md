@@ -204,3 +204,4 @@ Method: `FrameTimeTests`, 30 frames after 3 warm-up frames; command-buffer GPU t
 
   - Gains came from the tree distance LOD and from limiting tree shadows in the outer cascade.
   - Before (run 42548006250): SkyWorld high 23.69 ms, KMRY high 18.27 ms.
+- 2026-11-09T03:14:52Z gate fast on Linux x86_64: PASS (HEAD c769527)
