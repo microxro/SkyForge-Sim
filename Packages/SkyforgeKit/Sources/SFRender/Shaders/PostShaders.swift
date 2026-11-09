@@ -128,7 +128,18 @@ public enum PostShaders {
             float3 b = bloom.sample(fx, in.uv).rgb * bp.p.w;    // p.w = 1 / number of summed levels
             c = mix(c, b, bp.p.z);
         }
-        return float4(pow(post_aces(max(c, 0.0)), float3(1.0 / 2.2)), 1.0);
+        float3 g = pow(post_aces(max(c, 0.0)), float3(1.0 / 2.2));
+        float k = aoStrength.y;                                  // colour grade strength (0 = off)
+        if (k > 0.0) {
+            // Gentle filmic contrast: cubic S around mid-grey, faded out below ~0.25 so shadows keep their
+            // detail (no crushed toe), then vibrance that spares already-saturated colours.
+            float3 s = g + 0.30 * g * (1.0 - g) * (2.0 * g - 1.0) * smoothstep(0.06, 0.25, g);
+            float l = dot(s, float3(0.2126, 0.7152, 0.0722));
+            float sat = max(s.r, max(s.g, s.b)) - min(s.r, min(s.g, s.b));
+            s = l + (s - l) * (1.0 + 0.10 * saturate(1.0 - 2.5 * sat));
+            g = mix(g, saturate(s), k);
+        }
+        return float4(g, 1.0);
     }
 
     static float fx_luma(float3 c) { return dot(c, float3(0.299, 0.587, 0.114)); }

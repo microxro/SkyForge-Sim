@@ -148,6 +148,8 @@ public final class WorldRenderer {
     public var clouds: CloudLayer = .clear
     /// Cloud march steps per ray (device tier knob).
     public var cloudSteps = 64
+    /// Display grade strength (gentle filmic contrast and vibrance after the tone map; 0 = off).
+    public var colourGrade: Float = 1
     /// Cloud self-shadow taps toward the sun per march sample (tier setting).
     public var cloudLightSteps = 6
     /// Cloud march resolution divisor (2 = half resolution).
@@ -739,7 +741,7 @@ public final class WorldRenderer {
             e.setFragmentTexture(bloomTex, index: 1)
             e.setFragmentTexture((ssaoStrength > 0 ? aoTarget : nil) ?? scene, index: 2)
             e.setFragmentBytes(&tp, length: 16, index: 0)
-            var aoS = SIMD4<Float>(ssaoStrength > 0 ? ssaoStrength : 0, 0, 0, 0)
+            var aoS = SIMD4<Float>(ssaoStrength > 0 ? ssaoStrength : 0, colourGrade, 0, 0)
             e.setFragmentBytes(&aoS, length: 16, index: 1)
         }
         if antialiasing {
