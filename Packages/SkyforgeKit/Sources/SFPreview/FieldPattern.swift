@@ -100,6 +100,19 @@ public struct FieldPattern: Sendable, Equatable {
         return SIMD2(Int32((u / Self.parcelU).rounded(.down)), Int32((v / Self.parcelV).rounded(.down)))
     }
 
+    /// Distance (m) from (x, y) to the nearest parcel boundary of the warped grid (where the hedgerows run),
+    /// and the parcel containing the point.
+    public func hedge(_ x: Float, _ y: Float) -> (distance: Float, parcel: SIMD2<Int32>) {
+        let c = cos(Self.angle), s = sin(Self.angle)
+        let wu = Self.noise(x / 420 + 7.3, y / 420, seed ^ 0x51) * 22
+        let wv = Self.noise(x / 420, y / 420 - 9.1, seed ^ 0xA3) * 22
+        let u = c * x + s * y + wu, v = -s * x + c * y + wv
+        let fu = u / Self.parcelU, fv = v / Self.parcelV
+        let du = min(fu - fu.rounded(.down), 1 - (fu - fu.rounded(.down))) * Self.parcelU
+        let dv = min(fv - fv.rounded(.down), 1 - (fv - fv.rounded(.down))) * Self.parcelV
+        return (min(du, dv), SIMD2(Int32(fu.rounded(.down)), Int32(fv.rounded(.down))))
+    }
+
     /// A representative point of a parcel (its unwarped centre; the warp is at most 22 m).
     public func parcelCentre(_ p: SIMD2<Int32>) -> SIMD2<Float> {
         let c = cos(Self.angle), s = sin(Self.angle)

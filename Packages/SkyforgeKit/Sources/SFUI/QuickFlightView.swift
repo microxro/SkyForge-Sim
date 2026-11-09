@@ -112,11 +112,13 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
     private func loadSkyWorld(detail: QuickFlightDetail) {
         let world = QuickFlightWorld()
         Task.detached(priority: .userInitiated) {
-            let soup = world.buildEnvironment(detail: detail)
+            let env = world.buildEnvironmentInstanced(detail: detail)
+            let trees = RealWorldRenderData.trees(env.trees)
             let aircraft = QuickFlightWorld.aircraftMesh()
             await MainActor.run {
                 do {
-                    try self.renderer?.setEnvironment(soup)
+                    try self.renderer?.setEnvironment(env.soup)
+                    try self.renderer?.setTrees(trees)
                     try self.renderer?.setAircraft(aircraft)
                     self.status = .ready
                 } catch { self.status = .failed("Upload: \(error)") }

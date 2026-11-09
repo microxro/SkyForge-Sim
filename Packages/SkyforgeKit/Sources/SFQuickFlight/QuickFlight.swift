@@ -76,8 +76,19 @@ public struct QuickFlightWorld: FlightWorld {
     public func height(_ x: Double, _ y: Double) -> Double { recipe.height(x, y) }
     public var runwayCentre: SIMD2<Double> { runway.threshold + runwayDirection * runway.length / 2 }
 
-    /// Static environment mesh around the airfield (no view culling: the camera moves).
+    /// Static environment mesh around the airfield (no view culling: the camera moves), trees baked in.
     public func buildEnvironment(detail d: QuickFlightDetail, origin: SIMD3<Double>? = nil) -> TriangleSoup {
+        build(detail: d, origin: origin, collectTrees: false).soup
+    }
+
+    /// The environment without trees, plus the trees as a list for GPU instancing (the Metal renderer
+    /// draws and culls them per 400 m cell; baked into the mesh they doubled SkyWorld's shadow cost).
+    public func buildEnvironmentInstanced(detail d: QuickFlightDetail) -> (soup: TriangleSoup, trees: [Tree]) {
+        build(detail: d, origin: nil, collectTrees: true)
+    }
+
+    func build(detail d: QuickFlightDetail, origin: SIMD3<Double>?, collectTrees: Bool) -> (soup: TriangleSoup, trees: [Tree]) {
+        var collected: [Tree] = []
         let focus = runwayCentre
         var b = SceneBuilder(generator: generator, origin: origin ?? SIMD3(focus.x, focus.y, 0))
         b.airfield = runway
@@ -106,13 +117,53 @@ public struct QuickFlightWorld: FlightWorld {
                 for t in chunk.trees {
                     let dist = nearest(SIMD2(t.position.x, t.position.y)).dist
                     if !SceneBuilder.keepTree(t.position, dist: dist, radius: r) { continue }
-                    b.addTree(t, detail: dist < d.treeDetailRadius ? 2 : 1)
+                    if collectTrees { collected.append(t) } else { b.addTree(t, detail: dist < d.treeDetailRadius ? 2 : 1) }
                 }
             }
         }
+        let hedges = hedgerowTrees(b.soup.fieldPattern, foci: foci, radius: r)
+        if collectTrees { collected += hedges } else { for t in hedges { b.addTree(t, detail: 1) } }
         b.addRunway(runway, elevation: runwayElevation)
         b.addAirportKit(runway, elevation: runwayElevation)
-        return b.soup
+        return (b.soup, collected)
+    }
+
+    /// Broadleaf trees along the hedgerows of farmed parcels (every ~9 m with gaps, ~22 % kept), so the
+    /// farmland reads as hedged fields with 3D trees instead of flat paint. Clear of the runway and its
+    /// approach surface.
+    func hedgerowTrees(_ fieldPattern: FieldPattern?, foci: [SIMD2<Double>], radius r: Double) -> [Tree] {
+        var out: [Tree] = []
+        guard let pattern = fieldPattern, let grid = pattern.parcels else { return out }
+        let step = 9.0
+        for f in foci {
+            var y = f.y - r
+            while y < f.y + r {
+                var x = f.x - r
+                while x < f.x + r {
+                    defer { x += step }
+                    let dx = x - f.x, dy = y - f.y, dist = (dx * dx + dy * dy).squareRoot()
+                    if dist > r { continue }
+                    // Each focus covers its own disc; skip points the other focus also covers (no doubles).
+                    if foci.first(where: { g in let e = SIMD2(x, y) - g; return (e * e).sum() < r * r }) != f { continue }
+                    let h = pattern.hedge(Float(x), Float(y))
+                    if h.distance > 2.5 || !grid.isOn(h.parcel) { continue }
+                    let u = Hash.unit(Hash.int(Int(x * 2), Int(y * 2), seed: 0x4ED6))
+                    if u > 0.22 { continue }
+                    // Runway strip and approach: no trees within 150 m of the centreline from 900 m before
+                    // the threshold to the far end.
+                    let q = SIMD2(x, y) - runway.threshold
+                    let along = (q * runwayDirection).sum(), across = abs(q.x * runwayDirection.y - q.y * runwayDirection.x)
+                    if along > -900 && along < runway.length + 300 && across < 150 { continue }
+                    let ht = 9 + Hash.unit(Hash.int(Int(x * 3), Int(y * 3), seed: 0x7A11)) * 7
+                    let tint = Float(0.85 + 0.3 * Hash.unit(Hash.int(Int(y * 3), Int(x * 3), seed: 0x0C01)))
+                    let tree = Tree(position: SIMD3(x, y, height(x, y)), height: ht, crownRadius: ht * 0.32, conifer: false,
+                                    colour: SIMD3<Float>(0.052, 0.078, 0.036) * tint)
+                    if SceneBuilder.keepTree(tree.position, dist: dist, radius: r) { out.append(tree) }
+                }
+                y += step
+            }
+        }
+        return out
     }
 
     /// Aircraft mesh in body axes (x forward, y right, z down), with colours and materials.

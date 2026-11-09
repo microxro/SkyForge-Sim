@@ -48,7 +48,9 @@ import SFPreview
         let session = QuickFlightSession(world: world, start: .final)
         let cam = session.chaseCamera()
         let r = try WorldRenderer(lighting: LightingSetup.physicalPreset(.midday, azimuthDegrees: 200, cameraHeightMetres: cam.position.z))
-        try r.setEnvironment(world.buildEnvironment(detail: .phone))
+        let env = world.buildEnvironmentInstanced(detail: .phone)
+        try r.setEnvironment(env.soup)
+        try r.setTrees(RealWorldRenderData.trees(env.trees))
         try r.setAircraft(QuickFlightWorld.aircraftMesh())
         r.clouds = .fairWeather
         let c = session.bodyToENUColumns

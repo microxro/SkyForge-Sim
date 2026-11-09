@@ -127,9 +127,9 @@ public final class WorldRenderer {
     public var antialiasing = true
     private let fxaaPipeline: MTLRenderPipelineState
     private var sceneTarget: MTLTexture?
-    private var real: (vertices: MTLBuffer, indices: MTLBuffer, draws: [(indexOffset: Int, indexCount: Int, baseVertex: Int, min: SIMD3<Float>, max: SIMD3<Float>)],
-                       treeMesh: MTLBuffer, coniferCount: Int, oakStart: Int, oakCount: Int,
-                       instances: MTLBuffer?, coniferInstances: Int, oakInstances: Int)?
+    private var real: (vertices: MTLBuffer, indices: MTLBuffer, draws: [(indexOffset: Int, indexCount: Int, baseVertex: Int, min: SIMD3<Float>, max: SIMD3<Float>)])?
+    /// Instanced trees (real world and SkyWorld): shared conifer/broadleaf meshes and per-tree instances.
+    private var trees: (mesh: MTLBuffer, coniferCount: Int, oakStart: Int, oakCount: Int, instances: MTLBuffer)?
     /// Tree instances binned into 400 m cells per kind (contiguous ranges), culled per view and cascade.
     private var treeCells: [(kind: Int, start: Int, count: Int, min: SIMD3<Float>, max: SIMD3<Float>)] = []
     /// Tree cells drawn in the last main pass (of `treeCellCount`).
@@ -424,6 +424,39 @@ public final class WorldRenderer {
     /// Centre and half extent of the current detail layer (nil = none).
     public var detailImageryPlacement: (centre: SIMD2<Double>, half: Double)? { imageryDetail.map { ($0.centre, $0.half) } }
 
+    /// Uploads instanced trees, binned by kind and 400 m cell so each cell is one contiguous instance range
+    /// (culled per view and per shadow cascade). An empty list removes them.
+    public func setTrees(_ list: [RealWorldRenderData.Tree]) throws {
+        guard !list.isEmpty else { trees = nil; treeCells = []; return }
+        let meshes = Self.treeMeshes()
+        let treeVerts = meshes.conifer + meshes.oak
+        func cellKey(_ t: RealWorldRenderData.Tree) -> (Int, Int, Int) {
+            (t.conifer ? 0 : 1, Int((t.position.x / 400).rounded(.down)), Int((t.position.y / 400).rounded(.down)))
+        }
+        let sorted = list.sorted { cellKey($0) < cellKey($1) }
+        var cells: [(kind: Int, start: Int, count: Int, min: SIMD3<Float>, max: SIMD3<Float>)] = []
+        for (i, t) in sorted.enumerated() {
+            let k = cellKey(t)
+            let lo = t.position - SIMD3(8, 8, 1), hi = t.position + SIMD3(8, 8, t.height + 1)
+            if let last = cells.last, cellKey(sorted[last.start]) == k {
+                cells[cells.count - 1].count += 1
+                cells[cells.count - 1].min = SIMD3(min(last.min.x, lo.x), min(last.min.y, lo.y), min(last.min.z, lo.z))
+                cells[cells.count - 1].max = SIMD3(max(last.max.x, hi.x), max(last.max.y, hi.y), max(last.max.z, hi.z))
+            } else {
+                cells.append((k.0, i, 1, lo, hi))
+            }
+        }
+        let inst = sorted.map { PackedTreeInstance(px: $0.position.x, py: $0.position.y, pz: $0.position.z, height: $0.height,
+                                                   r: $0.colour.x, g: $0.colour.y, b: $0.colour.z, kind: $0.conifer ? 0 : 1) }
+        precondition(MemoryLayout<PackedTreeInstance>.stride == 32)
+        guard let mb = treeVerts.withUnsafeBytes({ device.makeBuffer(bytes: $0.baseAddress!, length: $0.count, options: .storageModeShared) }),
+              let ib = inst.withUnsafeBytes({ device.makeBuffer(bytes: $0.baseAddress!, length: $0.count, options: .storageModeShared) }) else {
+            throw RendererError.commandQueue
+        }
+        treeCells = cells
+        trees = (mb, meshes.conifer.count, meshes.conifer.count, meshes.oak.count, ib)
+    }
+
     /// Uploads real-world terrain chunks, tree instances and imagery.
     public func setRealWorld(_ data: RealWorldRenderData) throws {
         // OSM buildings and roads use the world mesh pass (culled spatial cells, shadows).
@@ -439,39 +472,15 @@ public final class WorldRenderer {
             // assembled triangles from the wrong vertices (missing foreground, slabs across the sky).
             idx += c.indices.map { $0 + UInt32(base) }
         }
-        let meshes = Self.treeMeshes()
-        let treeVerts = meshes.conifer + meshes.oak
-        // Bin by kind, then 400 m cell, so each cell is one contiguous instance range.
-        func cellKey(_ t: RealWorldRenderData.Tree) -> (Int, Int, Int) {
-            (t.conifer ? 0 : 1, Int((t.position.x / 400).rounded(.down)), Int((t.position.y / 400).rounded(.down)))
-        }
-        let sorted = data.trees.sorted { cellKey($0) < cellKey($1) }
-        var cells: [(kind: Int, start: Int, count: Int, min: SIMD3<Float>, max: SIMD3<Float>)] = []
-        for (i, t) in sorted.enumerated() {
-            let k = cellKey(t)
-            let lo = t.position - SIMD3(8, 8, 1), hi = t.position + SIMD3(8, 8, t.height + 1)
-            if let last = cells.last, cellKey(sorted[last.start]) == k {
-                cells[cells.count - 1].count += 1
-                cells[cells.count - 1].min = SIMD3(min(last.min.x, lo.x), min(last.min.y, lo.y), min(last.min.z, lo.z))
-                cells[cells.count - 1].max = SIMD3(max(last.max.x, hi.x), max(last.max.y, hi.y), max(last.max.z, hi.z))
-            } else {
-                cells.append((k.0, i, 1, lo, hi))
-            }
-        }
-        treeCells = cells
-        let conifers = sorted.filter(\.conifer), oaks = sorted.filter { !$0.conifer }
-        let inst = (conifers + oaks).map { PackedTreeInstance(px: $0.position.x, py: $0.position.y, pz: $0.position.z, height: $0.height,
-                                                               r: $0.colour.x, g: $0.colour.y, b: $0.colour.z, kind: $0.conifer ? 0 : 1) }
         func buf<T>(_ a: [T]) throws -> MTLBuffer {
             guard !a.isEmpty, let b = a.withUnsafeBytes({ device.makeBuffer(bytes: $0.baseAddress!, length: $0.count, options: .storageModeShared) }) else {
                 throw RendererError.commandQueue
             }
             return b
         }
-        precondition(MemoryLayout<PackedTerrainVertex>.stride == 16 && MemoryLayout<PackedTreeInstance>.stride == 32)
-        real = (try buf(verts), try buf(idx), draws.map { (indexOffset: $0.0, indexCount: $0.1, baseVertex: $0.2, min: $0.3, max: $0.4) },
-                try buf(treeVerts), meshes.conifer.count, meshes.conifer.count, meshes.oak.count,
-                inst.isEmpty ? nil : try buf(inst), conifers.count, oaks.count)
+        precondition(MemoryLayout<PackedTerrainVertex>.stride == 16)
+        real = (try buf(verts), try buf(idx), draws.map { (indexOffset: $0.0, indexCount: $0.1, baseVertex: $0.2, min: $0.3, max: $0.4) })
+        try setTrees(data.trees)
         func imageryTexture(_ i: RealWorldRenderData.Imagery) throws -> MTLTexture {
             try Self.imageryTexture(i, device: device, queue: queue).texture
         }
@@ -787,15 +796,20 @@ public final class WorldRenderer {
                         se.drawIndexedPrimitives(type: .triangle, indexCount: d.indexCount, indexType: .uint32, indexBuffer: rw.indices,
                                                  indexBufferOffset: d.indexOffset * 4)
                     }
-                    if let ib = rw.instances {
-                        se.setRenderPipelineState(shadowTreePipeline)
-                        se.setVertexBuffer(rw.treeMesh, offset: 0, index: 0)
-                        se.setVertexBuffer(ib, offset: 0, index: 2)
-                        for cell in treeCells where Self.boxVisible(lp, cell.min, cell.max) {
-                            se.setVertexBufferOffset(cell.start * MemoryLayout<PackedTreeInstance>.stride, index: 2)   // not baseInstance (ignored on the CI GPU)
-                            se.drawPrimitives(type: .triangle, vertexStart: cell.kind == 0 ? 0 : rw.oakStart,
-                                              vertexCount: cell.kind == 0 ? rw.coniferCount : rw.oakCount, instanceCount: cell.count)
-                        }
+                    se.setRenderPipelineState(shadowPipeline)
+                }
+                if let tr = trees {
+                    var su = ShadowUniforms(lightViewProj: cascades[ci], model: Self.translation(-c.position))
+                    se.setRenderPipelineState(shadowTreePipeline)
+                    se.setVertexBytes(&su, length: MemoryLayout<ShadowUniforms>.stride, index: 1)
+                    se.setVertexBuffer(tr.mesh, offset: 0, index: 0)
+                    se.setVertexBuffer(tr.instances, offset: 0, index: 2)
+                    // Only tree cells inside this cascade's light volume can cast into it.
+                    let lp = Self.clipPlanes(cascades[ci] * su.model)
+                    for cell in treeCells where Self.boxVisible(lp, cell.min, cell.max) {
+                        se.setVertexBufferOffset(cell.start * MemoryLayout<PackedTreeInstance>.stride, index: 2)   // not baseInstance (ignored on the CI GPU)
+                        se.drawPrimitives(type: .triangle, vertexStart: cell.kind == 0 ? 0 : tr.oakStart,
+                                          vertexCount: cell.kind == 0 ? tr.coniferCount : tr.oakCount, instanceCount: cell.count)
                     }
                     se.setRenderPipelineState(shadowPipeline)
                 }
@@ -909,19 +923,25 @@ public final class WorldRenderer {
                 drawn += 1
             }
             lastDrawnChunks = drawn
-            if let ib = rw.instances {
-                enc.setRenderPipelineState(treePipeline)
-                enc.setVertexBuffer(rw.treeMesh, offset: 0, index: 0)
-                enc.setVertexBuffer(ib, offset: 0, index: 2)
-                var cellsDrawn = 0
-                for cell in treeCells where Self.boxVisible(planes, cell.min + o, cell.max + o) {
-                    enc.setVertexBufferOffset(cell.start * MemoryLayout<PackedTreeInstance>.stride, index: 2)   // not baseInstance (ignored on the CI GPU)
-                    enc.drawPrimitives(type: .triangle, vertexStart: cell.kind == 0 ? 0 : rw.oakStart,
-                                       vertexCount: cell.kind == 0 ? rw.coniferCount : rw.oakCount, instanceCount: cell.count)
-                    cellsDrawn += 1
-                }
-                lastDrawnTreeCells = cellsDrawn
+            enc.setRenderPipelineState(pipeline)
+        }
+        if let tr = trees {
+            var u = uniforms(model: Self.translation(-c.position))
+            let planes = Self.planes(viewProj)
+            let o = SIMD3<Float>(Float(-c.position.x), Float(-c.position.y), Float(-c.position.z))
+            enc.setRenderPipelineState(treePipeline)
+            enc.setVertexBytes(&u, length: MemoryLayout<WorldUniforms>.stride, index: 1)
+            enc.setFragmentBytes(&u, length: MemoryLayout<WorldUniforms>.stride, index: 1)
+            enc.setVertexBuffer(tr.mesh, offset: 0, index: 0)
+            enc.setVertexBuffer(tr.instances, offset: 0, index: 2)
+            var cellsDrawn = 0
+            for cell in treeCells where Self.boxVisible(planes, cell.min + o, cell.max + o) {
+                enc.setVertexBufferOffset(cell.start * MemoryLayout<PackedTreeInstance>.stride, index: 2)   // not baseInstance (ignored on the CI GPU)
+                enc.drawPrimitives(type: .triangle, vertexStart: cell.kind == 0 ? 0 : tr.oakStart,
+                                   vertexCount: cell.kind == 0 ? tr.coniferCount : tr.oakCount, instanceCount: cell.count)
+                cellsDrawn += 1
             }
+            lastDrawnTreeCells = cellsDrawn
             enc.setRenderPipelineState(pipeline)
         }
         if let a = aircraft, let p = aircraftPosition, let m = aircraftBodyToENU {

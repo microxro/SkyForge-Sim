@@ -77,3 +77,24 @@ import SFPreview
         #expect((SIMD2(toTarget.x, toTarget.y) * Self.world.runwayDirection).sum() > 0)
     }
 }
+
+@Suite struct SkyWorldInstancedTreesTests {
+    @Test func instancedBuildReturnsTreesInsteadOfBakingThem() {
+        let w = QuickFlightWorld()
+        var d = QuickFlightDetail.phone
+        d.objectRadius = 700; d.nearHalfExtent = 500; d.nearStep = 25; d.midHalfExtent = 1_500; d.midStep = 150; d.farHalfExtent = 3_000; d.farStep = 500
+        let baked = w.buildEnvironment(detail: d)
+        let inst = w.buildEnvironmentInstanced(detail: d)
+        #expect(inst.trees.count > 500, "trees \(inst.trees.count)")
+        #expect(inst.soup.triangleCount < baked.triangleCount, "\(inst.soup.triangleCount) vs \(baked.triangleCount)")
+        // Hedgerow trees exist, and none stand on the runway strip or its approach.
+        let hedges = w.hedgerowTrees(inst.soup.fieldPattern, foci: [w.runwayCentre, w.runwayThreshold - w.runwayDirection * 2_600], radius: d.objectRadius)
+        #expect(!hedges.isEmpty)
+        for t in inst.trees {
+            let q = SIMD2(t.position.x, t.position.y) - w.runwayThreshold
+            let along = (q * w.runwayDirection).sum(), across = abs(q.x * w.runwayDirection.y - q.y * w.runwayDirection.x)
+            #expect(!(along > 0 && along < w.runwayLengthMetres && across < 40), "tree on the runway at \(t.position)")
+        }
+        #expect(w.buildEnvironmentInstanced(detail: d).trees == inst.trees, "deterministic")
+    }
+}

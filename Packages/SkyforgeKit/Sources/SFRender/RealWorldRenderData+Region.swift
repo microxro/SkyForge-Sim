@@ -4,6 +4,7 @@
 import SFQuickFlight
 import SFImagery
 import SFPreview
+import SFWorldGen
 
 /// GPU-agnostic description of a real-world region for `WorldRenderer.setRealWorld`.
 public struct RealWorldRenderData: Sendable {
@@ -36,6 +37,12 @@ public struct RealWorldRenderData: Sendable {
 }
 
 extension RealWorldRenderData {
+    /// Procedural (SkyWorld) trees for the instanced tree pass.
+    public static func trees(_ list: [SFWorldGen.Tree]) -> [Tree] {
+        list.map { Tree(position: SIMD3(Float($0.position.x), Float($0.position.y), Float($0.position.z)), height: Float($0.height),
+                        conifer: $0.conifer, colour: $0.colour) }
+    }
+
     /// Terrain chunks, trees, near/far orthoimagery and the smoothed water mask for `region`.
     public init(region: RealWorldRegion, chunkQuads: Int = 48) {
         let chunks = region.terrainChunks(quads: chunkQuads).map {

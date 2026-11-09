@@ -251,3 +251,15 @@ Round-4 batch:
 2. Photo tree and shadow suppression in the near band, where the 3D trees and shadow map take over.
 3. Foliage albedo floor for tree tints.
 4. SkyWorld objects also around the final approach.
+
+## Bold round 4 — 1280×720 Metal frames (2e80968, run 42537244102)
+KMRY 5.0, KASE 6.0, KBFI 4.0, LSZS 4.5, NZQN 5.0, SkyWorld 5.0. **Average 4.92 (+0.09, below 0.2).**
+Findings:
+- Only SkyWorld visibly improved, from the approach-area trees.
+- The LSZS lower half stayed at a mean of 34/255 even with the foliage floor, so lighting or shadow is the cause; a cumulus shadow is suspected.
+- KBFI roofs still pale.
+- A colour grade is estimated at about +0.2, but only after LSZS exposure is fixed and with a gentle toe.
+Same run: the frame-time step failed. SkyWorld high was 17.05 ms (baked approach trees doubled its shadow cost) and KMRY high 17.81 ms (extra imagery samples on every terrain pixel). Fixes:
+- SkyWorld trees are GPU-instanced and cell-culled (`setTrees`).
+- Hedgerow trees along farmed parcels.
+- Detail-layer and suppression samples run only where used, with explicit gradients.

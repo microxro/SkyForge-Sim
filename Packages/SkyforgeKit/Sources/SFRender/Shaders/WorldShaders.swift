@@ -403,26 +403,33 @@ public enum WorldShaders {
             float3 nearC = imgNear.sample(imgSampler, nuv).rgb;
             float3 nb = imgNear.sample(imgSampler, nuv, bias(2.0)).rgb;
             nearC = max(nearC + (nearC - nb) * 0.45, 0.0);
-            // Sharp inner square along the approach (about 1 m/px), feathered over its outer 8 %.
+            // Sharp camera-following square (about 0.6 m/px), feathered over its outer 8 %. Sampled only
+            // inside it, with explicit gradients (safe in the branch): most terrain pixels skip it.
+            float2 dwx = dfdx(w), dwy = dfdy(w);
             float2 duv = (w - (u.imageryDetail.xy - u.imageryDetail.z)) / (2.0 * max(u.imageryDetail.z, 1.0));
             duv.y = 1.0 - duv.y;
-            float3 detC = imgDetail.sample(imgSampler, duv).rgb;
-            float3 db = imgDetail.sample(imgSampler, duv, bias(2.0)).rgb;
-            detC = max(detC + (detC - db) * 0.35, 0.0);
             float edgeD = min(min(duv.x, duv.y), min(1.0 - duv.x, 1.0 - duv.y));
-            float wDet = u.imageryDetail.w > 0.5 ? smoothstep(0.002, 0.08, edgeD) : 0.0;
-            nearC = mix(nearC, detC, wDet);
+            if (u.imageryDetail.w > 0.5 && edgeD > 0.002) {
+                float2 gx = float2(dwx.x, -dwx.y) / (2.0 * u.imageryDetail.z), gy = float2(dwy.x, -dwy.y) / (2.0 * u.imageryDetail.z);
+                float3 detC = imgDetail.sample(imgSampler, duv, gradient2d(gx, gy)).rgb;
+                float3 db = imgDetail.sample(imgSampler, duv, gradient2d(gx * 4.0, gy * 4.0)).rgb;   // two mips up
+                detC = max(detC + (detC - db) * 0.35, 0.0);
+                nearC = mix(nearC, detC, smoothstep(0.002, 0.08, edgeD));
+            }
             float3 c = wNear > 0.0 ? mix(farC, nearC, wNear) : farC;
             // Near band (fading out 300–600 m): photo tree crowns and their baked shadows give way to the
             // 3D trees and the shadow map. Pixels much darker than their surroundings and green or
             // shadow-blue are lifted to the local tone (a coarse mip), so no tree appears twice.
-            float wm0 = waterMask.sample(imgSampler, nuv).r;
-            float sup = (1.0 - smoothstep(300.0, 600.0, dist)) * wNear * (1.0 - saturate((wm0 - 0.2) / 0.2));
-            float3 local = imgNear.sample(imgSampler, nuv, bias(5.0)).rgb;
-            float ll = dot(local, float3(0.2126, 0.7152, 0.0722)), pl = dot(c, float3(0.2126, 0.7152, 0.0722));
-            float darker = saturate((ll * 0.7 - pl) / max(ll * 0.4, 1e-4));
-            float hue = smoothstep(-0.01, 0.02, max(c.g - c.r, c.b - c.r));
-            c = mix(c, local, darker * hue * sup * 0.85);
+            float sup = (1.0 - smoothstep(300.0, 600.0, dist)) * wNear;
+            if (sup > 0.0) {                                   // near band only; explicit LODs (safe in the branch)
+                float wm0 = waterMask.sample(imgSampler, nuv, level(0.0)).r;
+                sup *= 1.0 - saturate((wm0 - 0.2) / 0.2);
+                float3 local = imgNear.sample(imgSampler, nuv, level(5.0)).rgb;
+                float ll = dot(local, float3(0.2126, 0.7152, 0.0722)), pl = dot(c, float3(0.2126, 0.7152, 0.0722));
+                float darker = saturate((ll * 0.7 - pl) / max(ll * 0.4, 1e-4));
+                float hue = smoothstep(-0.01, 0.02, max(c.g - c.r, c.b - c.r));
+                c = mix(c, local, darker * hue * sup * 0.85);
+            }
             float cl = dot(c, float3(0.2126, 0.7152, 0.0722));
             imgForest = smoothstep(0.0, 0.02, c.g - max(c.r, c.b)) * smoothstep(0.10, 0.03, cl);   // dark green canopy
             // Same photo→albedo conversion as SFPreview.ImageryGround (textures are sRGB, so c is linear).
