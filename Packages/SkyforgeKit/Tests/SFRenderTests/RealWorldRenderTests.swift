@@ -60,9 +60,12 @@ actor FixtureImageryTransport: HTTPTransport {
                                aircraftPosition: session.positionENU, aircraftBodyToENU: simd_double3x3(columns: (c.0, c.1, c.2)))
         _ = VisualRegression.check(name: "metal_realworld_320x180", rgb: img, width: w, height: h, goldenDir: goldenDir)
         func px(_ x: Int, _ y: Int) -> SIMD3<Int> { let i = 3 * (y * w + x); return SIMD3(Int(img[i]), Int(img[i + 1]), Int(img[i + 2])) }
-        let top = px(w / 4, 3), bottom = px(w / 4, h - 3)
+        let top = px(w / 4, 3)
         #expect(top.z > top.x, "sky at top is blue: \(top)")
-        #expect(bottom.z < bottom.x || bottom.z < bottom.y, "imagery ground at bottom: \(bottom)")
+        // Ground (imagery, or 3D trees standing on it) along the bottom row, not sky: most pixels are not
+        // blue-dominant (one pixel can be a sky-lit shaded crown).
+        let groundLike = (0..<w).filter { x in let p = px(x, h - 3); return p.z < p.x || p.z < p.y }.count
+        #expect(groundLike > w * 2 / 3, "imagery ground at bottom: \(groundLike)/\(w)")
         #expect(r.lastDrawnChunks > 0 && r.lastDrawnChunks < data.chunks.count,
                 "frustum culling drew \(r.lastDrawnChunks) of \(data.chunks.count) chunks")
         #expect(r.lastDrawnTreeCells > 0 && r.lastDrawnTreeCells <= r.treeCellCount,
