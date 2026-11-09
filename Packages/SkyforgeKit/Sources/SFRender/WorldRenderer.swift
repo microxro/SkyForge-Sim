@@ -132,7 +132,10 @@ public final class WorldRenderer {
     private var trees: (mesh: MTLBuffer, ranges: [(start: Int, count: Int)], instances: MTLBuffer)?
     /// Tree cells nearer than this draw the full mesh; farther cells (and the outer shadow cascades) the
     /// crown-only LOD. 105k SkyWorld desktop trees at full detail cost ~11 ms on the CI GPU.
-    static let treeLODDistance: Float = 650
+    static let treeLODDistance: Float = 450
+    /// Within the near shadow cascade, full meshes cast only from cells this close (crown silhouettes in the
+    /// shadow map matter near the camera; farther, the LOD crown casts the same blob).
+    static let treeShadowFullDistance: Float = 250
     /// Tree cells farther than this cast no shadow into the outer cascade.
     static let treeShadowDistance: Float = 1_200
 
@@ -434,12 +437,13 @@ public final class WorldRenderer {
         frustum(&oak, z0: 0.2, r0: 0.16, z1: 0.48, r1: 0.42, sides: 12, bark: false, crown: oakCrown)
         frustum(&oak, z0: 0.48, r0: 0.42, z1: 0.75, r1: 0.36, sides: 12, bark: false, crown: oakCrown)
         frustum(&oak, z0: 0.75, r0: 0.36, z1: 1.0, r1: 0, sides: 12, bark: false, crown: oakCrown)
-        // Distant LOD (beyond `treeLODDistance`, a few pixels tall): crown only, 4 sides, 4–12 triangles
+        // Distant LOD (beyond `treeLODDistance`, a few pixels tall): crown only, 6 sides, 6–18 triangles
         // against 55–70, same silhouette height and width.
         var coniferLow: [PackedTerrainVertex] = [], oakLow: [PackedTerrainVertex] = []
-        frustum(&coniferLow, z0: 0.4, r0: 0.22, z1: 1.0, r1: 0, sides: 4, bark: false)
-        frustum(&oakLow, z0: 0.3, r0: 0.4, z1: 0.62, r1: 0.4, sides: 4, bark: false, crown: oakCrown)
-        frustum(&oakLow, z0: 0.62, r0: 0.4, z1: 1.0, r1: 0, sides: 4, bark: false, crown: oakCrown)
+        // 6 sides: from 450 m (the LOD distance since round 11) 4-sided crowns read as diamonds.
+        frustum(&coniferLow, z0: 0.4, r0: 0.22, z1: 1.0, r1: 0, sides: 6, bark: false)
+        frustum(&oakLow, z0: 0.3, r0: 0.4, z1: 0.62, r1: 0.4, sides: 6, bark: false, crown: oakCrown)
+        frustum(&oakLow, z0: 0.62, r0: 0.4, z1: 1.0, r1: 0, sides: 6, bark: false, crown: oakCrown)
         return (conifer, oak, coniferLow, oakLow)
     }
 
@@ -865,7 +869,6 @@ public final class WorldRenderer {
                     // Only tree cells inside this cascade's light volume can cast into it.
                     let lp = Self.clipPlanes(cascades[ci] * su.model)
                     let eye = SIMD3<Float>(Float(c.position.x), Float(c.position.y), Float(c.position.z))
-                    let lod2 = Self.treeLODDistance * Self.treeLODDistance
                     let farCast2 = Self.treeShadowDistance * Self.treeShadowDistance
                     for cell in treeCells where Self.boxVisible(lp, cell.min, cell.max) {
                         let d2 = Self.boxDistance2(eye, cell.min, cell.max)
@@ -873,7 +876,7 @@ public final class WorldRenderer {
                         // within `treeShadowDistance` cast into it.
                         if ci > 0 && d2 > farCast2 { continue }
                         // Full mesh only in the near cascade and near cells; LOD crowns cast the rest.
-                        let range = treeRange(kind: cell.kind, full: ci == 0 && d2 < lod2)
+                        let range = treeRange(kind: cell.kind, full: ci == 0 && d2 < Self.treeShadowFullDistance * Self.treeShadowFullDistance)
                         se.setVertexBufferOffset(cell.start * MemoryLayout<PackedTreeInstance>.stride, index: 2)   // not baseInstance (ignored on the CI GPU)
                         se.drawPrimitives(type: .triangle, vertexStart: range.start, vertexCount: range.count, instanceCount: cell.count)
                     }
