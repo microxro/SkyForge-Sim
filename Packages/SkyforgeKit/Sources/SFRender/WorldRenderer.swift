@@ -386,13 +386,31 @@ public final class WorldRenderer {
             let n = normalize(cross(b - a, c - a))
             for p in [a, b, c] { out.append(PackedTerrainVertex(px: Float(p.x), py: Float(p.y), pz: Float(p.z), nx: q(n.x), ny: q(n.y), nz: q(n.z), nw: bark ? -127 : 127)) }
         }
+        func vert(_ out: inout [PackedTerrainVertex], _ p: SIMD3<Double>, _ n: SIMD3<Double>, bark: Bool) {
+            out.append(PackedTerrainVertex(px: Float(p.x), py: Float(p.y), pz: Float(p.z), nx: q(n.x), ny: q(n.y), nz: q(n.z), nw: bark ? -127 : 127))
+        }
         func frustum(_ out: inout [PackedTerrainVertex], z0: Double, r0: Double, z1: Double, r1: Double, sides: Int, bark: Bool) {
+            // Crowns use smooth radial normals (the cone's slope tilts them up), so a near crown shades as a
+            // rounded mass instead of flat facets (art round 5); bark keeps face normals.
+            let slope = (r0 - r1) / max(z1 - z0, 1e-6)
+            func radial(_ a: Double) -> SIMD3<Double> { normalize(SIMD3(cos(a), sin(a), slope)) }
             for k in 0..<sides {
                 let a0 = Double(k) / Double(sides) * 2 * .pi, a1 = Double(k + 1) / Double(sides) * 2 * .pi
                 let b0 = SIMD3(r0 * cos(a0), r0 * sin(a0), z0), b1 = SIMD3(r0 * cos(a1), r0 * sin(a1), z0)
                 let t0 = SIMD3(r1 * cos(a0), r1 * sin(a0), z1), t1 = SIMD3(r1 * cos(a1), r1 * sin(a1), z1)
-                tri(&out, b0, b1, t1, bark: bark)
-                if r1 > 0 { tri(&out, b0, t1, t0, bark: bark) }
+                if bark {
+                    tri(&out, b0, b1, t1, bark: bark)
+                    if r1 > 0 { tri(&out, b0, t1, t0, bark: bark) }
+                    continue
+                }
+                let n0 = radial(a0), n1 = radial(a1)
+                if r1 > 0 {
+                    vert(&out, b0, n0, bark: false); vert(&out, b1, n1, bark: false); vert(&out, t1, n1, bark: false)
+                    vert(&out, b0, n0, bark: false); vert(&out, t1, n1, bark: false); vert(&out, t0, n0, bark: false)
+                } else {
+                    // Apex normal: the facet's mid direction, so the tip neither pinches nor flattens.
+                    vert(&out, b0, n0, bark: false); vert(&out, b1, n1, bark: false); vert(&out, t1, radial((a0 + a1) / 2), bark: false)
+                }
             }
         }
         var conifer: [PackedTerrainVertex] = [], oak: [PackedTerrainVertex] = []

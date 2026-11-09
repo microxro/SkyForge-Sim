@@ -202,12 +202,12 @@ public struct RealWorldRegion: FlightWorld {
                 if let g = ground.ground(px, py), g.water > 0.2 { continue }        // the renderer's smoothed water mask
                 if apronOrRunway(px, py) { continue }
                 // 5 × 5 samples at 3 m: contrast, darkest value, structure tensor.
-                var sum: Float = 0, sq: Float = 0, darkest: Float = 1, n: Float = 0, rgb = SIMD3<Float>.zero
+                var sum: Float = 0, sq: Float = 0, darkest: Float = 1, n: Float = 0, roofSamples: [SIMD3<Float>] = []
                 var jxx: Float = 0, jyy: Float = 0, jxy: Float = 0
                 for j in -2...2 { for i in -2...2 {
                     guard let s = near.sample(px + Double(i) * 3, py + Double(j) * 3) else { continue }
                     let l = lum(s); sum += l; sq += l * l; darkest = min(darkest, l); n += 1
-                    if abs(i) <= 1 && abs(j) <= 1 { rgb += s }                     // the 9 m around the roof centre
+                    if abs(i) <= 1 && abs(j) <= 1 { roofSamples.append(s) }        // the 9 m around the roof centre
                     if let sx = near.sample(px + Double(i) * 3 + 1.5, py + Double(j) * 3),
                        let sy = near.sample(px + Double(i) * 3, py + Double(j) * 3 + 1.5) {
                         let gx = lum(sx) - l, gy = lum(sy) - l
@@ -225,12 +225,18 @@ public struct RealWorldRegion: FlightWorld {
                 let fp = [(-hx, -hy), (hx, -hy), (hx, hy), (-hx, hy)].map { SIMD2(cx + ch * $0.0 - sh * $0.1, cy + sh * $0.0 + ch * $0.1) }
                 // Roof: the same photo→albedo conversion as the terrain (ImageryGround), so a roof is exactly
                 // as bright as the photo around it (×0.9 made every box read 25 % paler than the ground).
-                let rc = rgb / 9                                                   // photo roof colour, not one pixel
-                let roof = SIMD3(powf(powf(rc.x, 2.2), 1.12), powf(powf(rc.y, 2.2), 1.12), powf(powf(rc.z, 2.2), 1.12)) * 0.72
-                // Walls: the photo's colour, desaturated and darker than the roof (not a bright fixed palette,
-                // which read as untextured boxes against the photo).
-                let grey = (roof.x + roof.y + roof.z) / 3
-                let wall = (roof + (SIMD3(repeating: grey) - roof) * 0.5) * 0.7 + SIMD3(0.02, 0.019, 0.017)
+                // Photo roof colour: the brighter half of the 3 × 3 samples, so the building's own cast shadow
+                // and the asphalt around it do not darken the roof (a plain mean gave charcoal roofs, round 5).
+                let lit = roofSamples.sorted { lum($0) > lum($1) }.prefix(max(1, (roofSamples.count + 1) / 2))
+                let rc = lit.reduce(SIMD3<Float>.zero, +) / Float(lit.count)
+                var roof = SIMD3(powf(powf(rc.x, 2.2), 1.12), powf(powf(rc.y, 2.2), 1.12), powf(powf(rc.z, 2.2), 1.12)) * 0.72
+                if lum(roof) < 0.08 { roof *= 0.08 / max(lum(roof), 0.004) }       // asphalt-shingle floor
+                // Walls: painted stucco, siding or concrete (linear albedo 0.30–0.48) with a little of the
+                // roof's hue. Walls derived from the roof read as charcoal boxes (round 5).
+                let palette: [SIMD3<Float>] = [SIMD3(0.46, 0.42, 0.35), SIMD3(0.40, 0.40, 0.38), SIMD3(0.48, 0.46, 0.43),
+                                               SIMD3(0.38, 0.32, 0.25), SIMD3(0.34, 0.36, 0.37)]
+                let base = palette[Int(rng.next() % UInt64(palette.count))]
+                let wall = base * (1 + (roof / max(lum(roof), 0.01) - 1) * 0.15)
                 out.append(OSMBuilding(id: -Int64(out.count + 1), footprint: fp, heightMetres: 4.5 + Hash.unit(rng.next()) * 3.5,
                                        kind: "house", roofColour: roof, wallColour: wall, tags: ["source": "procedural fallback"]))
             }

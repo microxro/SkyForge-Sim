@@ -449,19 +449,9 @@ public enum WorldShaders {
                 nearC = mix(nearC, detC, smoothstep(0.002, 0.08, edgeD));
             }
             float3 c = wNear > 0.0 ? mix(farC, nearC, wNear) : farC;
-            // Near band (fading out 300–600 m): photo tree crowns and their baked shadows give way to the
-            // 3D trees and the shadow map. Pixels much darker than their surroundings and green or
-            // shadow-blue are lifted to the local tone (a coarse mip), so no tree appears twice.
-            float sup = (1.0 - smoothstep(300.0, 600.0, dist)) * wNear;
-            if (sup > 0.0) {                                   // near band only; explicit LODs (safe in the branch)
-                float wm0 = waterMask.sample(imgSampler, nuv, level(0.0)).r;
-                sup *= 1.0 - saturate((wm0 - 0.2) / 0.2);
-                float3 local = imgNear.sample(imgSampler, nuv, level(5.0)).rgb;
-                float ll = dot(local, float3(0.2126, 0.7152, 0.0722)), pl = dot(c, float3(0.2126, 0.7152, 0.0722));
-                float darker = saturate((ll * 0.7 - pl) / max(ll * 0.4, 1e-4));
-                float hue = smoothstep(-0.01, 0.02, max(c.g - c.r, c.b - c.r));
-                c = mix(c, local, darker * hue * sup * 0.85);
-            }
+            // (No photo-tree suppression: lifting dark pixels to a local average also lifted building and
+            // terrain shadows and left hard dark rims; art round 5 scored it a regression. The 3D trees
+            // stand on the photo's foliage pixels instead, so the photo crown sits under its 3D tree.)
             float cl = dot(c, float3(0.2126, 0.7152, 0.0722));
             imgForest = smoothstep(0.0, 0.02, c.g - max(c.r, c.b)) * smoothstep(0.10, 0.03, cl);   // dark green canopy
             // Same photo→albedo conversion as SFPreview.ImageryGround (textures are sRGB, so c is linear).

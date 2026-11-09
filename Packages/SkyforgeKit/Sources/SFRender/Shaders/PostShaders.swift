@@ -136,7 +136,10 @@ public enum PostShaders {
             float3 s = g + 0.30 * g * (1.0 - g) * (2.0 * g - 1.0) * smoothstep(0.06, 0.25, g);
             float l = dot(s, float3(0.2126, 0.7152, 0.0722));
             float sat = max(s.r, max(s.g, s.b)) - min(s.r, min(s.g, s.b));
-            s = l + (s - l) * (1.0 + 0.10 * saturate(1.0 - 2.5 * sat));
+            // Greens get none: grass and crops already sit near the saturation the eye accepts (SkyWorld
+            // fields turned lime with it).
+            float greenness = saturate((s.g - max(s.r, s.b)) * 8.0);
+            s = l + (s - l) * (1.0 + 0.10 * saturate(1.0 - 2.5 * sat) * (1.0 - greenness));
             g = mix(g, saturate(s), k);
         }
         return float4(g, 1.0);
