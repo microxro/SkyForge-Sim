@@ -300,3 +300,17 @@ Round-7 batch, structural (b7affb8):
   - soil
   - pavement/roof
 - **Tree crowns.** Near broadleaf crowns get 12 sides and ellipsoid normals.
+
+## Bold round 7: 1280×720 Metal frames (499eca0, run 42557478493)
+Scores: KMRY 5.0, KASE 6.0, KBFI 4.5, LSZS 5.25, NZQN 5.0, SkyWorld 5.75. **Average 5.25 (+0.08).**
+
+Findings:
+- **What worked:** smooth SkyWorld crowns, the LSZS forest-floor floor, and the hinge dashes are gone.
+- **Accepted by the art director:** ground softness at this camera is in the photo, not magnification (ADR-0019).
+
+Round-8 batch, reusing the classifier:
+1. **Canopy trees.** 3D trees are placed on dark crowns that are not redder than green. Oak and shaded crowns had missed the forest score.
+2. **Crown shapes.** Per-instance crown width, squash and lean, shared by the main and shadow passes.
+3. **Aircraft paint.** Albedo is capped at 0.52; at 0.66 it sat at the tone-map shoulder.
+
+Not changed: shadow ambient stays physically based. Ambient is not multiplied by the shadow term; it is the clear-sky irradiance.

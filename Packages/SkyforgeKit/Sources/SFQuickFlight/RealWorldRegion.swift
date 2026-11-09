@@ -386,7 +386,13 @@ public struct RealWorldRegion: FlightWorld {
                 let px = nearHeights.centre.x + x + Hash.unit(rng.next()) * cell, py = nearHeights.centre.y + y + Hash.unit(rng.next()) * cell
                 guard let c = near.sample(px, py), let g = ground.ground(px, py) else { continue }
                 let lc = LandCover.classify(c)
-                if Hash.unit(rng.next()) > Double(lc.forest) * 0.9 || g.water > 0.3 { continue }
+                // Canopy: the classifier's forest, or dark crowns that are not redder than green. Oak woodland
+                // and shaded crowns photograph grey- or blue-green, below the forest score's green margin,
+                // and stayed flat photo blobs (art round 7); a 3D crown on each hides the soft photo tree.
+                let l = 0.2126 * c.x + 0.7152 * c.y + 0.0722 * c.z
+                func ss(_ e0: Float, _ e1: Float, _ x: Float) -> Float { let t = max(0, min(1, (x - e0) / (e1 - e0))); return t * t * (3 - 2 * t) }
+                let canopy = max(lc.forest, ss(0.30, 0.15, l) * ss(-0.03, 0.02, c.y - c.x) * (1 - lc.water))
+                if Hash.unit(rng.next()) > Double(canopy) * 0.9 || g.water > 0.3 { continue }
                 if nearRunway(px, py) || inBuilding(px, py) { continue }
                 let h = 9 + Hash.unit(rng.next()) * 10
                 let conifer = Hash.unit(rng.next()) < 0.55

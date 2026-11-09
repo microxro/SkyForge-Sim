@@ -51,10 +51,27 @@ public enum WorldShaders {
         return u.lightViewProj * (u.model * float4(float3(v[vid].position), 1.0));
     }
 
+    // Per-instance tree shape from a hash of the position: crown width 0.8–1.25×, height squash 0.88–1.12×
+    // and a slight lean, so neighbouring crowns stop reading as identical lollipops (art round 7). Shared by
+    // the main and shadow passes so shadows match their trees. Trunks keep their width.
+    static float3 treeShape(float3 local, bool bark, float3 pos, thread float& crownW, thread float& sz) {
+        uint h = as_type<uint>(int(floor(pos.x * 4.0))) * 0x8DA6B343u ^ as_type<uint>(int(floor(pos.y * 4.0))) * 0xD8163841u ^ 0x7A3Eu;
+        h ^= h >> 13; h *= 0x5BD1E995u; h ^= h >> 15;
+        float u0 = float(h & 0xFFu) / 255.0, u1 = float((h >> 8) & 0xFFu) / 255.0;
+        float u2 = float((h >> 16) & 0xFFu) / 255.0, u3 = float((h >> 24) & 0xFFu) / 255.0;
+        crownW = bark ? 1.0 : 0.8 + 0.45 * u0;
+        sz = 0.88 + 0.24 * u1;
+        float lean = (u2 - 0.5) * 0.12, la = u3 * 6.2831853;
+        float3 sl = float3(local.x * crownW, local.y * crownW, local.z * sz);
+        sl.xy += float2(cos(la), sin(la)) * lean * local.z;   // lean grows with height
+        return sl;
+    }
+
     vertex float4 shadow_tree_vertex(const device TerrainVertex* v [[buffer(0)]], constant ShadowUniforms& u [[buffer(1)]],
                                      const device TreeInstanceGPU* inst [[buffer(2)]], uint vid [[vertex_id]], uint iid [[instance_id]]) {
         TreeInstanceGPU t = inst[iid];
-        float3 p = float3(v[vid].position) * t.height + float3(t.position);
+        float crownW, sz;
+        float3 p = treeShape(float3(v[vid].position), v[vid].normal.w < 0, float3(t.position), crownW, sz) * t.height + float3(t.position);
         return u.lightViewProj * (u.model * float4(p, 1.0));
     }
 
@@ -105,11 +122,14 @@ public enum WorldShaders {
         TreeInstanceGPU t = inst[iid];
         TerrainVertex w = v[vid];
         float3 local = float3(w.position);
-        float4 p = u.model * float4(local * t.height + float3(t.position), 1.0);
+        float crownW, sz;
+        float3 sl = treeShape(local, w.normal.w < 0, float3(t.position), crownW, sz);
+        float4 p = u.model * float4(sl * t.height + float3(t.position), 1.0);
         WorldVarying o;
         o.position = u.viewProj * p;
         o.rel = p.xyz;
-        o.normal = normalize(float3(w.normal.xyz) / 127.0);
+        float3 n0 = float3(w.normal.xyz) / 127.0;
+        o.normal = normalize(float3(n0.x / crownW, n0.y / crownW, n0.z / sz));   // inverse-transpose of the scale
         // Trunk vertices (marked by a negative normal w) are bark-coloured.
         o.albedo = w.normal.w < 0 ? float3(0.06, 0.045, 0.03) : float3(t.colour) * (0.85 + 0.3 * saturate(local.z));
         o.material = w.normal.w < 0 ? 0.0 : 2.0;
@@ -691,6 +711,9 @@ public enum WorldShaders {
             col = albedo * (u.sunColour.rgb * (wrap + back) * vis + ambient * 0.85);
         } else if (m == 6.0 || m == 5.0) {                   // aircraft paint / glass: GGX
             // Panel seams on the airframe (aircraft-sized local coordinates only, not painted scenery).
+            // White paint at ~0.66 albedo sat at the tone-map shoulder in midday sun, so the airframe read as a
+            // flat white ribbon (art round 7); 0.52 keeps it white while its form shading shows.
+            if (m == 6.0) albedo = min(albedo, float3(0.52));
             if (m == 6.0 && length(in.local) < 9.0 && dist < 150.0) {
                 // Seams stay subtle (they read as dashed road markings at 0.45 on the chase view, round 7).
                 albedo *= 1.0 - 0.22 * aircraftPanels(in.local, localFp);
