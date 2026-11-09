@@ -256,7 +256,7 @@ public enum WorldShaders {
         } else {                                                      // tail
             lines = panelLine(abs(L.y) + abs(L.z), 0.6, lw, fp);
         }
-        return lines * saturate(1.0 - fp / 0.05);                     // gone once a pixel spans 5 cm
+        return lines * saturate(1.0 - fp / 0.03);                     // gone once a pixel spans 3 cm
     }
 
     // Registration "N417SF" (fictitious) on both rear fuselage sides: 5×7 bitmap glyphs, 30 cm tall
@@ -524,6 +524,10 @@ public enum WorldShaders {
             imgForest = smoothstep(0.0, 0.02, c.g - max(c.r, c.b)) * smoothstep(0.10, 0.03, cl);   // dark green canopy
             // Same photo→albedo conversion as SFPreview.ImageryGround (textures are sRGB, so c is linear).
             albedo = pow(max(c, 0.0), 1.12) * 0.72;
+            // Canopy albedo floor (hue kept), the same 0.05 as the 3D tree tints: Sentinel-2 forest comes out
+            // near-black (~0.03), so the ground between the 3D trees read as a dark smear (LSZS, rounds 4–6).
+            float al = dot(albedo, float3(0.2126, 0.7152, 0.0722));
+            if (imgForest > 0.0 && al < 0.05) albedo = mix(albedo, albedo * (0.05 / max(al, 0.004)), imgForest);
             float wm = inNear ? waterMask.sample(imgSampler, nuv).r : 0.0;
             groundMat = (1.0 - smoothstep(500.0, 800.0, dist)) * (1.0 - saturate((wm - 0.2) / 0.2));
             if (groundMat > 0.0) {
@@ -688,12 +692,24 @@ public enum WorldShaders {
         } else if (m == 6.0 || m == 5.0) {                   // aircraft paint / glass: GGX
             // Panel seams on the airframe (aircraft-sized local coordinates only, not painted scenery).
             if (m == 6.0 && length(in.local) < 9.0 && dist < 150.0) {
-                albedo *= 1.0 - 0.45 * aircraftPanels(in.local, localFp);
+                // Seams stay subtle (they read as dashed road markings at 0.45 on the chase view, round 7).
+                albedo *= 1.0 - 0.22 * aircraftPanels(in.local, localFp);
                 albedo = mix(albedo, float3(0.012, 0.014, 0.022), registrationMark(in.local, localFp));
             }
             float rough = m == 6.0 ? 0.24 : 0.06;   // glossy paint: a visible sun glint
             float3 env = mix(u.ambientGround.rgb, u.skyHorizon.rgb, saturate(reflect(dir, n).z * 0.5 + 0.5));
-            col = pbrDielectric(albedo, n, -dir, toSun, rough, u.sunColour.rgb, env, vis) + albedo * ambient * (m == 6.0 ? 1.0 : 0.3);
+            // Contact occlusion where surfaces meet (wing and tailplane roots, under the wing at the cabin), so
+            // the white airframe has shaded junctions instead of one flat tone (art round 6).
+            float ao = 1.0;
+            if (m == 6.0 && length(in.local) < 9.0) {
+                float3 L = in.local;
+                float root = max(0.0, abs(L.y) - 0.55);
+                if (L.z < -0.9 && abs(L.y) >= 0.5) ao -= 0.30 * exp(-root / 0.35);               // wing root
+                if (L.x < -3.6 && abs(L.y) >= 0.15 && L.z > -0.9) ao -= 0.25 * exp(-max(0.0, abs(L.y) - 0.15) / 0.25);   // tailplane root
+                if (abs(L.y) < 0.75 && L.z > -0.95 && L.z < -0.75 && L.x > -1.6 && L.x < 0.4) ao -= 0.20 * smoothstep(-0.75, -0.95, L.z);   // cabin under the wing
+            }
+            col = pbrDielectric(albedo, n, -dir, toSun, rough, u.sunColour.rgb, env, vis) * mix(1.0, ao, 0.5)
+                + albedo * ambient * (m == 6.0 ? 1.0 : 0.3) * ao;
         } else {
             col = albedo * (u.sunColour.rgb * max(0.0, ndl) * vis + ambient);
             if (m == 3.0) {                      // road: Blinn-Phong highlight
