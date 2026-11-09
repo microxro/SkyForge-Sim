@@ -454,3 +454,20 @@ Same batch:
 1. Highlight shoulder: knee 0.22, slope 0.45.
 2. Lobe normals blended 50/50 with the whole crown's ellipsoid normal.
 3. Wall contact band: the lowest ~0.8 m of ground-standing walls at 0.62 × the wall colour.
+
+## Bold round 16: 12 Metal frames, phone and high tiers (dd41f05, run 42593932269)
+Phone: KMRY 6.0, KASE 6.75, KBFI 5.5, LSZS 6.0, NZQN 6.0, SkyWorld 6.0. **Average 6.04 (+0.00).**
+High: KMRY 6.0, KASE 6.5, KBFI 5.5, LSZS 6.25, NZQN 6.0, SkyWorld 6.25. **Average 6.08.**
+
+Findings:
+- The three round-16 changes are barely visible on phone (lower-half mean pixel difference ≤ 0.6).
+- **High tier:** denser trees help every scene, but the clouds show a regular 2×2 checker: quarter-resolution clouds with per-pixel jitter, under a tent filter sized for half resolution.
+- **High-tier KMRY:** blue patches in the mid-ground where phone shows tree shadows. The desktop near layer's water-mask cells are 8 m, so the 24-cell minimum admitted water bodies of only ~1,500 m².
+- **Highlights:** the brightest 1 % (≈ 224/255) is bare sand and concrete in the photo, not the aircraft (222 with the aircraft masked out). ACES is flat near white, so each shoulder step moved it only ~5 levels, and the grade's S-curve lifted it ~7 levels more.
+- **SkyWorld:** flat terrain, for nine rounds.
+
+Round-17 batch:
+1. **Cloud reconstruction at quarter resolution:** a 3×3 box over the low-res texels. Interleaved-gradient jitter is near uniform over any 3×3 block. Half resolution keeps the tent.
+2. **Water minimum is an area (6,000 m²), not a cell count:** test with 8 m cells (48 m shadow patch removed, 120 m pond kept).
+3. **Highlights:** knee 0.20, slope 0.32; the grade's S stops lifting above ~0.6.
+4. **SkyWorld relief:** hills up to ~240 m, 2–4.5 km either side of the runway axis (0.45 × on the town side) and past the far end. The runway, approach and climb-out are untouched (test).

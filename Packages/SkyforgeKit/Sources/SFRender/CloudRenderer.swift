@@ -110,6 +110,8 @@ public final class CloudRenderer {
         ce.label = "Clouds (composite)"
         ce.setRenderPipelineState(compositePipeline)
         ce.setFragmentTexture(t, index: 0)
+        var cp4 = SIMD4<Float>(Float(downsample), 0, 0, 0)
+        ce.setFragmentBytes(&cp4, length: MemoryLayout<SIMD4<Float>>.stride, index: 0)
         ce.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         ce.endEncoding()
     }

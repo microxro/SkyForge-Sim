@@ -135,6 +135,24 @@ actor TileFixtureTransport: HTTPTransport {
         #expect(w(380, 380) < 0.1, "dark patch on a slope removed")
         #expect(g.ground(-500 + 410.5 * 1000 / 512, 500 - 70.5 * 1000 / 512)!.water > 0.5, "the spot was water before cleaning")
     }
+
+    /// The size limit is an area: on a finer near layer (desktop, 8 m mask cells) a 48 m dark patch of tree
+    /// shadows (36 cells, over the old 24-cell limit) is still removed, while a 120 m pond stays.
+    @Test func minimumIsAnAreaNotACellCount() {
+        // 1024 px over 1 km (≈0.98 m/px, mask cells ≈7.8 m).
+        let m = ImageryGradingTests.mosaic(size: 1024, half: 500) { i, j in
+            let shadows = (100..<149).contains(i) && (100..<149).contains(j)
+            let pond = (500..<623).contains(i) && (500..<623).contains(j)
+            return shadows || pond ? SIMD3(20, 30, 45) : SIMD3(120, 115, 80)
+        }
+        let cleaned = ImageryGround(near: m, far: nil).cleaningWater { _, _ in 0 }
+        func w(_ px: Int, _ py: Int) -> Float {
+            let x = -500 + (Double(px) + 0.5) * 1000 / 1024, y = 500 - (Double(py) + 0.5) * 1000 / 1024
+            return cleaned.ground(x, y)!.water
+        }
+        #expect(w(124, 124) < 0.1, "48 m patch removed")
+        #expect(w(561, 561) > 0.9, "120 m pond kept")
+    }
 }
 
 @Suite struct ImageryLiftTests {

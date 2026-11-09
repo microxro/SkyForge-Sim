@@ -98,3 +98,27 @@ import SFPreview
         #expect(w.buildEnvironmentInstanced(detail: d).trees == inst.trees, "deterministic")
     }
 }
+
+@Suite struct SkyWorldReliefTests {
+    /// Hills rise beside and beyond the airfield, but the runway, the approach and the climb-out stay as
+    /// they were (relief is 0 within 2 km of the axis, and before the far-end band).
+    @Test func hillsStayClearOfTheRunwayAndApproach() {
+        let w = QuickFlightWorld()
+        let r = w.recipe
+        let dir = w.runwayDirection, right = SIMD2(dir.y, -dir.x)
+        for k in stride(from: -6_000.0, through: 3_400, by: 250) {
+            let p = w.runwayCentre + dir * k
+            #expect(r.reliefHeight(p.x, p.y) == 0, "relief on the axis at \(k) m")
+            let q = p + right * 1_900
+            #expect(r.reliefHeight(q.x, q.y) == 0, "relief 1.9 km off the axis at \(k) m")
+        }
+        var peak = 0.0
+        for k in stride(from: -4_000.0, through: 8_000, by: 200) {
+            for off in stride(from: 4_500.0, through: 7_000, by: 500) {
+                let q = w.runwayCentre + dir * k + right * off
+                peak = max(peak, r.reliefHeight(q.x, q.y))
+            }
+        }
+        #expect(peak > 120, "peak \(peak) m")
+    }
+}

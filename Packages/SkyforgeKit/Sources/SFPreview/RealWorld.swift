@@ -68,12 +68,15 @@ public struct ImageryGround: GroundAlbedo {
     /// Water must be flat and come in sizeable bodies: colour alone also flags shadowed snow, dark roofs
     /// and asphalt. Cells on terrain steeper than `maxSlope` are cleared first (per cell, so a lake is
     /// not lost to the shadowed slope beside it), then connected areas (mask > 0.35) smaller than
-    /// `minCells` cells (16 m each at phone detail) are removed. `exclude` clears known dry areas (pavement).
-    public func cleaningWater(minCells: Int = 24, maxSlope: Double = 0.06, exclude: (Double, Double) -> Bool = { _, _ in false },
+    /// `minArea` m² are removed (24 phone-detail 16 m cells; an area, not a cell count, because the desktop
+    /// near layer's cells are 8 m and 24 of them let clusters of tree shadows through as ponds, art round 16).
+    /// `exclude` clears known dry areas (pavement).
+    public func cleaningWater(minArea: Double = 6_000, maxSlope: Double = 0.06, exclude: (Double, Double) -> Bool = { _, _ in false },
                               height: (Double, Double) -> Double) -> ImageryGround {
         let n = maskSize
         var mask = waterMask
         let mpp = near.metresPerPixel * Double(Self.block)
+        let minCells = max(1, Int((minArea / (mpp * mpp)).rounded(.up)))
         for p in 0..<(n * n) where mask[p] > 0.2 {
             let c = maskCellCentre(p % n, p / n)
             if exclude(c.x, c.y) { mask[p] = 0; continue }

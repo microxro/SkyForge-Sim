@@ -545,7 +545,9 @@ public enum WorldShaders {
             albedo = pow(max(c, 0.0), 1.12) * 0.72;
             // Soft shoulder above 0.22 albedo (0.72 → 0.45): photo concrete, roofs and bare ground lit by midday
             // sun came out ~240/255 and read as blown out (art round 14).
-            albedo = select(albedo, 0.22 + (albedo - 0.22) * 0.45, albedo > 0.22);   // (0.28/0.55 moved the brightest 1 % by only ~5/255, round 15)
+            // (0.28/0.55 and 0.22/0.45 each moved the brightest 1 % by only ~5/255: ACES is flat near white, so
+            // a sand patch needs ~40 % less albedo to leave the shoulder; 0.20/0.32 plus the grade's highlight roll-off.)
+            albedo = select(albedo, 0.20 + (albedo - 0.20) * 0.32, albedo > 0.20);
             // Canopy albedo floor (hue kept), the same 0.05 as the 3D tree tints: Sentinel-2 forest comes out
             // near-black (~0.03), so the ground between the 3D trees read as a dark smear (LSZS, rounds 4–6).
             float al = dot(albedo, float3(0.2126, 0.7152, 0.0722));

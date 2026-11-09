@@ -133,7 +133,8 @@ public enum PostShaders {
         if (k > 0.0) {
             // Gentle filmic contrast: cubic S around mid-grey, faded out below ~0.25 so shadows keep their
             // detail (no crushed toe), then vibrance that spares already-saturated colours.
-            float3 s = g + 0.30 * g * (1.0 - g) * (2.0 * g - 1.0) * smoothstep(0.06, 0.25, g);
+            // The S stops lifting above ~0.6 (it pushed sunlit sand and concrete ~7/255 toward white, round 16).
+            float3 s = g + 0.30 * g * (1.0 - g) * (2.0 * g - 1.0) * smoothstep(0.06, 0.25, g) * (1.0 - smoothstep(0.55, 0.85, g));
             float l = dot(s, float3(0.2126, 0.7152, 0.0722));
             float sat = max(s.r, max(s.g, s.b)) - min(s.r, min(s.g, s.b));
             // Greens get none: grass and crops already sit near the saturation the eye accepts (SkyWorld

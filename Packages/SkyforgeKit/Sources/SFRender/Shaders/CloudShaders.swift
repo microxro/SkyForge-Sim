@@ -214,8 +214,19 @@ public enum CloudShaders {
 
     // Upsample with a small tent filter: hides the per-pixel jitter pattern of the half-res march
     // (art review: visible dither on cloud bodies) without smearing cloud edges.
-    fragment float4 cloud_composite_fragment(CloudVarying in [[stage_in]], texture2d<float> clouds [[texture(0)]]) {
+    // p.x = downsample. At quarter resolution (high tier) the tent left a regular 2×2 checker over cloud
+    // bodies (art round 16): there a 3×3 box over the low-res texels, since the interleaved-gradient jitter
+    // is close to uniform over any 3×3 block, so one frame resolves without temporal history.
+    fragment float4 cloud_composite_fragment(CloudVarying in [[stage_in]], texture2d<float> clouds [[texture(0)]],
+                                             constant float4& p [[buffer(0)]]) {
         float2 t = 1.0 / float2(clouds.get_width(), clouds.get_height());
+        if (p.x > 2.5) {
+            float4 b = float4(0.0);
+            for (int j = -1; j <= 1; j++) {
+                for (int i = -1; i <= 1; i++) { b += clouds.sample(cl_lin, in.uv + float2(float(i), float(j)) * t); }
+            }
+            return b / 9.0;
+        }
         float4 c = clouds.sample(cl_lin, in.uv) * 0.36;
         c += clouds.sample(cl_lin, in.uv + float2( 0.9,  0.9) * t) * 0.16;
         c += clouds.sample(cl_lin, in.uv + float2(-0.9,  0.9) * t) * 0.16;

@@ -23,6 +23,10 @@ public struct TerrainRecipe: Sendable {
     public let river: River?
     /// Flattened rectangles (airports): centre, half-length along heading, half-width, heading (rad from north), elevation.
     public var flattenZones: [(centre: SIMD2<Double>, halfLength: Double, halfWidth: Double, heading: Double, elevation: Double)] = []
+    /// Optional hills around an airfield (SkyWorld): none within `clear` m of the runway axis, rising over the
+    /// next 2.5 km to `amplitude` m on the right of the axis (`leftScale` × on the left, where the town is)
+    /// and past the far end. Nine art rounds read the SkyWorld horizon as perfectly flat.
+    public var relief: (centre: SIMD2<Double>, heading: Double, clear: Double, amplitude: Double, leftScale: Double)? = nil
 
     public init(kind: TerrainKind, seed: UInt64) {
         self.kind = kind
@@ -70,7 +74,7 @@ public struct TerrainRecipe: Sendable {
 
     /// Ground elevation (m), including flattened airport zones blended over a 150 m embankment.
     public func height(_ x: Double, _ y: Double) -> Double {
-        let natural = naturalHeight(x, y)
+        let natural = naturalHeight(x, y) + reliefHeight(x, y)
         guard !flattenZones.isEmpty else { return natural }
         var h = natural
         for z in flattenZones {
@@ -82,6 +86,21 @@ public struct TerrainRecipe: Sendable {
             h = h + (z.elevation - h) * w
         }
         return h
+    }
+
+    /// Hills added by `relief` (0 without it, and within `clear` m of the runway axis).
+    public func reliefHeight(_ x: Double, _ y: Double) -> Double {
+        guard let r = relief else { return 0 }
+        let d = SIMD2(x, y) - r.centre
+        let a = SIMD2(sin(r.heading), cos(r.heading))
+        let along = (d * a).sum(), across = d.x * a.y - d.y * a.x   // across > 0: right of the axis
+        let side = smoothstep(r.clear, r.clear + 2_500, abs(across)) * (across > 0 ? 1 : r.leftScale)
+        let ahead = smoothstep(r.clear + 1_500, r.clear + 5_000, along)
+        let w = max(side, ahead)
+        guard w > 0 else { return 0 }
+        // Rounded hills ~2–3 km across with saddles between them (never a uniform wall).
+        let n = noise.fbm(x / 2_400 - 53, y / 2_400 + 71, octaves: 4)
+        return r.amplitude * w * max(0, 0.55 + 0.9 * n)
     }
 
     func naturalHeight(_ x: Double, _ y: Double) -> Double {
