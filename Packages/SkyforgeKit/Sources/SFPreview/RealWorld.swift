@@ -29,18 +29,42 @@ public struct ImageryGround: GroundAlbedo {
     public init(near: ImageryMosaic, far: ImageryMosaic?, detail: ImageryMosaic? = nil, grade: Bool = false) {
         let b = Self.block, n = near.size / b
         var mask = [Float](repeating: 0, count: n * n)
+        var spread = [Float](repeating: 0, count: n * n)   // luminance standard deviation per cell (sRGB, 0–1)
         for j in 0..<n {
             for i in 0..<n {
-                var w: Float = 0, k: Float = 0
+                var w: Float = 0, k: Float = 0, sl: Float = 0, sl2: Float = 0
                 for y in stride(from: j * b, to: j * b + b, by: 2) {
                     for x in stride(from: i * b, to: i * b + b, by: 2) {
                         let o = 3 * (y * near.size + x)
                         let c = SIMD3(Float(near.rgb[o]), Float(near.rgb[o + 1]), Float(near.rgb[o + 2])) / 255
                         w += LandCover.classify(c).water; k += 1
+                        let l = 0.2126 * c.x + 0.7152 * c.y + 0.0722 * c.z
+                        sl += l; sl2 += l * l
                     }
                 }
                 mask[j * n + i] = w / k
+                spread[j * n + i] = max(0, sl2 / k - (sl / k) * (sl / k)).squareRoot()
             }
+        }
+        // Water is smooth at this scale; dark conifer and oak canopy has the same colour but is textured
+        // (crowns and their shadows). Ponds and sea measure ~0.004–0.008, canopy ~0.05 (KMRY, art round 17:
+        // a hillside oak stand and town tree clusters read as lakes). The 3 × 3 median keeps lake edges,
+        // whose own cells are textured by the shoreline.
+        if n >= 3 {
+            var textured = mask
+            var nb = [Float](repeating: 0, count: 9)
+            for j in 0..<n {
+                for i in 0..<n where mask[j * n + i] > 0 {
+                    var m = 0
+                    for dj in -1...1 { for di in -1...1 {
+                        nb[m] = spread[min(n - 1, max(0, j + dj)) * n + min(n - 1, max(0, i + di))]; m += 1
+                    } }
+                    nb.sort()
+                    let t = max(0, min(1, (nb[4] - 0.02) / 0.02)), smooth = 1 - t * t * (3 - 2 * t)
+                    textured[j * n + i] = mask[j * n + i] * smooth
+                }
+            }
+            mask = textured
         }
         waterMask = mask; maskSize = n
         if grade, var f = far {

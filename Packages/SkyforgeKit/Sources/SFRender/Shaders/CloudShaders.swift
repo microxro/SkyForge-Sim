@@ -197,8 +197,15 @@ public enum CloudShaders {
         float z = depth.read(full);
         float maxDist = z > 0.0 ? (u.forward.w / z) / max(1e-4, dot(dir, u.forward.xyz)) : 1e9;
         uint2 px = uint2(in.position.xy);
+        // Quarter resolution: a 2 × 2 Bayer step offset, which the composite's [1 2 1]² tent cancels exactly
+        // (any period-2 pattern), so the clouds need no wider blur (round 17: the 3 × 3 box softened them).
+        float jit = cl_jitter(px.x, px.y);
+        if (u.viewport.z > 2.5 * u.viewport.x) {
+            uint bi = ((px.x & 1u) << 1) ^ (3u * (px.y & 1u));   // 0 2 / 3 1
+            jit = (float(bi) + 0.5) * 0.25;
+        }
         CloudResult r = cl_march(u.camPos.xyz, dir, maxDist, u.layer, u.toSun.xyz, u.sun.rgb, u.skyAmb.rgb, u.groundAmb.rgb,
-                                 int(u.camPos.w), cl_jitter(px.x, px.y));
+                                 int(u.camPos.w), jit);
         float a = 1.0 - r.T;
         if (a < 0.002) return float4(0.0);
         float3 col = r.L;
@@ -214,18 +221,15 @@ public enum CloudShaders {
 
     // Upsample with a small tent filter: hides the per-pixel jitter pattern of the half-res march
     // (art review: visible dither on cloud bodies) without smearing cloud edges.
-    // p.x = downsample. At quarter resolution (high tier) the tent left a regular 2×2 checker over cloud
-    // bodies (art round 16): there a 3×3 box over the low-res texels, since the interleaved-gradient jitter
-    // is close to uniform over any 3×3 block, so one frame resolves without temporal history.
+    // p.x = downsample. At quarter resolution (high tier) the march uses a 2 × 2 Bayer jitter; four bilinear
+    // taps at ±0.5 texel sum to a [1 2 1]² tent at any position, which weights each Bayer phase equally, so
+    // the pattern cancels exactly (round 16: checker under the old tent; round 17: a 3 × 3 box blurred them).
     fragment float4 cloud_composite_fragment(CloudVarying in [[stage_in]], texture2d<float> clouds [[texture(0)]],
                                              constant float4& p [[buffer(0)]]) {
         float2 t = 1.0 / float2(clouds.get_width(), clouds.get_height());
         if (p.x > 2.5) {
-            float4 b = float4(0.0);
-            for (int j = -1; j <= 1; j++) {
-                for (int i = -1; i <= 1; i++) { b += clouds.sample(cl_lin, in.uv + float2(float(i), float(j)) * t); }
-            }
-            return b / 9.0;
+            return 0.25 * (clouds.sample(cl_lin, in.uv + float2( 0.5,  0.5) * t) + clouds.sample(cl_lin, in.uv + float2(-0.5,  0.5) * t)
+                         + clouds.sample(cl_lin, in.uv + float2( 0.5, -0.5) * t) + clouds.sample(cl_lin, in.uv + float2(-0.5, -0.5) * t));
         }
         float4 c = clouds.sample(cl_lin, in.uv) * 0.36;
         c += clouds.sample(cl_lin, in.uv + float2( 0.9,  0.9) * t) * 0.16;

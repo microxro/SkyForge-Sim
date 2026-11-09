@@ -133,7 +133,25 @@ actor TileFixtureTransport: HTTPTransport {
         #expect(w(140, 140) > 0.9, "lake kept")
         #expect(w(410, 70) < 0.1, "small spot removed")
         #expect(w(380, 380) < 0.1, "dark patch on a slope removed")
-        #expect(g.ground(-500 + 410.5 * 1000 / 512, 500 - 70.5 * 1000 / 512)!.water > 0.5, "the spot was water before cleaning")
+        #expect(g.ground(-500 + 410.5 * 1000 / 512, 500 - 70.5 * 1000 / 512)!.water > 0.3, "the spot was water before cleaning")   // (every cell of a 39 m spot is edge, so the texture test lowers it)
+    }
+
+    /// Dark canopy has water's colour but not its smoothness: a textured dark patch is not water, a smooth one is.
+    @Test func texturedDarkCanopyIsNotWater() {
+        let m = ImageryGradingTests.mosaic(size: 512, half: 500) { i, j in
+            let canopy = (40..<240).contains(i) && (40..<240).contains(j)
+            let lake = (280..<480).contains(i) && (280..<480).contains(j)
+            if canopy {
+                let h = (i &* 73_856_093 ^ j &* 19_349_663) & 0xFF   // crowns and shadows, pixel to pixel
+                return h < 128 ? SIMD3(14, 22, 34) : SIMD3(40, 52, 66)
+            }
+            return lake ? SIMD3(20, 30, 45) : SIMD3(120, 115, 80)
+        }
+        let g = ImageryGround(near: m, far: nil)
+        func w(_ px: Int, _ py: Int) -> Float { g.ground(-500 + (Double(px) + 0.5) * 1000 / 512, 500 - (Double(py) + 0.5) * 1000 / 512)!.water }
+        #expect(w(140, 140) < 0.1, "canopy \(w(140, 140))")
+        #expect(w(380, 380) > 0.9, "lake \(w(380, 380))")
+        #expect(w(282, 380) > 0.3, "lake edge kept \(w(282, 380))")
     }
 
     /// The size limit is an area: on a finer near layer (desktop, 8 m mask cells) a 48 m dark patch of tree

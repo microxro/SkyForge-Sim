@@ -471,3 +471,24 @@ Round-17 batch:
 2. **Water minimum is an area (6,000 m²), not a cell count:** test with 8 m cells (48 m shadow patch removed, 120 m pond kept).
 3. **Highlights:** knee 0.20, slope 0.32; the grade's S stops lifting above ~0.6.
 4. **SkyWorld relief:** hills up to ~240 m, 2–4.5 km either side of the runway axis (0.45 × on the town side) and past the far end. The runway, approach and climb-out are untouched (test).
+
+## Bold round 17: 12 Metal frames (710cdb7, run 42596319498)
+Phone: KMRY 6.25, KASE 6.75, KBFI 5.75, LSZS 6.0, NZQN 6.0, SkyWorld 6.5. **Average 6.21 (+0.17).**
+High: KMRY 6.25, KASE 7.0, KBFI 5.75, LSZS 6.5, NZQN 6.25, SkyWorld 6.75. **Average 6.42 (+0.34).** KASE high is the first frame at 7.
+
+Findings:
+- **Highlights:** the brightest 1 % fell 13 levels on KMRY and KBFI (221 → 208, 224 → 211, aircraft excluded); near concrete no longer reads clipped.
+- **Clouds:** the checker is gone and there are no halos at ridgelines. The 3×3 box over quarter-resolution texels softened them, though (sky fine detail 0.78 on high against 1.20 on phone).
+- **SkyWorld:** the hills show, but as a low, pale band.
+- **KMRY blue patches:** still there on high, and now on phone too. The source imagery settles it (dumped water mask over the near photo):
+  - The real pond north of the approach is detected, but its mask bleeds into the trees around it.
+  - The other patches are dense dark canopy: an oak and pine stand on the hillside south of the runway, a conifer strip, and town tree clusters.
+  - Laguna Grande and Roberts Lake are real but not detected (olive water colour). Left as is.
+  - Per 8×8 block (sRGB luminance standard deviation): ponds and sea 0.004–0.008, canopy 0.05 or more, town 0.14.
+
+Round-18 batch:
+1. **Water texture test:** each mask cell's water score is weighted by `1 − smoothstep(0.02, 0.04)` of the median luminance spread over its 3×3 neighbourhood. Test: textured dark canopy is not water; a smooth lake and its edge stay.
+2. **Clouds, quarter resolution:** 2×2 Bayer step jitter, with a composite of 4 bilinear taps at ±0.5 texel. That is an exact [1 2 1]² tent, which weights the four Bayer phases equally at any position, so the pattern cancels over a 3-texel footprint instead of the box's ~4.
+3. **Photo shadow toe:** below 0.07 albedo, lifted as `0.07·(al/0.07)^0.7` (0.02 → 0.03); fades by 1.2 km; not on water.
+4. **SkyWorld hills:** 340 m, starting 1.9 km off the axis (was 240 m from 2 km).
+5. **KBFI fallback boxes:** skipped where 5 of 8 photo samples 14 m out match the roof luminance (on a warehouse roof or car park the photo already shows). Test.

@@ -229,6 +229,13 @@ public struct RealWorldRegion: FlightWorld {
                 // and the asphalt around it do not darken the roof (a plain mean gave charcoal roofs, round 5).
                 let lit = roofSamples.sorted { lum($0) > lum($1) }.prefix(max(1, (roofSamples.count + 1) / 2))
                 let rc = lit.reduce(SIMD3<Float>.zero, +) / Float(lit.count)
+                // Inside a large uniform surface (a warehouse roof or a car park the photo already shows): a
+                // house-sized box standing on it reads as clutter (art round 17, KBFI).
+                let ring = (0..<8).compactMap { k -> Float? in
+                    let a = Double(k) * .pi / 4
+                    return near.sample(px + 14 * cos(a), py + 14 * sin(a)).map(lum)
+                }
+                if Self.onLargeUniformSurface(roofLuminance: lum(rc), ring: ring) { continue }
                 var roof = SIMD3(powf(powf(rc.x, 2.2), 1.12), powf(powf(rc.y, 2.2), 1.12), powf(powf(rc.z, 2.2), 1.12)) * 0.72
                 if lum(roof) < 0.08 { roof *= 0.08 / max(lum(roof), 0.004) }       // asphalt-shingle floor
                 // Walls: painted stucco, siding or concrete (linear albedo 0.30–0.48) with a little of the
@@ -243,6 +250,12 @@ public struct RealWorldRegion: FlightWorld {
             y += cell
         }
         return Self.dropIsolated(out)
+    }
+
+    /// Whether a candidate's surroundings (photo luminance 14 m out in 8 directions) mostly match its roof:
+    /// then it lies on one large roof or paved area rather than on a house among gardens and streets.
+    static func onLargeUniformSurface(roofLuminance: Float, ring: [Float], tolerance: Float = 0.05, minMatches: Int = 5) -> Bool {
+        ring.filter { abs($0 - roofLuminance) < tolerance }.count >= minMatches
     }
 
     /// Keeps buildings with at least `minNeighbours` other within `radius` m: real built-up areas are

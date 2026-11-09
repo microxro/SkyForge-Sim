@@ -553,6 +553,15 @@ public enum WorldShaders {
             float al = dot(albedo, float3(0.2126, 0.7152, 0.0722));
             if (imgForest > 0.0 && al < 0.05) albedo = mix(albedo, albedo * (0.05 / max(al, 0.004)), imgForest);
             float wm = inNear ? waterMask.sample(imgSampler, nuv).r : 0.0;
+            // Shadow toe, the mirror of the shoulder: photo shadows below ~0.07 albedo are lifted (0.02 → 0.03,
+            // 0.04 → 0.047) so the baked shadows under the 3D trees and buildings, which cast their own, stop
+            // reading as doubled black (art round 17, KMRY). Fades by 1.2 km; not on water.
+            float alT = dot(albedo, float3(0.2126, 0.7152, 0.0722));
+            float toeW = (1.0 - smoothstep(400.0, 1200.0, dist)) * (1.0 - saturate((wm - 0.2) / 0.2));
+            if (alT < 0.07 && toeW > 0.0) {
+                float lifted = 0.07 * pow(max(alT, 1e-4) / 0.07, 0.7);
+                albedo *= 1.0 + (lifted / max(alT, 1e-4) - 1.0) * toeW;
+            }
             groundMat = (1.0 - smoothstep(500.0, 800.0, dist)) * (1.0 - saturate((wm - 0.2) / 0.2));
             if (groundMat > 0.0) {
                 GroundClasses k = classifyGround(c, imgForest);

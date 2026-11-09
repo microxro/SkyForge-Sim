@@ -453,6 +453,17 @@ private func faceNormal(_ a: SIMD3<Float>, _ b: SIMD3<Float>, _ c: SIMD3<Float>)
     }
 }
 
+@Suite struct LargeSurfaceTests {
+    @Test func boxesOnLargeRoofsAreSkippedHousesKept() {
+        // Warehouse interior: the ring is all roof.
+        #expect(RealWorldRegion.onLargeUniformSurface(roofLuminance: 0.55, ring: [0.53, 0.56, 0.57, 0.54, 0.55, 0.52, 0.58, 0.55]))
+        // House among lawns, trees and street: few matches.
+        #expect(!RealWorldRegion.onLargeUniformSurface(roofLuminance: 0.55, ring: [0.30, 0.22, 0.56, 0.40, 0.18, 0.35, 0.53, 0.28]))
+        // Roof edge: half the ring off the roof.
+        #expect(!RealWorldRegion.onLargeUniformSurface(roofLuminance: 0.55, ring: [0.55, 0.56, 0.54, 0.57, 0.20, 0.25, 0.30, 0.22]))
+    }
+}
+
 @Suite struct IsolatedBuildingTests {
     @Test func loneBoxesAreDroppedClustersKept() {
         func box(_ x: Double, _ y: Double, _ id: Int64) -> OSMBuilding {
