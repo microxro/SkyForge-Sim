@@ -196,7 +196,7 @@ public final class WorldRenderer {
         public static let medium = Settings(renderScale: 1, cloudSteps: 48, cloudDownsample: 2, bloomIntensity: 0.05, ssaoStrength: 0.7)
         // 32 view steps and 4 light taps (was 40 and 6): clouds cost ~4 ms of the 16.7 ms high budget, and
         // SkyWorld high sat at its limit (16.3 ms minimum, run 42582311298).
-        public static let high = Settings(renderScale: 0.75, cloudSteps: 32, cloudDownsample: 4, bloomIntensity: 0.05, ssaoStrength: 0.7,
+        public static let high = Settings(renderScale: 0.75, cloudSteps: 26, cloudDownsample: 3, bloomIntensity: 0.05, ssaoStrength: 0.7,
                                           cloudLightSteps: 4)
     }
 

@@ -65,6 +65,16 @@ actor OfflineImageryTransport: HTTPTransport {
             #expect(!r.nearRunway(Double(t.position.x), Double(t.position.y)))
             #expect(t.height >= 9 && t.height <= 19)
         }
+        // Stands: the conifer share varies between 200 m patches (not one uniform 55 % mix everywhere).
+        var cells: [SIMD2<Int>: (n: Int, c: Int)] = [:]
+        for t in trees {
+            let k = SIMD2(Int((t.position.x / 200).rounded(.down)), Int((t.position.y / 200).rounded(.down)))
+            cells[k, default: (0, 0)].n += 1
+            if t.conifer { cells[k, default: (0, 0)].c += 1 }
+        }
+        let shares = cells.values.filter { $0.n >= 30 }.map { Double($0.c) / Double($0.n) }
+        #expect(shares.count >= 4, "\(shares.count) patches with 30+ trees")
+        #expect((shares.max() ?? 0) - (shares.min() ?? 0) > 0.4, "conifer share range \(shares.min() ?? 0)–\(shares.max() ?? 0)")
     }
 
     @Test func sessionRestsOnTheRealRunway() async throws {

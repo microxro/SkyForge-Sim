@@ -228,3 +228,5 @@ Method: `FrameTimeTests`, 30 frames after 3 warm-up frames; command-buffer GPU t
 - 2026-11-09T10:14:39Z gate fast on Linux x86_64: PASS (HEAD b39cea4)
 - 2026-11-09T10:19:57Z gate fast on Linux x86_64: PASS (HEAD b39cea4)
 - 2026-11-09 run 42600144759 (ba04e91, round-18 batch: Bayer quarter-res clouds with a 4-tap tent, water texture test, shadow toe, SkyWorld hills 340 m): SkyWorld low 9.72 / high 14.41 ms, KMRY low 12.60 / high 14.65 ms; budgets 33.3 / 16.7 ms. All CI jobs green.
+- 2026-11-09T10:32:38Z gate fast on Linux x86_64: FAIL (HEAD 64c880e)
+- 2026-11-09T10:35:43Z gate fast on Linux x86_64: PASS (HEAD 64c880e)

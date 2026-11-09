@@ -240,11 +240,13 @@ public struct RealWorldRegion: FlightWorld {
                 if lum(roof) < 0.08 { roof *= 0.08 / max(lum(roof), 0.004) }       // asphalt-shingle floor
                 // Walls: painted stucco, siding or concrete (linear albedo 0.30–0.48) with a little of the
                 // roof's hue. Walls derived from the roof read as charcoal boxes (round 5).
+                // Darker siding and brick too: five pale tones read as uniform pale cubes (round 18, KBFI).
                 let palette: [SIMD3<Float>] = [SIMD3(0.46, 0.42, 0.35), SIMD3(0.40, 0.40, 0.38), SIMD3(0.48, 0.46, 0.43),
-                                               SIMD3(0.38, 0.32, 0.25), SIMD3(0.34, 0.36, 0.37)]
+                                               SIMD3(0.38, 0.32, 0.25), SIMD3(0.34, 0.36, 0.37), SIMD3(0.24, 0.20, 0.17),
+                                               SIMD3(0.28, 0.17, 0.12), SIMD3(0.22, 0.25, 0.27)]
                 let base = palette[Int(rng.next() % UInt64(palette.count))]
                 let wall = base * (1 + (roof / max(lum(roof), 0.01) - 1) * 0.15)
-                out.append(OSMBuilding(id: -Int64(out.count + 1), footprint: fp, heightMetres: 4.5 + Hash.unit(rng.next()) * 3.5,
+                out.append(OSMBuilding(id: -Int64(out.count + 1), footprint: fp, heightMetres: (4.5 + Hash.unit(rng.next()) * 3.5) * (Hash.unit(rng.next()) < 0.2 ? 1.6 : 1),   // a fifth two-storey
                                        kind: "house", roofColour: roof, wallColour: wall, tags: ["source": "procedural fallback"]))
             }
             y += cell
@@ -390,6 +392,10 @@ public struct RealWorldRegion: FlightWorld {
             return list.contains { OSMGeometry.contains($0, SIMD2(x, y)) }
         }
         let near = ground.near
+        // Stands: low-frequency noise (~300 m) sets the conifer share, brightness and height of a patch of
+        // forest, so a valley is darker conifer stands beside lighter broadleaf ones instead of one uniform
+        // texture from the camera to the far slope (art round 18, LSZS).
+        let standNoise = GradientNoise2D(seed: 0x57A4D)
         // Two foci: the near layer's centre, and the final-approach foreground (the showcase start is a 2 km
         // final, whose foreground lay outside the first disc and kept flat photo trees, art round 8). Grid
         // offsets stay relative to the near centre so each cell's random stream is the same either way.
@@ -437,8 +443,10 @@ public struct RealWorldRegion: FlightWorld {
                 let canopy = max(lc.forest, ss(0.30, 0.15, l) * ss(-0.02, 0.01, c.y - 0.9 * c.x) * ss(0.015, 0.04, c.y - c.z) * (1 - lc.water))
                 if Hash.unit(rng.next()) > Double(canopy) * 0.9 || g.water > 0.3 { continue }
                 if nearRunway(px, py) || inBuilding(px, py) { continue }
-                let h = 9 + Hash.unit(rng.next()) * 10
-                let conifer = Hash.unit(rng.next()) < 0.55
+                let sA = standNoise.fbm(px / 320, py / 320, octaves: 2), sB = standNoise.fbm(px / 210 + 17.3, py / 210 - 9.1, octaves: 2)
+                let coniferShare = 0.12 + 0.76 * Double(ss(-0.22, 0.22, Float(sA)))
+                let h = 9 + 10 * (0.5 * Hash.unit(rng.next()) + 0.5 * Double(ss(-0.4, 0.4, Float(sB))))   // half per stand
+                let conifer = Hash.unit(rng.next()) < coniferShare
                 var tint = g.albedo * 1.9 * Float(0.85 + 0.3 * Hash.unit(rng.next()))
                 // Per-tree hue: ±4 % on the red/green balance, so neighbouring crowns differ (round 11).
                 tint.x *= Float(0.96 + 0.08 * Hash.unit(rng.next()))
@@ -453,6 +461,9 @@ public struct RealWorldRegion: FlightWorld {
                 tint.x = min(max(tint.x, tint.y * 0.62), tint.y * 0.85)
                 // Brightness ±8 % after the floor (the floor flattened the earlier jitter on dark canopy, round 12).
                 tint *= Float(0.92 + 0.16 * Hash.unit(rng.next()))
+                // Stand tone: conifer stands darker and bluer-green, broadleaf stands lighter.
+                tint *= conifer ? SIMD3<Float>(0.86, 0.90, 0.92) : SIMD3<Float>(1.08, 1.07, 1.0)
+                tint *= Float(0.93 + 0.14 * Double(ss(-0.4, 0.4, Float(sB))))
                 out.append(TreeInstance(position: SIMD3(Float(px), Float(py), Float(height(px, py))), height: Float(h), conifer: conifer, colour: tint))
                 // Paved surroundings: most of the ring 4 m out bright and unsaturated (lots, roads, roofs).
                 var bright = 0

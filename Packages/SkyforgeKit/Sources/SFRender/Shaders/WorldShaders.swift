@@ -137,7 +137,7 @@ public enum WorldShaders {
         return o;
     }
 
-    constexpr sampler imgSampler(filter::linear, mip_filter::linear, address::clamp_to_edge, coord::normalized, max_anisotropy(8));
+    constexpr sampler imgSampler(filter::linear, mip_filter::linear, address::clamp_to_edge, coord::normalized, max_anisotropy(16));   // 16: photo ground smeared at grazing angles (round 18)
 
     constexpr sampler tbl(filter::linear, address::clamp_to_edge, coord::normalized);
 
@@ -553,13 +553,14 @@ public enum WorldShaders {
             float al = dot(albedo, float3(0.2126, 0.7152, 0.0722));
             if (imgForest > 0.0 && al < 0.05) albedo = mix(albedo, albedo * (0.05 / max(al, 0.004)), imgForest);
             float wm = inNear ? waterMask.sample(imgSampler, nuv).r : 0.0;
-            // Shadow toe, the mirror of the shoulder: photo shadows below ~0.07 albedo are lifted (0.02 → 0.03,
-            // 0.04 → 0.047) so the baked shadows under the 3D trees and buildings, which cast their own, stop
-            // reading as doubled black (art round 17, KMRY). Fades by 1.2 km; not on water.
+            // Shadow toe, the mirror of the shoulder: photo shadows below ~0.10 albedo are lifted (0.03 → 0.046,
+            // 0.06 → 0.072) so the baked shadows under the 3D trees and buildings, which cast their own, stop
+            // reading as doubled black (art round 17, KMRY; a 0.07/0.7 toe sat below most photo shadows, round 18).
+            // Fades by 1.2 km; not on water.
             float alT = dot(albedo, float3(0.2126, 0.7152, 0.0722));
             float toeW = (1.0 - smoothstep(400.0, 1200.0, dist)) * (1.0 - saturate((wm - 0.2) / 0.2));
-            if (alT < 0.07 && toeW > 0.0) {
-                float lifted = 0.07 * pow(max(alT, 1e-4) / 0.07, 0.7);
+            if (alT < 0.10 && toeW > 0.0) {
+                float lifted = 0.10 * pow(max(alT, 1e-4) / 0.10, 0.65);
                 albedo *= 1.0 + (lifted / max(alT, 1e-4) - 1.0) * toeW;
             }
             groundMat = (1.0 - smoothstep(500.0, 800.0, dist)) * (1.0 - saturate((wm - 0.2) / 0.2));

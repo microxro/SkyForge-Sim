@@ -492,3 +492,24 @@ Round-18 batch:
 3. **Photo shadow toe:** below 0.07 albedo, lifted as `0.07·(al/0.07)^0.7` (0.02 → 0.03); fades by 1.2 km; not on water.
 4. **SkyWorld hills:** 340 m, starting 1.9 km off the axis (was 240 m from 2 km).
 5. **KBFI fallback boxes:** skipped where 5 of 8 photo samples 14 m out match the roof luminance (on a warehouse roof or car park the photo already shows). Test.
+
+## Bold round 18: 12 Metal frames (ba04e91, run 42600144759)
+Phone: KMRY 6.5, KASE 6.75, KBFI 5.75, LSZS 6.0, NZQN 6.0, SkyWorld 6.75. **Average 6.29 (+0.08).**
+High: KMRY 6.5, KASE 7.0, KBFI 5.75, LSZS 6.5, NZQN 6.25, SkyWorld 7.0. **Average 6.50 (+0.08).** High: KASE and SkyWorld at 7.
+
+Findings:
+- **KMRY false water:** gone on both tiers (blue pixels in the area 785 → 200 on high); the big lake still reads as water.
+- **SkyWorld hills:** now read as terrain.
+- **High-tier clouds:** no pattern, slightly crisper (fine detail 0.78 → 0.81; phone 1.20). Quarter resolution caps edge sharpness whatever the filter.
+- **Shadow toe:** invisible (KMRY darkest 1 % unchanged). At 0.07 it sits below most photo shadow albedo.
+- **KBFI skip test:** barely visible; the remaining boxes are uniform pale cubes.
+- **Remaining issues:**
+  - LSZS: one uniform canopy texture.
+  - NZQN and KASE (phone): smeared photo at grazing angles.
+
+Round-19 batch (first round under 0.2 since the structural change; a second would trigger another):
+1. **Toe:** knee 0.10, exponent 0.65 (0.03 → 0.046, 0.06 → 0.072).
+2. **High-tier clouds:** one-third resolution with 26 steps (quarter with 32). The Bayer tent path applies above downsample 2.5. 2 ms of headroom was measured.
+3. **Forest stands:** ~300 m noise sets the conifer share (12–88 %), with darker conifer and lighter broadleaf stand tones; half of each tree's height comes from its stand. Test: the conifer share varies by > 0.4 between 200 m patches.
+4. **Photo sampler:** anisotropy 16 (was 8).
+5. **KBFI fallback buildings:** darker siding and brick wall tones, and a fifth of them two-storey.
