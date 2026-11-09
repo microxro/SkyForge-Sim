@@ -412,7 +412,9 @@ public struct RealWorldRegion: FlightWorld {
                 func ss(_ e0: Float, _ e1: Float, _ x: Float) -> Float { let t = max(0, min(1, (x - e0) / (e1 - e0))); return t * t * (3 - 2 * t) }
                 // Green at least as strong as blue: a shaded crown stays green-dominant, a shadow on asphalt or a
                 // rail bed turns blue (art round 8: trees on roads and lots at KBFI).
-                let canopy = max(lc.forest, ss(0.30, 0.15, l) * ss(-0.03, 0.02, c.y - c.x) * ss(-0.01, 0.02, c.y - c.z) * (1 - lc.water))
+                // (Round 9: green ≥ blue still let faintly green asphalt shadow through; now green clearly above
+                // blue and at least 0.9 × red.)
+                let canopy = max(lc.forest, ss(0.30, 0.15, l) * ss(-0.02, 0.01, c.y - 0.9 * c.x) * ss(0.015, 0.04, c.y - c.z) * (1 - lc.water))
                 if Hash.unit(rng.next()) > Double(canopy) * 0.9 || g.water > 0.3 { continue }
                 if nearRunway(px, py) || inBuilding(px, py) { continue }
                 let h = 9 + Hash.unit(rng.next()) * 10
@@ -421,10 +423,18 @@ public struct RealWorldRegion: FlightWorld {
                 // Foliage albedo floor (hue kept): dark Sentinel-2 forest gave near-black crowns (LSZS).
                 let tl = 0.2126 * tint.x + 0.7152 * tint.y + 0.0722 * tint.z
                 if tl < 0.05 { tint *= 0.05 / max(tl, 0.002) }
-                // Foliage hue range: blue no stronger than 0.75 × green, red 0.65–1.05 × green. Shaded photo
-                // canopy carries the sky's blue, which made 3D crowns cool teal against warm olive (round 8).
+                // Foliage hue range: blue ≤ 0.75 × green, red 0.70–0.90 × green, saturation ≥ 0.25. Shaded photo
+                // canopy carries the sky's blue (cool teal crowns, round 8); red up to 1.05 × green turned
+                // alpine forest khaki (round 9).
                 tint.z = min(tint.z, tint.y * 0.75)
-                tint.x = min(max(tint.x, tint.y * 0.65), tint.y * 1.05)
+                tint.x = min(max(tint.x, tint.y * 0.70), tint.y * 0.90)
+                let tmax = max(tint.x, tint.y, tint.z), tmin = min(tint.x, tint.y, tint.z)
+                if tmax > 0, (tmax - tmin) / tmax < 0.25 {
+                    let target = tmax * 0.75                        // stretch the weakest channels away from the max
+                    tint = SIMD3(tint.x == tmax ? tint.x : min(tint.x, target + (tint.x - tmin) * 0.5),
+                                 tint.y == tmax ? tint.y : min(tint.y, target + (tint.y - tmin) * 0.5),
+                                 tint.z == tmax ? tint.z : min(tint.z, target))
+                }
                 out.append(TreeInstance(position: SIMD3(Float(px), Float(py), Float(height(px, py))), height: Float(h), conifer: conifer, colour: tint))
             }
             y += cell

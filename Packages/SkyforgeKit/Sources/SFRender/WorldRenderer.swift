@@ -430,7 +430,8 @@ public final class WorldRenderer {
         frustum(&oak, z0: -0.03, r0: 0.03, z1: 0.4, r1: 0.025, sides: 5, bark: true)
         // Near broadleaf: 12 sides (drawn only within `treeLODDistance`) so the outline reads round.
         let oakCrown = (centre: 0.62, radius: 0.44, height: 0.38)
-        frustum(&oak, z0: 0.3, r0: 0.18, z1: 0.48, r1: 0.42, sides: 12, bark: false, crown: oakCrown)
+        // Crown starts low (0.2) so little trunk shows from approach height (round 9: lollipops).
+        frustum(&oak, z0: 0.2, r0: 0.16, z1: 0.48, r1: 0.42, sides: 12, bark: false, crown: oakCrown)
         frustum(&oak, z0: 0.48, r0: 0.42, z1: 0.75, r1: 0.36, sides: 12, bark: false, crown: oakCrown)
         frustum(&oak, z0: 0.75, r0: 0.36, z1: 1.0, r1: 0, sides: 12, bark: false, crown: oakCrown)
         // Distant LOD (beyond `treeLODDistance`, a few pixels tall): crown only, 4 sides, 4–12 triangles

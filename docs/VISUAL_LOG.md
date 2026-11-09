@@ -334,3 +334,22 @@ Round-9 batch:
 3. Crown hue is clamped (blue ≤ 0.75 × green, red 0.65–1.05 × green).
 4. Foliage ambient is 0.7 × a sky/ground mix, standing in for occlusion inside the crown.
 5. Aircraft paint albedo capped at 0.40.
+
+## Bold round 9: 1280×720 Metal frames (feb6272, run 42562430575, tests and frame time green)
+Scores: KMRY 5.75, KASE 6.5, KBFI 5.0, LSZS 5.25, NZQN 5.0, SkyWorld 5.75. **Average 5.54 (+0.04).**
+
+Findings:
+- **What worked:** crown colours now match the photo (no more blue crowns), and trees snap onto their photo blobs.
+- **Regression:** the clamp's red ceiling of 1.05 × green turned LSZS forest khaki; saturation fell from 29 to 16.
+- **Still open:**
+  - The photo's own baked tree shadows remain beside the 3D trees.
+  - Some trees still stand on paved lots.
+  - The aircraft's sides render flat.
+
+Round-10 batch:
+1. **Crown colour:**
+   - Red is clamped to 0.70–0.90 × green, with saturation at least 0.25.
+   - Foliage ambient returns to 0.85; darkening applies only to downward-facing crown surfaces.
+2. **Placement:** dark canopy requires green ≥ blue + 0.015–0.04 and green ≥ 0.9 × red.
+3. **Crown shape:** crowns start at 0.2 of the tree's height, so less trunk shows.
+4. **Aircraft:** occlusion darkens the fuselage's lower curve.

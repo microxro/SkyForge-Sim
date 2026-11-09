@@ -709,7 +709,9 @@ public enum WorldShaders {
             float back = pow(max(0.0, dot(dir, toSun)), 4.0) * 0.35;
             // Inside a crown much of the sky is hidden by the crown itself: less (and less blue) sky light on
             // foliage, part of it replaced by light bounced from the ground below (art round 8: blue crowns).
-            float3 foliageAmb = mix(ambient, u.ambientGround.rgb, 0.35) * 0.7;
+            // Darkening on the crown's underside only (round 9: 0.7 over the whole crown dulled sunlit tops).
+            float under = saturate(-n.z);
+            float3 foliageAmb = mix(ambient, u.ambientGround.rgb, 0.25 + 0.25 * under) * (0.85 - 0.25 * under);
             col = albedo * (u.sunColour.rgb * (wrap + back) * vis + foliageAmb);
         } else if (m == 6.0 || m == 5.0) {                   // aircraft paint / glass: GGX
             // Panel seams on the airframe (aircraft-sized local coordinates only, not painted scenery).
@@ -732,6 +734,8 @@ public enum WorldShaders {
                 if (L.z < -0.9 && abs(L.y) >= 0.5) ao -= 0.30 * exp(-root / 0.35);               // wing root
                 if (L.x < -3.6 && abs(L.y) >= 0.15 && L.z > -0.9) ao -= 0.25 * exp(-max(0.0, abs(L.y) - 0.15) / 0.25);   // tailplane root
                 if (abs(L.y) < 0.75 && L.z > -0.95 && L.z < -0.75 && L.x > -1.6 && L.x < 0.4) ao -= 0.20 * smoothstep(-0.75, -0.95, L.z);   // cabin under the wing
+                // Fuselage lower curve (body z down): the belly sees ground, not sky (round 9: flat sides).
+                if (abs(L.y) < 0.75 && L.z > -0.95) ao -= 0.15 * smoothstep(-0.3, 0.3, L.z);
             }
             col = pbrDielectric(albedo, n, -dir, toSun, rough, u.sunColour.rgb, env, vis) * mix(1.0, ao, 0.5)
                 + albedo * ambient * (m == 6.0 ? 1.0 : 0.3) * ao;
