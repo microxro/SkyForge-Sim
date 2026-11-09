@@ -283,3 +283,20 @@ Round-6 batch, a structural change of approach:
 2. Fallback roofs use the brighter half of their samples. Walls use a stucco/siding palette.
 3. Vibrance spares greens.
 4. Tree crowns get smooth radial normals.
+
+## Bold round 6: 1280×720 Metal frames (c769527, run 42554218498)
+Scores: KMRY 5.0, KASE 6.0, KBFI 4.5, LSZS 5.0, NZQN 5.0, SkyWorld 5.5. **Average 5.17 (+0.17).** This is the third round in a row under 0.2.
+
+Findings:
+- KMRY's posterisation is gone.
+- KBFI walls now read as stucco with lit and shaded sides. Some boxes still stand on paved lots.
+- SkyWorld crowns are still faceted. Cause: stacked crown sections with opposite slopes, not the shading normals.
+- Biggest lever (art director): four of the five real frames are capped by the bottom 40 % of the frame, which shows a magnified ~1 m/px photo.
+
+Round-7 batch, structural (b7affb8):
+- **Near-ground detail materials.** Each photo pixel within 800 m is classified, and each class adds its own high frequencies and normal tilt:
+  - grass
+  - dry grass
+  - soil
+  - pavement/roof
+- **Tree crowns.** Near broadleaf crowns get 12 sides and ellipsoid normals.
