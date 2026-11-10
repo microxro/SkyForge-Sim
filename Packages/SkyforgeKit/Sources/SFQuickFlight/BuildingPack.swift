@@ -119,4 +119,11 @@ extension Showcase {
         guard let dir = Bundle.module.url(forResource: ident, withExtension: nil, subdirectory: "Showcase") else { return nil }
         return try? Data(contentsOf: dir.appendingPathComponent(BuildingPack.fileName), options: .mappedIfSafe)
     }
+
+    /// The bundled land cover grid for a showcase airport (nil when its pack has none).
+    public static func landCover(for ident: String) -> LandCoverGrid? {
+        guard let dir = Bundle.module.url(forResource: ident, withExtension: nil, subdirectory: "Showcase"),
+              let d = try? Data(contentsOf: dir.appendingPathComponent(LandCoverGrid.fileName), options: .mappedIfSafe) else { return nil }
+        return LandCoverGrid(png: d)
+    }
 }

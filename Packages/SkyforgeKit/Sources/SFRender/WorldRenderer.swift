@@ -467,8 +467,10 @@ public final class WorldRenderer {
         let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm_srgb, width: i.size, height: i.size, mipmapped: true)
         d.usage = [.shaderRead]
         guard let t = device.makeTexture(descriptor: d) else { throw RendererError.commandQueue }
-        var rgba = [UInt8](repeating: 255, count: i.size * i.size * 4)
+        // Alpha carries the land cover's water fraction (0 where the layer has none).
+        var rgba = [UInt8](repeating: 0, count: i.size * i.size * 4)
         for p in 0..<(i.size * i.size) { rgba[4 * p] = i.rgb[3 * p]; rgba[4 * p + 1] = i.rgb[3 * p + 1]; rgba[4 * p + 2] = i.rgb[3 * p + 2] }
+        if let w = i.water, w.count == i.size * i.size { for p in 0..<w.count { rgba[4 * p + 3] = w[p] } }
         t.replace(region: MTLRegionMake2D(0, 0, i.size, i.size), mipmapLevel: 0, withBytes: rgba, bytesPerRow: i.size * 4)
         if let cmd = queue.makeCommandBuffer(), let blit = cmd.makeBlitCommandEncoder() {
             blit.generateMipmaps(for: t); blit.endEncoding(); cmd.commit(); cmd.waitUntilCompleted()
@@ -1118,6 +1120,8 @@ public final class WorldRenderer {
             enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: a.count)
             if cockpitView, let ck = cockpit {
                 u.cameraPos.w = 0
+                u.quality.y = 1
+                defer { u.quality.y = 0 }
                 enc.setVertexBuffer(ck.buffer, offset: 0, index: 0)
                 enc.setVertexBytes(&u, length: MemoryLayout<WorldUniforms>.stride, index: 1)
                 enc.setFragmentBytes(&u, length: MemoryLayout<WorldUniforms>.stride, index: 1)

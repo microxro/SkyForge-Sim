@@ -47,6 +47,24 @@ public struct USGSImageryProvider: ImageryProvider {
     }
 }
 
+/// LINZ aerial imagery (Toitū Te Whenua Land Information New Zealand, CC BY 4.0), bundled only.
+/// LINZ publishes the surveys as GeoTIFFs in NZTM2000, not as keyless map tiles, so
+/// `tools/fetch_linz_imagery.py` warps them onto Web Mercator tiles inside a showcase pack and this
+/// provider names those tiles. Outside a pack that carries them nothing answers and callers fall
+/// back to Sentinel-2.
+public struct LINZAerialProvider: ImageryProvider {
+    public let id = "linz-aerial"
+    public let attribution = "Imagery: Toitū Te Whenua Land Information New Zealand aerial imagery, CC BY 4.0"
+    public let maxZoom: Int
+    public init(maxZoom: Int = 17) { self.maxZoom = maxZoom }
+    public func covers(latitude: Double, longitude: Double) -> Bool {
+        latitude > -47.6 && latitude < -34 && longitude > 166 && longitude < 179
+    }
+    public func url(_ t: TileCoord) -> URL {
+        URL(string: "skyforge-pack://linz-aerial/\(t.z)/\(t.x)/\(t.y).jpg")!
+    }
+}
+
 /// EOX Sentinel-2 cloudless 2016 (the CC BY 4.0 edition; later editions are non-commercial).
 public struct Sentinel2CloudlessProvider: ImageryProvider {
     public let id = "s2cloudless-2016"

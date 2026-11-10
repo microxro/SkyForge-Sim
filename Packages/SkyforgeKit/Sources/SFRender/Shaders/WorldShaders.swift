@@ -39,7 +39,7 @@ public enum WorldShaders {
         float4 imageryDetail;     // sharp inner imagery square: centre x, y, half extent, 1 if present
         float4 imageryMid;        // middle-distance imagery square: centre x, y, half extent, 1 if present
         float4 skyZenith;         // rgb zenith sky radiance (reflections), w = time (s)
-        float4 quality;           // x = shadow filter half width (taps), y, z, w unused
+        float4 quality;           // x = shadow filter half width (taps), y = cabin interior fill (cockpit pass), z, w unused
     };
 
     struct BuildingVertex { packed_float3 position; char4 normal; uchar4 colour; packed_float2 uv; uchar4 style; };
@@ -782,13 +782,16 @@ public enum WorldShaders {
     /// sharp detail square, each feathered into the one below), with a light unsharp mask against a
     /// coarser mip so magnified texels keep their edges. Explicit gradients: safe inside branches.
     static float3 photoColour(constant WorldUniforms& u, texture2d<float> imgNear, texture2d<float> imgMid, texture2d<float> imgFar,
-                              texture2d<float> imgDetail, float2 w, float2 dwx, float2 dwy, thread float2& nuv, thread bool& inNear) {
+                              texture2d<float> imgDetail, float2 w, float2 dwx, float2 dwy, thread float2& nuv, thread bool& inNear,
+                              thread float& outerWater, thread float& nearWeight) {
         float3 c = float3(0.12, 0.14, 0.10);
+        outerWater = 0.0; nearWeight = 0.0;
         if (u.imageryFar.w > 0.5) {
             float k = 1.0 / (2.0 * u.imageryFar.z);
             float2 uv = (w - (u.imageryFar.xy - u.imageryFar.z)) * k; uv.y = 1.0 - uv.y;
             float2 gx = float2(dwx.x, -dwx.y) * k, gy = float2(dwy.x, -dwy.y) * k;
-            c = imgFar.sample(imgSampler, uv, gradient2d(gx, gy)).rgb;
+            float4 f4 = imgFar.sample(imgSampler, uv, gradient2d(gx, gy));
+            c = f4.rgb; outerWater = f4.a;
             float3 b = imgFar.sample(imgSampler, uv, gradient2d(gx * 4.0, gy * 4.0)).rgb;
             c = max(c + (c - b) * 0.3, float3(0.0));
         }
@@ -798,10 +801,12 @@ public enum WorldShaders {
             float edge = min(min(uv.x, uv.y), min(1.0 - uv.x, 1.0 - uv.y));
             if (edge > 0.002) {
                 float2 gx = float2(dwx.x, -dwx.y) * k, gy = float2(dwy.x, -dwy.y) * k;
-                float3 m = imgMid.sample(imgSampler, uv, gradient2d(gx, gy)).rgb;
+                float4 m4 = imgMid.sample(imgSampler, uv, gradient2d(gx, gy));
+                float3 m = m4.rgb;
                 float3 b = imgMid.sample(imgSampler, uv, gradient2d(gx * 4.0, gy * 4.0)).rgb;
                 m = max(m + (m - b) * 0.35, float3(0.0));
                 c = mix(c, m, smoothstep(0.002, 0.06, edge));
+                outerWater = mix(outerWater, m4.a, smoothstep(0.002, 0.06, edge));
             }
         }
         float kn = 1.0 / (2.0 * max(u.imageryNear.z, 1.0));
@@ -813,7 +818,8 @@ public enum WorldShaders {
             float3 b = imgNear.sample(imgSampler, nuv, gradient2d(gx * 4.0, gy * 4.0)).rgb;
             nearC = max(nearC + (nearC - b) * 0.45, float3(0.0));
             float edgeN = min(min(nuv.x, nuv.y), min(1.0 - nuv.x, 1.0 - nuv.y));
-            c = mix(c, nearC, smoothstep(0.002, 0.06, edgeN));
+            nearWeight = smoothstep(0.002, 0.06, edgeN);
+            c = mix(c, nearC, nearWeight);
         }
         if (u.imageryDetail.w > 0.5) {
             float k = 1.0 / (2.0 * max(u.imageryDetail.z, 1.0));
@@ -861,7 +867,8 @@ public enum WorldShaders {
         float2 dwx = dfdx(photoW), dwy = dfdy(photoW);
         if (m == 8.0) {
             float2 nuv; bool inNear;
-            float3 c = photoColour(u, imgNear, imgMid, imgFar, imgDetail, photoW, dwx, dwy, nuv, inNear);
+            float outerWater, nearWeight;
+            float3 c = photoColour(u, imgNear, imgMid, imgFar, imgDetail, photoW, dwx, dwy, nuv, inNear, outerWater, nearWeight);
             // (No photo-tree suppression: lifting dark pixels to a local average also lifted building and
             // terrain shadows and left hard dark rims; art round 5 scored it a regression. The 3D trees
             // stand on the photo's foliage pixels instead, so the photo crown sits under its 3D tree.)
@@ -873,7 +880,9 @@ public enum WorldShaders {
             // near-black (~0.03), so the ground between the 3D trees read as a dark smear (LSZS, rounds 4–6).
             float al = dot(albedo, float3(0.2126, 0.7152, 0.0722));
             if (imgForest > 0.0 && al < 0.05) albedo = mix(albedo, albedo * (0.05 / max(al, 0.004)), imgForest);
-            float wm = inNear ? waterMask.sample(imgSampler, nuv, level(0.0)).r : 0.0;
+            // Water: the near layer's mask (photo colour checked against land cover) inside it, the land
+            // cover's water fraction carried by the outer layers beyond, blended across the near layer's edge.
+            float wm = inNear ? mix(outerWater, waterMask.sample(imgSampler, nuv, level(0.0)).r, nearWeight) : outerWater;
             // Shadow toe, the mirror of the shoulder: photo shadows below ~0.10 albedo are lifted (0.03 → 0.046,
             // 0.06 → 0.072) so the baked shadows under the 3D trees and buildings, which cast their own, stop
             // reading as doubled black (art round 17, KMRY; a 0.07/0.7 toe sat below most photo shadows, round 18).
@@ -1024,6 +1033,14 @@ public enum WorldShaders {
         // Fill light under a cumulus: the cloud's lit sides and base scatter sunlight down into its own
         // shadow, so it reads ~17 % of full sun (sky ambient alone left it at ~7 %). Sunlit ground gets none.
         ambient += u.sunColour.rgb * (0.35 * toSun.z * cloudShade);
+        if (u.quality.y > 0.0) {
+            // Cabin interior: lit by the sky and the sunlit ground through the windows, from every side, and
+            // by direct sun on the glare shield through the windscreen. The airframe's own shadow would
+            // otherwise leave the whole cabin at the ground-bounce level (near black).
+            ambient = (u.ambientSky.rgb * 0.75 + u.ambientGround.rgb * 0.9 + u.sunColour.rgb * 0.035) * u.quality.y;
+            float shield = smoothstep(1.10, 1.20, in.local.x) * smoothstep(0.4, 0.8, n.z);
+            vis = shield * (1.0 - cloudShade);
+        }
         float3 col;
         if (m == 1.0) {                                      // water
             // Wind waves: two octaves of slope noise (14 m and 3.5 m), faded by pixel footprint so
@@ -1040,18 +1057,28 @@ public enum WorldShaders {
             float2 sw = float2(0.8 * ww.x - 0.6 * ww.y, 0.6 * ww.x + 0.8 * ww.y) + 123.0;
             slope += float2(groundNoise(sw + float2(2.0, 0.0), 60.0) - groundNoise(sw - float2(2.0, 0.0), 60.0),
                             groundNoise(sw + float2(0.0, 2.0), 60.0) - groundNoise(sw - float2(0.0, 2.0), 60.0)) * 0.9 * wSwell;
+            // Wind: ruffled water beside calmer slicks (250 m and 1 km patches), at any distance, so a lake
+            // or a bay is not one uniform sheet.
+            float ruffle = 0.30 + 0.70 * smoothstep(-0.30, 0.40, groundNoise(ww + 211.0, 256.0) + 0.6 * groundNoise(ww + 97.0, 1024.0));
+            slope *= 0.55 + 0.75 * ruffle;
             float3 wn = normalize(float3(-slope, 1.0));
             float3 r = reflect(dir, wn);
             r.z = abs(r.z);
             float cosT = max(0.0, -dot(dir, wn));
             float fres = 0.02 + 0.98 * pow(1.0 - cosT, 5.0);
-            // Sky gradient in the reflection: horizon colour low, deeper sky colour higher up.
-            float3 skyR = mix(u.skyHorizon.rgb, u.ambientSky.rgb * 1.6, saturate(pow(r.z, 0.6)));
+            // The sky the surface mirrors. Wavelets too small to resolve still tilt the facets, so far water
+            // reflects sky from above the horizon line (deeper blue where it is ruffled, pale in the slicks).
+            float3 rr = normalize(float3(r.xy, max(r.z, 0.02) + 0.20 * ruffle * (1.0 - 0.6 * wNear)));
+            float3 skyR = skyEnv(u, rr);
             // The needle lobe only where wavelets resolve, and capped: on sub-pixel wavelets it lit single
             // pixels (fireflies that flicker in motion, art round 13).
             float glitter = min(pow(max(0.0, dot(r, toSun)), 900.0) * 60.0 * wNear, 12.0) + pow(max(0.0, dot(r, toSun)), 60.0) * 0.6;
             float3 refl = skyR + u.sunColour.rgb * glitter * vis;
             float3 body = albedo * (ambient * 0.6 + u.sunColour.rgb * max(0.0, toSun.z) * 0.15);
+            // Sunlight scattered back out of the water column: the blue-green of clear water under sun.
+            body += float3(0.004, 0.030, 0.042) * u.sunColour.rgb * (max(0.0, toSun.z) * 0.55 * vis);
+            // Sheen toward the sun from many unresolved facets, wider where the water is ruffled.
+            refl += u.sunColour.rgb * pow(max(0.0, dot(rr, toSun)), mix(260.0, 40.0, ruffle)) * (0.5 + 1.5 * ruffle) * vis;
             if (imageryWater) {
                 // Shallows: a lighter green-turquoise body across the shore band (the mask's 0.6–0.9 rise), so
                 // a lake edge reads as depth rather than a navy cut-out (art round 11, NZQN).
@@ -1083,7 +1110,7 @@ public enum WorldShaders {
             float clump = groundNoise(lw + in.rel.z * float2(0.43, -0.71) + 31.0, 0.7);
             float fine = groundNoise(lw - in.rel.z * float2(0.29, 0.52) - 7.0, 0.22);
             float nearT = saturate(1.0 - dist / 260.0);
-            float tone = 1.0 + nearT * (0.45 * (clump - 0.5) + 0.25 * (fine - 0.5));
+            float tone = 1.0 + nearT * (0.30 * clump + 0.18 * fine);      // noise is −1…1
             float occ = mix(0.35, 1.0, saturate(in.field));
             col = albedo * tone * (u.sunColour.rgb * (wrap + back) * mix(1.0, occ, 0.5) * vis + foliageAmb * occ);
         } else if (m == 10.0 || m == 11.0 || m == 12.0) {    // SF-1 airframe: painted skin, glazing, bright metal
@@ -1139,7 +1166,8 @@ public enum WorldShaders {
             float3 a = albedo;
             if (fmod(in.style.z, 2.0) > 0.5) {
                 float2 ruv; bool rin;
-                a = photoAlbedo(photoColour(u, imgNear, imgMid, imgFar, imgDetail, photoW, dwx, dwy, ruv, rin));
+                float rw0, rw1;
+                a = photoAlbedo(photoColour(u, imgNear, imgMid, imgFar, imgDetail, photoW, dwx, dwy, ruv, rin, rw0, rw1));
             }
             float2 rw = in.rel.xy + u.cameraPos.xy;
             float fpw = length(dwx) + length(dwy);
