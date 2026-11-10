@@ -944,7 +944,11 @@ public enum WorldShaders {
             float wFine = saturate(1.0 - fp / 1.0), wMid = saturate(1.0 - fp / 4.0), wDry = saturate(1.0 - fp / 16.0);
             float fade = (1.0 - dist / (in.material == 8.0 ? 900.0 : 1400.0)) * (1.0 - 0.7 * fieldCov) * (1.0 - groundMat);   // fields and ground materials carry their own
             float fine = groundNoise(w, 2.0), mid = groundNoise(w + 17.0, 8.0), dry = groundNoise(w - 31.0, 32.0);
-            albedo *= 1.0 + (fine * 0.08 * wFine + mid * 0.06 * wMid) * fade;
+            // Detail texturing over magnified photo: three octaves (0.6, 2 and 8 m) restore the grain the
+            // imagery cannot resolve at the camera (KASE, round V2: a soft, smeared foreground).
+            float wVF = saturate(1.0 - fp / 0.35);
+            float vfine = groundNoise(w + 5.7, 0.6);
+            albedo *= 1.0 + (vfine * 0.11 * wVF + fine * 0.14 * wFine + mid * 0.11 * wMid) * fade;
             albedo *= 1.0 + (float3(1.10, 1.02, 0.80) - 1.0) * (max(0.0, dry) * 0.45 * wDry * fade);
             float e = 0.6;
             float gx = groundNoise(w + float2(e, 0), 2.0) - groundNoise(w - float2(e, 0), 2.0);

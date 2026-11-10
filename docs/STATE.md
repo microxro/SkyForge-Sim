@@ -3,6 +3,11 @@ LAST_UPDATE: 2026-11-10T00:09:41Z
 # SKYFORGE state
 
 ## Phase
+Visual transformation (2026-11-10, PR #5, ADR-0021) is in progress; the Bold Mode summary below is the earlier baseline.
+- Landed (CI-compiled): new SF-1 aircraft model with per-pixel livery, glass and clear coat; OSM-sourced 3D buildings with facade/roof shading (bundled `buildings.sfb`, ODbL); four shadow cascades; mid-distance imagery layer; 2x supersampling and sharpening in the ultra preset; exposure scale 0.45 with near-identity photo albedo; per-airport review-frame jobs.
+- Pushed, awaiting CI frames: five tree species with ambient occlusion, rebuilt cockpit interior.
+- Next: read the new frames against the baseline in `docs/VISUAL_LOG.md`; terrain detail, water, clouds; before/after comparison. No parity with MSFS is claimed.
+
 Bold Mode (docs/BOLD_MODE.md) is in progress.
 - Done (CI-verified unless noted):
   - A real-world showcase airport (KMRY, offline tile pack) is the default start. Six packs are bundled; any OurAirports airport streams after a prompt; SkyWorld is the fallback.
