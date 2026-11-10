@@ -722,8 +722,16 @@ public enum OSMMeshBuilder {
                 right.append(SIMD3(rr.x, rr.y, ground(rr.x, rr.y) + lift))
             }
             let colour = roadColour(for: r)
+            // The field channel carries the position across the carriageway (−1 at the left edge, +1 at the
+            // right) on roads with a centre line, and 0 on those without (service roads, tracks, ramps), so
+            // the shader can paint the line.
+            let code: Float = r.isUnpaved || r.highway == .service || r.highway == .track || r.highway.isLink ? 0 : 1
+            let up = SIMD3<Float>(0, 0, 1)
             for i in 0..<(pts.count - 1) {
-                soup.addQuad(right[i], right[i + 1], left[i + 1], left[i], colour: colour, material: .road)
+                soup.add(right[i], right[i + 1], left[i + 1], na: up, nb: up, nc: up, ca: colour, cb: colour, cc: colour, material: .road,
+                         fields: SIMD3(code, code, -code))
+                soup.add(right[i], left[i + 1], left[i], na: up, nb: up, nc: up, ca: colour, cb: colour, cc: colour, material: .road,
+                         fields: SIMD3(code, -code, -code))
             }
         }
         return soup

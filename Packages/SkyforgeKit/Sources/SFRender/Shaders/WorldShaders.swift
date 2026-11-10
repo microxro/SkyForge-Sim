@@ -1321,7 +1321,18 @@ public enum WorldShaders {
                 + albedo * ambient * (m == 6.0 ? 1.0 : 0.3) * ao;
         } else {
             col = albedo * (u.sunColour.rgb * max(0.0, ndl) * vis + ambient);
-            if (m == 3.0) {                      // road: Blinn-Phong highlight
+            if (m == 3.0) {                      // road: asphalt grain, painted lines, Blinn-Phong highlight
+                // The field channel is the position across the carriageway (−1 left edge … +1 right edge) on
+                // roads that carry a centre line and 0 everywhere on those that do not (OSMMeshBuilder.roads),
+                // so a line is painted where it crosses zero with a slope.
+                float fa = abs(in.field), fw = fwidth(in.field);
+                float2 rw = in.rel.xy + u.cameraPos.xy;
+                float rfp = length(fwidth(rw));
+                float3 road = albedo * (1.0 + 0.10 * groundNoise(rw + 9.0, 0.5) * saturate(1.0 - rfp / 1.0)
+                                            + 0.08 * groundNoise(rw - 33.0, 7.0) * saturate(1.0 - rfp / 14.0));
+                float lines = (1.0 - smoothstep(0.0, 0.03 + fw, fa)) * step(1e-4, fw) * saturate(1.3 - fw * 6.0);
+                float3 paint = float3(0.46, 0.45, 0.42);
+                col = mix(road, paint, lines * 0.85) * (u.sunColour.rgb * max(0.0, ndl) * vis + ambient);
                 float3 h = normalize(toSun - dir);
                 float spec = pow(max(0.0, dot(n, h)), 20.0) * 0.08;
                 col += u.sunColour.rgb * spec * vis;

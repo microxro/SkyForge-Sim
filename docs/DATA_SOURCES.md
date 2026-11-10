@@ -43,3 +43,9 @@ Test fixtures: `Tests/Fixtures/imagery/usgs_15_13676_9038.jpg` (public domain) a
 |---|---|---|---|---|
 | ESA WorldCover 10 m 2021 v200 | esa-worldcover.s3.eu-central-1.amazonaws.com (anonymous read) | CC BY 4.0 | "Land cover: © ESA WorldCover project 2021 (contains modified Copernicus Sentinel data), CC BY 4.0" (`LandCoverGrid.attribution`) | Bundled: `Showcase/<ident>/landcover.png` (class codes on a 4096² grid over ±40 km), written by `tools/fetch_landcover.py`. Used for water at any distance. |
 | LINZ aerial imagery (Queenstown 0.1 m 2021; Otago 0.3 m 2017–2021) | nz-imagery.s3.ap-southeast-2.amazonaws.com (anonymous read) | CC BY 4.0 | "Imagery: Toitū Te Whenua Land Information New Zealand aerial imagery, CC BY 4.0" (`LINZAerialProvider.attribution`) | Bundled for NZQN only: Web Mercator tiles warped by `tools/fetch_linz_imagery.py` into the pack (keys `skyforge-pack://linz-aerial/z/x/y.jpg`). LINZ has no keyless tile service, so there is no streaming of this source; other New Zealand airports use Sentinel-2. Gaps in the surveys are filled from Sentinel-2 cloudless 2016 (attributed alongside). |
+
+### Road centrelines (visual phase, 2026-11-10)
+| Source | Host | Licence | Attribution shown in app | Status |
+|---|---|---|---|---|
+| Overture Maps Foundation transportation theme (segments, release 2026-10-21.0), **only records whose primary source is OpenStreetMap** | overturemaps-us-west-2.s3.amazonaws.com (anonymous read) | ODbL 1.0 (data © OpenStreetMap contributors) | `OSMData.attribution` ("Buildings and roads: © OpenStreetMap contributors, ODbL 1.0") | Bundled: `Showcase/<ident>/roads.sfr` for six airports (`SFR1`, ±6 km), written by `tools/fetch_roads.py`; read by `RoadPack`. Records from other sources are dropped at fetch time; driveways, sidewalks and crossings are not kept. Share-alike as for the building files. |
+

@@ -227,6 +227,19 @@ public struct RealWorldRegion: FlightWorld {
             }) ?? []
             if !list.isEmpty { osm = OSMData(buildings: list, roads: osm?.roads ?? []) }
         }
+        if bundledBuildings, osm?.roads.isEmpty != false, let packed = Showcase.roadData(for: ident) {
+            // Bundled streets: every class near the field, through roads only farther out.
+            let full = detail.buildingFullRadius * 0.6, far = detail.buildingRadius
+            let list = (try? RoadPack.parse(packed, origin: origin) { cls, c in
+                let d = (c * c).sum().squareRoot()
+                if d < full { return true }
+                switch cls {
+                case .service, .track, .residential, .livingStreet, .unclassified: return false
+                default: return d < far
+                }
+            }) ?? []
+            if !list.isEmpty { osm = OSMData(buildings: osm?.buildings ?? [], roads: list) }
+        }
         progress("Land cover")
         var attribution = [nearProvider.attribution]
         if farProvider.id != nearProvider.id { attribution.append(farProvider.attribution) }
