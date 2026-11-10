@@ -32,8 +32,12 @@ public struct RealWorldRenderData: Sendable {
     /// Where the 3D trees stand, for removing the photo's own trees and shadows from imagery streamed later
     /// (the in-flight detail layer), as `init(region:)` does for the near and detail layers.
     public var photoCrowns: [ImageryDelighting.Crown] = []
-    /// OpenStreetMap buildings and roads (local metres), drawn with the world mesh pass.
+    /// OpenStreetMap roads (local metres), drawn with the world mesh pass.
     public var buildings: TriangleSoup?
+    /// Buildings with facade coordinates (their own pass: windows, cladding and roofs per pixel).
+    public var buildingMesh: BuildingMesh?
+    /// Middle-distance imagery between the near and far layers.
+    public var mid: Imagery?
     public init(chunks: [Chunk], trees: [Tree], near: Imagery?, far: Imagery?, waterMask: (size: Int, values: [Float])?) {
         self.chunks = chunks; self.trees = trees; self.near = near; self.far = far; self.waterMask = waterMask
     }
@@ -67,6 +71,8 @@ extension RealWorldRenderData {
                   waterMask: (g.maskSize, g.waterMask))
         detail = imagery(det)
         photoCrowns = crowns
-        buildings = region.osmMesh()
+        buildings = region.roadMesh()
+        buildingMesh = region.buildingMesh()
+        mid = imagery(region.midImagery)
     }
 }

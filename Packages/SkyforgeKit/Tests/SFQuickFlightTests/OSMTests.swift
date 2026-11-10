@@ -415,7 +415,8 @@ private func faceNormal(_ a: SIMD3<Float>, _ b: SIMD3<Float>, _ c: SIMD3<Float>)
         let d = RealWorldDetail(nearHalf: 600, nearStep: 40, midHalf: 2_000, midStep: 200, farHalf: 8_000, farStep: 1_000,
                                 imageryNearSize: Int(Double(p.imageryNearSize) * 600 / p.nearHalf),
                                 imageryFarSize: Int(Double(p.imageryFarSize) * 8_000 / p.farHalf), treeRadius: 600, maxTrees: 50_000)
-        var region = try await RealWorldRegion.load(airport: a.ident, detail: d, transport: Showcase.transport(for: a.ident, fallback: nil), cache: nil)
+        var region = try await RealWorldRegion.load(airport: a.ident, detail: d, transport: Showcase.transport(for: a.ident, fallback: nil), cache: nil,
+                                                    bundledBuildings: false)
         #expect(region.osm == nil, "offline and uncached: no OSM")
         #expect(region.buildings == region.fallbackBuildings, "procedural fallback stands in for OSM")
         region.fallbackBuildings = []
@@ -440,7 +441,8 @@ private func faceNormal(_ a: SIMD3<Float>, _ b: SIMD3<Float>, _ c: SIMD3<Float>)
         let d = RealWorldDetail(nearHalf: 1_200, nearStep: 40, midHalf: 3_000, midStep: 200, farHalf: 8_000, farStep: 1_000,
                                 imageryNearSize: Int(Double(p.imageryNearSize) * 1_200 / p.nearHalf),
                                 imageryFarSize: Int(Double(p.imageryFarSize) * 8_000 / p.farHalf), treeRadius: 300, maxTrees: 1_000)
-        let region = try await RealWorldRegion.load(airport: ident, detail: d, transport: Showcase.transport(for: ident, fallback: nil), cache: nil)
+        let region = try await RealWorldRegion.load(airport: ident, detail: d, transport: Showcase.transport(for: ident, fallback: nil), cache: nil,
+                                                    bundledBuildings: false)
         let b = region.fallbackBuildings
         #expect(b.count > 50, "fallback buildings in Seattle: \(b.count)")
         for x in b {

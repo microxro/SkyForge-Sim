@@ -33,6 +33,12 @@ public struct RealWorldDetail: Sendable, Equatable {
     /// Sharp camera-following imagery square (US aerial photo only, z18 ≈ 0.5 m/px); size 0 = none.
     /// The region loads it around the start view; the app re-streams it ahead of the aircraft.
     public var imageryDetailHalf: Double, imageryDetailSize: Int
+    /// Middle-distance imagery square between the near and far layers (size 0 = none): without it
+    /// everything beyond the near square is drawn from the 40 km far mosaic at tens of metres per pixel.
+    public var imageryMidHalf: Double = 14_000, imageryMidSize: Int = 0
+    /// Bundled or streamed building footprints are drawn out to this distance from the airfield;
+    /// beyond `buildingFullRadius` only large or tall ones (small houses there are sub-pixel).
+    public var buildingRadius: Double = 3_000, buildingFullRadius: Double = 3_000
     public init(nearHalf: Double, nearStep: Double, midHalf: Double, midStep: Double, farHalf: Double, farStep: Double,
                 imageryNearSize: Int, imageryFarSize: Int, treeRadius: Double, maxTrees: Int,
                 imageryDetailHalf: Double = 1_200, imageryDetailSize: Int = 0) {
@@ -41,15 +47,36 @@ public struct RealWorldDetail: Sendable, Equatable {
         self.farHalf = farHalf; self.farStep = farStep; self.imageryNearSize = imageryNearSize; self.imageryFarSize = imageryFarSize
         self.treeRadius = treeRadius; self.maxTrees = maxTrees
     }
-    public static let phone = RealWorldDetail(nearHalf: 3_000, nearStep: 16, midHalf: 12_000, midStep: 80, farHalf: 40_000, farStep: 400,
-                                              imageryNearSize: 2_048, imageryFarSize: 1_024, treeRadius: 1_800, maxTrees: 40_000,
-                                              imageryDetailHalf: 600, imageryDetailSize: 2_048)
-    public static let tablet = RealWorldDetail(nearHalf: 3_200, nearStep: 12, midHalf: 12_000, midStep: 60, farHalf: 40_000, farStep: 300,
-                                               imageryNearSize: 3_072, imageryFarSize: 2_048, treeRadius: 2_400, maxTrees: 90_000,
-                                               imageryDetailHalf: 600, imageryDetailSize: 2_048)
-    public static let desktop = RealWorldDetail(nearHalf: 3_200, nearStep: 12, midHalf: 12_000, midStep: 48, farHalf: 40_000, farStep: 240,
-                                                imageryNearSize: 4_096, imageryFarSize: 2_048, treeRadius: 3_000, maxTrees: 75_000,
-                                                imageryDetailHalf: 800, imageryDetailSize: 4_096)
+    public static let phone: RealWorldDetail = {
+        var d = RealWorldDetail(nearHalf: 3_000, nearStep: 16, midHalf: 12_000, midStep: 80, farHalf: 40_000, farStep: 400,
+                                imageryNearSize: 2_048, imageryFarSize: 1_024, treeRadius: 1_800, maxTrees: 40_000,
+                                imageryDetailHalf: 600, imageryDetailSize: 2_048)
+        d.imageryMidSize = 2_048; d.imageryMidHalf = 12_000; d.buildingRadius = 4_000; d.buildingFullRadius = 2_500
+        return d
+    }()
+    public static let tablet: RealWorldDetail = {
+        var d = RealWorldDetail(nearHalf: 3_200, nearStep: 12, midHalf: 12_000, midStep: 60, farHalf: 40_000, farStep: 300,
+                                imageryNearSize: 3_072, imageryFarSize: 2_048, treeRadius: 2_400, maxTrees: 90_000,
+                                imageryDetailHalf: 600, imageryDetailSize: 2_048)
+        d.imageryMidSize = 2_048; d.imageryMidHalf = 12_000; d.buildingRadius = 6_000; d.buildingFullRadius = 3_500
+        return d
+    }()
+    public static let desktop: RealWorldDetail = {
+        var d = RealWorldDetail(nearHalf: 3_200, nearStep: 12, midHalf: 12_000, midStep: 48, farHalf: 40_000, farStep: 240,
+                                imageryNearSize: 4_096, imageryFarSize: 2_048, treeRadius: 3_000, maxTrees: 75_000,
+                                imageryDetailHalf: 800, imageryDetailSize: 4_096)
+        d.imageryMidSize = 4_096; d.buildingRadius = 9_500; d.buildingFullRadius = 5_000
+        return d
+    }()
+    /// Everything at its best: finer terrain, the most trees, every building. Frame rate is not a concern
+    /// at this tier (review frames, photo mode, fast desktop GPUs).
+    public static let ultra: RealWorldDetail = {
+        var d = RealWorldDetail(nearHalf: 3_200, nearStep: 8, midHalf: 12_000, midStep: 32, farHalf: 40_000, farStep: 160,
+                                imageryNearSize: 4_096, imageryFarSize: 2_048, treeRadius: 4_200, maxTrees: 260_000,
+                                imageryDetailHalf: 800, imageryDetailSize: 4_096)
+        d.imageryMidSize = 4_096; d.buildingRadius = 9_500; d.buildingFullRadius = 6_500
+        return d
+    }()
 }
 
 public struct RealWorldRegion: FlightWorld {
@@ -69,6 +96,8 @@ public struct RealWorldRegion: FlightWorld {
     /// OpenStreetMap buildings and roads around the airfield (nil when Overpass was unreachable and
     /// nothing was cached; the renderer then shows imagery only).
     public var osm: OSMData? = nil
+    /// Middle-distance imagery (between the near and far layers), colour-matched to the near photo.
+    public var midImagery: ImageryMosaic? = nil
     /// Procedural buildings placed on built-up imagery where OSM has none (empty when OSM has buildings).
     public var fallbackBuildings: [OSMBuilding] = []
 
@@ -102,8 +131,10 @@ public struct RealWorldRegion: FlightWorld {
     }
 
     /// Loads an airport region (network once, then the content-store cache).
+    /// `bundledBuildings`: use the showcase pack's building footprints when no live OpenStreetMap data came back.
     public static func load(airport ident: String, detail: RealWorldDetail, transport: any HTTPTransport, cache: KeyedCache?,
-                            navData: NavDatabase? = nil, progress: @escaping @Sendable (String) -> Void = { _ in }) async throws -> RealWorldRegion {
+                            navData: NavDatabase? = nil, bundledBuildings: Bool = true,
+                            progress: @escaping @Sendable (String) -> Void = { _ in }) async throws -> RealWorldRegion {
         let db = try navData ?? BundledNavData.load()
         guard let apt = db.airport(ident) else { throw LoadError.unknownAirport(ident) }
         guard let rwy = db.runways(at: ident).filter({ $0.hasGeometry && !$0.closed }).max(by: { $0.lengthFeet < $1.lengthFeet }),
@@ -144,25 +175,73 @@ public struct RealWorldRegion: FlightWorld {
         async let iDetail: ImageryMosaic? = wantDetail
             ? ImageryMosaic.build(origin: origin, centre: detailCentre, halfExtent: detail.imageryDetailHalf, size: detail.imageryDetailSize,
                                   provider: detailProvider, streamer: sDetail) : nil
+        // Middle-distance layer: the aerial photo where there is one (zoom capped at 14, about 7 m/px),
+        // otherwise Sentinel-2 at its full resolution.
+        let midProvider: any ImageryProvider = nearProvider.id == usgs.id ? USGSImageryProvider(maxZoom: 14) : Sentinel2CloudlessProvider()
+        let sMid = ImageryStreamer(provider: midProvider, transport: transport, cache: cache)
+        async let iMid: ImageryMosaic? = detail.imageryMidSize > 0
+            ? ImageryMosaic.build(origin: origin, centre: .zero, halfExtent: detail.imageryMidHalf, size: detail.imageryMidSize,
+                                  provider: midProvider, streamer: sMid) : nil
         async let osmFetch = OSMService(transport: transport, cache: cache).data(around: origin, halfExtent: min(detail.nearHalf, 3_000))
         let (hn, hf, inr, ifr) = await (hNear, hFar, iNear, iFar)
         let idt = await iDetail
+        var imd = await iMid
         progress("Buildings")
-        let osm = await osmFetch
+        var osm = await osmFetch
+        if bundledBuildings, osm?.buildings.isEmpty != false, let packed = Showcase.buildingData(for: ident) {
+            // Bundled footprints: everything near the field, only large or tall buildings farther out.
+            let full = detail.buildingFullRadius, far = detail.buildingRadius
+            let list = (try? BuildingPack.parse(packed, origin: origin) { c, area, height in
+                let d = (c * c).sum().squareRoot()
+                return d < full || (d < far && (height >= 14 || area >= 600))
+            }) ?? []
+            if !list.isEmpty { osm = OSMData(buildings: list, roads: osm?.roads ?? []) }
+        }
         progress("Land cover")
         var attribution = [nearProvider.attribution]
         if farProvider.id != nearProvider.id { attribution.append(farProvider.attribution) }
         attribution.append("Elevation: Terrarium tiles (Mapzen/Tilezen; SRTM, USGS 3DEP and others)")
         attribution.append("Airports: OurAirports (public domain)")
         if let o = osm, !(o.buildings.isEmpty && o.roads.isEmpty) { attribution.append(OSMData.attribution) }
+        // A mid layer with no coverage (offline pack without those tiles) is dropped; otherwise it is
+        // graded like the far layer so the three photo layers meet without a tone step.
+        if let m = imd, !m.coverage.contains(where: { $0 > 0 }) { imd = nil }
         var region = RealWorldRegion(name: apt.name, airportIdent: ident, origin: origin, runwayThreshold: thr, runwayHeading: heading,
                                runwayLengthMetres: len, runwayWidthMetres: rwy.widthMetres, runwayElevation: elevFt * Units.feetToMetres,
                                nearHeights: hn, farHeights: hf, ground: ImageryGround(near: inr, far: ifr, detail: idt, grade: true), attribution: attribution, detail: detail)
         // Dark runway and apron asphalt reads as water by colour; real water is flat and sizeable.
         region.ground = region.ground.cleaningWater(exclude: region.pavedArea) { x, y in max(0, hn.height(x, y)) }
         region.osm = osm
+        if var m = imd {
+            if midProvider.id != nearProvider.id { ImageryGrading.dehaze(&m) }
+            ImageryGrading.match(far: &m, to: region.ground.near)
+            region.midImagery = m
+        }
         if osm?.buildings.isEmpty != false { region.fallbackBuildings = region.proceduralBuildings() }
         return region
+    }
+
+    /// The ground photo's colour at a point as the terrain shader's albedo (nil where there is no imagery).
+    public func photoAlbedo(_ p: SIMD2<Double>) -> SIMD3<Float>? {
+        guard let c = ground.near.sample(p.x, p.y) ?? midImagery?.sample(p.x, p.y) ?? ground.far?.sample(p.x, p.y) else { return nil }
+        var a = SIMD3(powf(powf(c.x, 2.2), 1.12), powf(powf(c.y, 2.2), 1.12), powf(powf(c.z, 2.2), 1.12)) * 0.72
+        for k in 0..<3 where a[k] > 0.20 { a[k] = 0.20 + (a[k] - 0.20) * 0.32 }
+        return a
+    }
+
+    /// Buildings as GPU-ready geometry with facade coordinates (nil when there are none). Roofs take the
+    /// photo's colour under them, so from above a building reads as the photo standing up.
+    public func buildingMesh() -> BuildingMesh? {
+        let list = buildings
+        guard !list.isEmpty else { return nil }
+        let m = BuildingMeshBuilder.build(list, ground: { self.height($0, $1) }, roofPhoto: { self.photoAlbedo($0) })
+        return m.indices.isEmpty ? nil : m
+    }
+
+    /// OSM roads as terrain-draped ribbons (nil without road data).
+    public func roadMesh() -> TriangleSoup? {
+        guard let roads = osm?.roads, !roads.isEmpty else { return nil }
+        return OSMMeshBuilder.roads(roads) { self.height($0, $1) }
     }
 
     /// OSM buildings and roads as one mesh in local metres (nil without OSM data).

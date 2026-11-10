@@ -116,7 +116,22 @@ public enum PostShaders {
     fragment float4 tonemap_fragment(PostVarying in [[stage_in]], texture2d<float> scene [[texture(0)]],
                                      texture2d<float> bloom [[texture(1)]], texture2d<float> ao [[texture(2)]],
                                      constant BloomParams& bp [[buffer(0)]], constant float4& aoStrength [[buffer(1)]]) {
-        float3 c = scene.sample(fx, in.uv).rgb;
+        float3 c;
+        if (bp.p.x > 1.25) {
+            // Supersampled scene: resolve the texels under this pixel with weights 1 / (1 + luminance), so a
+            // few very bright samples (sun glints, sky behind a roof edge) do not alias the edge they sit on.
+            float2 st = 0.5 / float2(scene.get_width(), scene.get_height());
+            float3 acc = float3(0.0); float wsum = 0.0;
+            for (int k = 0; k < 4; k++) {
+                float2 o = float2((k & 1) == 0 ? -1.0 : 1.0, (k & 2) == 0 ? -1.0 : 1.0) * st;
+                float3 sc = max(scene.sample(fx, in.uv + o).rgb, float3(0.0));
+                float w = 1.0 / (1.0 + dot(sc, float3(0.2126, 0.7152, 0.0722)));
+                acc += sc * w; wsum += w;
+            }
+            c = acc / wsum;
+        } else {
+            c = scene.sample(fx, in.uv).rgb;
+        }
         if (aoStrength.x > 0.0) {
             // 4-tap blur of the AO term, then darken (contact shadows under buildings, trees, the aircraft).
             float2 t = 1.0 / float2(ao.get_width(), ao.get_height());
@@ -151,8 +166,20 @@ public enum PostShaders {
     // Depth-aware: only geometric edges (silhouettes, building and tree outlines) are antialiased.
     // Plain FXAA treated photo texture as edges everywhere and smeared the ground imagery along the
     // detected directions by up to 8 px.
+    /// Contrast-adaptive sharpening (after AMD FidelityFX CAS): a cross-shaped unsharp mask whose strength
+    /// falls where the neighbourhood already spans the range, clamped to the local minimum and maximum.
+    static float3 fx_sharpen(texture2d<float> t, float2 uv, float2 rcp, float3 c, float strength) {
+        if (strength <= 0.0) return c;
+        float3 n = t.sample(fx, uv + float2(0.0, -rcp.y)).rgb, s = t.sample(fx, uv + float2(0.0, rcp.y)).rgb;
+        float3 w = t.sample(fx, uv + float2(-rcp.x, 0.0)).rgb, e = t.sample(fx, uv + float2(rcp.x, 0.0)).rgb;
+        float3 lo = min(c, min(min(n, s), min(w, e))), hi = max(c, max(max(n, s), max(w, e)));
+        float3 amp = sqrt(saturate(min(lo, 1.0 - hi) / max(hi, float3(1e-3))));
+        float3 k = -amp * strength * 0.2;
+        return clamp((c + (n + s + w + e) * k) / (1.0 + 4.0 * k), lo, hi);
+    }
+
     fragment float4 fxaa_fragment(PostVarying in [[stage_in]], texture2d<float> t [[texture(0)]],
-                                  depth2d<float> depth [[texture(1)]]) {
+                                  depth2d<float> depth [[texture(1)]], constant float4& fp [[buffer(0)]]) {
         const float reduceMin = 1.0 / 128.0, reduceMul = 1.0 / 8.0, spanMax = 4.0;
         float2 rcp = 1.0 / float2(t.get_width(), t.get_height());
         float2 uv = in.uv;
@@ -163,7 +190,7 @@ public enum PostShaders {
         float dMin = min(d0, min(min(d1, d2), min(d3, d4))), dMax = max(d0, max(max(d1, d2), max(d3, d4)));
         // Reversed-Z depth ∝ 1/distance, so the ratio is scale-free; sky is 0.
         bool geomEdge = (dMin <= 0.0 && dMax > 0.0) || (dMin > 0.0 && dMax > dMin * 1.04);
-        if (!geomEdge) return float4(rgbM, 1.0);
+        if (!geomEdge) return float4(fx_sharpen(t, uv, rcp, rgbM, fp.x), 1.0);
         float3 rgbNW = t.sample(fx, uv + float2(-1.0, -1.0) * rcp).rgb;
         float3 rgbNE = t.sample(fx, uv + float2( 1.0, -1.0) * rcp).rgb;
         float3 rgbSW = t.sample(fx, uv + float2(-1.0,  1.0) * rcp).rgb;
@@ -171,7 +198,7 @@ public enum PostShaders {
         float lM = fx_luma(rgbM), lNW = fx_luma(rgbNW), lNE = fx_luma(rgbNE), lSW = fx_luma(rgbSW), lSE = fx_luma(rgbSE);
         float lMin = min(lM, min(min(lNW, lNE), min(lSW, lSE)));
         float lMax = max(lM, max(max(lNW, lNE), max(lSW, lSE)));
-        if (lMax - lMin < max(0.0312, lMax * 0.125)) return float4(rgbM, 1.0);   // no edge
+        if (lMax - lMin < max(0.0312, lMax * 0.125)) return float4(fx_sharpen(t, uv, rcp, rgbM, fp.x), 1.0);   // no edge
         float2 dir = float2(-((lNW + lNE) - (lSW + lSE)), (lNW + lSW) - (lNE + lSE));
         float dirReduce = max((lNW + lNE + lSW + lSE) * 0.25 * reduceMul, reduceMin);
         float rcpDirMin = 1.0 / (min(abs(dir.x), abs(dir.y)) + dirReduce);

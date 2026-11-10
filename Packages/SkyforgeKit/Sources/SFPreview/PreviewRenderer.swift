@@ -9,6 +9,7 @@ public struct RenderStats: Sendable {
     public var shadowSeconds = 0.0
     public var rasterSeconds = 0.0
     public var shadeSeconds = 0.0
+    public init() {}
 }
 
 public struct PreviewImage: Sendable {

@@ -6,6 +6,11 @@ import SFWorldGen
 
 public enum Material: UInt8, Sendable {
     case opaque = 0, water = 1, foliage = 2, road = 3, emissive = 4, glass = 5, paint = 6, terrain = 7, prop = 9
+    /// Aircraft skin: `airframe` is the fuselage (glazing, livery and seams drawn per pixel from body
+    /// coordinates), `airSurface` the wings, tail and fairings (livery only), `metal` polished parts.
+    case airframe = 10, airSurface = 11, metal = 12
+    /// Building walls (procedural windows, storeys and cladding per pixel) and roofs (roofing detail).
+    case wall = 14, roof = 15
 }
 
 public struct TriangleSoup: Sendable {
