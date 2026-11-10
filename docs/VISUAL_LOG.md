@@ -548,3 +548,14 @@ Round-21 batch (the reviewer's round-19 fixes 2 and 5; unscored):
 1. **LSZS stands:** crisp edges (the conifer share is a smoothstep over ±0.08 of the noise, was ±0.22, range 10–90 %); conifer stands ~22 % darker and bluer-green, broadleaf stands lighter and yellower.
 2. **SkyWorld fields:** within-field variation, ±9 % brightness at ~55 m and a ±4 % green/red shift at ~35 m, faded where it would alias. Applied after `fieldFactor`, so the CPU mirror test still holds.
 - Round 21 own check (run 42722423559): the LSZS stands and SkyWorld in-field variation are barely visible at review distance; the high-tier clouds are unchanged by the 22/3 step cut. Unscored (ADR-0020).
+
+## Visual transformation phase (2026-11-10, PR #5, ADR-0021)
+Frames are Metal renders from the CI GPU at the ultra tier, 1280×720, four cameras per airport (final, aircraft close-up, a high view, cockpit). Own inspection only; no independent score is claimed (ADR-0020) and no parity with MSFS is claimed.
+
+| Run | What was looked at | Findings |
+|---|---|---|
+| 42744312670 (baseline, before) | phone and high tier frames | Soft, bleached ground; almost no buildings; lollipop trees; low-poly aircraft. |
+| 42817030287 (exposure fix) | KMRY, KASE, LSZS | Mid-tones correct; real OSM buildings with facades across Monterey; new airframe with livery and registration. Weak: KASE and KMRY foreground photo soft; trees still the old blobs; cockpit a set of black boxes. |
+| 42818081873 (trees, cockpit, ground detail) | KBFI, KMRY, NZQN | Trees read as species with lobes and shading; Seattle skyline present but towers flat grey; cockpit gauges visible but cabin unlit (black). NZQN: Sentinel-2 ground (10 m) is a blur, and the lake is cut by a straight line where the near layer's water mask ends. Near ground at US airports is limited by the source (USGS tiles are about 1.6 m per pixel; the finer export is an upsample, checked directly). |
+
+Changes made in response (frames pending at the time of writing): land cover water mask at any distance (ESA WorldCover), water reflecting the real sky with wind patches, cabin fill light, tinted reflective tower glass, fine cloud structure, magnification-aware local contrast for the ground photo, and LINZ 0.1–0.3 m aerial imagery for NZQN.

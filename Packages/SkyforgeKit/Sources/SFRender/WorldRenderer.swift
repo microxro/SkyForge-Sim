@@ -216,6 +216,8 @@ public final class WorldRenderer {
     public var colourGrade: Float = 1
     /// Cloud self-shadow taps toward the sun per march sample (tier setting).
     public var cloudLightSteps = 6
+    /// Fine cloud structure strength (0 = reference density, 1 = billows and frayed edges).
+    public var cloudDetail: Float = 0
     /// Cloud march resolution divisor (2 = half resolution).
     public var cloudDownsample = 2
     /// Dynamic resolution: the scene renders at this fraction of the output size and is upscaled
@@ -255,6 +257,7 @@ public final class WorldRenderer {
     public func apply(_ s: Settings) {
         renderScale = s.renderScale; cloudSteps = s.cloudSteps; cloudDownsample = s.cloudDownsample; cloudLightSteps = s.cloudLightSteps
         bloomIntensity = s.bloomIntensity; ssaoStrength = s.ssaoStrength
+        cloudDetail = s.renderScale >= 2 ? 1 : 0
         shadowMapSize = s.shadowMapSize; shadowFilter = s.shadowFilter
     }
     private var cloudRenderer: CloudRenderer?
@@ -1151,6 +1154,7 @@ public final class WorldRenderer {
             cr.steps = cloudSteps
             cr.downsample = cloudDownsample
             cr.lightSteps = cloudLightSteps
+            cr.fineDetail = cloudDetail
             var cu = CloudUniforms(layer: clouds, steps: cloudSteps)
             let r = simd_normalize(simd_cross(fwd, upHint))
             let up = simd_cross(r, fwd)

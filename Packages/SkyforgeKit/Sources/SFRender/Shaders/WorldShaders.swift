@@ -690,13 +690,13 @@ public enum WorldShaders {
         float glass;        // glazing coverage of this pixel
         float3 interior;    // what shows through the glass (dark room, blinds)
         float f0;           // glass reflectance at normal incidence
-    };
+     float3 tint; };
 
     /// Storeys, window bays and cladding for a wall pixel. `uv`: metres along the wall (centred) and
     /// storeys above the base; `st`: seed, style, wall length (m), storeys; `fpU`/`fpV`: pixel footprint
     /// in metres along the wall and in storeys.
     static Facade facade(float2 uv, float4 st, float3 wall, float fpU, float fpV) {
-        Facade f; f.albedo = wall; f.glass = 0.0; f.interior = float3(0.012, 0.016, 0.020); f.f0 = 0.06;
+        Facade f; f.albedo = wall; f.glass = 0.0; f.interior = float3(0.012, 0.016, 0.020); f.f0 = 0.06; f.tint = float3(1.0);
         float seed = st.x, style = st.y, len = max(st.z, 1.0), storeys = max(st.w, 1.0);
         float h1 = fract(seed * 0.1031 + 0.11), h2 = fract(seed * 0.2371 + 0.47);
         float bay = style < 0.5 ? 3.4 : (style < 1.5 ? 3.0 : (style < 2.5 ? 3.6 : (style < 3.5 ? 7.0 : (style < 4.5 ? 1.7 : 3.4))));
@@ -719,13 +719,16 @@ public enum WorldShaders {
         } else if (style < 2.5) {                // offices and shops: ribbon glazing, a shopfront at street level
             w0 = float2(0.04, 0.30); w1 = float2(0.96, 0.84);
             if (groundFloor) { w0.y = 0.06; w1.y = 0.80; }
+            f.f0 = 0.10; f.tint = mix(float3(1.0), float3(0.78, 0.90, 1.0), h2);
         } else if (style < 3.5) {                // sheds: a few high windows, loading doors at ground level
             w0 = float2(0.30, 0.60); w1 = float2(0.70, 0.86);
             presence = step(0.60, hb); mean = 0.40;
             if (groundFloor && hb < 0.25) { w0 = float2(0.20, 0.0); w1 = float2(0.80, 0.78); presence = 1.0; }
         } else if (style < 4.5) {                // towers: curtain wall
             w0 = float2(0.05, 0.10); w1 = float2(0.95, 0.88);
-            f.f0 = 0.16;
+            // Coated glass: each tower has its own reflectance and tint (blue, green, bronze or neutral).
+            f.f0 = mix(0.20, 0.42, h1);
+            f.tint = h2 < 0.35 ? float3(0.55, 0.74, 1.0) : (h2 < 0.60 ? float3(0.58, 0.88, 0.84) : (h2 < 0.78 ? float3(1.0, 0.80, 0.56) : float3(0.80, 0.86, 0.92)));
         }
         float ax = fpU / bw, ay = fpV;
         float win = aaBand(w0.x, w1.x, fx, ax) * aaBand(w0.y, w1.y, fy, ay) * presence;
@@ -781,6 +784,18 @@ public enum WorldShaders {
     /// Linear ground-photo colour at region point `w` from the imagery layers (far → middle → near →
     /// sharp detail square, each feathered into the one below), with a light unsharp mask against a
     /// coarser mip so magnified texels keep their edges. Explicit gradients: safe inside branches.
+    /// Local contrast for a magnified photo. Where one texel covers several pixels the two footprint
+    /// samples above both read mip 0, so nothing is sharpened; here the blurred references are explicit
+    /// mip levels, which restores edge contrast (kerbs, roof lines, field boundaries) the bilinear
+    /// magnification smears. No effect at 1:1 or when minified.
+    static float3 crispen(texture2d<float> img, float2 uv, float3 c, float2 gx, float2 gy) {
+        float texel = 1.0 / float(img.get_width());
+        float mag = saturate(log2(max(texel / max(max(length(gx), length(gy)), 1e-9), 1.0)) / 2.0);
+        if (mag <= 0.0) return c;
+        float3 b1 = img.sample(imgSampler, uv, level(1.6)).rgb, b2 = img.sample(imgSampler, uv, level(3.2)).rgb;
+        return max(c + ((c - b1) * 0.9 + (b1 - b2) * 0.45) * mag, float3(0.0));
+    }
+
     static float3 photoColour(constant WorldUniforms& u, texture2d<float> imgNear, texture2d<float> imgMid, texture2d<float> imgFar,
                               texture2d<float> imgDetail, float2 w, float2 dwx, float2 dwy, thread float2& nuv, thread bool& inNear,
                               thread float& outerWater, thread float& nearWeight) {
@@ -817,6 +832,7 @@ public enum WorldShaders {
             float3 nearC = imgNear.sample(imgSampler, nuv, gradient2d(gx, gy)).rgb;
             float3 b = imgNear.sample(imgSampler, nuv, gradient2d(gx * 4.0, gy * 4.0)).rgb;
             nearC = max(nearC + (nearC - b) * 0.45, float3(0.0));
+            nearC = crispen(imgNear, nuv, nearC, gx, gy);
             float edgeN = min(min(nuv.x, nuv.y), min(1.0 - nuv.x, 1.0 - nuv.y));
             nearWeight = smoothstep(0.002, 0.06, edgeN);
             c = mix(c, nearC, nearWeight);
@@ -830,6 +846,7 @@ public enum WorldShaders {
                 float3 d = imgDetail.sample(imgSampler, uv, gradient2d(gx, gy)).rgb;
                 float3 b = imgDetail.sample(imgSampler, uv, gradient2d(gx * 4.0, gy * 4.0)).rgb;
                 d = max(d + (d - b) * 0.35, float3(0.0));
+                d = crispen(imgDetail, uv, d, gx, gy);
                 c = mix(c, d, smoothstep(0.002, 0.08, edge));
             }
         }
@@ -839,7 +856,10 @@ public enum WorldShaders {
     /// Photo colour → surface albedo. With the scene exposure at a real camera's level the photo's own
     /// brightness is already right, so this is near identity (a touch of contrast, 10 % under white).
     static float3 photoAlbedo(float3 c) {
-        return pow(max(c, float3(0.0)), float3(1.08)) * 0.90;
+        float3 a = pow(max(c, float3(0.0)), float3(1.08)) * 0.90;
+        // Aerial photos are stretched so that concrete, sand and light roofs sit near white; real surfaces
+        // top out near 0.6, so the top of the range is compressed (0.9 → 0.65) and keeps its detail.
+        return select(a, 0.42 + (a - 0.42) * 0.48, a > 0.42);
     }
 
     fragment float4 world_fragment(WorldVarying in [[stage_in]], constant WorldUniforms& u [[buffer(1)]],
@@ -1160,7 +1180,7 @@ public enum WorldShaders {
             float aoW = mix(0.55, 1.0, saturate(in.uv.y / max(in.style.w, 1.0) * 1.5 + 0.2));    // less sky toward the street
             float3 wallCol = fc.albedo * (u.sunColour.rgb * max(0.0, ndl) * vis + ambient * aoW);
             float3 glassCol = fc.interior * (u.sunColour.rgb * max(0.0, ndl) * vis * 0.6 + ambient * aoW) * (1.0 - F)
-                            + env * F + u.sunColour.rgb * ggxLobe(n, v, toSun, 0.10, fc.f0) * vis;
+                            + env * fc.tint * F + u.sunColour.rgb * ggxLobe(n, v, toSun, 0.10, fc.f0) * vis;
             col = mix(wallCol, glassCol, fc.glass);
         } else if (m == 15.0) {                              // roof: the ground photo's colour (style.z bit 0) with roofing mottle
             float3 a = albedo;

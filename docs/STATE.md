@@ -1,12 +1,14 @@
-LAST_UPDATE: 2026-11-10T00:09:41Z
+LAST_UPDATE: 2026-11-10T21:08:00Z
 
 # SKYFORGE state
 
 ## Phase
 Visual transformation (2026-11-10, PR #5, ADR-0021) is in progress; the Bold Mode summary below is the earlier baseline.
 - Landed (CI-compiled): new SF-1 aircraft model with per-pixel livery, glass and clear coat; OSM-sourced 3D buildings with facade/roof shading (bundled `buildings.sfb`, ODbL); four shadow cascades; mid-distance imagery layer; 2x supersampling and sharpening in the ultra preset; exposure scale 0.45 with near-identity photo albedo; per-airport review-frame jobs.
-- Pushed, awaiting CI frames: five tree species with ambient occlusion, rebuilt cockpit interior.
-- Next: read the new frames against the baseline in `docs/VISUAL_LOG.md`; terrain detail, water, clouds; before/after comparison. No parity with MSFS is claimed.
+- Landed 2026-11-10 (second batch): five tree species with ambient occlusion; rebuilt cockpit interior with cabin fill light; ESA WorldCover land cover grids in every pack (water at any distance); water shading (sky reflection, wind patches); tinted tower glass; fine cloud structure at ultra; magnification-aware local contrast on the ground photo; `LINZAerialProvider`.
+- In progress: `tools/fetch_linz_imagery.py` is warping LINZ 0.1–0.3 m aerial imagery into the NZQN pack (z15, z17, z18). When it finishes: gate, commit the tiles, check the NZQN frames.
+- Known limits (measured): US ground photo is about 1.6 m per pixel at source; no finer public-domain source is reachable from the build environment. No parity with MSFS is claimed.
+- Next: read the new frames; near-ground sharpness; before/after comparison in the PR body.
 
 Bold Mode (docs/BOLD_MODE.md) is in progress.
 - Done (CI-verified unless noted):

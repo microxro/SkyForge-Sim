@@ -12,6 +12,7 @@ tiles, so every written tile is complete.
     python3 tools/fetch_linz_imagery.py --pack <pack-dir> --lat -45.018282 --lon 168.746643 \
         --layer 15:7800:0:0 --layer 17:3600:-873:-218 --layer 18:2300:-1500:-375 \
         --dataset otago/queenstown_2021_0.1m --dataset otago/otago_2019-2021_0.3m
+    python3 tools/fetch_linz_imagery.py --pack <pack-dir> --lat ... --lon ... --parents 15 --parents 17
 
 A layer is zoom:half-extent-metres:east-offset:north-offset about (lat, lon). Datasets are listed best
 first; a later one only fills what the earlier ones left empty.
@@ -93,8 +94,10 @@ def main():
     ap.add_argument("--pack", required=True)
     ap.add_argument("--lat", type=float, required=True)
     ap.add_argument("--lon", type=float, required=True)
-    ap.add_argument("--layer", action="append", required=True)
-    ap.add_argument("--dataset", action="append", required=True)
+    ap.add_argument("--layer", action="append", default=[])
+    ap.add_argument("--dataset", action="append", default=[])
+    ap.add_argument("--parents", action="append", type=int, default=[],
+                    help="also write the next coarser zoom for this zoom's tiles (2 x 2 average of four children)")
     ap.add_argument("--quality", type=int, default=78)
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()
@@ -205,6 +208,32 @@ def main():
                 written += 1
     if a.dry_run:
         return
+    # Coarser levels for tiers that ask for them (a mosaic falls back to ancestors, never to descendants).
+    for z in a.parents:
+        pat = re.compile(rf"^skyforge-pack://linz-aerial/{z}/(\d+)/(\d+)\.jpg$")
+        kids = {}
+        for k, h in manifest["files"].items():
+            m = pat.match(k)
+            if m:
+                kids[(int(m.group(1)), int(m.group(2)))] = h
+        made = 0
+        for px, py in sorted({(x >> 1, y >> 1) for x, y in kids}):
+            four = [kids.get((2 * px + dx, 2 * py + dy)) for dy in (0, 1) for dx in (0, 1)]
+            if any(h is None for h in four):
+                continue
+            big = Image.new("RGB", (512, 512))
+            for i, h in enumerate(four):
+                big.paste(Image.open(os.path.join(a.pack, h)).convert("RGB"), ((i % 2) * 256, (i // 2) * 256))
+            buf = io.BytesIO()
+            big.resize((256, 256), Image.LANCZOS).save(buf, "JPEG", quality=a.quality, subsampling=2, progressive=False, optimize=False)
+            body = buf.getvalue()
+            h = hashlib.sha256(body).hexdigest()
+            with open(os.path.join(a.pack, h), "wb") as f:
+                f.write(body)
+            manifest["files"][KEY.format(z=z - 1, x=px, y=py)] = h
+            made += 1
+        print(f"z{z - 1}: {made} parent tiles")
+        written += made
     for line in (ATTRIBUTION,):
         if line not in manifest["attribution"]:
             manifest["attribution"].insert(0, line)
