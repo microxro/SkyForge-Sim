@@ -102,6 +102,8 @@ public struct RealWorldRegion: FlightWorld {
     public var detailProvider: (any ImageryProvider)? = nil
     /// Surveyed land cover around the field (bundled with showcase airports; nil elsewhere).
     public var landCover: LandCoverGrid? = nil
+    /// The low runway end's designation number (5 for "05", 0 when unknown).
+    public var runwayLowNumber = 0
     /// Procedural buildings placed on built-up imagery where OSM has none (empty when OSM has buildings).
     public var fallbackBuildings: [OSMBuilding] = []
 
@@ -243,6 +245,7 @@ public struct RealWorldRegion: FlightWorld {
         region.ground = region.ground.cleaningWater(exclude: region.pavedArea) { x, y in max(0, hn.height(x, y)) }
         region.osm = osm
         if wantDetail { region.detailProvider = detailProvider }
+        region.runwayLowNumber = Int(rwy.low.ident.prefix { $0.isNumber }) ?? 0
         if let cover {
             region.landCover = cover
             region.ground = region.ground.refiningWater(with: cover)

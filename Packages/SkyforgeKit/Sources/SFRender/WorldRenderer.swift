@@ -35,7 +35,9 @@ struct WorldUniforms {
     var imageryDetail: SIMD4<Float>   // centre x, y, half extent, 1 if present
     var imageryMid: SIMD4<Float>      // centre x, y, half extent, 1 if present
     var skyZenith: SIMD4<Float>       // rgb, time (s)
-    var quality: SIMD4<Float>         // shadow filter half width (taps), unused
+    var quality: SIMD4<Float>         // shadow filter half width (taps), cabin fill, unused
+    var runwayA: SIMD4<Float>         // low threshold x, y (region metres), direction x, y
+    var runwayB: SIMD4<Float>         // length, width, low-end number, 1 if drawn
 }
 
 /// 16-byte vertex matching `TerrainVertex` (position + snorm normal; w = −127 marks bark).
@@ -563,6 +565,7 @@ public final class WorldRenderer {
         imageryDetail = try data.detail.map { (try imageryTexture($0), $0.centre, $0.halfExtent) }
         imageryMid = try data.mid.map { (try imageryTexture($0), $0.centre, $0.halfExtent) }
         try setBuildings(data.buildingMesh)
+        runway = data.runway
         if let wm = data.waterMask {
             let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .r32Float, width: wm.size, height: wm.size, mipmapped: false)
             d.usage = [.shaderRead]
@@ -696,6 +699,8 @@ public final class WorldRenderer {
         }
     }
 
+    /// The runway whose markings are painted on the real-world ground (nil = the photo only).
+    public var runway: RealWorldRenderData.Runway?
     public func setLighting(_ l: LightingSetup) { lighting = l; tables = nil }
     /// Multiplier on the lighting preset's exposure (see `encodeScene`).
     public var exposureScale: Float = 0.45
@@ -1030,6 +1035,11 @@ public final class WorldRenderer {
         let uZenith = SIMD4<Float>(L.skyZenith, Float(time.truncatingRemainder(dividingBy: 3_600)))
         let uQuality = SIMD4<Float>(Float(max(1, min(3, shadowFilter))), 0, 0, 0)
         let cloudLayer = CloudUniforms(layer: clouds, steps: 0).layer
+        var uRunwayA = SIMD4<Float>(0, 0, 0, 1), uRunwayB = SIMD4<Float>(0, 0, 0, 0)
+        if let rw = runway {
+            uRunwayA = SIMD4(Float(rw.threshold.x), Float(rw.threshold.y), Float(rw.direction.x), Float(rw.direction.y))
+            uRunwayB = SIMD4(Float(rw.length), Float(rw.width), Float(rw.lowNumber), 1)
+        }
         func uniforms(model: simd_float4x4) -> WorldUniforms {
             WorldUniforms(viewProj: viewProj, model: model, sunDir: SIMD4<Float>(toSun, sunAz), sunColour: SIMD4<Float>(L.sunColour, L.exposure),
                           ambientSky: SIMD4<Float>(L.ambientSky, dims.w), ambientGround: SIMD4<Float>(L.ambientGround, fieldSeed),
@@ -1038,7 +1048,7 @@ public final class WorldRenderer {
                           cascadeSplits: uSplits, cascadeTexel: uTexel, cascadeDepth: uDepth,
                           cameraPos: uCameraPos, cameraLocal: uCameraLocal, imageryNear: uNear, imageryFar: uFar,
                           clouds: cloudLayer, fieldGrid: uFieldGrid, imageryDetail: uDetail, imageryMid: uMid,
-                          skyZenith: uZenith, quality: uQuality)
+                          skyZenith: uZenith, quality: uQuality, runwayA: uRunwayA, runwayB: uRunwayB)
         }
         if let e = environment {
             let o = e.origin - c.position

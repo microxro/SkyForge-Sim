@@ -24,6 +24,15 @@ public struct RealWorldRenderData: Sendable {
         public var water: [UInt8]? = nil
         public init(centre: SIMD2<Double>, halfExtent: Double, size: Int, rgb: [UInt8]) { self.centre = centre; self.halfExtent = halfExtent; self.size = size; self.rgb = rgb }
     }
+    /// The main runway for painted markings: low threshold, unit direction toward the high end (region
+    /// metres), length and width (m) and the low end's number (0 = unknown, no numerals).
+    public struct Runway: Sendable, Equatable {
+        public var threshold: SIMD2<Double>, direction: SIMD2<Double>, length: Double, width: Double, lowNumber: Int
+        public init(threshold: SIMD2<Double>, direction: SIMD2<Double>, length: Double, width: Double, lowNumber: Int) {
+            self.threshold = threshold; self.direction = direction; self.length = length; self.width = width; self.lowNumber = lowNumber
+        }
+    }
+    public var runway: Runway? = nil
     public var chunks: [Chunk]
     public var trees: [Tree]
     public var near: Imagery?
@@ -90,5 +99,7 @@ extension RealWorldRenderData {
         buildings = region.roadMesh()
         buildingMesh = region.buildingMesh()
         mid = withWater(region.midImagery)
+        runway = Runway(threshold: region.runwayThreshold, direction: region.runwayDirection, length: region.runwayLengthMetres,
+                        width: region.runwayWidthMetres, lowNumber: region.runwayLowNumber)
     }
 }

@@ -40,6 +40,8 @@ public enum WorldShaders {
         float4 imageryMid;        // middle-distance imagery square: centre x, y, half extent, 1 if present
         float4 skyZenith;         // rgb zenith sky radiance (reflections), w = time (s)
         float4 quality;           // x = shadow filter half width (taps), y = cabin interior fill (cockpit pass), z, w unused
+        float4 runwayA;           // low threshold x, y (region metres), direction x, y (unit, toward the high end)
+        float4 runwayB;           // length, width (m), low-end number (0 = none), 1 if a runway is drawn
     };
 
     struct BuildingVertex { packed_float3 position; char4 normal; uchar4 colour; packed_float2 uv; uchar4 style; };
@@ -784,6 +786,66 @@ public enum WorldShaders {
     /// Linear ground-photo colour at region point `w` from the imagery layers (far → middle → near →
     /// sharp detail square, each feathered into the one below), with a light unsharp mask against a
     /// coarser mip so magnified texels keep their edges. Explicit gradients: safe inside branches.
+    /// A runway numeral as seven painted strokes. `p`: x 0…1 left to right, y 0…1 from the threshold side.
+    static float runwayDigit(int d, float2 p, float2 aa) {
+        const int masks[10] = {0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F};
+        int m = masks[clamp(d, 0, 9)];
+        const float tx = 0.27, ty = 0.11;
+        float inX = aaBand(0.0, 1.0, p.x, aa.x);
+        float left = aaBand(0.0, tx, p.x, aa.x), right = aaBand(1.0 - tx, 1.0, p.x, aa.x);
+        float up = aaBand(0.5, 1.0, p.y, aa.y), down = aaBand(0.0, 0.5, p.y, aa.y);
+        float c = 0.0;
+        if ((m & 0x01) != 0) c = max(c, inX * aaBand(1.0 - ty, 1.0, p.y, aa.y));
+        if ((m & 0x40) != 0) c = max(c, inX * aaBand(0.5 - 0.5 * ty, 0.5 + 0.5 * ty, p.y, aa.y));
+        if ((m & 0x08) != 0) c = max(c, inX * aaBand(0.0, ty, p.y, aa.y));
+        if ((m & 0x20) != 0) c = max(c, left * up);
+        if ((m & 0x02) != 0) c = max(c, right * up);
+        if ((m & 0x10) != 0) c = max(c, left * down);
+        if ((m & 0x04) != 0) c = max(c, right * down);
+        return c;
+    }
+
+    /// Painted markings of one runway end: `a` metres in from that threshold, `c` metres right of the
+    /// centreline as seen on approach, `len`/`w` the runway, `number` its designation (0 = none), `fp` the
+    /// pixel footprint (m). Threshold bars, numerals, centreline, aiming point, touchdown zone, edge lines.
+    static float runwayPaint(float a, float c, float len, float w, int number, float fp) {
+        float ac = abs(c), hw = 0.5 * w;
+        float aaA = max(fp * 3.0, 0.02), aaC = max(fp, 0.02);      // the along axis is the foreshortened one
+        float paint = aaBand(hw - 1.4, hw - 0.5, ac, aaC) * aaBand(0.0, len, a, aaA);                 // edge lines
+        // Threshold: bars 1.8 m wide, 1.8 m apart, either side of a 3.6 m centre gap.
+        float bars = aaBand(6.0, 36.0, a, aaA) * aaBand(1.8, hw - 2.6, ac, aaC);
+        float bp = fract((ac - 1.8) / 3.6);
+        float aaP = aaC / 3.6;
+        paint = max(paint, bars * mix(0.5, aaBand(0.0, 0.5, bp, aaP), saturate(1.5 - aaP * 3.0)));    // unresolved bars: their mean
+        // Designation: numerals 18 m tall.
+        if (number > 0) {
+            const float dw = 5.2, gap = 2.6, tall = 18.0;
+            float2 aaD = float2(aaC / dw, aaA / tall);
+            float py = (a - 48.0) / tall;
+            if (py > -0.2 && py < 1.2) {
+                int tens = number / 10, ones = number - tens * 10;
+                paint = max(paint, runwayDigit(tens, float2((c + gap * 0.5 + dw) / dw, py), aaD));
+                paint = max(paint, runwayDigit(ones, float2((c - gap * 0.5) / dw, py), aaD));
+            }
+        }
+        // Centreline: 30 m stripes, 20 m gaps, from beyond the numerals to the runway's middle.
+        float cl = aaBand(0.0, 0.45, ac, aaC) * aaStep(78.0, a, aaA) * aaBand(0.0, 0.6, fract((a - 78.0) / 50.0), aaA / 50.0);
+        paint = max(paint, cl * saturate(1.5 - aaA / 25.0) + aaBand(0.0, 0.45, ac, aaC) * aaStep(78.0, a, aaA) * 0.6 * saturate(aaA / 25.0 - 0.5));
+        // Aiming point and touchdown zone, on runways long enough to carry them.
+        float aim = len >= 2400.0 ? 400.0 : (len >= 1500.0 ? 300.0 : 250.0);
+        if (len >= 1200.0) paint = max(paint, aaBand(aim, aim + 45.0, a, aaA) * aaBand(hw * 0.24, hw * 0.24 + hw * 0.36, ac, aaC));
+        if (len >= 1500.0) {
+            for (int k = 0; k < 5; k++) {
+                float at = 150.0 * float(k + 1) + (k >= 2 ? 150.0 : 0.0);        // 150, 300, 600, 750, 900 m
+                if (abs(at - aim) < 100.0 || at > len * 0.5 - 60.0) continue;
+                float n = k == 0 ? 3.0 : (k < 3 ? 2.0 : 1.0);
+                float tz = fract((ac - hw * 0.24) / 3.3), inZ = aaBand(hw * 0.24, hw * 0.24 + 3.3 * n - 1.5, ac, aaC);
+                paint = max(paint, aaBand(at, at + 22.5, a, aaA) * inZ * aaBand(0.0, 0.55, tz, aaC / 3.3));
+            }
+        }
+        return saturate(paint);
+    }
+
     /// Local contrast for a magnified photo. Where one texel covers several pixels the two footprint
     /// samples above both read mip 0, so nothing is sharpened; here the blurred references are explicit
     /// mip levels, which restores edge contrast (kerbs, roof lines, field boundaries) the bilinear
@@ -896,6 +958,33 @@ public enum WorldShaders {
             imgForest = smoothstep(0.0, 0.02, c.g - max(c.r, c.b)) * smoothstep(0.10, 0.03, cl);   // dark green canopy
             // Same photo→albedo conversion as SFPreview.ImageryGround (textures are sRGB, so c is linear).
             albedo = photoAlbedo(c);
+            float rwCover = 0.0;                             // 1 on the runway's paved rectangle
+            if (u.runwayB.w > 0.5 && inNear) {
+                float2 rd = photoW - u.runwayA.xy, rdir = u.runwayA.zw;
+                float ra = dot(rd, rdir), rc = rd.x * rdir.y - rd.y * rdir.x;      // along, right of the centreline
+                float rlen = u.runwayB.x, rw = u.runwayB.y;
+                float rfp = length(dwx) + length(dwy);
+                rwCover = aaBand(-2.0, rlen + 2.0, ra, max(rfp, 0.05)) * aaBand(-0.5 * rw, 0.5 * rw, rc, max(rfp, 0.05));
+                if (rwCover > 0.0) {
+                    // Asphalt in the photo's own tone (blurred, so the photo's soft markings do not ghost under
+                    // the painted ones), with aggregate grain, patching and tyre rubber in the touchdown zones.
+                    float3 tone = photoAlbedo(imgNear.sample(imgSampler, nuv, level(5.0)).rgb);
+                    float tl = dot(tone, float3(0.2126, 0.7152, 0.0722));
+                    float3 asphalt = mix(tone, float3(tl), 0.6) * 0.92;
+                    float2 rp = float2(ra, rc);
+                    asphalt *= 1.0 + 0.10 * groundNoise(rp * float2(0.25, 1.0) + 13.0, 6.0) * saturate(1.0 - rfp / 12.0)
+                             + 0.06 * groundNoise(photoW + 3.0, 0.35) * saturate(1.0 - rfp / 0.7);
+                    float fromEnd = min(ra, rlen - ra);
+                    float rubber = smoothstep(120.0, 260.0, fromEnd) * (1.0 - smoothstep(520.0, 900.0, fromEnd)) * exp(-rc * rc / 30.0);
+                    asphalt *= 1.0 - 0.38 * rubber * (0.65 + 0.35 * groundNoise(rp * float2(0.05, 1.5), 1.0));
+                    int low = int(u.runwayB.z + 0.5);
+                    float paint = ra < 0.5 * rlen ? runwayPaint(ra, rc, rlen, rw, low, rfp)
+                                                  : runwayPaint(rlen - ra, -rc, rlen, rw, low > 0 ? (low + 18 > 36 ? low - 18 : low + 18) : 0, rfp);
+                    float worn = 0.78 + 0.22 * groundNoise(photoW * 0.7 + 51.0, 1.3);
+                    float3 surface = mix(asphalt, float3(0.50, 0.50, 0.48) * worn, paint * (1.0 - 0.55 * rubber));
+                    albedo = mix(albedo, surface, rwCover);
+                }
+            }
             // Canopy albedo floor (hue kept), the same 0.05 as the 3D tree tints: Sentinel-2 forest comes out
             // near-black (~0.03), so the ground between the 3D trees read as a dark smear (LSZS, rounds 4–6).
             float al = dot(albedo, float3(0.2126, 0.7152, 0.0722));
@@ -913,7 +1002,7 @@ public enum WorldShaders {
                 float lifted = 0.10 * pow(max(alT, 1e-4) / 0.10, 0.65);
                 albedo *= 1.0 + (lifted / max(alT, 1e-4) - 1.0) * toeW;
             }
-            groundMat = (1.0 - smoothstep(500.0, 800.0, dist)) * (1.0 - saturate((wm - 0.2) / 0.2));
+            groundMat = (1.0 - smoothstep(500.0, 800.0, dist)) * (1.0 - saturate((wm - 0.2) / 0.2)) * (1.0 - rwCover);
             if (groundMat > 0.0) {
                 GroundClasses k = classifyGround(c, imgForest);
                 float2 tilt;
@@ -1249,9 +1338,15 @@ public enum WorldShaders {
     fragment float4 prop_fragment(WorldVarying in [[stage_in]], constant WorldUniforms& u [[buffer(1)]]) {
         float2 q = float2(in.local.y, in.local.z + 0.05);
         float r = length(q) / 0.95, th = atan2(q.y, q.x);
-        float alpha = (0.07 + 0.11 * smoothstep(0.15, 0.85, r)) * (0.85 + 0.15 * cos(2.0 * th));
+        // A motion-blurred disc: faint, denser toward the tips, fading out at the rim (no hard edge), with
+        // the residual two-blade strobing a camera records and the painted tips as a thin soft band.
+        float rim = 1.0 - smoothstep(0.93, 1.0, r);
+        float strobe = 0.72 + 0.28 * cos(2.0 * th + u.skyZenith.w * 37.0);
+        float alpha = (0.045 + 0.085 * smoothstep(0.15, 0.9, r)) * strobe * rim;
         float3 base = float3(0.02, 0.02, 0.022);
-        if (r > 0.88) { alpha = 0.22; base = float3(0.55, 0.45, 0.08); }                 // tip paint ring
+        float tip = smoothstep(0.895, 0.92, r) * (1.0 - smoothstep(0.95, 0.975, r));
+        base = mix(base, float3(0.55, 0.45, 0.08), tip);
+        alpha = mix(alpha, 0.10 * strobe, tip);
         if (r < 0.12) { alpha = 1.0; base = float3(0.25, 0.25, 0.26); }                  // spinner
         float3 n = normalize(in.normal);
         float3 dir = normalize(in.rel);

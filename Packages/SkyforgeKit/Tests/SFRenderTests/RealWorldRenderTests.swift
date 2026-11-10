@@ -29,7 +29,9 @@ actor FixtureImageryTransport: HTTPTransport {
                                         imageryNearSize: 512, imageryFarSize: 256, treeRadius: 700, maxTrees: 4_000)
 
     static func region() async throws -> RealWorldRegion {
-        try await RealWorldRegion.load(airport: "KCOI", detail: detail, transport: try FixtureImageryTransport(), cache: nil)
+        // The fixture photo is not Merritt Island: the pack's land cover (the approach is over the Banana
+        // River) does not describe it, so these frames use the photo alone.
+        try await RealWorldRegion.load(airport: "KCOI", detail: detail, transport: try FixtureImageryTransport(), cache: nil, bundledLandCover: false)
     }
 
     @Test func regionConvertsToRenderData() async throws {
