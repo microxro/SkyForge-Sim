@@ -1,4 +1,4 @@
-LAST_UPDATE: 2026-11-10T21:08:00Z
+LAST_UPDATE: 2026-11-10T23:09:28Z
 
 # SKYFORGE state
 
@@ -6,9 +6,10 @@ LAST_UPDATE: 2026-11-10T21:08:00Z
 Visual transformation (2026-11-10, PR #5, ADR-0021) is in progress; the Bold Mode summary below is the earlier baseline.
 - Landed (CI-compiled): new SF-1 aircraft model with per-pixel livery, glass and clear coat; OSM-sourced 3D buildings with facade/roof shading (bundled `buildings.sfb`, ODbL); four shadow cascades; mid-distance imagery layer; 2x supersampling and sharpening in the ultra preset; exposure scale 0.45 with near-identity photo albedo; per-airport review-frame jobs.
 - Landed 2026-11-10 (second batch): five tree species with ambient occlusion; rebuilt cockpit interior with cabin fill light; ESA WorldCover land cover grids in every pack (water at any distance); water shading (sky reflection, wind patches); tinted tower glass; fine cloud structure at ultra; magnification-aware local contrast on the ground photo; `LINZAerialProvider`.
-- In progress: `tools/fetch_linz_imagery.py` is warping LINZ 0.1–0.3 m aerial imagery into the NZQN pack (z15, z17, z18). When it finishes: gate, commit the tiles, check the NZQN frames.
+- Landed 2026-11-10 (third batch): painted runway markings; OSM road ribbons with centre lines (`roads.sfr`, `RoadPack`); LINZ 0.1–0.3 m aerial tiles in the NZQN pack (z14–18, used by the region loader ahead of Sentinel-2); tinted tower glass; softer prop blur; `TriangleSoup.add` fix (first triangle's per-vertex fields were dropped).
+- CI: run 42904058045 (`0799f6a`) all green incl. six per-airport frame jobs. `4c34428` (roads, LINZ tiles) is in CI (run 42920830841); read its NZQN, KBFI and KMRY frames next.
 - Known limits (measured): US ground photo is about 1.6 m per pixel at source; no finer public-domain source is reachable from the build environment. No parity with MSFS is claimed.
-- Next: read the new frames; near-ground sharpness; before/after comparison in the PR body.
+- Next: read the run-42920830841 frames (road lines, NZQN aerial imagery, runway numerals); fix what they show; keep VISUAL_LOG current. PR #5 body is up to date and honest about limits.
 
 Bold Mode (docs/BOLD_MODE.md) is in progress.
 - Done (CI-verified unless noted):

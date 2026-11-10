@@ -257,3 +257,13 @@ Method: `FrameTimeTests`, 30 frames after 3 warm-up frames; command-buffer GPU t
 - 2026-11-10T21:12:25Z gate fast on Linux x86_64: PASS (HEAD 0c88a27)
 - 2026-11-10T21:18:34Z gate fast on Linux x86_64: PASS (HEAD 4547abc)
 - 2026-11-10T23:08:11Z gate fast on Linux x86_64: PASS (HEAD 0799f6a)
+
+## 2026-11-10 visual transformation (PR #5)
+- Run 42744312670 (baseline): reference "before" frames.
+- Run 42761437783 (`6cb86a1`): linux, apple, frames green; first ultra frames read (SkyWorld).
+- Run 42817030287 (`24e4ab1`, exposure fix): KMRY, KASE, LSZS frames read; mid-tones correct, buildings and aircraft visible.
+- Run 42901639622 (`0c88a27`): apple failed in `realWorldFrameRenders` (`groundLike` 0 of 213): the new land cover made the fixture photo's approach water. Cause is the test's fixture, not the renderer; fixed in `0799f6a` by loading that test without bundled land cover (`bundledLandCover: false`).
+- Run 42904058045 (`0799f6a`): all jobs green.
+- Gate: `tools/gate.sh fast` 245 tests pass at `4c34428`; `tools/check_licenses.py` OK.
+- Not verified: device frame rates; any comparison against MSFS beyond the reference screenshots the user supplied.
+
