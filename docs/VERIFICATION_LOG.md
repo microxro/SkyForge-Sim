@@ -241,3 +241,14 @@ Method: `FrameTimeTests`, 30 frames after 3 warm-up frames; command-buffer GPU t
 - 2026-11-10T00:02:28Z gate fast on Linux x86_64: PASS (HEAD 70234ff)
 - 2026-11-09 run 42724229611 (70234ff, outer tree shadows to 1 km): **apple job failed**, SkyWorld high 16.95 ms (min 15.92) against 16.7, higher than the previous run despite less work. CI run-to-run variance is above 1 ms. KMRY high 15.59 ms. Fix: SkyWorld desktop trees capped at 58k (65k; only trees > 1 km from both foci thinned), and full-mesh tree shadows within 200 m (250).
 - 2026-11-10 run 42725234508 (769252a: SkyWorld desktop trees 58k, full-mesh tree shadows within 200 m): SkyWorld low 10.23 / high 15.11 ms (min 14.20), KMRY low 11.76 / high 14.85 ms; budgets 33.3 / 16.7 ms. All CI jobs green; high tier has 1.6–1.9 ms margin against the ~1 ms CI run-to-run variance.
+2026-11-10T05:22:41Z compaction; last commit 6cb86a1
+2026-11-10T05:22:42Z compaction; last commit 6cb86a1
+2026-11-10T05:22:44Z compaction; last commit 6cb86a1
+2026-11-10T05:22:45Z compaction; last commit 6cb86a1
+2026-11-10T05:22:47Z compaction; last commit 6cb86a1
+2026-11-10T05:42:45Z compaction; last commit 6cb86a1
+2026-11-10T05:42:47Z compaction; last commit 6cb86a1
+2026-11-10T05:42:49Z compaction; last commit 6cb86a1
+2026-11-10T05:42:51Z compaction; last commit 6cb86a1
+2026-11-10T12:27:23Z compaction; last commit 6cb86a1
+- 2026-11-10T12:35:02Z gate fast on Linux x86_64: PASS (HEAD 6cb86a1)

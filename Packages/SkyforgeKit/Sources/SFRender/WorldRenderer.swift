@@ -756,6 +756,8 @@ public final class WorldRenderer {
     }
 
     public func setLighting(_ l: LightingSetup) { lighting = l; tables = nil }
+    /// Multiplier on the lighting preset's exposure (see `encodeScene`).
+    public var exposureScale: Float = 0.45
 
     private func aerialTables() throws -> (MTLTexture, MTLTexture) {
         if let t = tables { return (t.ins, t.tr) }
@@ -904,7 +906,10 @@ public final class WorldRenderer {
         let aspect = Double(colour.width) / Double(max(1, colour.height))
         let fwdD = simd_normalize(c.target - c.position)
         let fwd = SIMD3<Float>(Float(fwdD.x), Float(fwdD.y), Float(fwdD.z))
-        let L = lighting
+        // Scene exposure: the presets' 0.78 renders a sunlit 18 % grey at ~197/255, about 1.5 stops hot, which
+        // bleached every photo texture. One scale on sky, world and clouds keeps them consistent.
+        var L = lighting
+        L.exposure *= exposureScale
         let toSunF = simd_normalize(L.toSun)
         let sm = try shadowTexture()
         let smSize = sm.width

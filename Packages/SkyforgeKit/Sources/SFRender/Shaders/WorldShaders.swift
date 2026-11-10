@@ -827,11 +827,10 @@ public enum WorldShaders {
         return c;
     }
 
-    /// Photo colour → surface albedo (as SFPreview.ImageryGround), with a soft shoulder above 0.20 so
-    /// sunlit concrete and sand do not sit at the tone map's white.
+    /// Photo colour → surface albedo. With the scene exposure at a real camera's level the photo's own
+    /// brightness is already right, so this is near identity (a touch of contrast, 10 % under white).
     static float3 photoAlbedo(float3 c) {
-        float3 a = pow(max(c, float3(0.0)), float3(1.12)) * 0.72;
-        return select(a, 0.20 + (a - 0.20) * 0.32, a > 0.20);
+        return pow(max(c, float3(0.0)), float3(1.08)) * 0.90;
     }
 
     fragment float4 world_fragment(WorldVarying in [[stage_in]], constant WorldUniforms& u [[buffer(1)]],

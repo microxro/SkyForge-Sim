@@ -224,9 +224,7 @@ public struct RealWorldRegion: FlightWorld {
     /// The ground photo's colour at a point as the terrain shader's albedo (nil where there is no imagery).
     public func photoAlbedo(_ p: SIMD2<Double>) -> SIMD3<Float>? {
         guard let c = ground.near.sample(p.x, p.y) ?? midImagery?.sample(p.x, p.y) ?? ground.far?.sample(p.x, p.y) else { return nil }
-        var a = SIMD3(powf(powf(c.x, 2.2), 1.12), powf(powf(c.y, 2.2), 1.12), powf(powf(c.z, 2.2), 1.12)) * 0.72
-        for k in 0..<3 where a[k] > 0.20 { a[k] = 0.20 + (a[k] - 0.20) * 0.32 }
-        return a
+        return SIMD3(powf(powf(c.x, 2.2), 1.08), powf(powf(c.y, 2.2), 1.08), powf(powf(c.z, 2.2), 1.08)) * 0.90
     }
 
     /// Buildings as GPU-ready geometry with facade coordinates (nil when there are none). Roofs take the

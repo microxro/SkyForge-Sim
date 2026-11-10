@@ -126,6 +126,54 @@ if args.first == "aircraft" {
     exit(0)
 }
 
+if args.first == "dump-region" {
+    // sfpreview dump-region <IDENT> <out-dir> [tier]: the region's imagery layers (with building footprints
+    // drawn on the near layer) as PNGs, loaded offline from the showcase pack. For checking registration and tone.
+    guard args.count >= 3 else { fail("usage: sfpreview dump-region <IDENT> <out-dir> [phone|desktop|ultra]") }
+    let ident = args[1].uppercased(), outDir = URL(fileURLWithPath: args[2])
+    let tier = args.count > 3 ? args[3] : "phone"
+    let detail: RealWorldDetail = tier == "desktop" ? .desktop : (tier == "ultra" ? .ultra : .phone)
+    let sem = DispatchSemaphore(value: 0)
+    nonisolated(unsafe) var loaded: RealWorldRegion?
+    Task.detached {
+        loaded = try? await RealWorldRegion.load(airport: ident, detail: detail, transport: Showcase.transport(for: ident, fallback: nil), cache: nil)
+        sem.signal()
+    }
+    sem.wait()
+    guard let region = loaded else { fail("sfpreview: cannot load \(ident)", code: 1) }
+    try? FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
+    func write(_ m: ImageryMosaic, _ name: String, overlay: Bool = false) {
+        let step = max(1, m.size / 1_024), n = m.size / step
+        var rgb = [UInt8](repeating: 0, count: n * n * 3)
+        for j in 0..<n { for i in 0..<n {
+            let o = 3 * (j * step * m.size + i * step)
+            rgb[3 * (j * n + i)] = m.rgb[o]; rgb[3 * (j * n + i) + 1] = m.rgb[o + 1]; rgb[3 * (j * n + i) + 2] = m.rgb[o + 2]
+        } }
+        if overlay {
+            let mpp = 2 * m.halfExtent / Double(n)
+            for b in region.buildings {
+                for k in 0..<b.footprint.count {
+                    let a = b.footprint[k], c = b.footprint[(k + 1) % b.footprint.count]
+                    let len = ((c - a) * (c - a)).sum().squareRoot()
+                    let steps = max(1, Int(len / mpp * 1.5))
+                    for t in 0...steps {
+                        let p = a + (c - a) * (Double(t) / Double(steps))
+                        let x = Int((p.x - (m.centre.x - m.halfExtent)) / mpp), y = Int(((m.centre.y + m.halfExtent) - p.y) / mpp)
+                        if x >= 0 && y >= 0 && x < n && y < n { rgb[3 * (y * n + x)] = 255; rgb[3 * (y * n + x) + 1] = 40; rgb[3 * (y * n + x) + 2] = 200 }
+                    }
+                }
+            }
+        }
+        try? PNGEncoder.encodeRGB(width: n, height: n, rgb: rgb).write(to: outDir.appendingPathComponent("\(ident)_\(name).png"))
+    }
+    write(region.ground.near, "near"); write(region.ground.near, "near_buildings", overlay: true)
+    if let f = region.ground.far { write(f, "far") }
+    if let d = region.ground.detail { write(d, "detail"); write(d, "detail_buildings", overlay: true) }
+    if let m = region.midImagery { write(m, "mid") }
+    print("sfpreview: \(ident) \(tier): \(region.buildings.count) buildings, near z\(region.ground.near.zoom), mid \(region.midImagery.map { "z\($0.zoom)" } ?? "none")")
+    exit(0)
+}
+
 if args.first == "pack-airport" {
     // sfpreview pack-airport <IDENT> <out-dir> [phone|tablet]: records every tile a real-world load of the
     // airport fetches (imagery, elevation) into an offline tile pack for the app bundle.
