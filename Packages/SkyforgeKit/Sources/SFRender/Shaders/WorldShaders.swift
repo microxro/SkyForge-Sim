@@ -67,14 +67,16 @@ public enum WorldShaders {
     // Per-instance tree shape from a hash of the position: crown width 0.8–1.25×, height squash 0.88–1.12×
     // and a slight lean, so neighbouring crowns stop reading as identical lollipops (art round 7). Shared by
     // the main and shadow passes so shadows match their trees. Trunks keep their width.
-    static float3 treeShape(float3 local, bool bark, float3 pos, thread float& crownW, thread float& sz) {
+    static float3 treeShape(float3 local, bool bark, float3 pos, thread float& crownW, thread float& sz, thread float2& cs) {
         uint h = as_type<uint>(int(floor(pos.x * 4.0))) * 0x8DA6B343u ^ as_type<uint>(int(floor(pos.y * 4.0))) * 0xD8163841u ^ 0x7A3Eu;
         h ^= h >> 13; h *= 0x5BD1E995u; h ^= h >> 15;
         float u0 = float(h & 0xFFu) / 255.0, u1 = float((h >> 8) & 0xFFu) / 255.0;
         float u2 = float((h >> 16) & 0xFFu) / 255.0, u3 = float((h >> 24) & 0xFFu) / 255.0;
         crownW = bark ? 1.0 : 0.8 + 0.45 * u0;
         sz = 0.88 + 0.24 * u1;
-        float3 sl = float3(local.x * crownW, local.y * crownW, local.z * sz);
+        cs = normalize(float2(u3 - 0.5, u0 - 0.5) + float2(0.001, 0.0));      // yaw: same-variant trees stop repeating
+        float2 xy = float2(cs.x * local.x - cs.y * local.y, cs.y * local.x + cs.x * local.y);
+        float3 sl = float3(xy.x * crownW, xy.y * crownW, local.z * sz);
         sl.xy += (float2(u2, u3) - 0.5) * 0.12 * local.z;      // lean (no trig: this runs per vertex, per pass)
         return sl;
     }
@@ -82,8 +84,8 @@ public enum WorldShaders {
     vertex float4 shadow_tree_vertex(const device TerrainVertex* v [[buffer(0)]], constant ShadowUniforms& u [[buffer(1)]],
                                      const device TreeInstanceGPU* inst [[buffer(2)]], uint vid [[vertex_id]], uint iid [[instance_id]]) {
         TreeInstanceGPU t = inst[iid];
-        float crownW, sz;
-        float3 p = treeShape(float3(v[vid].position), v[vid].normal.w < 0, float3(t.position), crownW, sz) * t.height + float3(t.position);
+        float crownW, sz; float2 cs;
+        float3 p = treeShape(float3(v[vid].position), v[vid].normal.w < 0, float3(t.position), crownW, sz, cs) * t.height + float3(t.position);
         return u.lightViewProj * (u.model * float4(p, 1.0));
     }
 
@@ -156,18 +158,19 @@ public enum WorldShaders {
         TreeInstanceGPU t = inst[iid];
         TerrainVertex w = v[vid];
         float3 local = float3(w.position);
-        float crownW, sz;
-        float3 sl = treeShape(local, w.normal.w < 0, float3(t.position), crownW, sz);
+        float crownW, sz; float2 cs;
+        float3 sl = treeShape(local, w.normal.w < 0, float3(t.position), crownW, sz, cs);
         float4 p = u.model * float4(sl * t.height + float3(t.position), 1.0);
         WorldVarying o;
         o.position = u.viewProj * p;
         o.rel = p.xyz;
         float3 n0 = float3(w.normal.xyz) / 127.0;
-        o.normal = normalize(float3(n0.x / crownW, n0.y / crownW, n0.z / sz));   // inverse-transpose of the scale
+        float2 nxy = float2(cs.x * n0.x - cs.y * n0.y, cs.y * n0.x + cs.x * n0.y);
+        o.normal = normalize(float3(nxy.x / crownW, nxy.y / crownW, n0.z / sz));   // inverse-transpose of the scale
         // Trunk vertices (marked by a negative normal w) are bark-coloured.
         o.albedo = w.normal.w < 0 ? float3(0.06, 0.045, 0.03) : float3(t.colour) * (0.85 + 0.3 * saturate(local.z));
         o.material = w.normal.w < 0 ? 0.0 : 2.0;
-        o.field = 0.0;
+        o.field = w.normal.w < 0 ? 1.0 : float(w.normal.w) / 127.0;      // leaf: how much sky the vertex sees
         o.local = float3(0.0);
         o.uv = float2(0.0); o.style = float4(0.0);
         return o;
@@ -1070,7 +1073,15 @@ public enum WorldShaders {
             // Darkening on the crown's underside only (round 9: 0.7 over the whole crown dulled sunlit tops).
             float under = saturate(-n.z);
             float3 foliageAmb = mix(ambient, u.ambientGround.rgb, 0.25 + 0.25 * under) * (0.85 - 0.25 * under);
-            col = albedo * (u.sunColour.rgb * (wrap + back) * vis + foliageAmb);
+            // Leaf clumps: tone breaks up the crown at close range; the crown's own sky visibility (vertex
+            // shade) darkens its inside and underside, so a tree reads as a mass of lobes, not one blob.
+            float2 lw = in.rel.xy + u.cameraPos.xy;
+            float clump = groundNoise(lw + in.rel.z * float2(0.43, -0.71) + 31.0, 0.7);
+            float fine = groundNoise(lw - in.rel.z * float2(0.29, 0.52) - 7.0, 0.22);
+            float nearT = saturate(1.0 - dist / 260.0);
+            float tone = 1.0 + nearT * (0.45 * (clump - 0.5) + 0.25 * (fine - 0.5));
+            float occ = mix(0.35, 1.0, saturate(in.field));
+            col = albedo * tone * (u.sunColour.rgb * (wrap + back) * mix(1.0, occ, 0.5) * vis + foliageAmb * occ);
         } else if (m == 10.0 || m == 11.0 || m == 12.0) {    // SF-1 airframe: painted skin, glazing, bright metal
             float3 L = in.local;
             float3 v = -dir;

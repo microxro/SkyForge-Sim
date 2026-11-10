@@ -8,6 +8,7 @@ import simd
 import SFPreview
 import SFAtmosphere
 import SFQuickFlight
+import SFWorldGen
 
 struct WorldUniforms {
     var viewProj: simd_float4x4
@@ -167,7 +168,7 @@ public final class WorldRenderer {
 
     /// Vertex range of the tree mesh for a cell: kind 0 conifer / 1 broadleaf, full or LOD.
     private func treeRange(kind: Int, full: Bool) -> (start: Int, count: Int) {
-        trees!.ranges[(full ? 0 : 2) + kind]
+        trees!.ranges[(full ? 0 : TreeModels.variantCount) + kind]
     }
 
     /// Squared distance from `p` to a cell's box (0 inside).
@@ -439,83 +440,17 @@ public final class WorldRenderer {
         return t
     }
 
-    /// Unit-height tree meshes (z 0…1): conifer (bare trunk, crown on top) and broad oak.
-    static func treeMeshes() -> (conifer: [PackedTerrainVertex], oak: [PackedTerrainVertex], coniferLow: [PackedTerrainVertex], oakLow: [PackedTerrainVertex]) {
-        func q(_ x: Double) -> Int8 { Int8(max(-127, min(127, (x * 127).rounded()))) }
-        func tri(_ out: inout [PackedTerrainVertex], _ a: SIMD3<Double>, _ b: SIMD3<Double>, _ c: SIMD3<Double>, bark: Bool) {
-            let n = normalize(cross(b - a, c - a))
-            for p in [a, b, c] { out.append(PackedTerrainVertex(px: Float(p.x), py: Float(p.y), pz: Float(p.z), nx: q(n.x), ny: q(n.y), nz: q(n.z), nw: bark ? -127 : 127)) }
+    /// Unit-height tree meshes (z 0…1) per variant, full and crown-only LOD (`TreeModels`). Normals are
+    /// snorm; `nw` is −127 for bark, otherwise 1…127 for how much sky the vertex sees (ambient occlusion).
+    static func treeMeshes() -> (full: [[PackedTerrainVertex]], lod: [[PackedTerrainVertex]]) {
+        func q(_ x: Float) -> Int8 { Int8(max(-127, min(127, (x * 127).rounded()))) }
+        func pack(_ v: [TreeVertex]) -> [PackedTerrainVertex] {
+            v.map { PackedTerrainVertex(px: $0.position.x, py: $0.position.y, pz: $0.position.z,
+                                        nx: q($0.normal.x), ny: q($0.normal.y), nz: q($0.normal.z),
+                                        nw: $0.shade < 0 ? -127 : Int8(max(1, min(127, ($0.shade * 127).rounded())))) }
         }
-        func vert(_ out: inout [PackedTerrainVertex], _ p: SIMD3<Double>, _ n: SIMD3<Double>, bark: Bool) {
-            out.append(PackedTerrainVertex(px: Float(p.x), py: Float(p.y), pz: Float(p.z), nx: q(n.x), ny: q(n.y), nz: q(n.z), nw: bark ? -127 : 127))
-        }
-        func frustum(_ out: inout [PackedTerrainVertex], z0: Double, r0: Double, z1: Double, r1: Double, sides: Int, bark: Bool,
-                     crown: (centre: Double, radius: Double, height: Double)? = nil, offset: SIMD2<Double> = .zero,
-                     whole: (centre: Double, radius: Double, height: Double)? = nil) {
-            // Crowns use smooth normals so a near crown shades as one rounded mass, not facets (art rounds
-            // 5–6). With `crown`, normals are those of the enclosing ellipsoid, continuous across stacked
-            // sections (per-section cone slopes left a crease at every ring); otherwise the cone's own slope.
-            let slope = (r0 - r1) / max(z1 - z0, 1e-6)
-            func normalAt(_ a: Double, _ r: Double, _ z: Double) -> SIMD3<Double> {
-                guard let e = crown else { return normalize(SIMD3(cos(a), sin(a), slope)) }
-                let h = max(r, 0.02) / (e.radius * e.radius)
-                let own = normalize(SIMD3(cos(a) * h, sin(a) * h, (z - e.centre) / (e.height * e.height)))
-                // A lobe blends 50/50 with the whole crown's ellipsoid normal at the same point, so the cluster
-                // shades as one mass with a lumpy outline (own normals alone left facets and dark creases, round 15).
-                guard let wc = whole else { return own }
-                let p = SIMD3(offset.x + r * cos(a), offset.y + r * sin(a), z)
-                let wn = normalize(SIMD3(p.x / (wc.radius * wc.radius), p.y / (wc.radius * wc.radius), (z - wc.centre) / (wc.height * wc.height)))
-                return normalize(own + wn)
-            }
-            for k in 0..<sides {
-                let a0 = Double(k) / Double(sides) * 2 * .pi, a1 = Double(k + 1) / Double(sides) * 2 * .pi
-                let o = SIMD3(offset.x, offset.y, 0)
-                let b0 = SIMD3(r0 * cos(a0), r0 * sin(a0), z0) + o, b1 = SIMD3(r0 * cos(a1), r0 * sin(a1), z0) + o
-                let t0 = SIMD3(r1 * cos(a0), r1 * sin(a0), z1) + o, t1 = SIMD3(r1 * cos(a1), r1 * sin(a1), z1) + o
-                if bark {
-                    tri(&out, b0, b1, t1, bark: bark)
-                    if r1 > 0 { tri(&out, b0, t1, t0, bark: bark) }
-                    continue
-                }
-                let nb0 = normalAt(a0, r0, z0), nb1 = normalAt(a1, r0, z0)
-                if r1 > 0 {
-                    let nt0 = normalAt(a0, r1, z1), nt1 = normalAt(a1, r1, z1)
-                    vert(&out, b0, nb0, bark: false); vert(&out, b1, nb1, bark: false); vert(&out, t1, nt1, bark: false)
-                    vert(&out, b0, nb0, bark: false); vert(&out, t1, nt1, bark: false); vert(&out, t0, nt0, bark: false)
-                } else {
-                    // Apex: the facet's mid direction (cone) or straight up (ellipsoid), so the tip neither
-                    // pinches nor flattens.
-                    let apex = (crown == nil || whole != nil) ? normalAt((a0 + a1) / 2, 0, z1) : SIMD3<Double>(0, 0, 1)
-                    vert(&out, b0, nb0, bark: false); vert(&out, b1, nb1, bark: false); vert(&out, t1, apex, bark: false)
-                }
-            }
-        }
-        var conifer: [PackedTerrainVertex] = [], oak: [PackedTerrainVertex] = []
-        frustum(&conifer, z0: -0.03, r0: 0.018, z1: 0.6, r1: 0.012, sides: 5, bark: true)
-        frustum(&conifer, z0: 0.52, r0: 0.12, z1: 0.62, r1: 0.22, sides: 9, bark: false)
-        frustum(&conifer, z0: 0.62, r0: 0.22, z1: 0.82, r1: 0.17, sides: 9, bark: false)
-        frustum(&conifer, z0: 0.82, r0: 0.17, z1: 1.0, r1: 0, sides: 9, bark: false)
-        frustum(&oak, z0: -0.03, r0: 0.03, z1: 0.4, r1: 0.025, sides: 5, bark: true)
-        // Near broadleaf (drawn only within `treeLODDistance`): an 8-sided main crown and two offset 6-sided
-        // lobes, each with its own ellipsoid normals, so a crown reads as clumped foliage rather than one
-        // smooth sphere (art round 14). Crown starts low (0.2) so little trunk shows (round 9).
-        let oakCrown = (centre: 0.62, radius: 0.44, height: 0.38)
-        frustum(&oak, z0: 0.2, r0: 0.16, z1: 0.48, r1: 0.40, sides: 8, bark: false, crown: oakCrown)
-        frustum(&oak, z0: 0.48, r0: 0.40, z1: 0.75, r1: 0.33, sides: 8, bark: false, crown: oakCrown)
-        frustum(&oak, z0: 0.75, r0: 0.33, z1: 0.98, r1: 0, sides: 8, bark: false, crown: oakCrown)
-        for (off, zc, rr) in [(SIMD2(0.24, 0.10), 0.60, 0.25), (SIMD2(-0.16, -0.21), 0.66, 0.23)] {
-            let lobe = (centre: zc, radius: rr, height: rr * 0.95)
-            frustum(&oak, z0: zc - rr * 0.8, r0: rr * 0.45, z1: zc, r1: rr, sides: 6, bark: false, crown: lobe, offset: off, whole: oakCrown)
-            frustum(&oak, z0: zc, r0: rr, z1: zc + rr * 0.95, r1: 0, sides: 6, bark: false, crown: lobe, offset: off, whole: oakCrown)
-        }
-        // Distant LOD (beyond `treeLODDistance`): crown only, 6 sides, 6–18 triangles
-        // against 55–86, same silhouette height and width.
-        var coniferLow: [PackedTerrainVertex] = [], oakLow: [PackedTerrainVertex] = []
-        // 6 sides: from the LOD distance (350 m since round 15) 4-sided crowns read as diamonds.
-        frustum(&coniferLow, z0: 0.4, r0: 0.22, z1: 1.0, r1: 0, sides: 6, bark: false)
-        frustum(&oakLow, z0: 0.3, r0: 0.4, z1: 0.62, r1: 0.4, sides: 6, bark: false, crown: oakCrown)
-        frustum(&oakLow, z0: 0.62, r0: 0.4, z1: 1.0, r1: 0, sides: 6, bark: false, crown: oakCrown)
-        return (conifer, oak, coniferLow, oakLow)
+        let m = TreeModels.build()
+        return (m.full.map(pack), m.lod.map(pack))
     }
 
     /// A ready GPU imagery texture with its placement, built on any thread (`makeImagery`) and swapped in
@@ -560,11 +495,12 @@ public final class WorldRenderer {
     public func setTrees(_ list: [RealWorldRenderData.Tree]) throws {
         guard !list.isEmpty else { trees = nil; treeCells = []; return }
         let meshes = Self.treeMeshes()
-        let treeVerts = meshes.conifer + meshes.oak + meshes.coniferLow + meshes.oakLow
-        let c0 = meshes.conifer.count, o0 = meshes.oak.count, c1 = meshes.coniferLow.count, o1 = meshes.oakLow.count
-        let ranges = [(0, c0), (c0, o0), (c0 + o0, c1), (c0 + o0 + c1, o1)]
+        var treeVerts: [PackedTerrainVertex] = []
+        var ranges: [(Int, Int)] = []
+        for m in meshes.full + meshes.lod { ranges.append((treeVerts.count, m.count)); treeVerts += m }
+        func variant(_ t: RealWorldRenderData.Tree) -> Int { TreeModels.variant(conifer: t.conifer, x: t.position.x, y: t.position.y) }
         func cellKey(_ t: RealWorldRenderData.Tree) -> (Int, Int, Int) {
-            (t.conifer ? 0 : 1, Int((t.position.x / 400).rounded(.down)), Int((t.position.y / 400).rounded(.down)))
+            (variant(t), Int((t.position.x / 400).rounded(.down)), Int((t.position.y / 400).rounded(.down)))
         }
         let sorted = list.sorted { cellKey($0) < cellKey($1) }
         var cells: [(kind: Int, start: Int, count: Int, min: SIMD3<Float>, max: SIMD3<Float>)] = []
@@ -580,7 +516,7 @@ public final class WorldRenderer {
             }
         }
         let inst = sorted.map { PackedTreeInstance(px: $0.position.x, py: $0.position.y, pz: $0.position.z, height: $0.height,
-                                                   r: $0.colour.x, g: $0.colour.y, b: $0.colour.z, kind: $0.conifer ? 0 : 1) }
+                                                   r: $0.colour.x, g: $0.colour.y, b: $0.colour.z, kind: Float(variant($0))) }
         precondition(MemoryLayout<PackedTreeInstance>.stride == 32)
         guard let mb = treeVerts.withUnsafeBytes({ device.makeBuffer(bytes: $0.baseAddress!, length: $0.count, options: .storageModeShared) }),
               let ib = inst.withUnsafeBytes({ device.makeBuffer(bytes: $0.baseAddress!, length: $0.count, options: .storageModeShared) }) else {
