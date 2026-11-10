@@ -118,3 +118,12 @@
   - No score is claimed for these rounds.
   - A fresh reviewer on another model was not started: its scale would not match rounds 5–19, and switching the scorer mid-series would make the 0.2 rule meaningless.
 - **Consequence:** rounds 20+ are logged as "unscored" in VISUAL_LOG and scored together when review resumes.
+
+## ADR-0021 Visual transformation phase (2026-11-10)
+- **Context:** the user directed an extreme visual transformation toward commercial-simulator quality, performance explicitly out of scope for this assignment, with MSFS screenshots as the reference standard. Frames can only be rendered on the macOS CI GPU.
+- **Decisions:**
+  - Frame-time budgets are recorded, not enforced, for this phase (`FrameTimeTests` prints `SKYFORGE_OVERBUDGET`; only a 400 ms sanity bound fails). The ultra preset (2× supersampling, 4096 shadow cascades, 96 cloud steps) is the review tier.
+  - Real 3D buildings come from OpenStreetMap-sourced Overture records, bundled per showcase airport (ODbL; see DATA_SOURCES). No other building source is used.
+  - Scene exposure is scaled by 0.45 on sky, world and clouds together (a sunlit 18 % grey had rendered at ~197/255), and photo→albedo is near identity.
+  - Review frames come from one CI job per airport so each log is small enough to read back.
+- **Consequence:** no claim of parity with MSFS is made without side-by-side frames; VISUAL_LOG records what was inspected.
