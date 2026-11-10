@@ -57,7 +57,7 @@ public struct QuickFlightDetail: Sendable, Equatable {
                                                  farHalfExtent: 24_000, farStep: 160, objectRadius: 2_200, treeDetailRadius: 450)
     public static let desktop = QuickFlightDetail(nearHalfExtent: 3_000, nearStep: 8, midHalfExtent: 9_000, midStep: 32,
                                                   farHalfExtent: 28_000, farStep: 140, objectRadius: 2_400, treeDetailRadius: 550,
-                                                  maxTrees: 65_000)   // 105k uncapped kept SkyWorld high at its budget
+                                                  maxTrees: 58_000)   // 105k uncapped kept SkyWorld high at its budget; 65k left ~0 margin against CI variance (run 42724229611: 16.95 ms)
 }
 
 public struct QuickFlightWorld: FlightWorld {

@@ -135,7 +135,7 @@ public final class WorldRenderer {
     static let treeLODDistance: Float = 350
     /// Within the near shadow cascade, full meshes cast only from cells this close (crown silhouettes in the
     /// shadow map matter near the camera; farther, the LOD crown casts the same blob).
-    static let treeShadowFullDistance: Float = 250
+    static let treeShadowFullDistance: Float = 200   // 250: SkyWorld high shadows 3.25 ms (run 42724229611)
     /// Tree cells farther than this cast no shadow into the outer cascade.
     static let treeShadowDistance: Float = 1_000   // 1200 left SkyWorld high ~0.5 ms under budget (run 42722423559); shadows past 1 km are a few pixels
 
