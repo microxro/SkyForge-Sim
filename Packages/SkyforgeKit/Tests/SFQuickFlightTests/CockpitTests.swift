@@ -20,8 +20,9 @@ import Foundation
 
     @Test func interiorMeshIsSane() {
         let m = Cockpit.mesh()
-        #expect(m.triangleCount > 100)
-        for p in m.positions { #expect(p.x.isFinite && abs(p.x) < 2 && abs(p.y) < 0.7 && p.z > -1.1 && p.z < 0.3) }
+        #expect(m.triangleCount > 2_000)
+        for n in m.normals { #expect(n.x.isFinite && n.y.isFinite && n.z.isFinite, "degenerate triangle in the interior") }
+        for p in m.positions { #expect(p.x.isFinite && abs(p.x) < 2 && abs(p.y) < 0.7 && p.z > -1.1 && p.z < 0.7) }
     }
 
     @Test func cockpitCameraLooksDownTheRunway() {
