@@ -35,10 +35,16 @@ public struct TilePack: Sendable {
         return d
     }
 
-    /// Writes a pack (bodies deduplicated by hash). Overwrites an existing manifest.
-    public static func write(name: String, responses: [URL: Data], attribution: [String], to root: URL) throws {
+    /// Writes a pack (bodies deduplicated by hash). Overwrites an existing manifest, or with `merge`
+    /// adds to it (a pack recorded at several detail tiers holds the tiles of all of them).
+    public static func write(name: String, responses: [URL: Data], attribution: [String], to root: URL, merge: Bool = false) throws {
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         var files: [String: String] = [:]
+        var attribution = attribution
+        if merge, let old = try? TilePack(root: root) {
+            files = old.manifest.files
+            for a in old.manifest.attribution where !attribution.contains(a) { attribution.append(a) }
+        }
         for (url, body) in responses {
             let hex = ContentID(data: body).hex
             let f = root.appendingPathComponent(hex)

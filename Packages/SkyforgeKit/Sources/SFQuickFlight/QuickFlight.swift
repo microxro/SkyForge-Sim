@@ -178,26 +178,25 @@ public struct QuickFlightWorld: FlightWorld {
         return out
     }
 
-    /// Aircraft mesh in body axes (x forward, y right, z down), with colours and materials.
-    public static func aircraftMesh(accent: SIMD3<Float> = SIMD3(0.011, 0.048, 0.18)) -> TriangleSoup {
-        var b = SceneBuilder(generator: WorldGenerator(terrain: TerrainRecipe(kind: .suburbanPlain, seed: 1)), origin: .zero)
-        b.addAircraft(at: .zero, heading: 0, pitch: 0, roll: 0, accent: accent, propDisc: true)
-        // addAircraft maps NED→ENU; undo it so the mesh stays in body axes (x fwd, y right, z down).
+    /// Aircraft mesh in body axes (x forward, y right, z down) with smooth normals. Skin triangles carry
+    /// the base paint and the `airframe` / `airSurface` materials: the world shader draws glazing, livery,
+    /// seams and markings per pixel from the body coordinates (`AircraftLivery` holds the same zones).
+    public static func aircraftMesh(accent: SIMD3<Float> = AircraftLivery.navy) -> TriangleSoup {
         var soup = TriangleSoup(origin: .zero)
-        let s = b.soup
-        // Control-surface hinge gaps (2.4 cm strips) are sub-pixel at chase distance, where dark strips
-        // rasterise as broken dashes (art round 7): here they are a light grey close to the paint, so they
-        // still read up close and average out far away.
-        let seamDark = srgb(70, 72, 76), seamLight = srgb(150, 152, 152)
-        for t in 0..<s.triangleCount {
-            func body(_ p: SIMD3<Float>) -> SIMD3<Double> { SIMD3(Double(p.y), Double(p.x), Double(-p.z)) }
-            // SceneBuilder reversed the winding for its ENU output; keep that order so normals face outward
-            // (the cockpit view discards back faces by normal; test `cabinNormalsPointOutward`).
-            let colour = s.albedo[t] == seamDark ? seamLight : s.albedo[t]
-            soup.addFlat(body(s.positions[3 * t]), body(s.positions[3 * t + 1]), body(s.positions[3 * t + 2]),
-                         colour: colour, material: s.material[t])
+        func f(_ n: SIMD3<Double>) -> SIMD3<Float> { SIMD3(Float(n.x), Float(n.y), Float(n.z)) }
+        for t in AircraftMesh.build() {
+            let colour: SIMD3<Float>, mat: Material
+            switch t.part {
+            case .fuselage: colour = AircraftLivery.white; mat = .airframe
+            case .surface: colour = AircraftLivery.white; mat = .airSurface
+            case .glass: colour = SIMD3(0.55, 0.04, 0.03); mat = .glass          // beacon lens
+            case .metal: colour = SIMD3(0.78, 0.79, 0.80); mat = .metal
+            case .tyre: colour = SIMD3(0.012, 0.012, 0.013); mat = .opaque
+            case .prop: colour = SIMD3(0.016, 0.016, 0.018); mat = .prop
+            }
+            soup.add(t.a, t.b, t.c, na: f(t.na), nb: f(t.nb), nc: f(t.nc), colour: colour, material: mat)
         }
-        soup.smoothNormals(triangles: 0..<soup.triangleCount)
+        _ = accent
         return soup
     }
 }

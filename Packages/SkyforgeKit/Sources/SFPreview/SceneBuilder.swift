@@ -520,22 +520,34 @@ public struct SceneBuilder {
             let ned = q.rotate(b)
             return p + SIMD3(ned.y, ned.x, -ned.z)                   // NED -> ENU
         }
-        let first = soup.triangleCount
-        defer { soup.smoothNormals(triangles: first..<soup.triangleCount) }
+        func worldN(_ n: SIMD3<Double>) -> SIMD3<Float> {
+            let ned = q.rotate(n)
+            return SIMD3(Float(ned.y), Float(ned.x), Float(-ned.z))
+        }
+        func paint(_ z: AircraftLivery.Zone) -> (SIMD3<Float>, Material) {
+            switch z {
+            case .white: return (AircraftLivery.white, .paint)
+            case .navy: return (accent, .paint)
+            case .orange: return (AircraftLivery.orange, .paint)
+            case .black: return (srgb(20, 20, 22), .opaque)
+            case .glass: return (srgb(28, 34, 42), .glass)
+            }
+        }
         for t in AircraftMesh.build() {
             let colour: SIMD3<Float>, mat: Material
+            let centre = (t.a + t.b + t.c) / 3
             switch t.part {
-            case .paint: colour = srgb(214, 214, 208); mat = .paint   // albedo ≈ 0.66: white paint keeps visible shading under a midday sun
-            case .accent: colour = accent; mat = .paint
+            case .fuselage: (colour, mat) = paint(AircraftLivery.fuselage(centre))
+            case .surface: (colour, mat) = paint(AircraftLivery.surface(centre))
             case .glass: colour = srgb(28, 34, 42); mat = .glass
-            case .metal: colour = srgb(150, 152, 156); mat = .paint
-            case .tyre: colour = srgb(24, 24, 26); mat = .opaque
-            case .seam: colour = srgb(70, 72, 76); mat = .opaque
+            case .metal: colour = srgb(170, 172, 176); mat = .paint
+            case .tyre: colour = srgb(20, 20, 22); mat = .opaque
             case .prop:
                 if !propDisc { continue }
                 colour = srgb(34, 34, 36); mat = .prop
             }
-            soup.addFlat(world(t.a), world(t.c), world(t.b), colour: colour, material: mat)
+            // NED → ENU mirrors the handedness, so the winding is reversed to stay counter-clockwise outside.
+            soup.add(world(t.a), world(t.c), world(t.b), na: worldN(t.na), nb: worldN(t.nc), nc: worldN(t.nb), colour: colour, material: mat)
         }
         stats["aircraft", default: 0] += 1
     }

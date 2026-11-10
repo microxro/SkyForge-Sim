@@ -128,6 +128,25 @@ public struct ImageryGround: GroundAlbedo {
     }
 
     /// Smoothed water score at a point, or nil outside the near layer.
+    /// The water mask checked against surveyed land cover: open water is water whatever the photo's colour
+    /// (glint, shallows, a different survey), land away from any water is never water (dark roofs, shadows,
+    /// canopy), and the photo keeps deciding the shoreline itself, which it resolves more finely.
+    public func refiningWater(with cover: LandCoverGrid) -> ImageryGround {
+        var mask = waterMask
+        let n = maskSize
+        for j in 0..<n {
+            for i in 0..<n {
+                let c = maskCellCentre(i, j)
+                guard cover.contains(c.x, c.y) else { continue }
+                let r = cover.waterRange(c.x, c.y)
+                if r.min >= 1 { mask[j * n + i] = 1 }
+                else if r.max <= 0 { mask[j * n + i] = 0 }
+                else { mask[j * n + i] = max(mask[j * n + i], cover.water(c.x, c.y)) }
+            }
+        }
+        return ImageryGround(near: near, far: far, detail: detail, waterMask: mask, maskSize: n)
+    }
+
     public func water(_ x: Double, _ y: Double) -> Float? {
         let mpp = near.metresPerPixel * Double(Self.block)
         let fx = (x - (near.centre.x - near.halfExtent)) / mpp - 0.5

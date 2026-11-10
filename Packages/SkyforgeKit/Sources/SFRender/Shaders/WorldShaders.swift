@@ -23,10 +23,13 @@ public enum WorldShaders {
         float4 ambientGround;     // rgb, field pattern seed (24-bit integer as float)
         float4 skyHorizon;        // rgb (water reflection), field pattern: 0 none, 1 summer, 2 autumn
         float4 tableDims;         // nD, nAz, nEl, cascade count
-        float4x4 shadow0;         // camera-relative world → cascade 0 clip (orthographic)
-        float4x4 shadow1;
-        float4 cascadeSplits;     // far edge (m) of cascade 0, 1; texel size (m) of cascade 0, 1
-        float4 cascadeDepth;      // light-space depth range (m) of cascade 0, 1
+        float4x4 shadow0;         // camera-relative world → hero cascade clip (a column around the aircraft)
+        float4x4 shadow1;         // near, middle and far cascades (orthographic)
+        float4x4 shadow2;
+        float4x4 shadow3;
+        float4 cascadeSplits;     // far edge (m from the camera) of cascades 1, 2, 3; w = 1 when the hero cascade is drawn
+        float4 cascadeTexel;      // texel size (m) of cascades 0…3
+        float4 cascadeDepth;      // light-space depth range (m) of cascades 0…3
         float4 cameraPos;         // camera world x, y modulo 4096 m (noise period), z, w = 1: discard back faces
         float4 cameraLocal;       // camera x, y, z in region metres (imagery lookup), unused
         float4 imageryNear;       // centre x, y, half extent, 1 if present
@@ -34,7 +37,14 @@ public enum WorldShaders {
         CloudLayerGPU clouds;     // cumulus layer for cloud shadows (coverage 0 = none)
         float4 fieldGrid;         // farmed-parcel texture origin iu0, iv0 and size (width 0 = none)
         float4 imageryDetail;     // sharp inner imagery square: centre x, y, half extent, 1 if present
+        float4 imageryMid;        // middle-distance imagery square: centre x, y, half extent, 1 if present
+        float4 skyZenith;         // rgb zenith sky radiance (reflections), w = time (s)
+        float4 quality;           // x = shadow filter half width (taps), y = cabin interior fill (cockpit pass), z, w unused
+        float4 runwayA;           // low threshold x, y (region metres), direction x, y (unit, toward the high end)
+        float4 runwayB;           // length, width (m), low-end number (0 = none), 1 if a runway is drawn
     };
+
+    struct BuildingVertex { packed_float3 position; char4 normal; uchar4 colour; packed_float2 uv; uchar4 style; };
 
     struct TerrainVertex { packed_float3 position; char4 normal; };
     struct TreeInstanceGPU { packed_float3 position; float height; packed_float3 colour; float kind; };
@@ -51,17 +61,24 @@ public enum WorldShaders {
         return u.lightViewProj * (u.model * float4(float3(v[vid].position), 1.0));
     }
 
+    vertex float4 shadow_building_vertex(const device BuildingVertex* v [[buffer(0)]], constant ShadowUniforms& u [[buffer(1)]],
+                                         uint vid [[vertex_id]]) {
+        return u.lightViewProj * (u.model * float4(float3(v[vid].position), 1.0));
+    }
+
     // Per-instance tree shape from a hash of the position: crown width 0.8–1.25×, height squash 0.88–1.12×
     // and a slight lean, so neighbouring crowns stop reading as identical lollipops (art round 7). Shared by
     // the main and shadow passes so shadows match their trees. Trunks keep their width.
-    static float3 treeShape(float3 local, bool bark, float3 pos, thread float& crownW, thread float& sz) {
+    static float3 treeShape(float3 local, bool bark, float3 pos, thread float& crownW, thread float& sz, thread float2& cs) {
         uint h = as_type<uint>(int(floor(pos.x * 4.0))) * 0x8DA6B343u ^ as_type<uint>(int(floor(pos.y * 4.0))) * 0xD8163841u ^ 0x7A3Eu;
         h ^= h >> 13; h *= 0x5BD1E995u; h ^= h >> 15;
         float u0 = float(h & 0xFFu) / 255.0, u1 = float((h >> 8) & 0xFFu) / 255.0;
         float u2 = float((h >> 16) & 0xFFu) / 255.0, u3 = float((h >> 24) & 0xFFu) / 255.0;
         crownW = bark ? 1.0 : 0.8 + 0.45 * u0;
         sz = 0.88 + 0.24 * u1;
-        float3 sl = float3(local.x * crownW, local.y * crownW, local.z * sz);
+        cs = normalize(float2(u3 - 0.5, u0 - 0.5) + float2(0.001, 0.0));      // yaw: same-variant trees stop repeating
+        float2 xy = float2(cs.x * local.x - cs.y * local.y, cs.y * local.x + cs.x * local.y);
+        float3 sl = float3(xy.x * crownW, xy.y * crownW, local.z * sz);
         sl.xy += (float2(u2, u3) - 0.5) * 0.12 * local.z;      // lean (no trig: this runs per vertex, per pass)
         return sl;
     }
@@ -69,8 +86,8 @@ public enum WorldShaders {
     vertex float4 shadow_tree_vertex(const device TerrainVertex* v [[buffer(0)]], constant ShadowUniforms& u [[buffer(1)]],
                                      const device TreeInstanceGPU* inst [[buffer(2)]], uint vid [[vertex_id]], uint iid [[instance_id]]) {
         TreeInstanceGPU t = inst[iid];
-        float crownW, sz;
-        float3 p = treeShape(float3(v[vid].position), v[vid].normal.w < 0, float3(t.position), crownW, sz) * t.height + float3(t.position);
+        float crownW, sz; float2 cs;
+        float3 p = treeShape(float3(v[vid].position), v[vid].normal.w < 0, float3(t.position), crownW, sz, cs) * t.height + float3(t.position);
         return u.lightViewProj * (u.model * float4(p, 1.0));
     }
 
@@ -82,6 +99,8 @@ public enum WorldShaders {
         float material;
         float field;              // FieldPattern weight (terrain mesh only)
         float3 local;             // mesh-local position (aircraft: body axes)
+        float2 uv;                // buildings: metres along the wall (centred), storeys above the base
+        float4 style;             // buildings: seed, style, wall length (m), storeys
     };
 
     vertex WorldVarying world_vertex(const device WorldVertex* v [[buffer(0)]], constant WorldUniforms& u [[buffer(1)]],
@@ -98,6 +117,25 @@ public enum WorldShaders {
         o.material = float(w.colour.a);
         o.field = float(w.normal.w) / 127.0;      // > 0 field parcels, < 0 suburb impostor
         o.local = float3(w.position);
+        o.uv = float2(0.0); o.style = float4(0.0);
+        return o;
+    }
+
+    vertex WorldVarying building_vertex(const device BuildingVertex* v [[buffer(0)]], constant WorldUniforms& u [[buffer(1)]],
+                                        uint vid [[vertex_id]]) {
+        BuildingVertex w = v[vid];
+        float4 p = u.model * float4(float3(w.position), 1.0);
+        WorldVarying o;
+        o.position = u.viewProj * p;
+        o.rel = p.xyz;
+        o.normal = normalize(float3(w.normal.xyz) / 127.0);
+        float3 c = float3(w.colour.rgb) / 255.0;
+        o.albedo = c * c;
+        o.material = float(w.colour.a);
+        o.field = 0.0;
+        o.local = float3(w.position);
+        o.uv = float2(w.uv);
+        o.style = float4(float(w.style.x), float(w.style.y), float(w.style.z), float(w.style.w));
         return o;
     }
 
@@ -113,6 +151,7 @@ public enum WorldShaders {
         o.material = 8.0;                       // real terrain: albedo from imagery in the fragment shader
         o.field = 0.0;
         o.local = float3(0.0);
+        o.uv = float2(0.0); o.style = float4(0.0);
         return o;
     }
 
@@ -121,19 +160,21 @@ public enum WorldShaders {
         TreeInstanceGPU t = inst[iid];
         TerrainVertex w = v[vid];
         float3 local = float3(w.position);
-        float crownW, sz;
-        float3 sl = treeShape(local, w.normal.w < 0, float3(t.position), crownW, sz);
+        float crownW, sz; float2 cs;
+        float3 sl = treeShape(local, w.normal.w < 0, float3(t.position), crownW, sz, cs);
         float4 p = u.model * float4(sl * t.height + float3(t.position), 1.0);
         WorldVarying o;
         o.position = u.viewProj * p;
         o.rel = p.xyz;
         float3 n0 = float3(w.normal.xyz) / 127.0;
-        o.normal = normalize(float3(n0.x / crownW, n0.y / crownW, n0.z / sz));   // inverse-transpose of the scale
+        float2 nxy = float2(cs.x * n0.x - cs.y * n0.y, cs.y * n0.x + cs.x * n0.y);
+        o.normal = normalize(float3(nxy.x / crownW, nxy.y / crownW, n0.z / sz));   // inverse-transpose of the scale
         // Trunk vertices (marked by a negative normal w) are bark-coloured.
         o.albedo = w.normal.w < 0 ? float3(0.06, 0.045, 0.03) : float3(t.colour) * (0.85 + 0.3 * saturate(local.z));
         o.material = w.normal.w < 0 ? 0.0 : 2.0;
-        o.field = 0.0;
+        o.field = w.normal.w < 0 ? 1.0 : float(w.normal.w) / 127.0;      // leaf: how much sky the vertex sees
         o.local = float3(0.0);
+        o.uv = float2(0.0); o.style = float4(0.0);
         return o;
     }
 
@@ -161,25 +202,48 @@ public enum WorldShaders {
 
     constexpr sampler shadowCmp(filter::linear, address::clamp_to_edge, compare_func::less_equal);
 
-    /// 3×3 PCF with hardware comparison, cascade chosen by distance; 1 = lit.
-    static float shadowVisibility(constant WorldUniforms& u, depth2d_array<float> sm, float3 rel, float3 n, float dist, float ndl) {
-        if (u.tableDims.w < 1.0) return 1.0;
-        int c = dist < u.cascadeSplits.x ? 0 : (dist < u.cascadeSplits.y ? 1 : -1);
-        if (c < 0) return 1.0;
-        float texel = c == 0 ? u.cascadeSplits.z : u.cascadeSplits.w;
-        // Normal offset + slope-scaled bias (as the CPU preview).
-        float tanT = sqrt(max(0.0, 1.0 - ndl * ndl)) / max(ndl, 0.05);
-        float3 p = rel + n * texel * 1.5;
-        float4 lp = (c == 0 ? u.shadow0 : u.shadow1) * float4(p, 1.0);
-        float2 uv = lp.xy * float2(0.5, -0.5) + 0.5;
-        if (any(uv < 0.0) || any(uv > 1.0)) return 1.0;
-        float bias = texel * (0.8 + min(16.0, tanT * 1.4)) / (c == 0 ? u.cascadeDepth.x : u.cascadeDepth.y);   // low-sun acne (art review)
-        float z = lp.z - bias;
+    /// PCF (hardware comparison, (2r+1)² taps) in one cascade; 1 = lit.
+    static float shadowTaps(depth2d_array<float> sm, float2 uv, float z, uint layer, int r) {
         float2 ts = 1.0 / float2(sm.get_width(), sm.get_height());
         float lit = 0.0;
-        for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++)
-            lit += sm.sample_compare(shadowCmp, uv + float2(x, y) * ts, uint(c), z);
-        return lit / 9.0;
+        for (int y = -r; y <= r; y++) for (int x = -r; x <= r; x++)
+            lit += sm.sample_compare(shadowCmp, uv + float2(x, y) * ts, layer, z);
+        float n = float(2 * r + 1);
+        return lit / (n * n);
+    }
+
+    /// Sun visibility: the distance-chosen cascade (1…3), combined with the hero cascade (0), a tight
+    /// column around the aircraft that holds only the airframe, so its self-shadowing and its shadow on
+    /// the ground stay crisp at any height. 1 = lit.
+    static float shadowVisibility(constant WorldUniforms& u, depth2d_array<float> sm, float3 rel, float3 n, float dist, float ndl) {
+        if (u.tableDims.w < 1.0) return 1.0;
+        float tanT = sqrt(max(0.0, 1.0 - ndl * ndl)) / max(ndl, 0.05);
+        int r = int(u.quality.x);
+        float vis = 1.0;
+        int c = dist < u.cascadeSplits.x ? 1 : (dist < u.cascadeSplits.y ? 2 : (dist < u.cascadeSplits.z ? 3 : -1));
+        if (c > 0) {
+            float texel = c == 1 ? u.cascadeTexel.y : (c == 2 ? u.cascadeTexel.z : u.cascadeTexel.w);
+            float range = c == 1 ? u.cascadeDepth.y : (c == 2 ? u.cascadeDepth.z : u.cascadeDepth.w);
+            // Normal offset + slope-scaled bias (as the CPU preview).
+            float3 p = rel + n * texel * 1.5;
+            float4 lp = (c == 1 ? u.shadow1 : (c == 2 ? u.shadow2 : u.shadow3)) * float4(p, 1.0);
+            float2 uv = lp.xy * float2(0.5, -0.5) + 0.5;
+            if (all(uv > 0.0) && all(uv < 1.0)) {
+                float bias = texel * (0.8 + min(16.0, tanT * 1.4)) / range;   // low-sun acne (art review)
+                vis = shadowTaps(sm, uv, lp.z - bias, uint(c), c == 3 ? min(r, 1) : r);
+            }
+        }
+        if (u.cascadeSplits.w > 0.5) {
+            float texel = u.cascadeTexel.x;
+            float3 p = rel + n * texel * 2.0;
+            float4 lp = u.shadow0 * float4(p, 1.0);
+            float2 uv = lp.xy * float2(0.5, -0.5) + 0.5;
+            if (all(uv > 0.003) && all(uv < 0.997) && lp.z > 0.0 && lp.z < 1.0) {
+                float bias = texel * (1.5 + min(12.0, tanT * 1.5)) / u.cascadeDepth.x;
+                vis = min(vis, shadowTaps(sm, uv, lp.z - bias, 0u, max(r, 1)));
+            }
+        }
+        return vis;
     }
 
     // Value noise on a lattice that repeats every `period` cells, so world coordinates taken
@@ -278,8 +342,8 @@ public enum WorldShaders {
         return lines * saturate(1.0 - fp / 0.03);                     // gone once a pixel spans 3 cm
     }
 
-    // Registration "N417SF" (fictitious) on both rear fuselage sides: 5×7 bitmap glyphs, 30 cm tall
-    // (the US minimum for light aircraft), one row per byte, bit 4 = leftmost column.
+    // Registration "N417SF" (fictitious) on both rear fuselage sides, above the stripe: 5×7 bitmap glyphs,
+    // 22 cm tall, one row per byte, bit 4 = leftmost column.
     constant uchar regGlyphs[42] = {
         0x11, 0x19, 0x15, 0x13, 0x11, 0x11, 0x11,   // N
         0x02, 0x06, 0x0A, 0x12, 0x1F, 0x02, 0x02,   // 4
@@ -296,7 +360,7 @@ public enum WorldShaders {
     /// Coverage of the registration at body-axes point `L` (x fwd, y right, z down) for a pixel footprint
     /// `fp` metres: bilinear glyph cells thresholded over one pixel, so edges stay smooth at any distance.
     static float registrationMark(float3 L, float fp) {
-        const float cell = 0.30 / 7.0, zTop = -0.66, xAft = -2.65, xFwd = xAft + 35.0 * cell;
+        const float cell = 0.22 / 7.0, zTop = -0.64, xAft = -3.0, xFwd = xAft + 35.0 * cell;
         if (abs(L.y) < 0.2) return 0.0;
         float v = (L.z - zTop) / cell;
         // Reads left to right from either side: aft-to-forward on the right, forward-to-aft on the left.
@@ -470,6 +534,242 @@ public enum WorldShaders {
         return albedo * (1.0 - F) * sun * nl * vis + sun * spec * nl * vis + env * Fv * (1.0 - rough * 0.7);
     }
 
+    // MARK: Shared helpers for per-pixel paint, glazing and facades
+
+    /// Antialiased step at `edge` for a pixel footprint `fp` (same units as x).
+    static float aaStep(float edge, float x, float fp) { return saturate((x - edge) / max(fp, 1e-5) + 0.5); }
+    static float aaBand(float lo, float hi, float x, float fp) { return aaStep(lo, x, fp) * (1.0 - aaStep(hi, x, fp)); }
+    static float sdRoundBox(float2 p, float2 c, float2 h, float r) {
+        float2 q = abs(p - c) - h + r;
+        return length(max(q, float2(0.0))) + min(max(q.x, q.y), 0.0) - r;
+    }
+    static float hash21(float2 p) {
+        p = fract(p * float2(0.1031, 0.1030));
+        p += dot(p, p.yx + 33.33);
+        return fract((p.x + p.y) * p.x);
+    }
+
+    /// Environment radiance for glossy reflections: zenith-to-horizon sky above, a ground tone below.
+    static float3 skyEnv(constant WorldUniforms& u, float3 r) {
+        float3 sky = mix(u.skyHorizon.rgb, u.skyZenith.rgb, pow(saturate(r.z), 0.45));
+        float3 ground = u.ambientGround.rgb * 1.6;
+        return mix(ground, sky, smoothstep(-0.10, 0.05, r.z));
+    }
+
+    /// GGX specular lobe (D·G·F / 4·nl·nv, already multiplied by nl) for Fresnel reflectance `f0`.
+    static float ggxLobe(float3 n, float3 v, float3 l, float rough, float f0) {
+        float3 h = normalize(l + v);
+        float nl = max(0.0, dot(n, l)), nv = max(1e-4, dot(n, v)), nh = max(0.0, dot(n, h)), vh = max(0.0, dot(v, h));
+        float a = rough * rough, a2 = a * a;
+        float dd = nh * nh * (a2 - 1.0) + 1.0;
+        float D = a2 / (3.14159265 * dd * dd);
+        float k = (rough + 1.0) * (rough + 1.0) / 8.0;
+        float G = (nl / (nl * (1.0 - k) + k)) * (nv / (nv * (1.0 - k) + k));
+        float F = f0 + (1.0 - f0) * pow(1.0 - vh, 5.0);
+        return D * G * F / max(1e-4, 4.0 * nl * nv) * nl;
+    }
+
+    // MARK: SF-1 skin (mirror of SFWorldGen.AircraftLivery; body axes x forward, y right, z down)
+
+    constant float fusRoofX[9] = { 1.36, 1.10, 0.80, 0.52, 0.0, -0.70, -1.40, -1.75, -2.05 };
+    constant float fusRoofZ[9] = { -0.54, -0.69, -0.87, -1.015, -1.03, -1.03, -1.0, -0.88, -0.79 };
+    static float fuselageRoof(float x) {
+        if (x >= fusRoofX[0]) return fusRoofZ[0];
+        for (int i = 0; i < 8; i++) {
+            if (x >= fusRoofX[i + 1]) return mix(fusRoofZ[i + 1], fusRoofZ[i], (x - fusRoofX[i + 1]) / (fusRoofX[i] - fusRoofX[i + 1]));
+        }
+        return fusRoofZ[8];
+    }
+    static float liveryStripeZ(float x) {
+        float t = saturate((2.45 - x) / 7.9);
+        return -0.03 - 0.24 * t * t * (3.0 - 2.0 * t) - 0.03 * t;
+    }
+
+    constant float3 skinWhite = float3(0.80, 0.80, 0.78);
+    constant float3 skinNavy = float3(0.012, 0.032, 0.105);
+    constant float3 skinOrange = float3(0.78, 0.20, 0.022);
+
+    struct Skin {
+        float3 albedo;
+        float glass;      // 1 = glazing
+        float matte;      // 1 = no clear coat (anti-glare paint, rubber)
+        float3 emissive;
+    };
+
+    /// Fuselage: glazing, gaskets, anti-glare panel, stripe, door and cowl seams.
+    static Skin fuselageSkin(float3 L, float fp) {
+        Skin s; s.albedo = skinWhite; s.glass = 0.0; s.matte = 0.0; s.emissive = float3(0.0);
+        float roof = fuselageRoof(L.x);
+        float ay = abs(L.y);
+        // Glazing: windscreen (wraps to the door posts), door and rear side windows, rear window.
+        float wind = aaBand(0.56, 1.335, L.x, fp) * (1.0 - aaStep(-0.575, L.z, fp));
+        float windFrame = aaBand(0.535, 1.36, L.x, fp) * (1.0 - aaStep(-0.553, L.z, fp));
+        float side = aaStep(0.30, ay, fp);
+        float sdDoor = sdRoundBox(L.xz, float2(0.05, -0.7225), float2(0.41, 0.2225), 0.07);
+        float sdRear = sdRoundBox(L.xz, float2(-0.90, -0.7225), float2(0.40, 0.2225), 0.07);
+        float sdSide = min(sdDoor, sdRear);
+        float sideGlass = side * (1.0 - aaStep(0.0, sdSide, fp));
+        float sideFrame = side * (1.0 - aaStep(0.02, sdSide, fp));
+        float back = aaBand(-1.98, -1.47, L.x, fp) * (1.0 - aaStep(0.33, ay, fp)) * (1.0 - aaStep(roof + 0.10, L.z, fp));
+        float backFrame = aaBand(-2.0, -1.45, L.x, fp) * (1.0 - aaStep(0.35, ay, fp)) * (1.0 - aaStep(roof + 0.12, L.z, fp));
+        float glass = max(max(wind, sideGlass), back);
+        float frame = max(max(windFrame, sideFrame), backFrame);
+        // Stripe along the side: navy band with an orange pinstripe above it.
+        float t = saturate((2.45 - L.x) / 7.9);
+        float d = L.z - liveryStripeZ(L.x);
+        float w = 0.075 + 0.05 * t;
+        float onSide = aaStep(0.02, ay, fp) * (1.0 - aaStep(2.45, L.x, fp));
+        float navy = (1.0 - aaStep(w, abs(d), fp)) * onSide;
+        float orange = aaBand(-w - 0.06, -w - 0.03, d, fp) * onSide;
+        s.albedo = mix(s.albedo, skinNavy, navy);
+        s.albedo = mix(s.albedo, skinOrange, orange);
+        // Anti-glare panel ahead of the windscreen.
+        float glare = aaBand(1.37, 2.42, L.x, fp) * (1.0 - aaStep(0.27, ay, fp)) * (1.0 - aaStep(-0.38, L.z, fp));
+        s.albedo = mix(s.albedo, float3(0.012, 0.012, 0.013), glare);
+        s.matte = glare;
+        // Seams: door outline, cowl split and firewall lines, fading once a pixel spans ~4 cm.
+        float lw = 0.006, vis = saturate(1.0 - fp / 0.04);
+        float door = side * (1.0 - aaStep(lw, abs(sdRoundBox(L.xz, float2(0.04, -0.37), float2(0.47, 0.63), 0.07)), fp));
+        float cowl = aaBand(1.60, 2.50, L.x, fp) * (1.0 - aaStep(lw, abs(L.z + 0.10), fp)) * side;
+        float fire = (1.0 - aaStep(lw, abs(L.x - 1.585), fp));
+        float seams = max(max(door, cowl), fire) * vis * (1.0 - glare);
+        s.albedo *= 1.0 - 0.45 * seams;
+        // Gasket, then glass on top.
+        float gasket = saturate(frame - glass);
+        s.albedo = mix(s.albedo, float3(0.010, 0.010, 0.011), gasket);
+        s.matte = max(s.matte, gasket);
+        s.glass = glass;
+        return s;
+    }
+
+    /// Wings, tail and fairings: tips, fin sweep, control-surface gaps, fuel caps and navigation lights.
+    static Skin surfaceSkin(float3 L, float fp) {
+        Skin s; s.albedo = skinWhite; s.glass = 0.0; s.matte = 0.0; s.emissive = float3(0.0);
+        float ay = abs(L.y);
+        bool wing = L.z < -0.9 && L.x > -1.7 && ay > 0.3;
+        if (wing) {
+            float chord = ay < 2.5 ? 1.63 : mix(1.63, 1.13, (ay - 2.5) / 3.0);
+            float le = 0.25 - (1.63 - chord) * 0.30;
+            s.albedo = mix(s.albedo, skinOrange, aaBand(5.08, 5.14, ay, fp));
+            s.albedo = mix(s.albedo, skinNavy, aaStep(5.18, ay, fp));
+            // Flap and aileron gaps (hinge at 72 % chord), fuel caps.
+            float lw = 0.007, vis = saturate(1.0 - fp / 0.05);
+            float xh = le - 0.72 * chord;
+            float span = aaBand(0.62, 4.75, ay, fp) * (1.0 - aaStep(lw, abs(L.x - xh), fp));
+            float aft = 1.0 - aaStep(xh, L.x, fp);
+            float cuts = aft * max(max(1.0 - aaStep(lw, abs(ay - 0.62), fp), 1.0 - aaStep(lw, abs(ay - 2.58), fp)), 1.0 - aaStep(lw, abs(ay - 4.75), fp));
+            s.albedo *= 1.0 - 0.55 * max(span, cuts) * vis;
+            float cap = 1.0 - aaStep(0.045, length(float2(L.x + 0.20, ay - 1.25)), fp);
+            s.albedo = mix(s.albedo, float3(0.55, 0.10, 0.06), cap * vis);
+            // Navigation lights at the tips (red left, green right) and the landing light in the left leading edge.
+            float tip = aaStep(5.40, ay, fp) * aaStep(le - 0.22, L.x, fp);
+            s.emissive = tip * (L.y < 0.0 ? float3(1.6, 0.05, 0.03) : float3(0.04, 1.4, 0.25));
+            float lamp = (L.y < 0.0 ? 1.0 : 0.0) * aaBand(1.95, 2.25, ay, fp) * aaStep(le - 0.035, L.x, fp);
+            s.glass = lamp;
+            s.emissive += lamp * float3(1.2, 1.15, 1.0);
+        } else if (ay < 0.2 && L.z < -0.95 && L.x < -4.0) {
+            // Fin: navy sweep with an orange pinstripe; rudder hinge line.
+            float d = L.z + 1.55 + 0.75 * (L.x + 4.9);
+            s.albedo = mix(s.albedo, skinOrange, aaBand(0.045, 0.10, d, fp));
+            s.albedo = mix(s.albedo, skinNavy, 1.0 - aaStep(0.0, d, fp));
+            float sp = saturate((-0.5 - L.z) / 1.70);
+            float xh = (-4.29 - 0.86 * sp) - 0.60 * (1.42 - 0.72 * sp);
+            s.albedo *= 1.0 - 0.5 * (1.0 - aaStep(0.007, abs(L.x - xh), fp)) * saturate(1.0 - fp / 0.05);
+        } else if (L.x < -4.2 && L.z > -0.75 && L.z < -0.45) {
+            // Tailplane: navy tips, elevator hinge line.
+            s.albedo = mix(s.albedo, skinNavy, aaStep(1.52, ay, fp));
+            float f = saturate(ay / 1.7);
+            float xh = (-4.53 - 0.22 * f) - 0.62 * 1.05 * (1.0 - 0.32 * f);
+            s.albedo *= 1.0 - 0.5 * (1.0 - aaStep(0.007, abs(L.x - xh), fp)) * saturate(1.0 - fp / 0.05);
+        }
+        return s;
+    }
+
+    // MARK: Building facades
+
+    struct Facade {
+        float3 albedo;
+        float glass;        // glazing coverage of this pixel
+        float3 interior;    // what shows through the glass (dark room, blinds)
+        float f0;           // glass reflectance at normal incidence
+     float3 tint; };
+
+    /// Storeys, window bays and cladding for a wall pixel. `uv`: metres along the wall (centred) and
+    /// storeys above the base; `st`: seed, style, wall length (m), storeys; `fpU`/`fpV`: pixel footprint
+    /// in metres along the wall and in storeys.
+    static Facade facade(float2 uv, float4 st, float3 wall, float fpU, float fpV) {
+        Facade f; f.albedo = wall; f.glass = 0.0; f.interior = float3(0.012, 0.016, 0.020); f.f0 = 0.06; f.tint = float3(1.0);
+        float seed = st.x, style = st.y, len = max(st.z, 1.0), storeys = max(st.w, 1.0);
+        float h1 = fract(seed * 0.1031 + 0.11), h2 = fract(seed * 0.2371 + 0.47);
+        float bay = style < 0.5 ? 3.4 : (style < 1.5 ? 3.0 : (style < 2.5 ? 3.6 : (style < 3.5 ? 7.0 : (style < 4.5 ? 1.7 : 3.4))));
+        bay *= 0.9 + 0.25 * h1;
+        float nb = max(1.0, floor(len / bay + 0.5));
+        float bw = len / nb;
+        float bx = (uv.x + 0.5 * len) / bw;
+        float bi = floor(bx), fx = bx - bi;
+        float fi = floor(uv.y), fy = uv.y - fi;
+        bool inWall = uv.y >= 0.0 && uv.y < storeys;
+        bool groundFloor = fi < 0.5;
+        float2 w0 = float2(0.28, 0.24), w1 = float2(0.72, 0.84);
+        float presence = 1.0, mean = 1.0;
+        float hb = hash21(float2(bi + seed * 7.0, fi + seed * 3.0));
+        if (style < 0.5) {                       // house: a window in most bays
+            w0 = float2(0.30, 0.32); w1 = float2(0.70, 0.78);
+            presence = step(0.22, hb); mean = 0.78;
+        } else if (style < 1.5) {                // apartments: regular punched windows
+            w0 = float2(0.24, 0.28); w1 = float2(0.76, 0.80);
+        } else if (style < 2.5) {                // offices and shops: ribbon glazing, a shopfront at street level
+            w0 = float2(0.04, 0.30); w1 = float2(0.96, 0.84);
+            if (groundFloor) { w0.y = 0.06; w1.y = 0.80; }
+            f.f0 = 0.10; f.tint = mix(float3(1.0), float3(0.78, 0.90, 1.0), h2);
+        } else if (style < 3.5) {                // sheds: a few high windows, loading doors at ground level
+            w0 = float2(0.30, 0.60); w1 = float2(0.70, 0.86);
+            presence = step(0.60, hb); mean = 0.40;
+            if (groundFloor && hb < 0.25) { w0 = float2(0.20, 0.0); w1 = float2(0.80, 0.78); presence = 1.0; }
+        } else if (style < 4.5) {                // towers: curtain wall
+            w0 = float2(0.05, 0.10); w1 = float2(0.95, 0.88);
+            // Coated glass: each tower has its own reflectance and tint (blue, green, bronze or neutral).
+            f.f0 = mix(0.20, 0.42, h1);
+            f.tint = h2 < 0.35 ? float3(0.55, 0.74, 1.0) : (h2 < 0.60 ? float3(0.58, 0.88, 0.84) : (h2 < 0.78 ? float3(1.0, 0.80, 0.56) : float3(0.80, 0.86, 0.92)));
+        }
+        float ax = fpU / bw, ay = fpV;
+        float win = aaBand(w0.x, w1.x, fx, ax) * aaBand(w0.y, w1.y, fy, ay) * presence;
+        // Bays under about two pixels dissolve into their mean coverage instead of shimmering.
+        float resolved = saturate(2.0 - 4.0 * max(ax, ay));
+        float area = (w1.x - w0.x) * (w1.y - w0.y) * mean;
+        win = mix(area, win, resolved) * (inWall ? 1.0 : 0.0);
+        // Loading doors are painted metal, not glass.
+        bool dock = style > 2.5 && style < 3.5 && groundFloor && hb < 0.25;
+        // Cladding: per-panel tone, slab lines, weathering streaks, darker base, lighter coping.
+        float panel = hash21(float2(bi * 1.7 + seed, fi * 2.3 + 5.0));
+        float3 a = wall;
+        if (style > 1.5) a *= 0.94 + 0.12 * panel * resolved;
+        if (style > 2.5 && style < 3.5) a *= 1.0 + 0.05 * sin(uv.x * 20.9) * saturate(1.0 - fpU / 0.15);      // profiled sheet
+        if (style < 1.5 && h2 > 0.5) {                                                                        // brick courses
+            float course = 0.5 + 0.5 * sin(uv.y * 3.0 / 0.075 * 6.2831853);
+            a *= 1.0 - 0.10 * course * saturate(1.0 - fpV * 3.0 / 0.04);
+        }
+        float slab = (style > 1.5 && style < 2.5) || style > 3.5 ? (1.0 - aaStep(0.05, fy, ay)) * resolved : 0.0;
+        a *= 1.0 - 0.25 * slab;
+        float streak = groundNoise(float2(uv.x * 2.2 + seed, uv.y * 0.35), 1.0);
+        a *= 1.0 - 0.10 * saturate(streak) * saturate(1.0 - fpU / 1.5);
+        a *= mix(0.72, 1.0, smoothstep(-0.2, 0.35, uv.y));                                                    // ground grime
+        if (uv.y >= storeys) a *= 1.08;                                                                       // parapet coping
+        if (uv.y < 0.0) a *= 0.6;
+        if (dock) { a = mix(a, float3(0.25, 0.27, 0.30) * (0.8 + 0.4 * panel), win); win = 0.0; }
+        // Behind the glass: mostly dark rooms, some blinds and lit ceilings.
+        float room = hash21(float2(bi * 3.1 + seed * 0.7, fi * 1.9 + 11.0));
+        float3 interior = mix(float3(0.010, 0.014, 0.018), float3(0.06, 0.065, 0.07), smoothstep(0.55, 0.9, room));
+        if (room > 0.90 && style < 2.5) interior = float3(0.30, 0.29, 0.26);                                   // drawn blinds
+        if (style > 3.5) interior = mix(float3(0.008, 0.016, 0.022), float3(0.02, 0.035, 0.04), h2);           // tinted
+        // Frames and mullions: a thin dark line around each pane.
+        float frame = win * resolved * (1.0 - aaBand(w0.x + 0.04, w1.x - 0.04, fx, ax) * aaBand(w0.y + 0.05, w1.y - 0.05, fy, ay));
+        f.albedo = mix(a, float3(0.03, 0.03, 0.035), frame * 0.8);
+        f.glass = win * (1.0 - frame);
+        f.interior = mix(float3(0.03), interior, resolved);
+        return f;
+    }
+
     /// Inverse of the ACES fit below (y in [0, 0.99]): the HDR value that tone-maps to `y`.
     static float3 acesInverse(float3 y) {
         const float a = 2.51, b = 0.03, c = 2.43, d = 0.59, e = 0.14;
@@ -483,12 +783,153 @@ public enum WorldShaders {
         return saturate((x * (a * x + b)) / (x * (c * x + d) + e));
     }
 
+    /// Linear ground-photo colour at region point `w` from the imagery layers (far → middle → near →
+    /// sharp detail square, each feathered into the one below), with a light unsharp mask against a
+    /// coarser mip so magnified texels keep their edges. Explicit gradients: safe inside branches.
+    /// A runway numeral as seven painted strokes. `p`: x 0…1 left to right, y 0…1 from the threshold side.
+    static float runwayDigit(int d, float2 p, float2 aa) {
+        const int masks[10] = {0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F};
+        int m = masks[clamp(d, 0, 9)];
+        const float tx = 0.27, ty = 0.11;
+        float inX = aaBand(0.0, 1.0, p.x, aa.x);
+        float left = aaBand(0.0, tx, p.x, aa.x), right = aaBand(1.0 - tx, 1.0, p.x, aa.x);
+        float up = aaBand(0.5, 1.0, p.y, aa.y), down = aaBand(0.0, 0.5, p.y, aa.y);
+        float c = 0.0;
+        if ((m & 0x01) != 0) c = max(c, inX * aaBand(1.0 - ty, 1.0, p.y, aa.y));
+        if ((m & 0x40) != 0) c = max(c, inX * aaBand(0.5 - 0.5 * ty, 0.5 + 0.5 * ty, p.y, aa.y));
+        if ((m & 0x08) != 0) c = max(c, inX * aaBand(0.0, ty, p.y, aa.y));
+        if ((m & 0x20) != 0) c = max(c, left * up);
+        if ((m & 0x02) != 0) c = max(c, right * up);
+        if ((m & 0x10) != 0) c = max(c, left * down);
+        if ((m & 0x04) != 0) c = max(c, right * down);
+        return c;
+    }
+
+    /// Painted markings of one runway end: `a` metres in from that threshold, `c` metres right of the
+    /// centreline as seen on approach, `len`/`w` the runway, `number` its designation (0 = none), `fp` the
+    /// pixel footprint (m). Threshold bars, numerals, centreline, aiming point, touchdown zone, edge lines.
+    static float runwayPaint(float a, float c, float len, float w, int number, float fp) {
+        float ac = abs(c), hw = 0.5 * w;
+        float aaA = max(fp * 3.0, 0.02), aaC = max(fp, 0.02);      // the along axis is the foreshortened one
+        float paint = aaBand(hw - 1.4, hw - 0.5, ac, aaC) * aaBand(0.0, len, a, aaA);                 // edge lines
+        // Threshold: bars 1.8 m wide, 1.8 m apart, either side of a 3.6 m centre gap.
+        float bars = aaBand(6.0, 36.0, a, aaA) * aaBand(1.8, hw - 2.6, ac, aaC);
+        float bp = fract((ac - 1.8) / 3.6);
+        float aaP = aaC / 3.6;
+        paint = max(paint, bars * mix(0.5, aaBand(0.0, 0.5, bp, aaP), saturate(1.5 - aaP * 3.0)));    // unresolved bars: their mean
+        // Designation: numerals 18 m tall.
+        if (number > 0) {
+            const float dw = 5.2, gap = 2.6, tall = 18.0;
+            float2 aaD = float2(aaC / dw, aaA / tall);
+            float py = (a - 48.0) / tall;
+            if (py > -0.2 && py < 1.2) {
+                int tens = number / 10, ones = number - tens * 10;
+                paint = max(paint, runwayDigit(tens, float2((c + gap * 0.5 + dw) / dw, py), aaD));
+                paint = max(paint, runwayDigit(ones, float2((c - gap * 0.5) / dw, py), aaD));
+            }
+        }
+        // Centreline: 30 m stripes, 20 m gaps, from beyond the numerals to the runway's middle.
+        float cl = aaBand(0.0, 0.45, ac, aaC) * aaStep(78.0, a, aaA) * aaBand(0.0, 0.6, fract((a - 78.0) / 50.0), aaA / 50.0);
+        paint = max(paint, cl * saturate(1.5 - aaA / 25.0) + aaBand(0.0, 0.45, ac, aaC) * aaStep(78.0, a, aaA) * 0.6 * saturate(aaA / 25.0 - 0.5));
+        // Aiming point and touchdown zone, on runways long enough to carry them.
+        float aim = len >= 2400.0 ? 400.0 : (len >= 1500.0 ? 300.0 : 250.0);
+        if (len >= 1200.0) paint = max(paint, aaBand(aim, aim + 45.0, a, aaA) * aaBand(hw * 0.24, hw * 0.24 + hw * 0.36, ac, aaC));
+        if (len >= 1500.0) {
+            for (int k = 0; k < 5; k++) {
+                float at = 150.0 * float(k + 1) + (k >= 2 ? 150.0 : 0.0);        // 150, 300, 600, 750, 900 m
+                if (abs(at - aim) < 100.0 || at > len * 0.5 - 60.0) continue;
+                float n = k == 0 ? 3.0 : (k < 3 ? 2.0 : 1.0);
+                float tz = fract((ac - hw * 0.24) / 3.3), inZ = aaBand(hw * 0.24, hw * 0.24 + 3.3 * n - 1.5, ac, aaC);
+                paint = max(paint, aaBand(at, at + 22.5, a, aaA) * inZ * aaBand(0.0, 0.55, tz, aaC / 3.3));
+            }
+        }
+        return saturate(paint);
+    }
+
+    /// Local contrast for a magnified photo. Where one texel covers several pixels the two footprint
+    /// samples above both read mip 0, so nothing is sharpened; here the blurred references are explicit
+    /// mip levels, which restores edge contrast (kerbs, roof lines, field boundaries) the bilinear
+    /// magnification smears. No effect at 1:1 or when minified.
+    static float3 crispen(texture2d<float> img, float2 uv, float3 c, float2 gx, float2 gy) {
+        float texel = 1.0 / float(img.get_width());
+        float mag = saturate(log2(max(texel / max(max(length(gx), length(gy)), 1e-9), 1.0)) / 2.0);
+        if (mag <= 0.0) return c;
+        float3 b1 = img.sample(imgSampler, uv, level(1.6)).rgb, b2 = img.sample(imgSampler, uv, level(3.2)).rgb;
+        return max(c + ((c - b1) * 0.9 + (b1 - b2) * 0.45) * mag, float3(0.0));
+    }
+
+    static float3 photoColour(constant WorldUniforms& u, texture2d<float> imgNear, texture2d<float> imgMid, texture2d<float> imgFar,
+                              texture2d<float> imgDetail, float2 w, float2 dwx, float2 dwy, thread float2& nuv, thread bool& inNear,
+                              thread float& outerWater, thread float& nearWeight) {
+        float3 c = float3(0.12, 0.14, 0.10);
+        outerWater = 0.0; nearWeight = 0.0;
+        if (u.imageryFar.w > 0.5) {
+            float k = 1.0 / (2.0 * u.imageryFar.z);
+            float2 uv = (w - (u.imageryFar.xy - u.imageryFar.z)) * k; uv.y = 1.0 - uv.y;
+            float2 gx = float2(dwx.x, -dwx.y) * k, gy = float2(dwy.x, -dwy.y) * k;
+            float4 f4 = imgFar.sample(imgSampler, uv, gradient2d(gx, gy));
+            c = f4.rgb; outerWater = f4.a;
+            float3 b = imgFar.sample(imgSampler, uv, gradient2d(gx * 4.0, gy * 4.0)).rgb;
+            c = max(c + (c - b) * 0.3, float3(0.0));
+        }
+        if (u.imageryMid.w > 0.5) {
+            float k = 1.0 / (2.0 * u.imageryMid.z);
+            float2 uv = (w - (u.imageryMid.xy - u.imageryMid.z)) * k; uv.y = 1.0 - uv.y;
+            float edge = min(min(uv.x, uv.y), min(1.0 - uv.x, 1.0 - uv.y));
+            if (edge > 0.002) {
+                float2 gx = float2(dwx.x, -dwx.y) * k, gy = float2(dwy.x, -dwy.y) * k;
+                float4 m4 = imgMid.sample(imgSampler, uv, gradient2d(gx, gy));
+                float3 m = m4.rgb;
+                float3 b = imgMid.sample(imgSampler, uv, gradient2d(gx * 4.0, gy * 4.0)).rgb;
+                m = max(m + (m - b) * 0.35, float3(0.0));
+                c = mix(c, m, smoothstep(0.002, 0.06, edge));
+                outerWater = mix(outerWater, m4.a, smoothstep(0.002, 0.06, edge));
+            }
+        }
+        float kn = 1.0 / (2.0 * max(u.imageryNear.z, 1.0));
+        nuv = (w - (u.imageryNear.xy - u.imageryNear.z)) * kn; nuv.y = 1.0 - nuv.y;
+        inNear = u.imageryNear.w > 0.5 && all(nuv > 0.002) && all(nuv < 0.998);
+        if (inNear) {
+            float2 gx = float2(dwx.x, -dwx.y) * kn, gy = float2(dwy.x, -dwy.y) * kn;
+            float3 nearC = imgNear.sample(imgSampler, nuv, gradient2d(gx, gy)).rgb;
+            float3 b = imgNear.sample(imgSampler, nuv, gradient2d(gx * 4.0, gy * 4.0)).rgb;
+            nearC = max(nearC + (nearC - b) * 0.45, float3(0.0));
+            nearC = crispen(imgNear, nuv, nearC, gx, gy);
+            float edgeN = min(min(nuv.x, nuv.y), min(1.0 - nuv.x, 1.0 - nuv.y));
+            nearWeight = smoothstep(0.002, 0.06, edgeN);
+            c = mix(c, nearC, nearWeight);
+        }
+        if (u.imageryDetail.w > 0.5) {
+            float k = 1.0 / (2.0 * max(u.imageryDetail.z, 1.0));
+            float2 uv = (w - (u.imageryDetail.xy - u.imageryDetail.z)) * k; uv.y = 1.0 - uv.y;
+            float edge = min(min(uv.x, uv.y), min(1.0 - uv.x, 1.0 - uv.y));
+            if (edge > 0.002) {
+                float2 gx = float2(dwx.x, -dwx.y) * k, gy = float2(dwy.x, -dwy.y) * k;
+                float3 d = imgDetail.sample(imgSampler, uv, gradient2d(gx, gy)).rgb;
+                float3 b = imgDetail.sample(imgSampler, uv, gradient2d(gx * 4.0, gy * 4.0)).rgb;
+                d = max(d + (d - b) * 0.35, float3(0.0));
+                d = crispen(imgDetail, uv, d, gx, gy);
+                c = mix(c, d, smoothstep(0.002, 0.08, edge));
+            }
+        }
+        return c;
+    }
+
+    /// Photo colour → surface albedo. With the scene exposure at a real camera's level the photo's own
+    /// brightness is already right, so this is near identity (a touch of contrast, 10 % under white).
+    static float3 photoAlbedo(float3 c) {
+        float3 a = pow(max(c, float3(0.0)), float3(1.08)) * 0.90;
+        // Aerial photos are stretched so that concrete, sand and light roofs sit near white; real surfaces
+        // top out near 0.6, so the top of the range is compressed (0.9 → 0.65) and keeps its detail.
+        return select(a, 0.42 + (a - 0.42) * 0.48, a > 0.42);
+    }
+
     fragment float4 world_fragment(WorldVarying in [[stage_in]], constant WorldUniforms& u [[buffer(1)]],
                                    texture3d<float> ins [[texture(0)]], texture3d<float> tr [[texture(1)]],
                                    depth2d_array<float> sm [[texture(2)]],
                                    texture2d<float> imgNear [[texture(3)]], texture2d<float> imgFar [[texture(4)]],
                                    texture2d<float> waterMask [[texture(5)]], texture2d<float> parcels [[texture(6)]],
-                                   texture2d<float> imgDetail [[texture(7)]]) {
+                                   texture2d<float> imgDetail [[texture(7)]], texture2d<float> imgMid [[texture(8)]]) {
         float dist = length(in.rel);
         float3 dir = in.rel / max(dist, 1e-3);
         float3 n = normalize(in.normal);
@@ -504,55 +945,53 @@ public enum WorldShaders {
         float imgForest = 0.0;                               // canopy score of the imagery colour (real terrain)
         float groundMat = 0.0;                               // weight of the near-ground detail materials
         float2 groundTilt = float2(0.0);                     // their normal tilt (applied after the normal is final)
+        float2 photoW = in.rel.xy + u.cameraLocal.xy;      // region metres (imagery lookup)
+        float2 dwx = dfdx(photoW), dwy = dfdy(photoW);
         if (m == 8.0) {
-            float2 w = in.rel.xy + u.cameraLocal.xy;
-            float2 nuv = (w - (u.imageryNear.xy - u.imageryNear.z)) / (2.0 * u.imageryNear.z);
-            nuv.y = 1.0 - nuv.y;                                   // row 0 = north edge
-            float2 fuv = (w - (u.imageryFar.xy - u.imageryFar.z)) / (2.0 * u.imageryFar.z);
-            fuv.y = 1.0 - fuv.y;
-            bool inNear = u.imageryNear.w > 0.5 && all(nuv > 0.002) && all(nuv < 0.998);
-            float3 farC = u.imageryFar.w > 0.5 ? imgFar.sample(imgSampler, fuv).rgb : float3(0.12, 0.14, 0.10);
-            // Feather the near layer into the far one over the outer 6 % (no hard seam at the boundary).
-            float edgeN = min(min(nuv.x, nuv.y), min(1.0 - nuv.x, 1.0 - nuv.y));
-            float wNear = inNear ? smoothstep(0.002, 0.06, edgeN) : 0.0;
-            // Clarity: unsharp mask against a coarser mip (two levels up) so magnified photo texels near
-            // the camera keep their edges instead of reading as a smear.
-            if (u.imageryFar.w > 0.5) { float3 fb = imgFar.sample(imgSampler, fuv, bias(2.0)).rgb; farC = max(farC + (farC - fb) * 0.3, 0.0); }
-            // Sampled unconditionally (clamped UVs): implicit-LOD sampling must not sit in divergent flow.
-            float3 nearC = imgNear.sample(imgSampler, nuv).rgb;
-            float3 nb = imgNear.sample(imgSampler, nuv, bias(2.0)).rgb;
-            nearC = max(nearC + (nearC - nb) * 0.45, 0.0);
-            // Sharp camera-following square (about 0.6 m/px), feathered over its outer 8 %. Sampled only
-            // inside it, with explicit gradients (safe in the branch): most terrain pixels skip it.
-            float2 dwx = dfdx(w), dwy = dfdy(w);
-            float2 duv = (w - (u.imageryDetail.xy - u.imageryDetail.z)) / (2.0 * max(u.imageryDetail.z, 1.0));
-            duv.y = 1.0 - duv.y;
-            float edgeD = min(min(duv.x, duv.y), min(1.0 - duv.x, 1.0 - duv.y));
-            if (u.imageryDetail.w > 0.5 && edgeD > 0.002) {
-                float2 gx = float2(dwx.x, -dwx.y) / (2.0 * u.imageryDetail.z), gy = float2(dwy.x, -dwy.y) / (2.0 * u.imageryDetail.z);
-                float3 detC = imgDetail.sample(imgSampler, duv, gradient2d(gx, gy)).rgb;
-                float3 db = imgDetail.sample(imgSampler, duv, gradient2d(gx * 4.0, gy * 4.0)).rgb;   // two mips up
-                detC = max(detC + (detC - db) * 0.35, 0.0);
-                nearC = mix(nearC, detC, smoothstep(0.002, 0.08, edgeD));
-            }
-            float3 c = wNear > 0.0 ? mix(farC, nearC, wNear) : farC;
+            float2 nuv; bool inNear;
+            float outerWater, nearWeight;
+            float3 c = photoColour(u, imgNear, imgMid, imgFar, imgDetail, photoW, dwx, dwy, nuv, inNear, outerWater, nearWeight);
             // (No photo-tree suppression: lifting dark pixels to a local average also lifted building and
             // terrain shadows and left hard dark rims; art round 5 scored it a regression. The 3D trees
             // stand on the photo's foliage pixels instead, so the photo crown sits under its 3D tree.)
             float cl = dot(c, float3(0.2126, 0.7152, 0.0722));
             imgForest = smoothstep(0.0, 0.02, c.g - max(c.r, c.b)) * smoothstep(0.10, 0.03, cl);   // dark green canopy
             // Same photo→albedo conversion as SFPreview.ImageryGround (textures are sRGB, so c is linear).
-            albedo = pow(max(c, 0.0), 1.12) * 0.72;
-            // Soft shoulder above 0.22 albedo (0.72 → 0.45): photo concrete, roofs and bare ground lit by midday
-            // sun came out ~240/255 and read as blown out (art round 14).
-            // (0.28/0.55 and 0.22/0.45 each moved the brightest 1 % by only ~5/255: ACES is flat near white, so
-            // a sand patch needs ~40 % less albedo to leave the shoulder; 0.20/0.32 plus the grade's highlight roll-off.)
-            albedo = select(albedo, 0.20 + (albedo - 0.20) * 0.32, albedo > 0.20);
+            albedo = photoAlbedo(c);
+            float rwCover = 0.0;                             // 1 on the runway's paved rectangle
+            if (u.runwayB.w > 0.5 && inNear) {
+                float2 rd = photoW - u.runwayA.xy, rdir = u.runwayA.zw;
+                float ra = dot(rd, rdir), rc = rd.x * rdir.y - rd.y * rdir.x;      // along, right of the centreline
+                float rlen = u.runwayB.x, rw = u.runwayB.y;
+                float rfp = length(dwx) + length(dwy);
+                rwCover = aaBand(-2.0, rlen + 2.0, ra, max(rfp, 0.05)) * aaBand(-0.5 * rw, 0.5 * rw, rc, max(rfp, 0.05));
+                if (rwCover > 0.0) {
+                    // Asphalt in the photo's own tone (blurred, so the photo's soft markings do not ghost under
+                    // the painted ones), with aggregate grain, patching and tyre rubber in the touchdown zones.
+                    float3 tone = photoAlbedo(imgNear.sample(imgSampler, nuv, level(5.0)).rgb);
+                    float tl = dot(tone, float3(0.2126, 0.7152, 0.0722));
+                    float3 asphalt = mix(tone, float3(tl), 0.6) * 0.92;
+                    float2 rp = float2(ra, rc);
+                    asphalt *= 1.0 + 0.10 * groundNoise(rp * float2(0.25, 1.0) + 13.0, 6.0) * saturate(1.0 - rfp / 12.0)
+                             + 0.06 * groundNoise(photoW + 3.0, 0.35) * saturate(1.0 - rfp / 0.7);
+                    float fromEnd = min(ra, rlen - ra);
+                    float rubber = smoothstep(120.0, 260.0, fromEnd) * (1.0 - smoothstep(520.0, 900.0, fromEnd)) * exp(-rc * rc / 30.0);
+                    asphalt *= 1.0 - 0.38 * rubber * (0.65 + 0.35 * groundNoise(rp * float2(0.05, 1.5), 1.0));
+                    int low = int(u.runwayB.z + 0.5);
+                    float paint = ra < 0.5 * rlen ? runwayPaint(ra, rc, rlen, rw, low, rfp)
+                                                  : runwayPaint(rlen - ra, -rc, rlen, rw, low > 0 ? (low + 18 > 36 ? low - 18 : low + 18) : 0, rfp);
+                    float worn = 0.78 + 0.22 * groundNoise(photoW * 0.7 + 51.0, 1.3);
+                    float3 surface = mix(asphalt, float3(0.50, 0.50, 0.48) * worn, paint * (1.0 - 0.55 * rubber));
+                    albedo = mix(albedo, surface, rwCover);
+                }
+            }
             // Canopy albedo floor (hue kept), the same 0.05 as the 3D tree tints: Sentinel-2 forest comes out
             // near-black (~0.03), so the ground between the 3D trees read as a dark smear (LSZS, rounds 4–6).
             float al = dot(albedo, float3(0.2126, 0.7152, 0.0722));
             if (imgForest > 0.0 && al < 0.05) albedo = mix(albedo, albedo * (0.05 / max(al, 0.004)), imgForest);
-            float wm = inNear ? waterMask.sample(imgSampler, nuv).r : 0.0;
+            // Water: the near layer's mask (photo colour checked against land cover) inside it, the land
+            // cover's water fraction carried by the outer layers beyond, blended across the near layer's edge.
+            float wm = inNear ? mix(outerWater, waterMask.sample(imgSampler, nuv, level(0.0)).r, nearWeight) : outerWater;
             // Shadow toe, the mirror of the shoulder: photo shadows below ~0.10 albedo are lifted (0.03 → 0.046,
             // 0.06 → 0.072) so the baked shadows under the 3D trees and buildings, which cast their own, stop
             // reading as doubled black (art round 17, KMRY; a 0.07/0.7 toe sat below most photo shadows, round 18).
@@ -563,7 +1002,7 @@ public enum WorldShaders {
                 float lifted = 0.10 * pow(max(alT, 1e-4) / 0.10, 0.65);
                 albedo *= 1.0 + (lifted / max(alT, 1e-4) - 1.0) * toeW;
             }
-            groundMat = (1.0 - smoothstep(500.0, 800.0, dist)) * (1.0 - saturate((wm - 0.2) / 0.2));
+            groundMat = (1.0 - smoothstep(500.0, 800.0, dist)) * (1.0 - saturate((wm - 0.2) / 0.2)) * (1.0 - rwCover);
             if (groundMat > 0.0) {
                 GroundClasses k = classifyGround(c, imgForest);
                 float2 tilt;
@@ -578,6 +1017,7 @@ public enum WorldShaders {
         float2 fieldW = in.rel.xy + u.cameraLocal.xy;
         float fieldFp = length(fwidth(fieldW));              // derivatives outside divergent branches
         float localFp = length(fwidth(in.local));
+        float2 uvFp = float2(length(float2(dfdx(in.uv.x), dfdy(in.uv.x))), length(float2(dfdx(in.uv.y), dfdy(in.uv.y))));
         float fieldBand = max(0.12, 2.5 * fwidth(in.field));
         if (m == 7.0 && in.material == 7.0 && u.skyHorizon.w > 0.5 && in.field < -0.003) {
             albedo = mix(albedo, townColour(fieldW.x, fieldW.y, fieldFp, albedo, uint(u.ambientGround.w)), min(1.0, -in.field));
@@ -622,7 +1062,11 @@ public enum WorldShaders {
             float wFine = saturate(1.0 - fp / 1.0), wMid = saturate(1.0 - fp / 4.0), wDry = saturate(1.0 - fp / 16.0);
             float fade = (1.0 - dist / (in.material == 8.0 ? 900.0 : 1400.0)) * (1.0 - 0.7 * fieldCov) * (1.0 - groundMat);   // fields and ground materials carry their own
             float fine = groundNoise(w, 2.0), mid = groundNoise(w + 17.0, 8.0), dry = groundNoise(w - 31.0, 32.0);
-            albedo *= 1.0 + (fine * 0.08 * wFine + mid * 0.06 * wMid) * fade;
+            // Detail texturing over magnified photo: three octaves (0.6, 2 and 8 m) restore the grain the
+            // imagery cannot resolve at the camera (KASE, round V2: a soft, smeared foreground).
+            float wVF = saturate(1.0 - fp / 0.35);
+            float vfine = groundNoise(w + 5.7, 0.6);
+            albedo *= 1.0 + (vfine * 0.11 * wVF + fine * 0.14 * wFine + mid * 0.11 * wMid) * fade;
             albedo *= 1.0 + (float3(1.10, 1.02, 0.80) - 1.0) * (max(0.0, dry) * 0.45 * wDry * fade);
             float e = 0.6;
             float gx = groundNoise(w + float2(e, 0), 2.0) - groundNoise(w - float2(e, 0), 2.0);
@@ -698,6 +1142,14 @@ public enum WorldShaders {
         // Fill light under a cumulus: the cloud's lit sides and base scatter sunlight down into its own
         // shadow, so it reads ~17 % of full sun (sky ambient alone left it at ~7 %). Sunlit ground gets none.
         ambient += u.sunColour.rgb * (0.35 * toSun.z * cloudShade);
+        if (u.quality.y > 0.0) {
+            // Cabin interior: lit by the sky and the sunlit ground through the windows, from every side, and
+            // by direct sun on the glare shield through the windscreen. The airframe's own shadow would
+            // otherwise leave the whole cabin at the ground-bounce level (near black).
+            ambient = (u.ambientSky.rgb * 0.75 + u.ambientGround.rgb * 0.9 + u.sunColour.rgb * 0.035) * u.quality.y;
+            float shield = smoothstep(1.10, 1.20, in.local.x) * smoothstep(0.4, 0.8, n.z);
+            vis = shield * (1.0 - cloudShade);
+        }
         float3 col;
         if (m == 1.0) {                                      // water
             // Wind waves: two octaves of slope noise (14 m and 3.5 m), faded by pixel footprint so
@@ -714,18 +1166,28 @@ public enum WorldShaders {
             float2 sw = float2(0.8 * ww.x - 0.6 * ww.y, 0.6 * ww.x + 0.8 * ww.y) + 123.0;
             slope += float2(groundNoise(sw + float2(2.0, 0.0), 60.0) - groundNoise(sw - float2(2.0, 0.0), 60.0),
                             groundNoise(sw + float2(0.0, 2.0), 60.0) - groundNoise(sw - float2(0.0, 2.0), 60.0)) * 0.9 * wSwell;
+            // Wind: ruffled water beside calmer slicks (250 m and 1 km patches), at any distance, so a lake
+            // or a bay is not one uniform sheet.
+            float ruffle = 0.30 + 0.70 * smoothstep(-0.30, 0.40, groundNoise(ww + 211.0, 256.0) + 0.6 * groundNoise(ww + 97.0, 1024.0));
+            slope *= 0.55 + 0.75 * ruffle;
             float3 wn = normalize(float3(-slope, 1.0));
             float3 r = reflect(dir, wn);
             r.z = abs(r.z);
             float cosT = max(0.0, -dot(dir, wn));
             float fres = 0.02 + 0.98 * pow(1.0 - cosT, 5.0);
-            // Sky gradient in the reflection: horizon colour low, deeper sky colour higher up.
-            float3 skyR = mix(u.skyHorizon.rgb, u.ambientSky.rgb * 1.6, saturate(pow(r.z, 0.6)));
+            // The sky the surface mirrors. Wavelets too small to resolve still tilt the facets, so far water
+            // reflects sky from above the horizon line (deeper blue where it is ruffled, pale in the slicks).
+            float3 rr = normalize(float3(r.xy, max(r.z, 0.02) + 0.20 * ruffle * (1.0 - 0.6 * wNear)));
+            float3 skyR = skyEnv(u, rr);
             // The needle lobe only where wavelets resolve, and capped: on sub-pixel wavelets it lit single
             // pixels (fireflies that flicker in motion, art round 13).
             float glitter = min(pow(max(0.0, dot(r, toSun)), 900.0) * 60.0 * wNear, 12.0) + pow(max(0.0, dot(r, toSun)), 60.0) * 0.6;
             float3 refl = skyR + u.sunColour.rgb * glitter * vis;
             float3 body = albedo * (ambient * 0.6 + u.sunColour.rgb * max(0.0, toSun.z) * 0.15);
+            // Sunlight scattered back out of the water column: the blue-green of clear water under sun.
+            body += float3(0.004, 0.030, 0.042) * u.sunColour.rgb * (max(0.0, toSun.z) * 0.55 * vis);
+            // Sheen toward the sun from many unresolved facets, wider where the water is ruffled.
+            refl += u.sunColour.rgb * pow(max(0.0, dot(rr, toSun)), mix(260.0, 40.0, ruffle)) * (0.5 + 1.5 * ruffle) * vis;
             if (imageryWater) {
                 // Shallows: a lighter green-turquoise body across the shore band (the mask's 0.6–0.9 rise), so
                 // a lake edge reads as depth rather than a navy cut-out (art round 11, NZQN).
@@ -751,7 +1213,75 @@ public enum WorldShaders {
             // Darkening on the crown's underside only (round 9: 0.7 over the whole crown dulled sunlit tops).
             float under = saturate(-n.z);
             float3 foliageAmb = mix(ambient, u.ambientGround.rgb, 0.25 + 0.25 * under) * (0.85 - 0.25 * under);
-            col = albedo * (u.sunColour.rgb * (wrap + back) * vis + foliageAmb);
+            // Leaf clumps: tone breaks up the crown at close range; the crown's own sky visibility (vertex
+            // shade) darkens its inside and underside, so a tree reads as a mass of lobes, not one blob.
+            float2 lw = in.rel.xy + u.cameraPos.xy;
+            float clump = groundNoise(lw + in.rel.z * float2(0.43, -0.71) + 31.0, 0.7);
+            float fine = groundNoise(lw - in.rel.z * float2(0.29, 0.52) - 7.0, 0.22);
+            float nearT = saturate(1.0 - dist / 260.0);
+            float tone = 1.0 + nearT * (0.30 * clump + 0.18 * fine);      // noise is −1…1
+            float occ = mix(0.35, 1.0, saturate(in.field));
+            col = albedo * tone * (u.sunColour.rgb * (wrap + back) * mix(1.0, occ, 0.5) * vis + foliageAmb * occ);
+        } else if (m == 10.0 || m == 11.0 || m == 12.0) {    // SF-1 airframe: painted skin, glazing, bright metal
+            float3 L = in.local;
+            float3 v = -dir;
+            float nv = max(1e-4, dot(n, v));
+            // Body-axes normal (the model matrix is a rotation): undersides see the ground, not the sky.
+            float3 nb = float3(dot(n, u.model[0].xyz), dot(n, u.model[1].xyz), dot(n, u.model[2].xyz));
+            float3 r = reflect(dir, n);
+            float3 env = skyEnv(u, r);
+            if (m == 12.0) {
+                float F = 0.75 + 0.25 * pow(1.0 - nv, 5.0);
+                col = albedo * (env * F + u.sunColour.rgb * ggxLobe(n, v, toSun, 0.28, 0.9) * vis) + albedo * ambient * 0.12;
+            } else {
+                Skin sk;
+                if (m == 10.0) { sk = fuselageSkin(L, localFp); } else { sk = surfaceSkin(L, localFp); }
+                if (m == 10.0 && dist < 200.0) sk.albedo = mix(sk.albedo, skinNavy, registrationMark(L, localFp) * (1.0 - sk.glass));
+                // Occlusion where the airframe hides the sky from itself: cabin sides under the wing, the
+                // belly, and the wing's underside at the root.
+                float ao = 1.0;
+                if (m == 10.0) {
+                    ao -= 0.30 * smoothstep(-0.50, -0.98, L.z) * smoothstep(-1.75, -1.25, L.x) * smoothstep(0.75, 0.35, L.x);
+                    ao -= 0.22 * smoothstep(0.0, 0.33, L.z);
+                } else {
+                    ao -= 0.25 * saturate(nb.z) * smoothstep(1.6, 0.56, abs(L.y)) * (L.z < -0.9 ? 1.0 : 0.0);
+                }
+                // Paint under a clear coat: diffuse base, a tight sun highlight and the sky mirrored at grazing
+                // angles. White is held near 0.58 so its form shading survives the tone map's shoulder.
+                float3 base = sk.albedo * 0.72;
+                float F = 0.04 + 0.96 * pow(1.0 - nv, 5.0);
+                float coat = 1.0 - sk.matte;
+                float3 paint = base * (u.sunColour.rgb * max(0.0, ndl) * vis + ambient * ao) * (1.0 - 0.5 * F * coat)
+                             + (u.sunColour.rgb * ggxLobe(n, v, toSun, 0.16, 0.04) * vis + env * F * ao * 0.9) * coat;
+                float Fg = 0.07 + 0.93 * pow(1.0 - nv, 5.0);
+                float3 glass = float3(0.010, 0.014, 0.018) * (ambient + u.sunColour.rgb * max(0.0, ndl) * vis * 0.4) * (1.0 - Fg)
+                             + env * Fg + u.sunColour.rgb * ggxLobe(n, v, toSun, 0.06, 0.07) * vis;
+                col = mix(paint, glass, sk.glass) + sk.emissive * 0.9;
+            }
+        } else if (m == 14.0) {                              // building wall: storeys, window bays, cladding
+            Facade fc = facade(in.uv, in.style, albedo, max(uvFp.x, 1e-4), max(uvFp.y, 1e-4));
+            float3 v = -dir;
+            float nv = max(1e-4, dot(n, v));
+            float3 r = reflect(dir, n);
+            // Streets hide the low sky: near-horizontal reflections take a city tone, not the bright horizon.
+            float3 env = mix(u.ambientGround.rgb * 1.8, skyEnv(u, r), smoothstep(0.02, 0.35, r.z));
+            float F = fc.f0 + (1.0 - fc.f0) * pow(1.0 - nv, 5.0);
+            float aoW = mix(0.55, 1.0, saturate(in.uv.y / max(in.style.w, 1.0) * 1.5 + 0.2));    // less sky toward the street
+            float3 wallCol = fc.albedo * (u.sunColour.rgb * max(0.0, ndl) * vis + ambient * aoW);
+            float3 glassCol = fc.interior * (u.sunColour.rgb * max(0.0, ndl) * vis * 0.6 + ambient * aoW) * (1.0 - F)
+                            + env * fc.tint * F + u.sunColour.rgb * ggxLobe(n, v, toSun, 0.10, fc.f0) * vis;
+            col = mix(wallCol, glassCol, fc.glass);
+        } else if (m == 15.0) {                              // roof: the ground photo's colour (style.z bit 0) with roofing mottle
+            float3 a = albedo;
+            if (fmod(in.style.z, 2.0) > 0.5) {
+                float2 ruv; bool rin;
+                float rw0, rw1;
+                a = photoAlbedo(photoColour(u, imgNear, imgMid, imgFar, imgDetail, photoW, dwx, dwy, ruv, rin, rw0, rw1));
+            }
+            float2 rw = in.rel.xy + u.cameraPos.xy;
+            float fpw = length(dwx) + length(dwy);
+            a *= 1.0 + 0.10 * groundNoise(rw, 1.5) * saturate(1.0 - fpw / 0.75) + 0.08 * groundNoise(rw + 19.0, 9.0) * saturate(1.0 - fpw / 4.5);
+            col = a * (u.sunColour.rgb * max(0.0, ndl) * vis + ambient);
         } else if (m == 6.0 || m == 5.0) {                   // aircraft paint / glass: GGX
             // Panel seams on the airframe (aircraft-sized local coordinates only, not painted scenery).
             // White paint at ~0.66 albedo sat at the tone-map shoulder in midday sun, so the airframe read as a
@@ -791,7 +1321,18 @@ public enum WorldShaders {
                 + albedo * ambient * (m == 6.0 ? 1.0 : 0.3) * ao;
         } else {
             col = albedo * (u.sunColour.rgb * max(0.0, ndl) * vis + ambient);
-            if (m == 3.0) {                      // road: Blinn-Phong highlight
+            if (m == 3.0) {                      // road: asphalt grain, painted lines, Blinn-Phong highlight
+                // The field channel is the position across the carriageway (−1 left edge … +1 right edge) on
+                // roads that carry a centre line and 0 everywhere on those that do not (OSMMeshBuilder.roads),
+                // so a line is painted where it crosses zero with a slope.
+                float fa = abs(in.field), fw = fwidth(in.field);
+                float2 rw = in.rel.xy + u.cameraPos.xy;
+                float rfp = length(fwidth(rw));
+                float3 road = albedo * (1.0 + 0.10 * groundNoise(rw + 9.0, 0.5) * saturate(1.0 - rfp / 1.0)
+                                            + 0.08 * groundNoise(rw - 33.0, 7.0) * saturate(1.0 - rfp / 14.0));
+                float lines = (1.0 - smoothstep(0.0, 0.03 + fw, fa)) * step(1e-4, fw) * saturate(1.3 - fw * 6.0);
+                float3 paint = float3(0.46, 0.45, 0.42);
+                col = mix(road, paint, lines * 0.85) * (u.sunColour.rgb * max(0.0, ndl) * vis + ambient);
                 float3 h = normalize(toSun - dir);
                 float spec = pow(max(0.0, dot(n, h)), 20.0) * 0.08;
                 col += u.sunColour.rgb * spec * vis;
@@ -808,9 +1349,15 @@ public enum WorldShaders {
     fragment float4 prop_fragment(WorldVarying in [[stage_in]], constant WorldUniforms& u [[buffer(1)]]) {
         float2 q = float2(in.local.y, in.local.z + 0.05);
         float r = length(q) / 0.95, th = atan2(q.y, q.x);
-        float alpha = (0.07 + 0.11 * smoothstep(0.15, 0.85, r)) * (0.85 + 0.15 * cos(2.0 * th));
+        // A motion-blurred disc: faint, denser toward the tips, fading out at the rim (no hard edge), with
+        // the residual two-blade strobing a camera records and the painted tips as a thin soft band.
+        float rim = 1.0 - smoothstep(0.93, 1.0, r);
+        float strobe = 0.72 + 0.28 * cos(2.0 * th + u.skyZenith.w * 37.0);
+        float alpha = (0.045 + 0.085 * smoothstep(0.15, 0.9, r)) * strobe * rim;
         float3 base = float3(0.02, 0.02, 0.022);
-        if (r > 0.88) { alpha = 0.22; base = float3(0.55, 0.45, 0.08); }                 // tip paint ring
+        float tip = smoothstep(0.895, 0.92, r) * (1.0 - smoothstep(0.95, 0.975, r));
+        base = mix(base, float3(0.55, 0.45, 0.08), tip);
+        alpha = mix(alpha, 0.10 * strobe, tip);
         if (r < 0.12) { alpha = 1.0; base = float3(0.25, 0.25, 0.26); }                  // spinner
         float3 n = normalize(in.normal);
         float3 dir = normalize(in.rel);

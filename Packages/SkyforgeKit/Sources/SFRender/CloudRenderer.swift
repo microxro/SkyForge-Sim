@@ -41,6 +41,8 @@ public final class CloudRenderer {
     public var downsample = 2
     /// Self-shadow taps toward the sun per sample (same ~1.7 km reach at any count; tiers pick 4–6).
     public var lightSteps = 6
+    /// Strength of the fine cloud structure (0 = the reference density; 1 at the best tier).
+    public var fineDetail: Float = 0
 
     public init(device: MTLDevice, colorFormat: MTLPixelFormat) throws {
         self.device = device
@@ -88,6 +90,7 @@ public final class CloudRenderer {
         var u = uniforms
         u.camPos.w = Float(steps)
         u.layer.drift.z = Float(lightSteps)
+        u.layer.drift.w = fineDetail
         u.viewport = SIMD4(Float(w), Float(h), Float(colour.width), Float(colour.height))
         let mp = MTLRenderPassDescriptor()
         mp.colorAttachments[0].texture = t

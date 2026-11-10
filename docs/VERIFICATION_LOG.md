@@ -241,3 +241,29 @@ Method: `FrameTimeTests`, 30 frames after 3 warm-up frames; command-buffer GPU t
 - 2026-11-10T00:02:28Z gate fast on Linux x86_64: PASS (HEAD 70234ff)
 - 2026-11-09 run 42724229611 (70234ff, outer tree shadows to 1 km): **apple job failed**, SkyWorld high 16.95 ms (min 15.92) against 16.7, higher than the previous run despite less work. CI run-to-run variance is above 1 ms. KMRY high 15.59 ms. Fix: SkyWorld desktop trees capped at 58k (65k; only trees > 1 km from both foci thinned), and full-mesh tree shadows within 200 m (250).
 - 2026-11-10 run 42725234508 (769252a: SkyWorld desktop trees 58k, full-mesh tree shadows within 200 m): SkyWorld low 10.23 / high 15.11 ms (min 14.20), KMRY low 11.76 / high 14.85 ms; budgets 33.3 / 16.7 ms. All CI jobs green; high tier has 1.6–1.9 ms margin against the ~1 ms CI run-to-run variance.
+2026-11-10T05:22:41Z compaction; last commit 6cb86a1
+2026-11-10T05:22:42Z compaction; last commit 6cb86a1
+2026-11-10T05:22:44Z compaction; last commit 6cb86a1
+2026-11-10T05:22:45Z compaction; last commit 6cb86a1
+2026-11-10T05:22:47Z compaction; last commit 6cb86a1
+2026-11-10T05:42:45Z compaction; last commit 6cb86a1
+2026-11-10T05:42:47Z compaction; last commit 6cb86a1
+2026-11-10T05:42:49Z compaction; last commit 6cb86a1
+2026-11-10T05:42:51Z compaction; last commit 6cb86a1
+2026-11-10T12:27:23Z compaction; last commit 6cb86a1
+- 2026-11-10T12:35:02Z gate fast on Linux x86_64: PASS (HEAD 6cb86a1)
+- 2026-11-10T12:38:27Z gate fast on Linux x86_64: PASS (HEAD 24e4ab1)
+- 2026-11-10T21:04:52Z gate fast on Linux x86_64: PASS (HEAD de54336)
+- 2026-11-10T21:12:25Z gate fast on Linux x86_64: PASS (HEAD 0c88a27)
+- 2026-11-10T21:18:34Z gate fast on Linux x86_64: PASS (HEAD 4547abc)
+- 2026-11-10T23:08:11Z gate fast on Linux x86_64: PASS (HEAD 0799f6a)
+
+## 2026-11-10 visual transformation (PR #5)
+- Run 42744312670 (baseline): reference "before" frames.
+- Run 42761437783 (`6cb86a1`): linux, apple, frames green; first ultra frames read (SkyWorld).
+- Run 42817030287 (`24e4ab1`, exposure fix): KMRY, KASE, LSZS frames read; mid-tones correct, buildings and aircraft visible.
+- Run 42901639622 (`0c88a27`): apple failed in `realWorldFrameRenders` (`groundLike` 0 of 213): the new land cover made the fixture photo's approach water. Cause is the test's fixture, not the renderer; fixed in `0799f6a` by loading that test without bundled land cover (`bundledLandCover: false`).
+- Run 42904058045 (`0799f6a`): all jobs green.
+- Gate: `tools/gate.sh fast` 245 tests pass at `4c34428`; `tools/check_licenses.py` OK.
+- Not verified: device frame rates; any comparison against MSFS beyond the reference screenshots the user supplied.
+

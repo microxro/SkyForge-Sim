@@ -3,6 +3,7 @@ import Testing
 import Foundation
 @testable import SFRender
 import SFQuickFlight
+import SFWorldGen
 import SFImagery
 import SFContent
 import SFPreview
@@ -28,7 +29,9 @@ actor FixtureImageryTransport: HTTPTransport {
                                         imageryNearSize: 512, imageryFarSize: 256, treeRadius: 700, maxTrees: 4_000)
 
     static func region() async throws -> RealWorldRegion {
-        try await RealWorldRegion.load(airport: "KCOI", detail: detail, transport: try FixtureImageryTransport(), cache: nil)
+        // The fixture photo is not Merritt Island: the pack's land cover (the approach is over the Banana
+        // River) does not describe it, so these frames use the photo alone.
+        try await RealWorldRegion.load(airport: "KCOI", detail: detail, transport: try FixtureImageryTransport(), cache: nil, bundledLandCover: false)
     }
 
     @Test func regionConvertsToRenderData() async throws {
@@ -73,7 +76,7 @@ actor FixtureImageryTransport: HTTPTransport {
         // Distant cells use the crown-only LOD (at most a third of the full mesh's vertices).
         #expect(r.lastLODTreeCells > 0 && r.lastLODTreeCells <= r.lastDrawnTreeCells, "LOD cells \(r.lastLODTreeCells)")
         let m = WorldRenderer.treeMeshes()
-        #expect(m.coniferLow.count * 3 <= m.conifer.count && m.oakLow.count * 3 <= m.oak.count)
+        #expect(m.full.count == TreeModels.variantCount && zip(m.full, m.lod).allSatisfy { $1.count * 2 <= $0.count })
         // The lower half is textured photo ground, not a flat fill.
         var lo = Int.max, hi = 0
         for y in (h / 2)..<h { for x in 0..<(w / 3) { let s = px(x, y).x + px(x, y).y + px(x, y).z; lo = min(lo, s); hi = max(hi, s) } }

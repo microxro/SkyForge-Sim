@@ -66,7 +66,15 @@ public enum CloudShaders {
         s = s * cl_smooth(0.0, 0.12, h) - 0.55 * h * h;
         if (s <= 0.0) return 0.0;
         float detail = 0.625 * cl_noise(float3(qx, qy, p.z) / 220.0) + 0.375 * cl_noise(float3(qx, qy, p.z * 1.3) / 90.0);
-        float d = s - (1.0 - detail) * 0.22;
+        float erode = 0.22;
+        if (c.drift.w > 0.0) {
+            // Fine structure (38 m and 16 m): billows and frayed edges instead of smooth lobes. Opt-in, so
+            // the default density stays the CPU reference's.
+            float fine = 0.6 * cl_noise(float3(qx, qy, p.z * 1.2) / 38.0) + 0.4 * cl_noise(float3(qx, qy, p.z) / 16.0);
+            detail = mix(detail, 0.68 * detail + 0.32 * fine, c.drift.w);
+            erode += 0.10 * c.drift.w;
+        }
+        float d = s - (1.0 - detail) * erode;
         if (d <= 0.0) return 0.0;
         return min(1.0, d * 2.2) * ext;
     }

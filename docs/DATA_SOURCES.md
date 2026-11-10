@@ -28,3 +28,24 @@ Bundled data: `Packages/SkyforgeKit/Sources/SFTerrainCore/Resources/global_dem.s
 | USGS The National Map, USGSImageryOnly (USDA NAIP and other orthoimagery), US only | basemap.nationalmap.gov | US Government work, public domain | "Imagery: USGS The National Map / USDA NAIP (public domain)" | In use (`USGSImageryProvider`, z ≤ 16) |
 | EOX Sentinel-2 cloudless **2016** edition, worldwide | tiles.maps.eox.at (`s2cloudless_3857`) | CC BY 4.0 (stated in the WMTS capabilities). Later editions (2017+) are CC BY-NC-SA and are NOT used. | "Sentinel-2 cloudless 2016 by EOX IT Services GmbH (contains modified Copernicus Sentinel data 2016), CC BY 4.0" | In use (`Sentinel2CloudlessProvider`, z ≤ 14) |
 Test fixtures: `Tests/Fixtures/imagery/usgs_15_13676_9038.jpg` (public domain) and `s2c2016_10_284_435.jpg` (CC BY 4.0, attribution above), each with a Pillow-decoded `.pillow.rgb` reference.
+
+## Building footprints (visual phase, 2026-11-10)
+| Source | Host | Licence | Attribution shown in app | Status |
+|---|---|---|---|---|
+| Overture Maps Foundation buildings theme (release 2026-10-21.0), **only records whose primary source is OpenStreetMap** | overturemaps-us-west-2.s3.amazonaws.com (anonymous read) | ODbL 1.0 (data © OpenStreetMap contributors) | "Buildings: © OpenStreetMap contributors, ODbL 1.0 (via Overture Maps Foundation)" (`BuildingPack.attribution`) | Bundled: `Sources/SFQuickFlight/Resources/Showcase/<ident>/buildings.sfb` for six airports, written by `tools/fetch_buildings.py` |
+
+- Records from other Overture sources (Microsoft ML Buildings, Google Open Buildings, Esri Community Maps) are dropped at fetch time, so the bundled files contain OpenStreetMap-derived data only.
+- Share-alike: the `.sfb` files are a derived database of OpenStreetMap data and stay under ODbL; the attribution above must be shown wherever the buildings are drawn. Code remains Apache-2.0.
+- Heights, levels, roof shape and colours are the OSM tags where present; missing heights are estimated from type and footprint (`BuildingPack.estimatedHeight`).
+
+## Land cover and New Zealand aerial imagery (visual phase, 2026-11-10)
+| Source | Host | Licence | Attribution shown in app | Status |
+|---|---|---|---|---|
+| ESA WorldCover 10 m 2021 v200 | esa-worldcover.s3.eu-central-1.amazonaws.com (anonymous read) | CC BY 4.0 | "Land cover: © ESA WorldCover project 2021 (contains modified Copernicus Sentinel data), CC BY 4.0" (`LandCoverGrid.attribution`) | Bundled: `Showcase/<ident>/landcover.png` (class codes on a 4096² grid over ±40 km), written by `tools/fetch_landcover.py`. Used for water at any distance. |
+| LINZ aerial imagery (Queenstown 0.1 m 2021; Otago 0.3 m 2017–2021) | nz-imagery.s3.ap-southeast-2.amazonaws.com (anonymous read) | CC BY 4.0 | "Imagery: Toitū Te Whenua Land Information New Zealand aerial imagery, CC BY 4.0" (`LINZAerialProvider.attribution`) | Bundled for NZQN only: Web Mercator tiles warped by `tools/fetch_linz_imagery.py` into the pack (keys `skyforge-pack://linz-aerial/z/x/y.jpg`). LINZ has no keyless tile service, so there is no streaming of this source; other New Zealand airports use Sentinel-2. Gaps in the surveys are filled from Sentinel-2 cloudless 2016 (attributed alongside). |
+
+### Road centrelines (visual phase, 2026-11-10)
+| Source | Host | Licence | Attribution shown in app | Status |
+|---|---|---|---|---|
+| Overture Maps Foundation transportation theme (segments, release 2026-10-21.0), **only records whose primary source is OpenStreetMap** | overturemaps-us-west-2.s3.amazonaws.com (anonymous read) | ODbL 1.0 (data © OpenStreetMap contributors) | `OSMData.attribution` ("Buildings and roads: © OpenStreetMap contributors, ODbL 1.0") | Bundled: `Showcase/<ident>/roads.sfr` for six airports (`SFR1`, ±6 km), written by `tools/fetch_roads.py`; read by `RoadPack`. Records from other sources are dropped at fetch time; driveways, sidewalks and crossings are not kept. Share-alike as for the building files. |
+

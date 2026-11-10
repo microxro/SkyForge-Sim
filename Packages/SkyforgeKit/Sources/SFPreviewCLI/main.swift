@@ -7,6 +7,7 @@
 //   sfpreview --scene <name> [--time <preset>] [--seed <n>] [--width W --height H] [--ss N] --out <file.png>
 import Foundation
 import SFPreview
+import SFWorldGen
 import SFInstruments
 import SFAtmosphere
 import SFQuickFlight
@@ -106,18 +107,90 @@ if args.first == "quickflight-stats" {
     exit(0)
 }
 
+if args.first == "aircraft" {
+    // sfpreview aircraft <out.png> [azimuthDeg] [elevationDeg] [distance]: the aircraft model alone (CPU render).
+    guard args.count >= 2 else { fail("usage: sfpreview aircraft <out.png> [azimuthDeg] [elevationDeg] [distance]") }
+    let az = (args.count > 2 ? Double(args[2]) ?? 215 : 215) * Double.pi / 180
+    let el = (args.count > 3 ? Double(args[3]) ?? 12 : 12) * Double.pi / 180
+    let dist = args.count > 4 ? Double(args[4]) ?? 13 : 13
+    var b = SceneBuilder(generator: WorldGenerator(terrain: TerrainRecipe(kind: .suburbanPlain, seed: 1)), origin: .zero)
+    b.addAircraft(at: SIMD3(0, 0, 300), heading: 0, pitch: 0, roll: 0, accent: AircraftLivery.navy)
+    let cam = PreviewCamera(position: SIMD3(sin(az) * cos(el), cos(az) * cos(el), sin(el)) * dist + SIMD3(0, 0, 300.4),
+                            lookAt: SIMD3(0, -1.0, 300.4), horizontalFOV: 50 * .pi / 180)
+    var stats = RenderStats()
+    let lighting = LightingSetup.physicalPreset(.midday, azimuthDegrees: 200, cameraHeightMetres: 300)
+    let img = PreviewRenderer.render(soup: b.soup, camera: cam, lighting: lighting, width: 1_280, height: 720, supersample: 2,
+                                     shadowCentre: SIMD3(0, 0, 300), shadowHalfExtent: 20, stats: &stats)
+    do { try img.png().write(to: URL(fileURLWithPath: args[1])) } catch { fail("sfpreview: cannot write \(args[1]): \(error)", code: 1) }
+    print("sfpreview: aircraft \(b.soup.triangleCount) triangles -> \(args[1])")
+    exit(0)
+}
+
+if args.first == "dump-region" {
+    // sfpreview dump-region <IDENT> <out-dir> [tier]: the region's imagery layers (with building footprints
+    // drawn on the near layer) as PNGs, loaded offline from the showcase pack. For checking registration and tone.
+    guard args.count >= 3 else { fail("usage: sfpreview dump-region <IDENT> <out-dir> [phone|desktop|ultra]") }
+    let ident = args[1].uppercased(), outDir = URL(fileURLWithPath: args[2])
+    let tier = args.count > 3 ? args[3] : "phone"
+    let detail: RealWorldDetail = tier == "desktop" ? .desktop : (tier == "ultra" ? .ultra : .phone)
+    let sem = DispatchSemaphore(value: 0)
+    nonisolated(unsafe) var loaded: RealWorldRegion?
+    Task.detached {
+        loaded = try? await RealWorldRegion.load(airport: ident, detail: detail, transport: Showcase.transport(for: ident, fallback: nil), cache: nil)
+        sem.signal()
+    }
+    sem.wait()
+    guard let region = loaded else { fail("sfpreview: cannot load \(ident)", code: 1) }
+    try? FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
+    func write(_ m: ImageryMosaic, _ name: String, overlay: Bool = false) {
+        let step = max(1, m.size / 1_024), n = m.size / step
+        var rgb = [UInt8](repeating: 0, count: n * n * 3)
+        for j in 0..<n { for i in 0..<n {
+            let o = 3 * (j * step * m.size + i * step)
+            rgb[3 * (j * n + i)] = m.rgb[o]; rgb[3 * (j * n + i) + 1] = m.rgb[o + 1]; rgb[3 * (j * n + i) + 2] = m.rgb[o + 2]
+        } }
+        if overlay {
+            let mpp = 2 * m.halfExtent / Double(n)
+            for b in region.buildings {
+                for k in 0..<b.footprint.count {
+                    let a = b.footprint[k], c = b.footprint[(k + 1) % b.footprint.count]
+                    let len = ((c - a) * (c - a)).sum().squareRoot()
+                    let steps = max(1, Int(len / mpp * 1.5))
+                    for t in 0...steps {
+                        let p = a + (c - a) * (Double(t) / Double(steps))
+                        let x = Int((p.x - (m.centre.x - m.halfExtent)) / mpp), y = Int(((m.centre.y + m.halfExtent) - p.y) / mpp)
+                        if x >= 0 && y >= 0 && x < n && y < n { rgb[3 * (y * n + x)] = 255; rgb[3 * (y * n + x) + 1] = 40; rgb[3 * (y * n + x) + 2] = 200 }
+                    }
+                }
+            }
+        }
+        try? PNGEncoder.encodeRGB(width: n, height: n, rgb: rgb).write(to: outDir.appendingPathComponent("\(ident)_\(name).png"))
+    }
+    write(region.ground.near, "near"); write(region.ground.near, "near_buildings", overlay: true)
+    if let f = region.ground.far { write(f, "far") }
+    if let d = region.ground.detail { write(d, "detail"); write(d, "detail_buildings", overlay: true) }
+    if let m = region.midImagery { write(m, "mid") }
+    print("sfpreview: \(ident) \(tier): \(region.buildings.count) buildings, near z\(region.ground.near.zoom), mid \(region.midImagery.map { "z\($0.zoom)" } ?? "none")")
+    exit(0)
+}
+
 if args.first == "pack-airport" {
     // sfpreview pack-airport <IDENT> <out-dir> [phone|tablet]: records every tile a real-world load of the
     // airport fetches (imagery, elevation) into an offline tile pack for the app bundle.
-    guard args.count >= 3 else { fail("usage: sfpreview pack-airport <IDENT> <out-dir> [phone|tablet]") }
+    guard args.count >= 3 else { fail("usage: sfpreview pack-airport <IDENT> <out-dir> [phone|tablet|desktop|ultra] [merge]") }
     let ident = args[1].uppercased(), outDir = URL(fileURLWithPath: args[2])
-    let detail: RealWorldDetail = args.count > 3 && args[3] == "tablet" ? .tablet : .phone
+    let tier = args.count > 3 ? args[3] : "phone"
+    let detail: RealWorldDetail = tier == "tablet" ? .tablet : (tier == "desktop" ? .desktop : (tier == "ultra" ? .ultra : .phone))
+    let merge = args.contains("merge")
     let sem = DispatchSemaphore(value: 0)
     nonisolated(unsafe) var result: Result<(RealWorldRegion, [URL: Data]), Error>?
     Task.detached {
-        let rec = RecordingTransport(CurlTransport())
+        // Merging: tiles already in the pack are served from it (and recorded again), only new ones are fetched.
+        let existing = merge ? try? TilePack(root: outDir) : nil
+        let base: any HTTPTransport = existing.map { TilePackTransport(packs: [$0], fallback: CurlTransport()) } ?? CurlTransport()
+        let rec = RecordingTransport(base)
         do {
-            let region = try await RealWorldRegion.load(airport: ident, detail: detail, transport: rec, cache: nil)
+            let region = try await RealWorldRegion.load(airport: ident, detail: detail, transport: rec, cache: nil, bundledBuildings: false)
             result = .success((region, await rec.responses))
         } catch { result = .failure(error) }
         sem.signal()
@@ -126,7 +199,12 @@ if args.first == "pack-airport" {
     switch result! {
     case .failure(let e): fail("sfpreview: pack-airport \(ident) failed: \(e)", code: 1)
     case .success(let (region, responses)):
-        do { try TilePack.write(name: "\(ident) \(region.name)", responses: responses, attribution: region.attribution, to: outDir) }
+        // Buildings come from the bundled footprint file, not from the recorded transport.
+        let tiles = responses.filter { !$0.key.absoluteString.contains("overpass") }
+        do {
+            try TilePack.write(name: "\(ident) \(region.name)", responses: tiles, attribution: region.attribution.filter { !$0.contains("OpenStreetMap") },
+                               to: outDir, merge: merge)
+        }
         catch { fail("sfpreview: cannot write pack: \(error)", code: 1) }
         let bytes = responses.values.reduce(0) { $0 + $1.count }
         let cov = region.ground.near.coverage.filter { $0 > 0 }.count * 100 / max(1, region.ground.near.coverage.count)
@@ -213,19 +291,32 @@ print(String(format: "sfpreview: %@ %@ seed %llu -> %@ (%d tris; build %.1fs sha
 /// Developer-tool transport that shells out to curl, so the CLI honours the host's proxy and CA
 /// configuration on Linux (the app uses URLSessionTransport). Tests never use either.
 struct CurlTransport: HTTPTransport {
+    /// At most eight requests at a time (the tile servers and any proxy in between stay comfortable).
+    static let slots = DispatchSemaphore(value: 8)
+    static let queue = DispatchQueue(label: "sfpreview.curl", attributes: .concurrent)
+
     func get(_ url: URL) async throws -> Data {
         try await withCheckedThrowingContinuation { cont in
-            DispatchQueue.global().async {
-                let p = Process()
-                p.executableURL = URL(fileURLWithPath: "/usr/bin/curl")
-                p.arguments = ["-sS", "-f", "--max-time", "60", "-A", "SKYFORGE-sfpreview/0.1", url.absoluteString]
-                let pipe = Pipe()
-                p.standardOutput = pipe
-                p.standardError = FileHandle.nullDevice
-                do { try p.run() } catch { cont.resume(throwing: TransportError.offline); return }
-                let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                p.waitUntilExit()
-                if p.terminationStatus == 0 { cont.resume(returning: data) } else { cont.resume(throwing: TransportError.status(Int(p.terminationStatus))) }
+            Self.queue.async {
+                Self.slots.wait()
+                defer { Self.slots.signal() }
+                var status: Int32 = 1
+                for attempt in 0..<3 {
+                    let p = Process()
+                    p.executableURL = URL(fileURLWithPath: "/usr/bin/curl")
+                    p.arguments = ["-sS", "-f", "--max-time", "60", "-A", "SKYFORGE-sfpreview/0.1", url.absoluteString]
+                    let pipe = Pipe()
+                    p.standardOutput = pipe
+                    p.standardError = FileHandle.nullDevice
+                    do { try p.run() } catch { cont.resume(throwing: TransportError.offline); return }
+                    let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                    p.waitUntilExit()
+                    status = p.terminationStatus
+                    if status == 0 { cont.resume(returning: data); return }
+                    if status == 22 && attempt > 0 { break }           // an HTTP error twice: the tile does not exist
+                    Thread.sleep(forTimeInterval: 0.8 * Double(attempt + 1))
+                }
+                cont.resume(throwing: TransportError.status(Int(status)))
             }
         }
     }

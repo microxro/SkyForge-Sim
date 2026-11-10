@@ -7,6 +7,8 @@ import Metal
 import simd
 import SFPreview
 import SFAtmosphere
+import SFQuickFlight
+import SFWorldGen
 
 struct WorldUniforms {
     var viewProj: simd_float4x4
@@ -19,7 +21,10 @@ struct WorldUniforms {
     var tableDims: SIMD4<Float>
     var shadow0: simd_float4x4
     var shadow1: simd_float4x4
+    var shadow2: simd_float4x4
+    var shadow3: simd_float4x4
     var cascadeSplits: SIMD4<Float>
+    var cascadeTexel: SIMD4<Float>
     var cascadeDepth: SIMD4<Float>
     var cameraPos: SIMD4<Float>
     var cameraLocal: SIMD4<Float>
@@ -28,6 +33,11 @@ struct WorldUniforms {
     var clouds: CloudLayerGPU
     var fieldGrid: SIMD4<Float>       // farmed-parcel texture: iu0, iv0, width, height (width 0 = none)
     var imageryDetail: SIMD4<Float>   // centre x, y, half extent, 1 if present
+    var imageryMid: SIMD4<Float>      // centre x, y, half extent, 1 if present
+    var skyZenith: SIMD4<Float>       // rgb, time (s)
+    var quality: SIMD4<Float>         // shadow filter half width (taps), cabin fill, unused
+    var runwayA: SIMD4<Float>         // low threshold x, y (region metres), direction x, y
+    var runwayB: SIMD4<Float>         // length, width, low-end number, 1 if drawn
 }
 
 /// 16-byte vertex matching `TerrainVertex` (position + snorm normal; w = −127 marks bark).
@@ -50,21 +60,27 @@ struct ShadowUniforms {
     var model: simd_float4x4
 }
 
-/// Two-cascade sun shadow setup in camera-relative coordinates.
+/// Sun shadow cascades in camera-relative coordinates: 0 is the hero cascade (a tight column around the
+/// aircraft, holding only the airframe), 1…3 follow the camera at growing extents.
 struct ShadowCascades {
-    static let size = 2048
-    static let halfExtents: [Float] = [220, 2_200]
-    static let depthRanges: [Float] = [3_000, 10_000]
-    static let splits: [Float] = [380, 3_600]
+    static let count = 4
+    static let halfExtents: [Float] = [8, 220, 2_200, 14_000]
+    static let depthRanges: [Float] = [4_000, 3_000, 10_000, 40_000]
+    /// Far edge (m from the camera) of cascades 1, 2 and 3.
+    static let splits: [Float] = [380, 3_600, 24_000]
 
-    /// Orthographic light matrix centred `ahead` metres along the horizontal camera forward,
-    /// snapped to whole texels so shadows do not shimmer as the camera moves.
-    static func matrix(cascade c: Int, toSun s: SIMD3<Float>, forward f: SIMD3<Float>, cameraWorld: SIMD3<Double>) -> simd_float4x4 {
+    static func lightAxes(_ s: SIMD3<Float>) -> (x: SIMD3<Float>, y: SIMD3<Float>, z: SIMD3<Float>) {
         let zL = simd_normalize(s)
         var xL = simd_cross(SIMD3<Float>(0, 0, 1), zL)
         if simd_length(xL) < 1e-3 { xL = SIMD3(1, 0, 0) }
         xL = simd_normalize(xL)
-        let yL = simd_cross(zL, xL)
+        return (xL, simd_cross(zL, xL), zL)
+    }
+
+    /// Orthographic light matrix centred `ahead` metres along the horizontal camera forward,
+    /// snapped to whole texels so shadows do not shimmer as the camera moves.
+    static func matrix(cascade c: Int, size: Int, toSun s: SIMD3<Float>, forward f: SIMD3<Float>, cameraWorld: SIMD3<Double>) -> simd_float4x4 {
+        let (xL, yL, zL) = lightAxes(s)
         let fh = simd_normalize(SIMD3(f.x, f.y, 0) + SIMD3(0, 0, 1e-6))
         let half = halfExtents[c], range = depthRanges[c]
         let centre = fh * half * 0.6
@@ -81,6 +97,19 @@ struct ShadowCascades {
         let view = simd_float4x4(rows: [SIMD4(xL, -cx), SIMD4(yL, -cy), SIMD4(zL, -cz), SIMD4(0, 0, 0, 1)])
         let proj = simd_float4x4(rows: [SIMD4(1 / half, 0, 0, 0), SIMD4(0, 1 / half, 0, 0),
                                         SIMD4(0, 0, -1 / range, 0.5), SIMD4(0, 0, 0, 1)])
+        return proj * view
+    }
+
+    /// Hero cascade: a column along the sun direction through `centre` (the aircraft, camera-relative),
+    /// starting 12 m sunward of it and reaching `depthRanges[0]` beyond, so the aircraft's shadow lands
+    /// on itself and on whatever lies under it at any height.
+    static func heroMatrix(toSun s: SIMD3<Float>, centre: SIMD3<Float>) -> simd_float4x4 {
+        let (xL, yL, zL) = lightAxes(s)
+        let half = halfExtents[0], range = depthRanges[0]
+        let view = simd_float4x4(rows: [SIMD4(xL, -simd_dot(centre, xL)), SIMD4(yL, -simd_dot(centre, yL)),
+                                        SIMD4(zL, -simd_dot(centre, zL)), SIMD4(0, 0, 0, 1)])
+        let proj = simd_float4x4(rows: [SIMD4(1 / half, 0, 0, 0), SIMD4(0, 1 / half, 0, 0),
+                                        SIMD4(0, 0, -1 / range, 12 / range), SIMD4(0, 0, 0, 1)])
         return proj * view
     }
 }
@@ -137,11 +166,11 @@ public final class WorldRenderer {
     /// shadow map matter near the camera; farther, the LOD crown casts the same blob).
     static let treeShadowFullDistance: Float = 200   // 250: SkyWorld high shadows 3.25 ms (run 42724229611)
     /// Tree cells farther than this cast no shadow into the outer cascade.
-    static let treeShadowDistance: Float = 1_000   // 1200 left SkyWorld high ~0.5 ms under budget (run 42722423559); shadows past 1 km are a few pixels
+    public var treeShadowDistance: Float = 1_000   // 1200 left SkyWorld high ~0.5 ms under budget (run 42722423559); shadows past 1 km are a few pixels
 
     /// Vertex range of the tree mesh for a cell: kind 0 conifer / 1 broadleaf, full or LOD.
     private func treeRange(kind: Int, full: Bool) -> (start: Int, count: Int) {
-        trees!.ranges[(full ? 0 : 2) + kind]
+        trees!.ranges[(full ? 0 : TreeModels.variantCount) + kind]
     }
 
     /// Squared distance from `p` to a cell's box (0 inside).
@@ -159,6 +188,22 @@ public final class WorldRenderer {
     private var imageryNear: (tex: MTLTexture, centre: SIMD2<Double>, half: Double)?
     private var imageryFar: (tex: MTLTexture, centre: SIMD2<Double>, half: Double)?
     private var imageryDetail: (tex: MTLTexture, centre: SIMD2<Double>, half: Double)?
+    private var imageryMid: (tex: MTLTexture, centre: SIMD2<Double>, half: Double)?
+    /// Buildings with facade coordinates (indexed, binned into cells for culling).
+    private var buildingData: (vertices: MTLBuffer, indices: MTLBuffer, cells: [BuildingMesh.Cell])?
+    private let buildingPipeline: MTLRenderPipelineState
+    private let shadowBuildingPipeline: MTLRenderPipelineState
+    /// Building cells drawn in the last main pass (of `buildingCellCount`).
+    public private(set) var lastDrawnBuildingCells = 0
+    public var buildingCellCount: Int { buildingData?.cells.count ?? 0 }
+    /// Shadow map edge (texels) of each cascade.
+    public var shadowMapSize = 2_048
+    /// Shadow filter half width in taps (1 = 3 × 3 PCF, 2 = 5 × 5).
+    public var shadowFilter = 1
+    /// Animation time (s) for water and other moving surfaces.
+    public var time: Double = 0
+    /// Contrast-adaptive sharpening of the final frame (0 = off; applied in the anti-aliasing pass).
+    public var sharpen: Float = 0.5
     private var waterTex: MTLTexture?
     private lazy var dummy2D: MTLTexture = makeDummy()
     /// Chunks drawn in the last frame after frustum culling (diagnostics/tests).
@@ -173,6 +218,8 @@ public final class WorldRenderer {
     public var colourGrade: Float = 1
     /// Cloud self-shadow taps toward the sun per march sample (tier setting).
     public var cloudLightSteps = 6
+    /// Fine cloud structure strength (0 = reference density, 1 = billows and frayed edges).
+    public var cloudDetail: Float = 0
     /// Cloud march resolution divisor (2 = half resolution).
     public var cloudDownsample = 2
     /// Dynamic resolution: the scene renders at this fraction of the output size and is upscaled
@@ -185,9 +232,12 @@ public final class WorldRenderer {
         public var renderScale: Float, cloudSteps: Int, cloudDownsample: Int, bloomIntensity: Float, ssaoStrength: Float
         /// Cloud self-shadow taps per march sample.
         public var cloudLightSteps: Int
+        /// Shadow map edge (texels) and PCF half width (taps).
+        public var shadowMapSize: Int, shadowFilter: Int
         public init(renderScale: Float, cloudSteps: Int, cloudDownsample: Int, bloomIntensity: Float, ssaoStrength: Float,
-                    cloudLightSteps: Int = 6) {
+                    cloudLightSteps: Int = 6, shadowMapSize: Int = 2_048, shadowFilter: Int = 1) {
             self.cloudLightSteps = cloudLightSteps
+            self.shadowMapSize = shadowMapSize; self.shadowFilter = shadowFilter
             self.renderScale = renderScale; self.cloudSteps = cloudSteps; self.cloudDownsample = cloudDownsample
             self.bloomIntensity = bloomIntensity; self.ssaoStrength = ssaoStrength
         }
@@ -200,11 +250,17 @@ public final class WorldRenderer {
         // 16.71, SkyWorld high 16.67 ms against 16.7); the Bayer step jitter keeps the lower count unbanded.
         public static let high = Settings(renderScale: 0.75, cloudSteps: 22, cloudDownsample: 3, bloomIntensity: 0.05, ssaoStrength: 0.7,
                                           cloudLightSteps: 3)
+        /// Image quality first, frame time not considered: 2 × 2 supersampling, clouds marched at the output
+        /// resolution with long self-shadow rays, 4096² shadow cascades with a 5 × 5 filter.
+        public static let ultra = Settings(renderScale: 2, cloudSteps: 96, cloudDownsample: 2, bloomIntensity: 0.06, ssaoStrength: 0.85,
+                                           cloudLightSteps: 8, shadowMapSize: 4_096, shadowFilter: 2)
     }
 
     public func apply(_ s: Settings) {
         renderScale = s.renderScale; cloudSteps = s.cloudSteps; cloudDownsample = s.cloudDownsample; cloudLightSteps = s.cloudLightSteps
         bloomIntensity = s.bloomIntensity; ssaoStrength = s.ssaoStrength
+        cloudDetail = s.renderScale >= 2 ? 1 : 0
+        shadowMapSize = s.shadowMapSize; shadowFilter = s.shadowFilter
     }
     private var cloudRenderer: CloudRenderer?
     private let sky: PhysicalSkyRenderer
@@ -295,6 +351,8 @@ public final class WorldRenderer {
         shadowTerrainPipeline = try pso("shadow_terrain_vertex", nil, label: "ShadowTerrain", colour: false)
         shadowTreePipeline = try pso("shadow_tree_vertex", nil, label: "ShadowTrees", colour: false)
         screenPipeline = try pso("screen_vertex", "screen_fragment", label: "CockpitScreen", colour: true)
+        buildingPipeline = try pso("building_vertex", "world_fragment", label: "Buildings", colour: true)
+        shadowBuildingPipeline = try pso("shadow_building_vertex", nil, label: "ShadowBuildings", colour: false)
         do {
             guard let pv = lib.makeFunction(name: "world_vertex"), let pf = lib.makeFunction(name: "prop_fragment") else {
                 throw RendererError.shaderCompile("missing prop functions")
@@ -387,83 +445,17 @@ public final class WorldRenderer {
         return t
     }
 
-    /// Unit-height tree meshes (z 0…1): conifer (bare trunk, crown on top) and broad oak.
-    static func treeMeshes() -> (conifer: [PackedTerrainVertex], oak: [PackedTerrainVertex], coniferLow: [PackedTerrainVertex], oakLow: [PackedTerrainVertex]) {
-        func q(_ x: Double) -> Int8 { Int8(max(-127, min(127, (x * 127).rounded()))) }
-        func tri(_ out: inout [PackedTerrainVertex], _ a: SIMD3<Double>, _ b: SIMD3<Double>, _ c: SIMD3<Double>, bark: Bool) {
-            let n = normalize(cross(b - a, c - a))
-            for p in [a, b, c] { out.append(PackedTerrainVertex(px: Float(p.x), py: Float(p.y), pz: Float(p.z), nx: q(n.x), ny: q(n.y), nz: q(n.z), nw: bark ? -127 : 127)) }
+    /// Unit-height tree meshes (z 0…1) per variant, full and crown-only LOD (`TreeModels`). Normals are
+    /// snorm; `nw` is −127 for bark, otherwise 1…127 for how much sky the vertex sees (ambient occlusion).
+    static func treeMeshes() -> (full: [[PackedTerrainVertex]], lod: [[PackedTerrainVertex]]) {
+        func q(_ x: Float) -> Int8 { Int8(max(-127, min(127, (x * 127).rounded()))) }
+        func pack(_ v: [TreeVertex]) -> [PackedTerrainVertex] {
+            v.map { PackedTerrainVertex(px: $0.position.x, py: $0.position.y, pz: $0.position.z,
+                                        nx: q($0.normal.x), ny: q($0.normal.y), nz: q($0.normal.z),
+                                        nw: $0.shade < 0 ? -127 : Int8(max(1, min(127, ($0.shade * 127).rounded())))) }
         }
-        func vert(_ out: inout [PackedTerrainVertex], _ p: SIMD3<Double>, _ n: SIMD3<Double>, bark: Bool) {
-            out.append(PackedTerrainVertex(px: Float(p.x), py: Float(p.y), pz: Float(p.z), nx: q(n.x), ny: q(n.y), nz: q(n.z), nw: bark ? -127 : 127))
-        }
-        func frustum(_ out: inout [PackedTerrainVertex], z0: Double, r0: Double, z1: Double, r1: Double, sides: Int, bark: Bool,
-                     crown: (centre: Double, radius: Double, height: Double)? = nil, offset: SIMD2<Double> = .zero,
-                     whole: (centre: Double, radius: Double, height: Double)? = nil) {
-            // Crowns use smooth normals so a near crown shades as one rounded mass, not facets (art rounds
-            // 5–6). With `crown`, normals are those of the enclosing ellipsoid, continuous across stacked
-            // sections (per-section cone slopes left a crease at every ring); otherwise the cone's own slope.
-            let slope = (r0 - r1) / max(z1 - z0, 1e-6)
-            func normalAt(_ a: Double, _ r: Double, _ z: Double) -> SIMD3<Double> {
-                guard let e = crown else { return normalize(SIMD3(cos(a), sin(a), slope)) }
-                let h = max(r, 0.02) / (e.radius * e.radius)
-                let own = normalize(SIMD3(cos(a) * h, sin(a) * h, (z - e.centre) / (e.height * e.height)))
-                // A lobe blends 50/50 with the whole crown's ellipsoid normal at the same point, so the cluster
-                // shades as one mass with a lumpy outline (own normals alone left facets and dark creases, round 15).
-                guard let wc = whole else { return own }
-                let p = SIMD3(offset.x + r * cos(a), offset.y + r * sin(a), z)
-                let wn = normalize(SIMD3(p.x / (wc.radius * wc.radius), p.y / (wc.radius * wc.radius), (z - wc.centre) / (wc.height * wc.height)))
-                return normalize(own + wn)
-            }
-            for k in 0..<sides {
-                let a0 = Double(k) / Double(sides) * 2 * .pi, a1 = Double(k + 1) / Double(sides) * 2 * .pi
-                let o = SIMD3(offset.x, offset.y, 0)
-                let b0 = SIMD3(r0 * cos(a0), r0 * sin(a0), z0) + o, b1 = SIMD3(r0 * cos(a1), r0 * sin(a1), z0) + o
-                let t0 = SIMD3(r1 * cos(a0), r1 * sin(a0), z1) + o, t1 = SIMD3(r1 * cos(a1), r1 * sin(a1), z1) + o
-                if bark {
-                    tri(&out, b0, b1, t1, bark: bark)
-                    if r1 > 0 { tri(&out, b0, t1, t0, bark: bark) }
-                    continue
-                }
-                let nb0 = normalAt(a0, r0, z0), nb1 = normalAt(a1, r0, z0)
-                if r1 > 0 {
-                    let nt0 = normalAt(a0, r1, z1), nt1 = normalAt(a1, r1, z1)
-                    vert(&out, b0, nb0, bark: false); vert(&out, b1, nb1, bark: false); vert(&out, t1, nt1, bark: false)
-                    vert(&out, b0, nb0, bark: false); vert(&out, t1, nt1, bark: false); vert(&out, t0, nt0, bark: false)
-                } else {
-                    // Apex: the facet's mid direction (cone) or straight up (ellipsoid), so the tip neither
-                    // pinches nor flattens.
-                    let apex = (crown == nil || whole != nil) ? normalAt((a0 + a1) / 2, 0, z1) : SIMD3<Double>(0, 0, 1)
-                    vert(&out, b0, nb0, bark: false); vert(&out, b1, nb1, bark: false); vert(&out, t1, apex, bark: false)
-                }
-            }
-        }
-        var conifer: [PackedTerrainVertex] = [], oak: [PackedTerrainVertex] = []
-        frustum(&conifer, z0: -0.03, r0: 0.018, z1: 0.6, r1: 0.012, sides: 5, bark: true)
-        frustum(&conifer, z0: 0.52, r0: 0.12, z1: 0.62, r1: 0.22, sides: 9, bark: false)
-        frustum(&conifer, z0: 0.62, r0: 0.22, z1: 0.82, r1: 0.17, sides: 9, bark: false)
-        frustum(&conifer, z0: 0.82, r0: 0.17, z1: 1.0, r1: 0, sides: 9, bark: false)
-        frustum(&oak, z0: -0.03, r0: 0.03, z1: 0.4, r1: 0.025, sides: 5, bark: true)
-        // Near broadleaf (drawn only within `treeLODDistance`): an 8-sided main crown and two offset 6-sided
-        // lobes, each with its own ellipsoid normals, so a crown reads as clumped foliage rather than one
-        // smooth sphere (art round 14). Crown starts low (0.2) so little trunk shows (round 9).
-        let oakCrown = (centre: 0.62, radius: 0.44, height: 0.38)
-        frustum(&oak, z0: 0.2, r0: 0.16, z1: 0.48, r1: 0.40, sides: 8, bark: false, crown: oakCrown)
-        frustum(&oak, z0: 0.48, r0: 0.40, z1: 0.75, r1: 0.33, sides: 8, bark: false, crown: oakCrown)
-        frustum(&oak, z0: 0.75, r0: 0.33, z1: 0.98, r1: 0, sides: 8, bark: false, crown: oakCrown)
-        for (off, zc, rr) in [(SIMD2(0.24, 0.10), 0.60, 0.25), (SIMD2(-0.16, -0.21), 0.66, 0.23)] {
-            let lobe = (centre: zc, radius: rr, height: rr * 0.95)
-            frustum(&oak, z0: zc - rr * 0.8, r0: rr * 0.45, z1: zc, r1: rr, sides: 6, bark: false, crown: lobe, offset: off, whole: oakCrown)
-            frustum(&oak, z0: zc, r0: rr, z1: zc + rr * 0.95, r1: 0, sides: 6, bark: false, crown: lobe, offset: off, whole: oakCrown)
-        }
-        // Distant LOD (beyond `treeLODDistance`): crown only, 6 sides, 6–18 triangles
-        // against 55–86, same silhouette height and width.
-        var coniferLow: [PackedTerrainVertex] = [], oakLow: [PackedTerrainVertex] = []
-        // 6 sides: from the LOD distance (350 m since round 15) 4-sided crowns read as diamonds.
-        frustum(&coniferLow, z0: 0.4, r0: 0.22, z1: 1.0, r1: 0, sides: 6, bark: false)
-        frustum(&oakLow, z0: 0.3, r0: 0.4, z1: 0.62, r1: 0.4, sides: 6, bark: false, crown: oakCrown)
-        frustum(&oakLow, z0: 0.62, r0: 0.4, z1: 1.0, r1: 0, sides: 6, bark: false, crown: oakCrown)
-        return (conifer, oak, coniferLow, oakLow)
+        let m = TreeModels.build()
+        return (m.full.map(pack), m.lod.map(pack))
     }
 
     /// A ready GPU imagery texture with its placement, built on any thread (`makeImagery`) and swapped in
@@ -480,8 +472,10 @@ public final class WorldRenderer {
         let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm_srgb, width: i.size, height: i.size, mipmapped: true)
         d.usage = [.shaderRead]
         guard let t = device.makeTexture(descriptor: d) else { throw RendererError.commandQueue }
-        var rgba = [UInt8](repeating: 255, count: i.size * i.size * 4)
+        // Alpha carries the land cover's water fraction (0 where the layer has none).
+        var rgba = [UInt8](repeating: 0, count: i.size * i.size * 4)
         for p in 0..<(i.size * i.size) { rgba[4 * p] = i.rgb[3 * p]; rgba[4 * p + 1] = i.rgb[3 * p + 1]; rgba[4 * p + 2] = i.rgb[3 * p + 2] }
+        if let w = i.water, w.count == i.size * i.size { for p in 0..<w.count { rgba[4 * p + 3] = w[p] } }
         t.replace(region: MTLRegionMake2D(0, 0, i.size, i.size), mipmapLevel: 0, withBytes: rgba, bytesPerRow: i.size * 4)
         if let cmd = queue.makeCommandBuffer(), let blit = cmd.makeBlitCommandEncoder() {
             blit.generateMipmaps(for: t); blit.endEncoding(); cmd.commit(); cmd.waitUntilCompleted()
@@ -508,11 +502,12 @@ public final class WorldRenderer {
     public func setTrees(_ list: [RealWorldRenderData.Tree]) throws {
         guard !list.isEmpty else { trees = nil; treeCells = []; return }
         let meshes = Self.treeMeshes()
-        let treeVerts = meshes.conifer + meshes.oak + meshes.coniferLow + meshes.oakLow
-        let c0 = meshes.conifer.count, o0 = meshes.oak.count, c1 = meshes.coniferLow.count, o1 = meshes.oakLow.count
-        let ranges = [(0, c0), (c0, o0), (c0 + o0, c1), (c0 + o0 + c1, o1)]
+        var treeVerts: [PackedTerrainVertex] = []
+        var ranges: [(Int, Int)] = []
+        for m in meshes.full + meshes.lod { ranges.append((treeVerts.count, m.count)); treeVerts += m }
+        func variant(_ t: RealWorldRenderData.Tree) -> Int { TreeModels.variant(conifer: t.conifer, x: t.position.x, y: t.position.y) }
         func cellKey(_ t: RealWorldRenderData.Tree) -> (Int, Int, Int) {
-            (t.conifer ? 0 : 1, Int((t.position.x / 400).rounded(.down)), Int((t.position.y / 400).rounded(.down)))
+            (variant(t), Int((t.position.x / 400).rounded(.down)), Int((t.position.y / 400).rounded(.down)))
         }
         let sorted = list.sorted { cellKey($0) < cellKey($1) }
         var cells: [(kind: Int, start: Int, count: Int, min: SIMD3<Float>, max: SIMD3<Float>)] = []
@@ -528,7 +523,7 @@ public final class WorldRenderer {
             }
         }
         let inst = sorted.map { PackedTreeInstance(px: $0.position.x, py: $0.position.y, pz: $0.position.z, height: $0.height,
-                                                   r: $0.colour.x, g: $0.colour.y, b: $0.colour.z, kind: $0.conifer ? 0 : 1) }
+                                                   r: $0.colour.x, g: $0.colour.y, b: $0.colour.z, kind: Float(variant($0))) }
         precondition(MemoryLayout<PackedTreeInstance>.stride == 32)
         guard let mb = treeVerts.withUnsafeBytes({ device.makeBuffer(bytes: $0.baseAddress!, length: $0.count, options: .storageModeShared) }),
               let ib = inst.withUnsafeBytes({ device.makeBuffer(bytes: $0.baseAddress!, length: $0.count, options: .storageModeShared) }) else {
@@ -568,6 +563,9 @@ public final class WorldRenderer {
         imageryNear = try data.near.map { (try imageryTexture($0), $0.centre, $0.halfExtent) }
         imageryFar = try data.far.map { (try imageryTexture($0), $0.centre, $0.halfExtent) }
         imageryDetail = try data.detail.map { (try imageryTexture($0), $0.centre, $0.halfExtent) }
+        imageryMid = try data.mid.map { (try imageryTexture($0), $0.centre, $0.halfExtent) }
+        try setBuildings(data.buildingMesh)
+        runway = data.runway
         if let wm = data.waterMask {
             let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .r32Float, width: wm.size, height: wm.size, mipmapped: false)
             d.usage = [.shaderRead]
@@ -575,6 +573,16 @@ public final class WorldRenderer {
             t.replace(region: MTLRegionMake2D(0, 0, wm.size, wm.size), mipmapLevel: 0, withBytes: wm.values, bytesPerRow: wm.size * 4)
             waterTex = t
         } else { waterTex = nil }
+    }
+
+    /// Uploads buildings (nil or empty removes them).
+    public func setBuildings(_ mesh: BuildingMesh?) throws {
+        guard let mesh, !mesh.indices.isEmpty, !mesh.vertices.isEmpty else { buildingData = nil; return }
+        guard let vb = mesh.vertices.withUnsafeBytes({ device.makeBuffer(bytes: $0.baseAddress!, length: $0.count, options: .storageModeShared) }),
+              let ib = mesh.indices.withUnsafeBytes({ device.makeBuffer(bytes: $0.baseAddress!, length: $0.count, options: .storageModeShared) }) else {
+            throw RendererError.commandQueue
+        }
+        buildingData = (vb, ib, mesh.cells)
     }
 
     /// Frustum planes (camera-relative) from a view-projection matrix (reversed-Z: near plane is w − z ≥ 0 … any order works).
@@ -604,11 +612,12 @@ public final class WorldRenderer {
     }
 
     private func shadowTexture() throws -> MTLTexture {
-        if let t = shadowMap { return t }
+        let size = max(256, shadowMapSize)
+        if let t = shadowMap, t.width == size { return t }
         let d = MTLTextureDescriptor()
         d.textureType = .type2DArray
         d.pixelFormat = .depth32Float
-        d.width = ShadowCascades.size; d.height = ShadowCascades.size; d.arrayLength = 2
+        d.width = size; d.height = size; d.arrayLength = ShadowCascades.count
         d.usage = [.renderTarget, .shaderRead]
         d.storageMode = .private
         guard let t = device.makeTexture(descriptor: d) else { throw RendererError.commandQueue }
@@ -690,7 +699,11 @@ public final class WorldRenderer {
         }
     }
 
+    /// The runway whose markings are painted on the real-world ground (nil = the photo only).
+    public var runway: RealWorldRenderData.Runway?
     public func setLighting(_ l: LightingSetup) { lighting = l; tables = nil }
+    /// Multiplier on the lighting preset's exposure (see `encodeScene`).
+    public var exposureScale: Float = 0.45
 
     private func aerialTables() throws -> (MTLTexture, MTLTexture) {
         if let t = tables { return (t.ins, t.tr) }
@@ -744,7 +757,7 @@ public final class WorldRenderer {
             d.storageMode = .private
             return device.makeTexture(descriptor: d)
         }
-        let scale = max(0.25, min(1, renderScale))
+        let scale = max(0.25, min(2, renderScale))
         let sw = max(8, Int((Float(colour.width) * scale).rounded())), sh = max(8, Int((Float(colour.height) * scale).rounded()))
         sceneTarget = target(sceneTarget, .rgba16Float, sw, sh)
         guard let scene = sceneTarget else { throw RendererError.commandQueue }
@@ -812,7 +825,7 @@ public final class WorldRenderer {
             guard let l = ldrTarget else { throw RendererError.commandQueue }
             toneOut = l
         } else { toneOut = colour }
-        var tp = SIMD4<Float>(0, 0, levelCount > 0 ? bloomIntensity : 0, levelCount > 0 ? 1 / Float(levelCount) : 0)
+        var tp = SIMD4<Float>(scale, 0, levelCount > 0 ? bloomIntensity : 0, levelCount > 0 ? 1 / Float(levelCount) : 0)
         let bloomTex = bloomLevels.first ?? scene
         try pass(toneOut, load: .dontCare, label: "Tonemap") { e in
             e.setRenderPipelineState(tonemapPipeline)
@@ -824,10 +837,12 @@ public final class WorldRenderer {
             e.setFragmentBytes(&aoS, length: 16, index: 1)
         }
         if antialiasing {
+            var fp = SIMD4<Float>(sharpen, 0, 0, 0)
             try pass(colour, load: .dontCare, label: "FXAA") { e in
                 e.setRenderPipelineState(fxaaPipeline)
                 e.setFragmentTexture(toneOut, index: 0)
                 e.setFragmentTexture(sceneDepth, index: 1)
+                e.setFragmentBytes(&fp, length: 16, index: 0)
             }
         }
     }
@@ -837,12 +852,25 @@ public final class WorldRenderer {
         let aspect = Double(colour.width) / Double(max(1, colour.height))
         let fwdD = simd_normalize(c.target - c.position)
         let fwd = SIMD3<Float>(Float(fwdD.x), Float(fwdD.y), Float(fwdD.z))
-        let L = lighting
+        // Scene exposure: the presets' 0.78 renders a sunlit 18 % grey at ~197/255, about 1.5 stops hot, which
+        // bleached every photo texture. One scale on sky, world and clouds keeps them consistent.
+        var L = lighting
+        L.exposure *= exposureScale
         let toSunF = simd_normalize(L.toSun)
-        let cascades = (0..<2).map { ShadowCascades.matrix(cascade: $0, toSun: toSunF, forward: fwd, cameraWorld: c.position) }
         let sm = try shadowTexture()
+        let smSize = sm.width
         let doShadows = shadowsEnabled && toSunF.z > -0.05
-        for ci in 0..<2 {
+        // Cascade 0 is the hero column around the aircraft; 1…3 follow the camera.
+        let heroCentre: SIMD3<Float>? = aircraftPosition.map { p in
+            let d = p - c.position
+            return SIMD3<Float>(Float(d.x), Float(d.y), Float(d.z))
+        }
+        let hasHero = doShadows && aircraft != nil && heroCentre != nil && aircraftBodyToENU != nil
+        var cascades: [simd_float4x4] = [heroCentre.map { ShadowCascades.heroMatrix(toSun: toSunF, centre: $0) } ?? matrix_identity_float4x4]
+        for ci in 1..<ShadowCascades.count {
+            cascades.append(ShadowCascades.matrix(cascade: ci, size: smSize, toSun: toSunF, forward: fwd, cameraWorld: c.position))
+        }
+        for ci in 0..<ShadowCascades.count {
             let sp = MTLRenderPassDescriptor()
             sp.depthAttachment.texture = sm
             sp.depthAttachment.slice = ci
@@ -850,7 +878,20 @@ public final class WorldRenderer {
             sp.depthAttachment.clearDepth = 1
             sp.depthAttachment.storeAction = .store
             guard let se = cmd.makeRenderCommandEncoder(descriptor: sp) else { throw RendererError.commandQueue }
-            if doShadows {
+            se.label = "Shadow\(ci)"
+            if doShadows && ci == 0 {
+                // Hero cascade: the airframe alone (self-shadowing and its shadow on the ground).
+                if hasHero, let a = aircraft, let p = aircraftPosition, let m = aircraftBodyToENU {
+                    se.setRenderPipelineState(shadowPipeline)
+                    se.setDepthStencilState(shadowDepthState)
+                    se.setCullMode(.none)
+                    se.setDepthBias(0, slopeScale: 1.0, clamp: 0)
+                    var su = ShadowUniforms(lightViewProj: cascades[0], model: Self.modelMatrix(m, p - c.position))
+                    se.setVertexBuffer(a.buffer, offset: 0, index: 0)
+                    se.setVertexBytes(&su, length: MemoryLayout<ShadowUniforms>.stride, index: 1)
+                    se.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: a.count)
+                }
+            } else if doShadows {
                 se.setRenderPipelineState(shadowPipeline)
                 se.setDepthStencilState(shadowDepthState)
                 se.setCullMode(.none)
@@ -879,7 +920,20 @@ public final class WorldRenderer {
                     }
                     se.setRenderPipelineState(shadowPipeline)
                 }
-                if let tr = trees {
+                if let bd = buildingData {
+                    var su = ShadowUniforms(lightViewProj: cascades[ci], model: Self.translation(-c.position))
+                    se.setRenderPipelineState(shadowBuildingPipeline)
+                    se.setVertexBuffer(bd.vertices, offset: 0, index: 0)
+                    se.setVertexBytes(&su, length: MemoryLayout<ShadowUniforms>.stride, index: 1)
+                    let lp = Self.clipPlanes(cascades[ci] * su.model)
+                    for cell in bd.cells where Self.boxVisible(lp, cell.min, cell.max) {
+                        se.drawIndexedPrimitives(type: .triangle, indexCount: cell.indexCount, indexType: .uint32, indexBuffer: bd.indices,
+                                                 indexBufferOffset: cell.indexStart * 4)
+                    }
+                    se.setRenderPipelineState(shadowPipeline)
+                }
+                // Trees cast into the near and middle cascades only (a far-cascade texel is wider than a crown).
+                if let tr = trees, ci < 3 {
                     var su = ShadowUniforms(lightViewProj: cascades[ci], model: Self.translation(-c.position))
                     se.setRenderPipelineState(shadowTreePipeline)
                     se.setVertexBytes(&su, length: MemoryLayout<ShadowUniforms>.stride, index: 1)
@@ -888,25 +942,20 @@ public final class WorldRenderer {
                     // Only tree cells inside this cascade's light volume can cast into it.
                     let lp = Self.clipPlanes(cascades[ci] * su.model)
                     let eye = SIMD3<Float>(Float(c.position.x), Float(c.position.y), Float(c.position.z))
-                    let farCast2 = Self.treeShadowDistance * Self.treeShadowDistance
+                    let farCast2 = treeShadowDistance * treeShadowDistance
                     for cell in treeCells where Self.boxVisible(lp, cell.min, cell.max) {
                         let d2 = Self.boxDistance2(eye, cell.min, cell.max)
-                        // The outer cascade (~2 m texels) resolves a tree shadow as a texel or two: only cells
+                        // The middle cascade resolves a tree shadow as a texel or two: only cells
                         // within `treeShadowDistance` cast into it.
-                        if ci > 0 && d2 > farCast2 { continue }
+                        if ci > 1 && d2 > farCast2 { continue }
                         // Full mesh only in the near cascade and near cells; LOD crowns cast the rest.
-                        let range = treeRange(kind: cell.kind, full: ci == 0 && d2 < Self.treeShadowFullDistance * Self.treeShadowFullDistance)
+                        let range = treeRange(kind: cell.kind, full: ci == 1 && d2 < Self.treeShadowFullDistance * Self.treeShadowFullDistance)
                         se.setVertexBufferOffset(cell.start * MemoryLayout<PackedTreeInstance>.stride, index: 2)   // not baseInstance (ignored on the CI GPU)
                         se.drawPrimitives(type: .triangle, vertexStart: range.start, vertexCount: range.count, instanceCount: cell.count)
                     }
                     se.setRenderPipelineState(shadowPipeline)
                 }
-                if let a = aircraft, let p = aircraftPosition, let m = aircraftBodyToENU {
-                    var su = ShadowUniforms(lightViewProj: cascades[ci], model: Self.modelMatrix(m, p - c.position))
-                    se.setVertexBuffer(a.buffer, offset: 0, index: 0)
-                    se.setVertexBytes(&su, length: MemoryLayout<ShadowUniforms>.stride, index: 1)
-                    se.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: a.count)
-                }
+                // Without a hero cascade (no aircraft position) nothing else casts the airframe's shadow.
             }
             se.endEncoding()
         }
@@ -960,26 +1009,46 @@ public final class WorldRenderer {
         enc.setFragmentTexture(waterTex ?? dummy2D, index: 5)
         enc.setFragmentTexture(parcelTex?.tex ?? dummy2D, index: 6)
         enc.setFragmentTexture(imageryDetail?.tex ?? dummy2D, index: 7)
+        enc.setFragmentTexture(imageryMid?.tex ?? dummy2D, index: 8)
         let upHint = SIMD3<Float>(Float(c.up.x), Float(c.up.y), Float(c.up.z))
         let viewProj = Self.reversedZProjection(fovY: Float(fovY), aspect: Float(aspect), near: Float(c.near)) * Self.view(forward: fwd, up: upHint)
         let sunAz = Float(atan2(Double(toSun.y), Double(toSun.x)))
         let dims = tables?.key ?? SIMD4(1, 1, 1, 1000)
+        // Typed pieces first: one large initialiser expression is slow for the type checker.
+        let hx = ShadowCascades.halfExtents, dr = ShadowCascades.depthRanges, sp = ShadowCascades.splits
+        let texelScale: Float = 2 / Float(smSize)
+        let uSplits = SIMD4<Float>(sp[0], sp[1], sp[2], hasHero ? 1 : 0)
+        let uTexel = SIMD4<Float>(hx[0] * texelScale, hx[1] * texelScale, hx[2] * texelScale, hx[3] * texelScale)
+        let uDepth = SIMD4<Float>(dr[0], dr[1], dr[2], dr[3])
+        func placement(_ i: (tex: MTLTexture, centre: SIMD2<Double>, half: Double)?) -> SIMD4<Float> {
+            guard let i else { return .zero }
+            return SIMD4<Float>(Float(i.centre.x), Float(i.centre.y), Float(i.half), 1)
+        }
+        let uNear = placement(imageryNear), uFar = placement(imageryFar), uDetail = placement(imageryDetail), uMid = placement(imageryMid)
+        let uFieldGrid: SIMD4<Float> = parcelTex.map { SIMD4<Float>(Float($0.grid.iu0), Float($0.grid.iv0), Float($0.grid.width), Float($0.grid.height)) } ?? .zero
+        let uCameraPos = SIMD4<Float>(Float(Self.wrap(c.position.x)), Float(Self.wrap(c.position.y)), Float(c.position.z), 0)
+        let uCameraLocal = SIMD4<Float>(Float(c.position.x), Float(c.position.y), Float(c.position.z), 0)
+        let fieldSeed: Float = Float(fieldPattern?.seed ?? 0)
+        let fieldMode: Float = fieldPattern.map { $0.autumn ? 2 : 1 } ?? 0
+        let cascadeCount: Float = doShadows ? Float(ShadowCascades.count) : 0
+        let uTableDims = SIMD4<Float>(dims.x, dims.y, dims.z, cascadeCount)
+        let uZenith = SIMD4<Float>(L.skyZenith, Float(time.truncatingRemainder(dividingBy: 3_600)))
+        let uQuality = SIMD4<Float>(Float(max(1, min(3, shadowFilter))), 0, 0, 0)
+        let cloudLayer = CloudUniforms(layer: clouds, steps: 0).layer
+        var uRunwayA = SIMD4<Float>(0, 0, 0, 1), uRunwayB = SIMD4<Float>(0, 0, 0, 0)
+        if let rw = runway {
+            uRunwayA = SIMD4(Float(rw.threshold.x), Float(rw.threshold.y), Float(rw.direction.x), Float(rw.direction.y))
+            uRunwayB = SIMD4(Float(rw.length), Float(rw.width), Float(rw.lowNumber), 1)
+        }
         func uniforms(model: simd_float4x4) -> WorldUniforms {
-            WorldUniforms(viewProj: viewProj, model: model, sunDir: SIMD4(toSun, sunAz), sunColour: SIMD4(L.sunColour, L.exposure),
-                          ambientSky: SIMD4(L.ambientSky, dims.w), ambientGround: SIMD4(L.ambientGround, Float(fieldPattern?.seed ?? 0)),
-                          skyHorizon: SIMD4(L.skyHorizon, fieldPattern.map { $0.autumn ? 2 : 1 } ?? 0), tableDims: SIMD4(dims.x, dims.y, dims.z, doShadows ? 2 : 0),
-                          shadow0: cascades[0], shadow1: cascades[1],
-                          cascadeSplits: SIMD4(ShadowCascades.splits[0], ShadowCascades.splits[1],
-                                               2 * ShadowCascades.halfExtents[0] / Float(ShadowCascades.size),
-                                               2 * ShadowCascades.halfExtents[1] / Float(ShadowCascades.size)),
-                          cascadeDepth: SIMD4(ShadowCascades.depthRanges[0], ShadowCascades.depthRanges[1], 0, 0),
-                          cameraPos: SIMD4(Float(Self.wrap(c.position.x)), Float(Self.wrap(c.position.y)), Float(c.position.z), 0),
-                          cameraLocal: SIMD4(Float(c.position.x), Float(c.position.y), Float(c.position.z), 0),
-                          imageryNear: imageryNear.map { SIMD4(Float($0.centre.x), Float($0.centre.y), Float($0.half), 1) } ?? .zero,
-                          imageryFar: imageryFar.map { SIMD4(Float($0.centre.x), Float($0.centre.y), Float($0.half), 1) } ?? .zero,
-                          clouds: CloudUniforms(layer: clouds, steps: 0).layer,
-                          fieldGrid: parcelTex.map { SIMD4(Float($0.grid.iu0), Float($0.grid.iv0), Float($0.grid.width), Float($0.grid.height)) } ?? .zero,
-                          imageryDetail: imageryDetail.map { SIMD4(Float($0.centre.x), Float($0.centre.y), Float($0.half), 1) } ?? .zero)
+            WorldUniforms(viewProj: viewProj, model: model, sunDir: SIMD4<Float>(toSun, sunAz), sunColour: SIMD4<Float>(L.sunColour, L.exposure),
+                          ambientSky: SIMD4<Float>(L.ambientSky, dims.w), ambientGround: SIMD4<Float>(L.ambientGround, fieldSeed),
+                          skyHorizon: SIMD4<Float>(L.skyHorizon, fieldMode), tableDims: uTableDims,
+                          shadow0: cascades[0], shadow1: cascades[1], shadow2: cascades[2], shadow3: cascades[3],
+                          cascadeSplits: uSplits, cascadeTexel: uTexel, cascadeDepth: uDepth,
+                          cameraPos: uCameraPos, cameraLocal: uCameraLocal, imageryNear: uNear, imageryFar: uFar,
+                          clouds: cloudLayer, fieldGrid: uFieldGrid, imageryDetail: uDetail, imageryMid: uMid,
+                          skyZenith: uZenith, quality: uQuality, runwayA: uRunwayA, runwayB: uRunwayB)
         }
         if let e = environment {
             let o = e.origin - c.position
@@ -1011,6 +1080,23 @@ public final class WorldRenderer {
                 drawn += 1
             }
             lastDrawnChunks = drawn
+            enc.setRenderPipelineState(pipeline)
+        }
+        if let bd = buildingData {
+            var u = uniforms(model: Self.translation(-c.position))
+            let planes = Self.planes(viewProj)
+            let o = SIMD3<Float>(Float(-c.position.x), Float(-c.position.y), Float(-c.position.z))
+            enc.setRenderPipelineState(buildingPipeline)
+            enc.setVertexBuffer(bd.vertices, offset: 0, index: 0)
+            enc.setVertexBytes(&u, length: MemoryLayout<WorldUniforms>.stride, index: 1)
+            enc.setFragmentBytes(&u, length: MemoryLayout<WorldUniforms>.stride, index: 1)
+            var drawn = 0
+            for cell in bd.cells where Self.boxVisible(planes, cell.min + o, cell.max + o) {
+                enc.drawIndexedPrimitives(type: .triangle, indexCount: cell.indexCount, indexType: .uint32, indexBuffer: bd.indices,
+                                          indexBufferOffset: cell.indexStart * 4)
+                drawn += 1
+            }
+            lastDrawnBuildingCells = drawn
             enc.setRenderPipelineState(pipeline)
         }
         if let tr = trees {
@@ -1047,6 +1133,8 @@ public final class WorldRenderer {
             enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: a.count)
             if cockpitView, let ck = cockpit {
                 u.cameraPos.w = 0
+                u.quality.y = 1
+                defer { u.quality.y = 0 }
                 enc.setVertexBuffer(ck.buffer, offset: 0, index: 0)
                 enc.setVertexBytes(&u, length: MemoryLayout<WorldUniforms>.stride, index: 1)
                 enc.setFragmentBytes(&u, length: MemoryLayout<WorldUniforms>.stride, index: 1)
@@ -1076,6 +1164,7 @@ public final class WorldRenderer {
             cr.steps = cloudSteps
             cr.downsample = cloudDownsample
             cr.lightSteps = cloudLightSteps
+            cr.fineDetail = cloudDetail
             var cu = CloudUniforms(layer: clouds, steps: cloudSteps)
             let r = simd_normalize(simd_cross(fwd, upHint))
             let up = simd_cross(r, fwd)

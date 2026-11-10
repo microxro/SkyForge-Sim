@@ -30,9 +30,15 @@ public struct RealWorldDetail: Sendable, Equatable {
     public var nearHalf: Double, nearStep: Double, midHalf: Double, midStep: Double, farHalf: Double, farStep: Double
     public var imageryNearSize: Int, imageryFarSize: Int
     public var treeRadius: Double, maxTrees: Int
-    /// Sharp camera-following imagery square (US aerial photo only, z18 ≈ 0.5 m/px); size 0 = none.
+    /// Sharp camera-following imagery square (aerial photo only, z18 ≈ 0.5 m/px); size 0 = none.
     /// The region loads it around the start view; the app re-streams it ahead of the aircraft.
     public var imageryDetailHalf: Double, imageryDetailSize: Int
+    /// Middle-distance imagery square between the near and far layers (size 0 = none): without it
+    /// everything beyond the near square is drawn from the 40 km far mosaic at tens of metres per pixel.
+    public var imageryMidHalf: Double = 14_000, imageryMidSize: Int = 0
+    /// Bundled or streamed building footprints are drawn out to this distance from the airfield;
+    /// beyond `buildingFullRadius` only large or tall ones (small houses there are sub-pixel).
+    public var buildingRadius: Double = 3_000, buildingFullRadius: Double = 3_000
     public init(nearHalf: Double, nearStep: Double, midHalf: Double, midStep: Double, farHalf: Double, farStep: Double,
                 imageryNearSize: Int, imageryFarSize: Int, treeRadius: Double, maxTrees: Int,
                 imageryDetailHalf: Double = 1_200, imageryDetailSize: Int = 0) {
@@ -41,15 +47,36 @@ public struct RealWorldDetail: Sendable, Equatable {
         self.farHalf = farHalf; self.farStep = farStep; self.imageryNearSize = imageryNearSize; self.imageryFarSize = imageryFarSize
         self.treeRadius = treeRadius; self.maxTrees = maxTrees
     }
-    public static let phone = RealWorldDetail(nearHalf: 3_000, nearStep: 16, midHalf: 12_000, midStep: 80, farHalf: 40_000, farStep: 400,
-                                              imageryNearSize: 2_048, imageryFarSize: 1_024, treeRadius: 1_800, maxTrees: 40_000,
-                                              imageryDetailHalf: 600, imageryDetailSize: 2_048)
-    public static let tablet = RealWorldDetail(nearHalf: 3_200, nearStep: 12, midHalf: 12_000, midStep: 60, farHalf: 40_000, farStep: 300,
-                                               imageryNearSize: 3_072, imageryFarSize: 2_048, treeRadius: 2_400, maxTrees: 90_000,
-                                               imageryDetailHalf: 600, imageryDetailSize: 2_048)
-    public static let desktop = RealWorldDetail(nearHalf: 3_200, nearStep: 12, midHalf: 12_000, midStep: 48, farHalf: 40_000, farStep: 240,
-                                                imageryNearSize: 4_096, imageryFarSize: 2_048, treeRadius: 3_000, maxTrees: 75_000,
-                                                imageryDetailHalf: 800, imageryDetailSize: 4_096)
+    public static let phone: RealWorldDetail = {
+        var d = RealWorldDetail(nearHalf: 3_000, nearStep: 16, midHalf: 12_000, midStep: 80, farHalf: 40_000, farStep: 400,
+                                imageryNearSize: 2_048, imageryFarSize: 1_024, treeRadius: 1_800, maxTrees: 40_000,
+                                imageryDetailHalf: 600, imageryDetailSize: 2_048)
+        d.imageryMidSize = 2_048; d.imageryMidHalf = 12_000; d.buildingRadius = 4_000; d.buildingFullRadius = 2_500
+        return d
+    }()
+    public static let tablet: RealWorldDetail = {
+        var d = RealWorldDetail(nearHalf: 3_200, nearStep: 12, midHalf: 12_000, midStep: 60, farHalf: 40_000, farStep: 300,
+                                imageryNearSize: 3_072, imageryFarSize: 2_048, treeRadius: 2_400, maxTrees: 90_000,
+                                imageryDetailHalf: 600, imageryDetailSize: 2_048)
+        d.imageryMidSize = 2_048; d.imageryMidHalf = 12_000; d.buildingRadius = 6_000; d.buildingFullRadius = 3_500
+        return d
+    }()
+    public static let desktop: RealWorldDetail = {
+        var d = RealWorldDetail(nearHalf: 3_200, nearStep: 12, midHalf: 12_000, midStep: 48, farHalf: 40_000, farStep: 240,
+                                imageryNearSize: 4_096, imageryFarSize: 2_048, treeRadius: 3_000, maxTrees: 75_000,
+                                imageryDetailHalf: 800, imageryDetailSize: 4_096)
+        d.imageryMidSize = 4_096; d.buildingRadius = 9_500; d.buildingFullRadius = 5_000
+        return d
+    }()
+    /// Everything at its best: finer terrain, the most trees, every building. Frame rate is not a concern
+    /// at this tier (review frames, photo mode, fast desktop GPUs).
+    public static let ultra: RealWorldDetail = {
+        var d = RealWorldDetail(nearHalf: 3_200, nearStep: 8, midHalf: 12_000, midStep: 32, farHalf: 40_000, farStep: 160,
+                                imageryNearSize: 4_096, imageryFarSize: 2_048, treeRadius: 4_200, maxTrees: 260_000,
+                                imageryDetailHalf: 800, imageryDetailSize: 4_096)
+        d.imageryMidSize = 4_096; d.buildingRadius = 9_500; d.buildingFullRadius = 6_500
+        return d
+    }()
 }
 
 public struct RealWorldRegion: FlightWorld {
@@ -69,6 +96,14 @@ public struct RealWorldRegion: FlightWorld {
     /// OpenStreetMap buildings and roads around the airfield (nil when Overpass was unreachable and
     /// nothing was cached; the renderer then shows imagery only).
     public var osm: OSMData? = nil
+    /// Middle-distance imagery (between the near and far layers), colour-matched to the near photo.
+    public var midImagery: ImageryMosaic? = nil
+    /// The aerial-photo source of the sharp camera-following layer (nil where there is none).
+    public var detailProvider: (any ImageryProvider)? = nil
+    /// Surveyed land cover around the field (bundled with showcase airports; nil elsewhere).
+    public var landCover: LandCoverGrid? = nil
+    /// The low runway end's designation number (5 for "05", 0 when unknown).
+    public var runwayLowNumber = 0
     /// Procedural buildings placed on built-up imagery where OSM has none (empty when OSM has buildings).
     public var fallbackBuildings: [OSMBuilding] = []
 
@@ -102,8 +137,11 @@ public struct RealWorldRegion: FlightWorld {
     }
 
     /// Loads an airport region (network once, then the content-store cache).
+    /// `bundledBuildings`: use the showcase pack's building footprints when no live OpenStreetMap data came back.
+    /// `bundledLandCover`: use the showcase pack's land cover grid (water at any distance).
     public static func load(airport ident: String, detail: RealWorldDetail, transport: any HTTPTransport, cache: KeyedCache?,
-                            navData: NavDatabase? = nil, progress: @escaping @Sendable (String) -> Void = { _ in }) async throws -> RealWorldRegion {
+                            navData: NavDatabase? = nil, bundledBuildings: Bool = true, bundledLandCover: Bool = true,
+                            progress: @escaping @Sendable (String) -> Void = { _ in }) async throws -> RealWorldRegion {
         let db = try navData ?? BundledNavData.load()
         guard let apt = db.airport(ident) else { throw LoadError.unknownAirport(ident) }
         guard let rwy = db.runways(at: ident).filter({ $0.hasGeometry && !$0.closed }).max(by: { $0.lengthFeet < $1.lengthFeet }),
@@ -126,11 +164,25 @@ public struct RealWorldRegion: FlightWorld {
         async let hFar = HeightMosaic.build(origin: origin, centre: .zero, halfExtent: detail.farHalf, size: 512, zoom: 10, streamer: ts)
         progress("Imagery")
         let usgs = USGSImageryProvider()
-        let nearProvider: any ImageryProvider = usgs.covers(latitude: latC, longitude: lonC) ? usgs : Sentinel2CloudlessProvider()
+        // Bundled aerial surveys (LINZ, New Zealand) replace Sentinel-2 where the pack carries them.
+        let linz = LINZAerialProvider()
+        var hasLINZ = false
+        if linz.covers(latitude: latC, longitude: lonC) {
+            hasLINZ = (try? await transport.get(linz.url(TileCoord.containing(latitude: latC, longitude: lonC, zoom: 15)))) != nil
+        }
+        func pickNear(_ linzTiles: Bool) -> any ImageryProvider {
+            if linzTiles { return linz }
+            if usgs.covers(latitude: latC, longitude: lonC) { return usgs }
+            return Sentinel2CloudlessProvider()
+        }
+        let nearProvider = pickNear(hasLINZ)
+        // The survey is 0.1–0.3 m native: the best tier keeps the near layer at 0.8 m per pixel.
+        let nearSize = hasLINZ && detail.imageryNearSize >= 4_096 && detail.nearStep <= 8 ? 8_192 : detail.imageryNearSize
+        let aerial = nearProvider.id == usgs.id || nearProvider.id == linz.id
         let farProvider = Sentinel2CloudlessProvider()
         let sNear = ImageryStreamer(provider: nearProvider, transport: transport, cache: cache)
         let sFar = ImageryStreamer(provider: farProvider, transport: transport, cache: cache)
-        async let iNear = ImageryMosaic.build(origin: origin, centre: nearCentre, halfExtent: detail.nearHalf, size: detail.imageryNearSize,
+        async let iNear = ImageryMosaic.build(origin: origin, centre: nearCentre, halfExtent: detail.nearHalf, size: nearSize,
                                               provider: nearProvider, streamer: sNear)
         async let iFar = ImageryMosaic.build(origin: origin, centre: .zero, halfExtent: detail.farHalf, size: detail.imageryFarSize,
                                              provider: farProvider, streamer: sFar)
@@ -138,31 +190,109 @@ public struct RealWorldRegion: FlightWorld {
         // the threshold, just ahead of the chase camera on the 2 km final. Aerial photo (USGS) only:
         // Sentinel-2 is 10 m native. The app re-streams it ahead of the aircraft in flight.
         let detailCentre = thr - (v / max(len, 1)) * 1_500
-        let wantDetail = detail.imageryDetailSize > 0 && nearProvider.id == usgs.id
-        let detailProvider = USGSImageryProvider(maxZoom: 18)
+        let wantDetail = detail.imageryDetailSize > 0 && aerial
+        func pickDetail() -> any ImageryProvider {
+            if nearProvider.id == linz.id { return LINZAerialProvider(maxZoom: 18) }
+            return USGSImageryProvider(maxZoom: 18)
+        }
+        let detailProvider = pickDetail()
         let sDetail = ImageryStreamer(provider: detailProvider, transport: transport, cache: cache)
         async let iDetail: ImageryMosaic? = wantDetail
             ? ImageryMosaic.build(origin: origin, centre: detailCentre, halfExtent: detail.imageryDetailHalf, size: detail.imageryDetailSize,
                                   provider: detailProvider, streamer: sDetail) : nil
+        // Middle-distance layer: the aerial photo where there is one (zoom capped at 14, about 7 m/px),
+        // otherwise Sentinel-2 at its full resolution.
+        func pickMid() -> any ImageryProvider {
+            if nearProvider.id == usgs.id { return USGSImageryProvider(maxZoom: 14) }
+            if nearProvider.id == linz.id { return LINZAerialProvider(maxZoom: 15) }
+            return Sentinel2CloudlessProvider()
+        }
+        let midProvider = pickMid()
+        let sMid = ImageryStreamer(provider: midProvider, transport: transport, cache: cache)
+        async let iMid: ImageryMosaic? = detail.imageryMidSize > 0
+            ? ImageryMosaic.build(origin: origin, centre: .zero, halfExtent: detail.imageryMidHalf, size: detail.imageryMidSize,
+                                  provider: midProvider, streamer: sMid) : nil
         async let osmFetch = OSMService(transport: transport, cache: cache).data(around: origin, halfExtent: min(detail.nearHalf, 3_000))
         let (hn, hf, inr, ifr) = await (hNear, hFar, iNear, iFar)
         let idt = await iDetail
+        var imd = await iMid
         progress("Buildings")
-        let osm = await osmFetch
+        var osm = await osmFetch
+        if bundledBuildings, osm?.buildings.isEmpty != false, let packed = Showcase.buildingData(for: ident) {
+            // Bundled footprints: everything near the field, only large or tall buildings farther out.
+            let full = detail.buildingFullRadius, far = detail.buildingRadius
+            let list = (try? BuildingPack.parse(packed, origin: origin) { c, area, height in
+                let d = (c * c).sum().squareRoot()
+                return d < full || (d < far && (height >= 14 || area >= 600))
+            }) ?? []
+            if !list.isEmpty { osm = OSMData(buildings: list, roads: osm?.roads ?? []) }
+        }
+        if bundledBuildings, osm?.roads.isEmpty != false, let packed = Showcase.roadData(for: ident) {
+            // Bundled streets: every class near the field, through roads only farther out.
+            let full = detail.buildingFullRadius * 0.6, far = detail.buildingRadius
+            let list = (try? RoadPack.parse(packed, origin: origin) { cls, c in
+                let d = (c * c).sum().squareRoot()
+                if d < full { return true }
+                switch cls {
+                case .service, .track, .residential, .livingStreet, .unclassified: return false
+                default: return d < far
+                }
+            }) ?? []
+            if !list.isEmpty { osm = OSMData(buildings: osm?.buildings ?? [], roads: list) }
+        }
         progress("Land cover")
         var attribution = [nearProvider.attribution]
         if farProvider.id != nearProvider.id { attribution.append(farProvider.attribution) }
         attribution.append("Elevation: Terrarium tiles (Mapzen/Tilezen; SRTM, USGS 3DEP and others)")
         attribution.append("Airports: OurAirports (public domain)")
         if let o = osm, !(o.buildings.isEmpty && o.roads.isEmpty) { attribution.append(OSMData.attribution) }
+        let cover = bundledLandCover ? Showcase.landCover(for: ident) : nil
+        if cover != nil { attribution.append(LandCoverGrid.attribution) }
+        // A mid layer with no coverage (offline pack without those tiles) is dropped; otherwise it is
+        // graded like the far layer so the three photo layers meet without a tone step.
+        if let m = imd, !m.coverage.contains(where: { $0 > 0 }) { imd = nil }
         var region = RealWorldRegion(name: apt.name, airportIdent: ident, origin: origin, runwayThreshold: thr, runwayHeading: heading,
                                runwayLengthMetres: len, runwayWidthMetres: rwy.widthMetres, runwayElevation: elevFt * Units.feetToMetres,
                                nearHeights: hn, farHeights: hf, ground: ImageryGround(near: inr, far: ifr, detail: idt, grade: true), attribution: attribution, detail: detail)
         // Dark runway and apron asphalt reads as water by colour; real water is flat and sizeable.
         region.ground = region.ground.cleaningWater(exclude: region.pavedArea) { x, y in max(0, hn.height(x, y)) }
         region.osm = osm
+        if wantDetail { region.detailProvider = detailProvider }
+        region.runwayLowNumber = Int(rwy.low.ident.prefix { $0.isNumber }) ?? 0
+        if let cover {
+            region.landCover = cover
+            region.ground = region.ground.refiningWater(with: cover)
+        }
+        if var m = imd {
+            if midProvider.id != nearProvider.id { ImageryGrading.dehaze(&m) }
+            ImageryGrading.match(far: &m, to: region.ground.near)
+            region.midImagery = m
+        }
         if osm?.buildings.isEmpty != false { region.fallbackBuildings = region.proceduralBuildings() }
         return region
+    }
+
+    /// The ground photo's colour at a point as the terrain shader's albedo (nil where there is no imagery).
+    public func photoAlbedo(_ p: SIMD2<Double>) -> SIMD3<Float>? {
+        guard let c = ground.near.sample(p.x, p.y) ?? midImagery?.sample(p.x, p.y) ?? ground.far?.sample(p.x, p.y) else { return nil }
+        var a = SIMD3(powf(powf(c.x, 2.2), 1.08), powf(powf(c.y, 2.2), 1.08), powf(powf(c.z, 2.2), 1.08)) * 0.90
+        for k in 0..<3 where a[k] > 0.42 { a[k] = 0.42 + (a[k] - 0.42) * 0.48 }      // as the shader's photoAlbedo
+        return a
+    }
+
+    /// Buildings as GPU-ready geometry with facade coordinates (nil when there are none). Roofs take the
+    /// photo's colour under them, so from above a building reads as the photo standing up.
+    public func buildingMesh() -> BuildingMesh? {
+        let list = buildings
+        guard !list.isEmpty else { return nil }
+        let m = BuildingMeshBuilder.build(list, ground: { self.height($0, $1) }, roofPhoto: { self.photoAlbedo($0) })
+        return m.indices.isEmpty ? nil : m
+    }
+
+    /// OSM roads as terrain-draped ribbons (nil without road data).
+    public func roadMesh() -> TriangleSoup? {
+        guard let roads = osm?.roads, !roads.isEmpty else { return nil }
+        return OSMMeshBuilder.roads(roads) { self.height($0, $1) }
     }
 
     /// OSM buildings and roads as one mesh in local metres (nil without OSM data).
@@ -289,7 +419,7 @@ public struct RealWorldRegion: FlightWorld {
         }
     }
 
-    /// Whether the sharp camera-following layer exists here (US aerial photo coverage).
+    /// Whether the sharp camera-following layer exists here (aerial photo coverage).
     public var detailStreamable: Bool { ground.detail != nil && detail.imageryDetailSize > 0 }
 
     /// Where the sharp layer should be centred for an aircraft at `position` moving along `velocity`
@@ -304,7 +434,7 @@ public struct RealWorldRegion: FlightWorld {
     /// to the near mosaic. Nil where there is no aerial photo coverage.
     public func streamDetail(around centre: SIMD2<Double>, transport: any HTTPTransport, cache: KeyedCache?) async -> ImageryMosaic? {
         guard detailStreamable else { return nil }
-        let provider = USGSImageryProvider(maxZoom: 18)
+        let provider: any ImageryProvider = detailProvider ?? USGSImageryProvider(maxZoom: 18)
         var m = await ImageryMosaic.build(origin: origin, centre: centre, halfExtent: detail.imageryDetailHalf, size: detail.imageryDetailSize,
                                           provider: provider, streamer: ImageryStreamer(provider: provider, transport: transport, cache: cache))
         guard m.coverage.contains(where: { $0 > 0 }) else { return nil }

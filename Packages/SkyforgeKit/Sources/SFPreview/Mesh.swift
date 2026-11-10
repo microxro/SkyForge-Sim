@@ -6,6 +6,11 @@ import SFWorldGen
 
 public enum Material: UInt8, Sendable {
     case opaque = 0, water = 1, foliage = 2, road = 3, emissive = 4, glass = 5, paint = 6, terrain = 7, prop = 9
+    /// Aircraft skin: `airframe` is the fuselage (glazing, livery and seams drawn per pixel from body
+    /// coordinates), `airSurface` the wings, tail and fairings (livery only), `metal` polished parts.
+    case airframe = 10, airSurface = 11, metal = 12
+    /// Building walls (procedural windows, storeys and cladding per pixel) and roofs (roofing detail).
+    case wall = 14, roof = 15
 }
 
 public struct TriangleSoup: Sendable {
@@ -47,8 +52,10 @@ public struct TriangleSoup: Sendable {
                              ca: SIMD3<Float>, cb: SIMD3<Float>, cc: SIMD3<Float>, material m: Material,
                              fields: SIMD3<Float>? = nil) {
         if vertexAlbedo.isEmpty && !albedo.isEmpty { vertexAlbedo = albedo.flatMap { [$0, $0, $0] } }
-        if let f = fields, f != .zero, vertexField.isEmpty { vertexField = [Float](repeating: 0, count: 3 * material.count) }
-        if !vertexField.isEmpty { let f = fields ?? .zero; vertexField.append(f.x); vertexField.append(f.y); vertexField.append(f.z) }
+        // The first triangle of a soup has no earlier ones to pad, so the channel is "on" from its fields alone.
+        let hasField = !vertexField.isEmpty || (fields ?? .zero) != .zero
+        if hasField && vertexField.isEmpty { vertexField = [Float](repeating: 0, count: 3 * material.count) }
+        if hasField { let f = fields ?? .zero; vertexField.append(f.x); vertexField.append(f.y); vertexField.append(f.z) }
         positions.append(local(a)); positions.append(local(b)); positions.append(local(c))
         normals.append(na); normals.append(nb); normals.append(nc)
         albedo.append((ca + cb + cc) / 3); material.append(m)

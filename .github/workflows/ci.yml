@@ -91,6 +91,10 @@ jobs:
   # lines in their own job so they can be read back without the rest of the test output.
   frames:
     runs-on: macos-26
+    strategy:
+      fail-fast: false
+      matrix:
+        ident: [KMRY, KBFI, KASE, LSZS, NZQN, SKYWORLD]   # one job each: a job log carries a handful of frames
     steps:
       - uses: actions/checkout@v4
       - name: Select Xcode
@@ -99,4 +103,5 @@ jobs:
       - name: Showcase frames
         env:
           SKYFORGE_VISUAL_LOG: "1"
+          SKYFORGE_FRAMES: ${{ matrix.ident }}
         run: swift test -c release -Xswiftc -enable-testing --package-path Packages/SkyforgeKit --filter ShowcaseRenderTests

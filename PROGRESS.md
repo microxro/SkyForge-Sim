@@ -3,8 +3,8 @@
 Legend: [x] done and verified, [ ] not done. Unchecked items are not available in the app.
 
 ## CURRENT
-- CURRENT: Bold Mode (docs/BOLD_MODE.md). High-tier frame-time budget, then art review of the CI Metal frames.
-- Next 3: C10 high tier under 16.7 ms on CI · art round on real-airport frames · A3 procedural fallback
+- CURRENT: Visual transformation (user directive 2026-11-10, ADR-0021, PR #5). Ultra-tier CI frames are the review loop.
+- Next 3: LINZ aerial imagery in the NZQN pack and its frames · near-ground sharpness at US airports · before/after comparison in the PR
 
 ## Bold Mode (user directive 2026-11-08, docs/BOLD_MODE.md)
 ### Phase A — Real world first

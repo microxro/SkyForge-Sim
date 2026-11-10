@@ -41,6 +41,11 @@ struct FrameTimeTests {
 
     static func median(_ v: [Double]) -> Double { let s = v.sorted(); return s[s.count / 2] }
 
+    /// Visual-transformation phase (user directive 2026-11-10, ADR-0021): image quality comes first and the
+    /// tier budgets are recorded, not enforced. Frame times are still measured and printed on every run, and
+    /// a frame slower than this bound fails (a hang or a pathological regression).
+    static let sanityBoundMs = 400.0
+
     func report(_ scene: String, _ t: Tier, _ ms: [Double]) {
         let s = ms.sorted()
         print(String(format: "SKYFORGE_FRAMETIME scene=%@ tier=%@ %dx%d median=%.2fms p95=%.2fms min=%.2fms budget=%.1fms",
@@ -65,7 +70,8 @@ struct FrameTimeTests {
             let ms = try bench()
             report("skyworld", t, ms)
             try breakdown("skyworld", r, t, bench)
-            #expect(Self.median(ms) < t.budgetMs, "SkyWorld \(t.name): median \(Self.median(ms)) ms over \(t.budgetMs) ms")
+            if Self.median(ms) >= t.budgetMs { print("SKYFORGE_OVERBUDGET scene=skyworld tier=\(t.name) median=\(Self.median(ms))ms budget=\(t.budgetMs)ms") }
+            #expect(Self.median(ms) < Self.sanityBoundMs, "SkyWorld \(t.name): median \(Self.median(ms)) ms")
         }
     }
 
@@ -86,7 +92,8 @@ struct FrameTimeTests {
             let ms = try bench()
             report("real-\(a.ident)", t, ms)
             try breakdown("real-\(a.ident)", r, t, bench)
-            #expect(Self.median(ms) < t.budgetMs, "\(a.ident) \(t.name): median \(Self.median(ms)) ms over \(t.budgetMs) ms")
+            if Self.median(ms) >= t.budgetMs { print("SKYFORGE_OVERBUDGET scene=real-\(a.ident) tier=\(t.name) median=\(Self.median(ms))ms budget=\(t.budgetMs)ms") }
+            #expect(Self.median(ms) < Self.sanityBoundMs, "\(a.ident) \(t.name): median \(Self.median(ms)) ms")
         }
     }
 }

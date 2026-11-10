@@ -20,8 +20,19 @@ public struct RealWorldRenderData: Sendable {
         }
     }
     public struct Imagery: Sendable { public var centre: SIMD2<Double>; public var halfExtent: Double; public var size: Int; public var rgb: [UInt8]
+        /// Water fraction per pixel (0…255) from surveyed land cover, stored in the texture's alpha; nil = none.
+        public var water: [UInt8]? = nil
         public init(centre: SIMD2<Double>, halfExtent: Double, size: Int, rgb: [UInt8]) { self.centre = centre; self.halfExtent = halfExtent; self.size = size; self.rgb = rgb }
     }
+    /// The main runway for painted markings: low threshold, unit direction toward the high end (region
+    /// metres), length and width (m) and the low end's number (0 = unknown, no numerals).
+    public struct Runway: Sendable, Equatable {
+        public var threshold: SIMD2<Double>, direction: SIMD2<Double>, length: Double, width: Double, lowNumber: Int
+        public init(threshold: SIMD2<Double>, direction: SIMD2<Double>, length: Double, width: Double, lowNumber: Int) {
+            self.threshold = threshold; self.direction = direction; self.length = length; self.width = width; self.lowNumber = lowNumber
+        }
+    }
+    public var runway: Runway? = nil
     public var chunks: [Chunk]
     public var trees: [Tree]
     public var near: Imagery?
@@ -32,8 +43,12 @@ public struct RealWorldRenderData: Sendable {
     /// Where the 3D trees stand, for removing the photo's own trees and shadows from imagery streamed later
     /// (the in-flight detail layer), as `init(region:)` does for the near and detail layers.
     public var photoCrowns: [ImageryDelighting.Crown] = []
-    /// OpenStreetMap buildings and roads (local metres), drawn with the world mesh pass.
+    /// OpenStreetMap roads (local metres), drawn with the world mesh pass.
     public var buildings: TriangleSoup?
+    /// Buildings with facade coordinates (their own pass: windows, cladding and roofs per pixel).
+    public var buildingMesh: BuildingMesh?
+    /// Middle-distance imagery between the near and far layers.
+    public var mid: Imagery?
     public init(chunks: [Chunk], trees: [Tree], near: Imagery?, far: Imagery?, waterMask: (size: Int, values: [Float])?) {
         self.chunks = chunks; self.trees = trees; self.near = near; self.far = far; self.waterMask = waterMask
     }
@@ -63,10 +78,28 @@ extension RealWorldRenderData {
         var near = g.near, det = g.detail
         ImageryDelighting.removePhotoTrees(&near, crowns: crowns) { x, y in g.water(x, y) ?? 0 }
         if det != nil { ImageryDelighting.removePhotoTrees(&det!, crowns: crowns) { x, y in g.water(x, y) ?? 0 } }
-        self.init(chunks: chunks, trees: trees, near: imagery(near), far: imagery(g.far),
+        /// A layer with the land cover's water fraction per pixel (the outer layers have no photo-derived mask).
+        func withWater(_ m: ImageryMosaic?) -> Imagery? {
+            guard var out = imagery(m), let m, let cover = region.landCover else { return imagery(m) }
+            var w = [UInt8](repeating: 0, count: m.size * m.size)
+            let mpp = m.metresPerPixel
+            for j in 0..<m.size {
+                let y = m.centre.y + m.halfExtent - (Double(j) + 0.5) * mpp
+                for i in 0..<m.size {
+                    w[j * m.size + i] = UInt8((cover.water(m.centre.x - m.halfExtent + (Double(i) + 0.5) * mpp, y) * 255).rounded())
+                }
+            }
+            out.water = w
+            return out
+        }
+        self.init(chunks: chunks, trees: trees, near: imagery(near), far: withWater(g.far),
                   waterMask: (g.maskSize, g.waterMask))
         detail = imagery(det)
         photoCrowns = crowns
-        buildings = region.osmMesh()
+        buildings = region.roadMesh()
+        buildingMesh = region.buildingMesh()
+        mid = withWater(region.midImagery)
+        runway = Runway(threshold: region.runwayThreshold, direction: region.runwayDirection, length: region.runwayLengthMetres,
+                        width: region.runwayWidthMetres, lowNumber: region.runwayLowNumber)
     }
 }
