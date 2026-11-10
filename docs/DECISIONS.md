@@ -81,3 +81,40 @@
 - Scope: US airports only. Sentinel-2 is 10 m native.
 - Packs: KMRY, KASE, KBFI and KCOI re-recorded; showcase total 51 MB.
 - Licence: USGS The National Map imagery is a US Government work (public domain). No key, no account.
+
+## ADR-0018 Texture streaming for the sharp imagery layer (2026-11-08)
+- The fixed z17 approach square (ADR-0017) became a camera-following z18 layer:
+  - 1.2 km at 0.59 m/px on phone and tablet (2048 px); 1.6 km at 0.39 m/px on desktop (4096 px).
+  - The region loads it around the start view. Once the aircraft drifts 40 % of the half extent, the app re-streams it centred 75 % of the half extent ahead.
+- Loading: tiles come from the pack, then the tile cache, then the network. The texture and its mips are built off the main thread and swapped in on the render thread, so no frame stalls.
+- Memory: one detail texture at a time (phone: 2048² RGBA + mips ≈ 22 MB).
+- Evidence: CPU reference renders of the KMRY start view show the GPU sampling path is correct. The remaining softness at 170 m AGL is mostly photo trees and baked shadows at grazing angles, not texel size, so the gain is largest low on approach and on the ground.
+
+## ADR-0019 Review-camera ground is source-limited, not magnification-limited (2026-11-09)
+**Context**
+- Art rounds 4–6 levelled off around 5.0–5.2.
+- The art director attributed this to a magnified ~1 m/px photo filling the bottom 40 % of the frame. They proposed classified detail materials as the structural fix.
+
+**Measurement**
+- **Pixel footprint at the review camera:** the chase view on a 3° final is about 120 m above ground. There a bottom-row pixel spans about 0.4 m across by 1 m in depth.
+- **Imagery resolution:** the z18 USGS layer is about 0.5 m/texel at these latitudes. The ground is therefore sampled at about 1:1, not magnified.
+- **Effect of the materials layer (b7affb8):** it changed the lower half of every review frame by less than 1/255 on average. High-frequency energy was unchanged.
+  - The anti-aliasing gate correctly keeps sub-metre octaves off pixels this large.
+- **Sharpness is limited by the source:**
+  - An earlier CPU reference already matched the GPU softness.
+  - The USGS export at z18 is at or near the service's native resolution, so z19 would oversample.
+
+**Decision**
+- **Keep the materials layer.** It is cheap and correct, and it acts where the ground is magnified: runway start, cockpit view and low flight.
+- **Stop treating near-ground sharpness as the lever for the review frames.** Sharper ground at this camera needs imagery sharper than ~0.5 m. Within the licence rules (keyless, Apache-compatible, no Bing/MSFS) no such source is reachable from the build environment: the NAIP host is blocked, and OSM is unreachable (ADR-0016).
+- **The remaining levers** are lighting, atmosphere, buildings, trees and the aircraft.
+- **Feasibility:** reaching 8/10 against commercial sims on real-airport frames may not be possible within these constraints. Any round that plateaus will be recorded here with its measurements, not hidden.
+
+## ADR-0020 Independent art review paused until 2026-11-14 (2026-11-09)
+- **Context:** the art-director agent stopped during round 20 on its weekly usage limit (resets 2026-11-14 09:00 UTC). The directive requires an independent scorer, and frames I score myself would not be independent or comparable with rounds 5–19.
+- **Decision:**
+  - Round 20 (the de-lighting structural change) stays unscored until the same reviewer can resume from its saved transcript.
+  - Meanwhile, work continues on the reviewer's outstanding round-19 fixes, each verified only for regressions (crops against the previous frames) and for frame time.
+  - No score is claimed for these rounds.
+  - A fresh reviewer on another model was not started: its scale would not match rounds 5–19, and switching the scorer mid-series would make the 0.2 rule meaningless.
+- **Consequence:** rounds 20+ are logged as "unscored" in VISUAL_LOG and scored together when review resumes.

@@ -49,6 +49,9 @@ public struct Tree: Sendable, Equatable {
     public var crownRadius: Double
     public var conifer: Bool
     public var colour: LinearRGB
+    public init(position: SIMD3<Double>, height: Double, crownRadius: Double, conifer: Bool, colour: LinearRGB) {
+        self.position = position; self.height = height; self.crownRadius = crownRadius; self.conifer = conifer; self.colour = colour
+    }
 }
 
 public struct ParkingLot: Sendable, Equatable {

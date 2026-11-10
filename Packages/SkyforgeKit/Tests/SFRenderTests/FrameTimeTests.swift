@@ -54,7 +54,9 @@ struct FrameTimeTests {
             let session = QuickFlightSession(world: world, start: .final)
             let cam = session.chaseCamera()
             let r = try WorldRenderer(lighting: .physicalPreset(.goldenHour, azimuthDegrees: 255, cameraHeightMetres: cam.position.z))
-            try r.setEnvironment(world.buildEnvironment(detail: t.sky))
+            let env = world.buildEnvironmentInstanced(detail: t.sky)
+            try r.setEnvironment(env.soup)
+            try r.setTrees(RealWorldRenderData.trees(env.trees))
             try r.setAircraft(QuickFlightWorld.aircraftMesh())
             r.clouds = .fairWeather; r.apply(t.settings)
             let c = session.bodyToENUColumns

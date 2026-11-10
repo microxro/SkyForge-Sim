@@ -49,12 +49,15 @@ public struct QuickFlightDetail: Sendable, Equatable {
     public var farHalfExtent: Double, farStep: Double
     public var objectRadius: Double
     public var treeDetailRadius: Double
+    /// Cap on instanced trees; farther trees are thinned first (`buildEnvironmentInstanced`).
+    public var maxTrees: Int = 1_000_000
     public static let phone = QuickFlightDetail(nearHalfExtent: 2_000, nearStep: 12, midHalfExtent: 7_000, midStep: 48,
                                                 farHalfExtent: 20_000, farStep: 200, objectRadius: 1_600, treeDetailRadius: 300)
     public static let tablet = QuickFlightDetail(nearHalfExtent: 2_500, nearStep: 9, midHalfExtent: 8_000, midStep: 36,
                                                  farHalfExtent: 24_000, farStep: 160, objectRadius: 2_200, treeDetailRadius: 450)
     public static let desktop = QuickFlightDetail(nearHalfExtent: 3_000, nearStep: 8, midHalfExtent: 9_000, midStep: 32,
-                                                  farHalfExtent: 28_000, farStep: 140, objectRadius: 2_400, treeDetailRadius: 550)
+                                                  farHalfExtent: 28_000, farStep: 140, objectRadius: 2_400, treeDetailRadius: 550,
+                                                  maxTrees: 58_000)   // 105k uncapped kept SkyWorld high at its budget; 65k left ~0 margin against CI variance (run 42724229611: 16.95 ms)
 }
 
 public struct QuickFlightWorld: FlightWorld {
@@ -76,8 +79,19 @@ public struct QuickFlightWorld: FlightWorld {
     public func height(_ x: Double, _ y: Double) -> Double { recipe.height(x, y) }
     public var runwayCentre: SIMD2<Double> { runway.threshold + runwayDirection * runway.length / 2 }
 
-    /// Static environment mesh around the airfield (no view culling: the camera moves).
+    /// Static environment mesh around the airfield (no view culling: the camera moves), trees baked in.
     public func buildEnvironment(detail d: QuickFlightDetail, origin: SIMD3<Double>? = nil) -> TriangleSoup {
+        build(detail: d, origin: origin, collectTrees: false).soup
+    }
+
+    /// The environment without trees, plus the trees as a list for GPU instancing (the Metal renderer
+    /// draws and culls them per 400 m cell; baked into the mesh they doubled SkyWorld's shadow cost).
+    public func buildEnvironmentInstanced(detail d: QuickFlightDetail) -> (soup: TriangleSoup, trees: [Tree]) {
+        build(detail: d, origin: nil, collectTrees: true)
+    }
+
+    func build(detail d: QuickFlightDetail, origin: SIMD3<Double>?, collectTrees: Bool) -> (soup: TriangleSoup, trees: [Tree]) {
+        var collected: [Tree] = []
         let focus = runwayCentre
         var b = SceneBuilder(generator: generator, origin: origin ?? SIMD3(focus.x, focus.y, 0))
         b.airfield = runway
@@ -88,26 +102,80 @@ public struct QuickFlightWorld: FlightWorld {
         b.addWater(centre: focus, halfExtent: d.nearHalfExtent * 1.4, step: 10)
         let r = d.objectRadius
         let cs = WorldGenerator.chunkSize
-        for cy in Int(((focus.y - r) / cs).rounded(.down))...Int(((focus.y + r) / cs).rounded(.down)) {
-            for cx in Int(((focus.x - r) / cs).rounded(.down))...Int(((focus.x + r) / cs).rounded(.down)) {
+        // Objects around the airfield and around the final approach (the 3 nm final start is ~4 km from
+        // the runway centre, beyond the object radius, so its whole foreground used to be bare fields).
+        let foci = [focus, runway.threshold - runwayDirection * 2_600]
+        func nearest(_ p: SIMD2<Double>) -> (dist: Double, focus: SIMD2<Double>) {
+            foci.map { f -> (Double, SIMD2<Double>) in let d = p - f; return ((d * d).sum().squareRoot(), f) }.min { $0.0 < $1.0 }!
+        }
+        let lo = SIMD2(foci.map(\.x).min()! - r, foci.map(\.y).min()! - r), hi = SIMD2(foci.map(\.x).max()! + r, foci.map(\.y).max()! + r)
+        for cy in Int((lo.y / cs).rounded(.down))...Int((hi.y / cs).rounded(.down)) {
+            for cx in Int((lo.x / cs).rounded(.down))...Int((hi.x / cs).rounded(.down)) {
+                let centre = SIMD2((Double(cx) + 0.5) * cs, (Double(cy) + 0.5) * cs)
+                if nearest(centre).dist > r + cs { continue }
                 let chunk = generator.generateChunk(cx: cx, cy: cy)
-                b.addRoads(chunk.roads, near: focus, radius: r * 1.3)
-                for bl in chunk.buildings {
-                    let dx = bl.center.x - focus.x, dy = bl.center.y - focus.y
-                    if dx * dx + dy * dy < r * r { b.addBuilding(bl) }
-                }
+                b.addRoads(chunk.roads, near: nearest(centre).focus, radius: r * 1.3)
+                for bl in chunk.buildings where nearest(bl.center).dist < r { b.addBuilding(bl) }
                 for lot in chunk.parkingLots { b.addParkingLot(lot) }
                 for t in chunk.trees {
-                    let dx = t.position.x - focus.x, dy = t.position.y - focus.y
-                    let dist = (dx * dx + dy * dy).squareRoot()
+                    let dist = nearest(SIMD2(t.position.x, t.position.y)).dist
                     if !SceneBuilder.keepTree(t.position, dist: dist, radius: r) { continue }
-                    b.addTree(t, detail: dist < d.treeDetailRadius ? 2 : 1)
+                    if collectTrees { collected.append(t) } else { b.addTree(t, detail: dist < d.treeDetailRadius ? 2 : 1) }
                 }
+            }
+        }
+        let hedges = hedgerowTrees(b.soup.fieldPattern, foci: foci, radius: r)
+        if collectTrees { collected += hedges } else { for t in hedges { b.addTree(t, detail: 1) } }
+        if collectTrees && collected.count > d.maxTrees {
+            // Thin only trees farther than 1 km from both foci, by a stable per-tree hash, to the cap.
+            let nearCount = collected.filter { nearest(SIMD2($0.position.x, $0.position.y)).dist <= 1_000 }.count
+            let keepFar = Double(max(0, d.maxTrees - nearCount)) / Double(max(1, collected.count - nearCount))
+            collected = collected.filter { t in
+                nearest(SIMD2(t.position.x, t.position.y)).dist <= 1_000
+                    || Hash.unit(Hash.int(Int(t.position.x * 4), Int(t.position.y * 4), seed: 0x51C7)) < keepFar
             }
         }
         b.addRunway(runway, elevation: runwayElevation)
         b.addAirportKit(runway, elevation: runwayElevation)
-        return b.soup
+        return (b.soup, collected)
+    }
+
+    /// Broadleaf trees along the hedgerows of farmed parcels (every ~9 m with gaps, ~22 % kept), so the
+    /// farmland reads as hedged fields with 3D trees instead of flat paint. Clear of the runway and its
+    /// approach surface.
+    func hedgerowTrees(_ fieldPattern: FieldPattern?, foci: [SIMD2<Double>], radius r: Double) -> [Tree] {
+        var out: [Tree] = []
+        guard let pattern = fieldPattern, let grid = pattern.parcels else { return out }
+        let step = 9.0
+        for f in foci {
+            var y = f.y - r
+            while y < f.y + r {
+                var x = f.x - r
+                while x < f.x + r {
+                    defer { x += step }
+                    let dx = x - f.x, dy = y - f.y, dist = (dx * dx + dy * dy).squareRoot()
+                    if dist > r { continue }
+                    // Each focus covers its own disc; skip points the other focus also covers (no doubles).
+                    if foci.first(where: { g in let e = SIMD2(x, y) - g; return (e * e).sum() < r * r }) != f { continue }
+                    let h = pattern.hedge(Float(x), Float(y))
+                    if h.distance > 2.5 || !grid.isOn(h.parcel) { continue }
+                    let u = Hash.unit(Hash.int(Int(x * 2), Int(y * 2), seed: 0x4ED6))
+                    if u > 0.22 { continue }
+                    // Runway strip and approach: no trees within 150 m of the centreline from 900 m before
+                    // the threshold to the far end.
+                    let q = SIMD2(x, y) - runway.threshold
+                    let along = (q * runwayDirection).sum(), across = abs(q.x * runwayDirection.y - q.y * runwayDirection.x)
+                    if along > -900 && along < runway.length + 300 && across < 150 { continue }
+                    let ht = 9 + Hash.unit(Hash.int(Int(x * 3), Int(y * 3), seed: 0x7A11)) * 7
+                    let tint = Float(0.85 + 0.3 * Hash.unit(Hash.int(Int(y * 3), Int(x * 3), seed: 0x0C01)))
+                    let tree = Tree(position: SIMD3(x, y, height(x, y)), height: ht, crownRadius: ht * 0.32, conifer: false,
+                                    colour: SIMD3<Float>(0.052, 0.078, 0.036) * tint)
+                    if SceneBuilder.keepTree(tree.position, dist: dist, radius: r) { out.append(tree) }
+                }
+                y += step
+            }
+        }
+        return out
     }
 
     /// Aircraft mesh in body axes (x forward, y right, z down), with colours and materials.
@@ -117,12 +185,17 @@ public struct QuickFlightWorld: FlightWorld {
         // addAircraft maps NED→ENU; undo it so the mesh stays in body axes (x fwd, y right, z down).
         var soup = TriangleSoup(origin: .zero)
         let s = b.soup
+        // Control-surface hinge gaps (2.4 cm strips) are sub-pixel at chase distance, where dark strips
+        // rasterise as broken dashes (art round 7): here they are a light grey close to the paint, so they
+        // still read up close and average out far away.
+        let seamDark = srgb(70, 72, 76), seamLight = srgb(150, 152, 152)
         for t in 0..<s.triangleCount {
             func body(_ p: SIMD3<Float>) -> SIMD3<Double> { SIMD3(Double(p.y), Double(p.x), Double(-p.z)) }
             // SceneBuilder reversed the winding for its ENU output; keep that order so normals face outward
             // (the cockpit view discards back faces by normal; test `cabinNormalsPointOutward`).
+            let colour = s.albedo[t] == seamDark ? seamLight : s.albedo[t]
             soup.addFlat(body(s.positions[3 * t]), body(s.positions[3 * t + 1]), body(s.positions[3 * t + 2]),
-                         colour: s.albedo[t], material: s.material[t])
+                         colour: colour, material: s.material[t])
         }
         soup.smoothNormals(triangles: 0..<soup.triangleCount)
         return soup

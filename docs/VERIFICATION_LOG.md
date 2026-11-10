@@ -173,3 +173,71 @@ Method: `FrameTimeTests`, 30 frames after 3 warm-up frames; command-buffer GPU t
 - KMRY: low 9.90 ms, high 16.11 ms (budget 16.7).
 - Margin on KMRY high is still small (about 0.6 ms, with ±0.4 ms run-to-run noise).
 - 2026-11-08T23:10:15Z gate fast on Linux x86_64: PASS (HEAD 9eac060)
+- 2026-11-08T23:31:50Z gate fast on Linux x86_64: PASS (HEAD 7474025)
+- 2026-11-08T23:38:09Z gate fast on Linux x86_64: PASS (HEAD ea82990)
+- 2026-11-08T23:41:29Z gate fast on Linux x86_64: PASS (HEAD a6d2ccb)
+- 2026-11-08T23:44:31Z gate fast on Linux x86_64: PASS (HEAD 69cdaee)
+- 2026-11-08T23:48:19Z gate fast on Linux x86_64: PASS (HEAD 91d6db9)
+- 2026-11-08T23:52:16Z gate fast on Linux x86_64: PASS (HEAD a47d90d)
+- 2026-11-08T23:55:58Z gate fast on Linux x86_64: PASS (HEAD 2e80968)
+- 2026-11-09T01:54:14Z gate fast on Linux x86_64: PASS (HEAD 1899a38)
+- 2026-11-09T01:59:44Z gate fast on Linux x86_64: PASS (HEAD b4de72c)
+- 2026-11-09T02:03:01Z gate fast on Linux x86_64: PASS (HEAD 9fec59d)
+- 2026-11-09T02:06:20Z gate fast on Linux x86_64: PASS (HEAD 8cce3db)
+2026-11-09T02:06:39Z compaction; last commit bf62b35
+- 2026-11-09T02:18:16Z gate fast on Linux x86_64: PASS (HEAD bf62b35)
+- 2026-11-09T02:20:59Z gate fast on Linux x86_64: PASS (HEAD bf62b35)
+- 2026-11-09T02:29:41Z gate fast on Linux x86_64: PASS (HEAD a990708)
+- 2026-11-09T02:33:03Z gate fast on Linux x86_64: PASS (HEAD e7f33bc)
+- 2026-11-09T02:36:51Z gate fast on Linux x86_64: PASS (HEAD 284d64f)
+- 2026-11-09T02:44:28Z gate fast on Linux x86_64: PASS (HEAD 2650165)
+- 2026-11-09T02:52:53Z gate fast on Linux x86_64: PASS (HEAD ab5c88a)
+- 2026-11-09T03:02:28Z gate fast on Linux x86_64: PASS (HEAD 771f03c)
+- 2026-11-09 CI run 42553332470 (771f03c), all jobs green. GPU frame time (CI virtual GPU):
+
+  | Scene | Tier | Resolution | Median | p95 | Budget |
+  |---|---|---|---|---|---|
+  | SkyWorld | low | 1280×720 | 9.07 ms | 9.43 ms | 33.3 ms |
+  | SkyWorld | high | 1920×1080 | 15.12 ms | 15.25 ms | 16.7 ms |
+  | KMRY | low | 1280×720 | 8.61 ms | 8.98 ms | 33.3 ms |
+  | KMRY | high | 1920×1080 | 11.18 ms | 11.42 ms | 16.7 ms |
+
+  - Gains came from the tree distance LOD and from limiting tree shadows in the outer cascade.
+  - Before (run 42548006250): SkyWorld high 23.69 ms, KMRY high 18.27 ms.
+- 2026-11-09T03:14:52Z gate fast on Linux x86_64: PASS (HEAD c769527)
+- 2026-11-09T03:24:42Z gate fast on Linux x86_64: PASS (HEAD 67414f8)
+- 2026-11-09T03:37:42Z gate fast on Linux x86_64: PASS (HEAD c356673)
+- 2026-11-09T03:50:32Z gate fast on Linux x86_64: PASS (HEAD 499eca0)
+- 2026-11-09T03:57:53Z gate fast on Linux x86_64: PASS (HEAD f4b0460)
+- 2026-11-09T04:14:32Z gate fast on Linux x86_64: PASS (HEAD 7eaa840)
+- 2026-11-09T04:20:27Z gate fast on Linux x86_64: PASS (HEAD b810ed8)
+- 2026-11-09T04:32:44Z gate fast on Linux x86_64: PASS (HEAD 5c2575c)
+- 2026-11-09T04:46:23Z gate fast on Linux x86_64: PASS (HEAD feb6272)
+- 2026-11-09T04:58:02Z gate fast on Linux x86_64: PASS (HEAD 8d14b3c)
+- 2026-11-09T07:42:04Z gate fast on Linux x86_64: PASS (HEAD fbb647f)
+- 2026-11-09T07:54:49Z gate fast on Linux x86_64: PASS (HEAD 34d36eb)
+- 2026-11-09T08:07:35Z gate fast on Linux x86_64: PASS (HEAD 6348ff7)
+- 2026-11-09T08:19:33Z gate fast on Linux x86_64: PASS (HEAD 28cf4aa)
+- 2026-11-09T09:01:44Z gate fast on Linux x86_64: PASS (HEAD 135c980)
+- 2026-11-09T09:11:13Z gate fast on Linux x86_64: PASS (HEAD 1f9312c)
+- 2026-11-09T09:18:39Z gate fast on Linux x86_64: PASS (HEAD 9342d81)
+- 2026-11-09T09:30:11Z gate fast on Linux x86_64: PASS (HEAD 1aaf2da)
+2026-11-09T09:36:52Z compaction; last commit dd41f05
+- 2026-11-09T09:48:35Z gate fast on Linux x86_64: PASS (HEAD dd41f05)
+- 2026-11-09 run 42596319498 (710cdb7, round-17 batch: 3×3 quarter-res cloud composite, SkyWorld relief): SkyWorld low 12.23 / high 16.23 ms (min 15.17), KMRY low 12.34 / high 15.75 ms; budgets 33.3 / 16.7 ms. All CI jobs green.
+- 2026-11-09T10:14:39Z gate fast on Linux x86_64: PASS (HEAD b39cea4)
+- 2026-11-09T10:19:57Z gate fast on Linux x86_64: PASS (HEAD b39cea4)
+- 2026-11-09 run 42600144759 (ba04e91, round-18 batch: Bayer quarter-res clouds with a 4-tap tent, water texture test, shadow toe, SkyWorld hills 340 m): SkyWorld low 9.72 / high 14.41 ms, KMRY low 12.60 / high 14.65 ms; budgets 33.3 / 16.7 ms. All CI jobs green.
+- 2026-11-09T10:32:38Z gate fast on Linux x86_64: FAIL (HEAD 64c880e)
+- 2026-11-09T10:35:43Z gate fast on Linux x86_64: PASS (HEAD 64c880e)
+- 2026-11-09 run 42602113280 (6fad245, round-19 batch: 1/3-resolution high-tier clouds at 26 steps, 16× anisotropy, forest stands): SkyWorld low 10.00 / high 15.36 ms, KMRY low 11.93 / high 15.59 ms; budgets 33.3 / 16.7 ms. All CI jobs green.
+- 2026-11-09T12:43:34Z gate fast on Linux x86_64: PASS (HEAD b74bca4)
+- 2026-11-09 run 42619494239 (7deeb4c; code b10d6c3, photo trees removed under the 3D trees at load): SkyWorld low 10.97 / high 16.16 ms, KMRY low 12.53 / high 15.52 ms; budgets 33.3 / 16.7 ms (p95 noisy on the CI virtual GPU: SkyWorld high 70.8 ms). All CI jobs green.
+- 2026-11-09T23:31:45Z gate fast on Linux x86_64: PASS (HEAD 8b9dc01)
+- 2026-11-09T23:40:50Z gate fast on Linux x86_64: PASS (HEAD 1ea9196)
+- 2026-11-09 run 42721244906 (1ea9196, round-21 batch): **apple job failed**, KMRY high 16.71 ms (SkyWorld high 16.67 ms) against 16.7. Fixed in 3b31ac2: high-tier clouds 22 view steps / 3 light taps (26/4).
+- 2026-11-09 run 42722423559 (3b31ac2): SkyWorld low 13.03 / high 16.24 ms, KMRY low 12.80 / high 16.04 ms; budgets 33.3 / 16.7 ms. All CI jobs green. KASE high cloud crop unchanged by the step cut. Margin on high is ~0.5 ms; CI medians vary ~±1 ms run to run.
+- 2026-11-09T23:54:34Z gate fast on Linux x86_64: PASS (HEAD 404aee6)
+- 2026-11-10T00:02:28Z gate fast on Linux x86_64: PASS (HEAD 70234ff)
+- 2026-11-09 run 42724229611 (70234ff, outer tree shadows to 1 km): **apple job failed**, SkyWorld high 16.95 ms (min 15.92) against 16.7, higher than the previous run despite less work. CI run-to-run variance is above 1 ms. KMRY high 15.59 ms. Fix: SkyWorld desktop trees capped at 58k (65k; only trees > 1 km from both foci thinned), and full-mesh tree shadows within 200 m (250).
+- 2026-11-10 run 42725234508 (769252a: SkyWorld desktop trees 58k, full-mesh tree shadows within 200 m): SkyWorld low 10.23 / high 15.11 ms (min 14.20), KMRY low 11.76 / high 14.85 ms; budgets 33.3 / 16.7 ms. All CI jobs green; high tier has 1.6–1.9 ms margin against the ~1 ms CI run-to-run variance.

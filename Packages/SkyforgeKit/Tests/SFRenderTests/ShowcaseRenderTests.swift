@@ -41,6 +41,54 @@ import SFPreview
         #expect(hi - lo > 60, "\(ident) ground contrast \(hi - lo)")
     }
 
+    /// The same airports at the desktop/high tier (desktop detail and the `.high` render preset the app
+    /// applies on a Mac), so the high tier's look, and the cuts made for its frame budget, are reviewed too.
+    @Test(.enabled(if: SkyRegressionTests.hasDevice, "no Metal device on this host"),
+          arguments: ["KMRY", "KASE", "KBFI", "LSZS", "NZQN"])
+    func showcaseFrameHigh(ident: String) async throws {
+        let region = try await RealWorldRegion.load(airport: ident, detail: .desktop,
+                                                    transport: Showcase.transport(for: ident, fallback: nil), cache: nil)
+        let data = RealWorldRenderData(region: region, chunkQuads: 32)
+        let session = QuickFlightSession(world: region, start: .final)
+        let cam = session.chaseCamera()
+        let r = try WorldRenderer(lighting: LightingSetup.physicalPreset(.midday, azimuthDegrees: 200, cameraHeightMetres: cam.position.z))
+        r.apply(.high)
+        try r.setRealWorld(data)
+        try r.setAircraft(QuickFlightWorld.aircraftMesh())
+        r.clouds = .fairWeather(fieldElevation: Float(region.runwayElevation))
+        let c = session.bodyToENUColumns
+        let w = 1280, h = 720
+        let img = try r.render(width: w, height: h, camera: WorldCamera(position: cam.position, target: cam.target),
+                               aircraftPosition: session.positionENU, aircraftBodyToENU: simd_double3x3(columns: (c.0, c.1, c.2)))
+        _ = VisualRegression.check(name: "metal_real_\(ident)_high_1280x720", rgb: img, width: w, height: h, goldenDir: goldenDir)
+        var lo = Int.max, hi = 0
+        for y in (h * 2 / 3)..<h { for x in stride(from: 0, to: w, by: 4) {
+            let i = 3 * (y * w + x); let s = Int(img[i]) + Int(img[i + 1]) + Int(img[i + 2]); lo = min(lo, s); hi = max(hi, s)
+        } }
+        #expect(hi - lo > 60, "\(ident) high-tier ground contrast \(hi - lo)")
+    }
+
+    /// SkyWorld at the desktop/high tier (65k instanced trees, `.high` clouds).
+    @Test(.enabled(if: SkyRegressionTests.hasDevice, "no Metal device on this host"))
+    func skyWorldFrameHigh() throws {
+        let world = QuickFlightWorld()
+        let session = QuickFlightSession(world: world, start: .final)
+        let cam = session.chaseCamera()
+        let r = try WorldRenderer(lighting: LightingSetup.physicalPreset(.midday, azimuthDegrees: 200, cameraHeightMetres: cam.position.z))
+        r.apply(.high)
+        let env = world.buildEnvironmentInstanced(detail: .desktop)
+        try r.setEnvironment(env.soup)
+        try r.setTrees(RealWorldRenderData.trees(env.trees))
+        try r.setAircraft(QuickFlightWorld.aircraftMesh())
+        r.clouds = .fairWeather
+        let c = session.bodyToENUColumns
+        let w = 1280, h = 720
+        let img = try r.render(width: w, height: h, camera: WorldCamera(position: cam.position, target: cam.target),
+                               aircraftPosition: session.positionENU, aircraftBodyToENU: simd_double3x3(columns: (c.0, c.1, c.2)))
+        _ = VisualRegression.check(name: "metal_skyworld_high_1280x720", rgb: img, width: w, height: h, goldenDir: goldenDir)
+        #expect(r.lastDrawnEnvironmentCells > 0)
+    }
+
     /// SkyWorld (the offline fallback) at the same size and phone detail, for the same review.
     @Test(.enabled(if: SkyRegressionTests.hasDevice, "no Metal device on this host"))
     func skyWorldFrame() throws {
@@ -48,7 +96,9 @@ import SFPreview
         let session = QuickFlightSession(world: world, start: .final)
         let cam = session.chaseCamera()
         let r = try WorldRenderer(lighting: LightingSetup.physicalPreset(.midday, azimuthDegrees: 200, cameraHeightMetres: cam.position.z))
-        try r.setEnvironment(world.buildEnvironment(detail: .phone))
+        let env = world.buildEnvironmentInstanced(detail: .phone)
+        try r.setEnvironment(env.soup)
+        try r.setTrees(RealWorldRenderData.trees(env.trees))
         try r.setAircraft(QuickFlightWorld.aircraftMesh())
         r.clouds = .fairWeather
         let c = session.bodyToENUColumns

@@ -217,7 +217,11 @@ actor ScriptedOSMTransport: HTTPTransport {
         buildings.append(OSMBuilding(id: 1, footprint: cwL, heightMetres: 8))
         let soup = OSMMeshBuilder.buildings(buildings) { _, _ in 3 }
         let rings = buildings.map(\.footprint)
-        var walls = 0, roofs = 0, undersides = 0
+        var walls = 0, roofs = 0, undersides = 0, slopes = 0
+        let hipped = buildings.filter { b in
+            var r = b.footprint; if OSMGeometry.signedArea(r) < 0 { r.reverse() }
+            return b.minHeightMetres <= 0 && OSMMeshBuilder.hippedRoof(b, ring: r) != nil
+        }
         for t in 0..<soup.triangleCount {
             let a = soup.positions[3 * t], b = soup.positions[3 * t + 1], c = soup.positions[3 * t + 2]
             let n = soup.normals[3 * t]
@@ -235,14 +239,46 @@ actor ScriptedOSMTransport: HTTPTransport {
                 #expect(rings.contains { OSMGeometry.contains($0, gxy) })
             } else if n.z < -0.999 {
                 undersides += 1
+            } else if n.z > 0.5 && hipped.contains(where: { OSMGeometry.contains($0.footprint, gxy) }) {
+                slopes += 1                          // hipped-roof slope, facing up and outward
             } else {
                 Issue.record("unexpected sloped triangle \(n)")
             }
         }
-        let edges = rings.map(\.count).reduce(0, +)
-        #expect(walls == 2 * edges)
-        #expect(roofs == rings.map { $0.count - 2 }.reduce(0, +))
+        // Ground-standing walls carry a darker contact band below the main wall (4 triangles per edge);
+        // floating parts (min_height) keep 2.
+        let expectedWalls = buildings.map { $0.footprint.count * ($0.minHeightMetres > 0 ? 2 : 4) }.reduce(0, +)
+        #expect(walls == expectedWalls, "\(walls) vs \(expectedWalls)")
+        #expect(!hipped.isEmpty && slopes <= 6 * hipped.count && slopes >= 4 * hipped.count, "slopes \(slopes)")
+        #expect(roofs == rings.map { $0.count - 2 }.reduce(0, +) - 2 * hipped.count)
         #expect(undersides == 2)   // only the floating part 1010 (a rectangle)
+    }
+
+    @Test func smallHousesGetHippedRoofs() {
+        let rect: [SIMD2<Double>] = [SIMD2(0, 0), SIMD2(12, 0), SIMD2(12, 8), SIMD2(0, 8)]
+        let house = OSMBuilding(id: 1, footprint: rect, heightMetres: 6, kind: "house")
+        let hip = OSMMeshBuilder.hippedRoof(house, ring: rect)
+        #expect(hip?.first == 0 && hip?.short == 8)
+        // Ridge on the long axis, inset half the short side (4 m) from each end.
+        #expect(hip.map { simdLength($0.ridgeA - SIMD2(4, 4)) < 1e-9 && simdLength($0.ridgeB - SIMD2(8, 4)) < 1e-9 } == true)
+        let soup = OSMMeshBuilder.buildings([house], foundation: 0) { _, _ in 10 }
+        let ridge = 16 + 4 * tan(30 * Double.pi / 180)
+        #expect(abs(Double(soup.positions.map(\.z).max()!) - ridge) < 1e-3)
+        #expect(soup.normals.allSatisfy { $0.x.isFinite && $0.y.isFinite && $0.z.isFinite })
+        // A square house gets a pyramid (no degenerate ridge triangles).
+        let sq = OSMMeshBuilder.buildings([OSMBuilding(id: 2, footprint: [SIMD2(0, 0), SIMD2(9, 0), SIMD2(9, 9), SIMD2(0, 9)], heightMetres: 5, kind: "house")]) { _, _ in 0 }
+        #expect(sq.normals.allSatisfy { $0.x.isFinite && $0.y.isFinite && $0.z.isFinite })
+        #expect(sq.triangleCount == 16 + 4)   // walls with contact band + pyramid
+        // Long axis on edges 1/3 (first == 1) indexes every edge modulo 4.
+        let tall: [SIMD2<Double>] = [SIMD2(0, 0), SIMD2(8, 0), SIMD2(8, 12), SIMD2(0, 12)]
+        let hip2 = OSMMeshBuilder.hippedRoof(OSMBuilding(id: 7, footprint: tall, heightMetres: 6, kind: "house"), ring: tall)
+        #expect(hip2?.first == 1 && hip2?.short == 8)
+        // Flat-tagged, large, non-house and L-shaped buildings keep flat roofs.
+        #expect(OSMMeshBuilder.hippedRoof(OSMBuilding(id: 3, footprint: rect, heightMetres: 6, kind: "house", tags: ["roof:shape": "flat"]), ring: rect) == nil)
+        let big = rect.map { $0 * 3 }
+        #expect(OSMMeshBuilder.hippedRoof(OSMBuilding(id: 4, footprint: big, heightMetres: 6, kind: "house"), ring: big) == nil)
+        #expect(OSMMeshBuilder.hippedRoof(OSMBuilding(id: 5, footprint: rect, heightMetres: 6, kind: "industrial"), ring: rect) == nil)
+        #expect(OSMMeshBuilder.hippedRoof(OSMBuilding(id: 6, footprint: rect, heightMetres: 6, kind: "commercial", tags: ["roof:shape": "gabled"]), ring: rect) != nil)
     }
 
     @Test func buildingSitsOnMinimumGroundHeight() throws {
@@ -414,6 +450,17 @@ private func faceNormal(_ a: SIMD3<Float>, _ b: SIMD3<Float>, _ c: SIMD3<Float>)
             #expect(OSMGeometry.signedArea(x.footprint) > 0, "counter-clockwise footprint")
         }
         #expect(region.proceduralBuildings() == b, "deterministic")
+    }
+}
+
+@Suite struct LargeSurfaceTests {
+    @Test func boxesOnLargeRoofsAreSkippedHousesKept() {
+        // Warehouse interior: the ring is all roof.
+        #expect(RealWorldRegion.onLargeUniformSurface(roofLuminance: 0.55, ring: [0.53, 0.56, 0.57, 0.54, 0.55, 0.52, 0.58, 0.55]))
+        // House among lawns, trees and street: few matches.
+        #expect(!RealWorldRegion.onLargeUniformSurface(roofLuminance: 0.55, ring: [0.30, 0.22, 0.56, 0.40, 0.18, 0.35, 0.53, 0.28]))
+        // Roof edge: half the ring off the roof.
+        #expect(!RealWorldRegion.onLargeUniformSurface(roofLuminance: 0.55, ring: [0.55, 0.56, 0.54, 0.57, 0.20, 0.25, 0.30, 0.22]))
     }
 }
 

@@ -99,8 +99,7 @@ public struct BindingsView: View {
             Section {
                 Button("Restore defaults", role: .destructive) {
                     profile = BindingProfile(name: "User", layer: .device, bindings: [])
-                    BindingsStore.save(profile)
-                    status = "User bindings cleared; defaults apply."
+                    status = "User bindings cleared; defaults apply." + BindingsStore.saveNote(profile)
                 }
             }
         }
@@ -145,9 +144,9 @@ public struct BindingsView: View {
         case let .captured(b, conflicts):
             profile.bindings.removeAll { $0.target == b.target && $0.device == b.device }
             profile.bindings.append(b)
-            BindingsStore.save(profile)
-            status = conflicts.isEmpty ? "Bound \(b.control)."
-                : "Bound \(b.control). Also used by: \(conflicts.map { title($0.target) }.joined(separator: ", "))."
+            let note = BindingsStore.saveNote(profile)
+            status = (conflicts.isEmpty ? "Bound \(b.control)."
+                : "Bound \(b.control). Also used by: \(conflicts.map { title($0.target) }.joined(separator: ", ")).") + note
         }
         capture = nil
     }
@@ -167,10 +166,19 @@ public enum BindingsStore {
         return p
     }
 
-    public static func save(_ p: BindingProfile) {
-        guard let url, let d = try? p.exportJSON() else { return }
-        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try? d.write(to: url, options: .atomic)
+    public enum SaveError: Error { case noApplicationSupport }
+
+    /// Writes the user layer; throws when it could not be stored (the UI says so instead of implying it was kept).
+    public static func save(_ p: BindingProfile) throws {
+        guard let url else { throw SaveError.noApplicationSupport }
+        let d = try p.exportJSON()
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try d.write(to: url, options: .atomic)
+    }
+
+    /// Saves and returns "" on success, or a sentence saying the change applies to this session only.
+    static func saveNote(_ p: BindingProfile) -> String {
+        do { try save(p); return "" } catch { return " Not saved (\(error.localizedDescription)): applies until the app quits." }
     }
 }
 #endif

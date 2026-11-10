@@ -1,4 +1,4 @@
-LAST_UPDATE: 2026-11-08T22:53:39Z
+LAST_UPDATE: 2026-11-10T00:09:41Z
 
 # SKYFORGE state
 
@@ -15,6 +15,35 @@ Bold Mode (docs/BOLD_MODE.md) is in progress.
   - Art rounds on Metal frames: 3.83, then 4.08. Review frames now 1280×720.
   - 30-minute soak test.
 - Fixed 2026-11-08: broken showcase Metal frames. Causes: (1) the CI GPU assembled real-terrain chunks wrongly with `baseVertex`/`baseInstance`; now absolute indices and buffer offsets (debba5b); (2) imagery grading crushed shadows (41a9679); (3) the colour water classifier flagged shadowed slopes, roofs and asphalt (f9824ad: slope, area and runway filters). Frame-time tests now run alone in their own CI step (873eaf5).
+- 2026-11-09 art rounds 5–10 on CI Metal frames:
+
+  | Round | Score |
+  |---|---|
+  | 5 | 5.00 |
+  | 6 | 5.17 |
+  | 7 | 5.25 |
+  | 8 | 5.50 |
+  | 9 | 5.54 |
+  | 10 | 5.58 |
+
+  - What landed:
+    - Tree distance LOD and outer-cascade shadow limits. All tiers were within budget on run 42553332470: SkyWorld high 15.1 ms, KMRY high 11.2 ms.
+    - Dense 3D trees on photo canopy, including over the final approach's foreground.
+    - Crown colour clamps.
+    - Hipped roofs.
+    - Stucco walls.
+    - Cloud-shadow fill.
+    - Colour grade.
+    - Aircraft livery.
+  - ADR-0019: the review-camera ground is limited by the imagery source, not by magnification.
+  - Round-11 batch (fbb647f), then a frame-time fix (52a48d2) after SkyWorld high reached 17.15 ms.
+  - Rounds 11–15: 5.88, 5.92, 6.00, 6.04, 6.04. Round 16 (structural: review frames also at the desktop/high tier): phone 6.04, high 6.08.
+  - Round-17 batch (6a66ae6): quarter-resolution cloud reconstruction (high-tier checker), water minimum as an area (false ponds on the desktop layer), highlight knee and grade roll-off, SkyWorld relief.
+  - Rounds 17–19 (phone / high): 6.21 / 6.42, 6.29 / 6.50, 6.42 / 6.71. High-tier KASE 7.25 and SkyWorld 7.0.
+    - What landed: water texture test (false lakes on canopy), Bayer + exact-tent clouds at 1/3 resolution (high now matches phone sharpness), highlight shoulder and shadow toe, forest stands, SkyWorld hills.
+  - Structural change (b10d6c3, phone rounds 18–19 under 0.2): photo trees and their baked shadows removed under the 3D trees (`ImageryDelighting`, push-pull inpainting) on the near, detail and in-flight detail layers.
+  - The art reviewer stopped on its usage limit (resets 2026-11-14 09:00 UTC; ADR-0020). Rounds 20 (de-lighting) and 21 (crisper forest stands, in-field variation) are unscored, with regression checks only.
+  - Two frame-time failures on CI (variance above 1 ms between runs) were fixed with real margin: high-tier clouds 22 steps / 3 light taps, outer tree shadows to 1 km, SkyWorld desktop trees 58k, full-mesh tree shadows within 200 m. Run 42725234508: SkyWorld high 15.11 ms, KMRY high 14.85 ms.
 - Open:
   - Procedural building fallback where OSM is missing; cascades 3–4; aircraft textures; cockpit textures; cloud self-shadow tiers.
   - Art review of the CI Metal frames (target ≥ 8).
@@ -34,6 +63,7 @@ P0 accepted (CI fully green). P1 in progress: P1.1, P1.2, P1.2b-2, P1.4, P1.7b, 
 - `autoContinueAtUsageLimit: true` is set in the session's user settings (`~/.claude/settings.json`); the user asked for this instead of a scheduled task, (ADR-0002).
 - 2026-11-08: the user then explicitly asked for a scheduled task that sends "continue" every 5 hours; created as `trig_01VkukC5znseCkMfBGwFqndn` ("SKYFORGE continue pulse", cron `33 */5 * * *` UTC, bound to this session).
 - PR #1 was merged by the owner at 2026-11-07T23:13Z (commit 50fdfb9). Follow-up work restarts the branch from main and goes into a new PR.
+- PR #2 was merged by the owner at 2026-11-08T23:19Z (merge 67b7ddc). The branch restarted from main; follow-up Bold work goes into a new PR.
 - Fallback: send the message "continue" to resume.
 
 ## What works (verified on Linux)

@@ -54,6 +54,8 @@ public enum PreviewScenes {
         let rwyElevation = recipe.height(rwyThreshold.x + rwyDir.x * 750, rwyThreshold.y + rwyDir.y * 750)
         if scene == .airportFinal {
             recipe.flattenZones = [(centre: rwyThreshold + rwyDir * 750, halfLength: 850, halfWidth: 200, heading: rwyHeading, elevation: rwyElevation)]
+            // Hills 1.9–4.4 km either side of the approach and past the far end (lower on the town side).
+            recipe.relief = (centre: rwyThreshold + rwyDir * 750, heading: rwyHeading, clear: 1_900, amplitude: 340, leftScale: 0.45)
         }
         let gen = WorldGenerator(terrain: recipe, latitude: 47, season: .summer)   // art review: autumn crowns clashed with green grass
         func cam(_ x: Double, _ y: Double, agl: Double, lookX: Double, lookY: Double, lookAGL: Double, fov: Double = 70) -> PreviewCamera {

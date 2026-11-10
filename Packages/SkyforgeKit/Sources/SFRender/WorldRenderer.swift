@@ -127,13 +127,34 @@ public final class WorldRenderer {
     public var antialiasing = true
     private let fxaaPipeline: MTLRenderPipelineState
     private var sceneTarget: MTLTexture?
-    private var real: (vertices: MTLBuffer, indices: MTLBuffer, draws: [(indexOffset: Int, indexCount: Int, baseVertex: Int, min: SIMD3<Float>, max: SIMD3<Float>)],
-                       treeMesh: MTLBuffer, coniferCount: Int, oakStart: Int, oakCount: Int,
-                       instances: MTLBuffer?, coniferInstances: Int, oakInstances: Int)?
+    private var real: (vertices: MTLBuffer, indices: MTLBuffer, draws: [(indexOffset: Int, indexCount: Int, baseVertex: Int, min: SIMD3<Float>, max: SIMD3<Float>)])?
+    /// Instanced trees (real world and SkyWorld): shared conifer/broadleaf meshes and per-tree instances.
+    private var trees: (mesh: MTLBuffer, ranges: [(start: Int, count: Int)], instances: MTLBuffer)?
+    /// Tree cells nearer than this draw the full mesh; farther cells (and the outer shadow cascades) the
+    /// crown-only LOD. 105k SkyWorld desktop trees at full detail cost ~11 ms on the CI GPU.
+    static let treeLODDistance: Float = 350
+    /// Within the near shadow cascade, full meshes cast only from cells this close (crown silhouettes in the
+    /// shadow map matter near the camera; farther, the LOD crown casts the same blob).
+    static let treeShadowFullDistance: Float = 200   // 250: SkyWorld high shadows 3.25 ms (run 42724229611)
+    /// Tree cells farther than this cast no shadow into the outer cascade.
+    static let treeShadowDistance: Float = 1_000   // 1200 left SkyWorld high ~0.5 ms under budget (run 42722423559); shadows past 1 km are a few pixels
+
+    /// Vertex range of the tree mesh for a cell: kind 0 conifer / 1 broadleaf, full or LOD.
+    private func treeRange(kind: Int, full: Bool) -> (start: Int, count: Int) {
+        trees!.ranges[(full ? 0 : 2) + kind]
+    }
+
+    /// Squared distance from `p` to a cell's box (0 inside).
+    @inline(__always) static func boxDistance2(_ p: SIMD3<Float>, _ lo: SIMD3<Float>, _ hi: SIMD3<Float>) -> Float {
+        let d = simd_max(simd_max(lo - p, p - hi), SIMD3<Float>(repeating: 0))
+        return simd_dot(d, d)
+    }
     /// Tree instances binned into 400 m cells per kind (contiguous ranges), culled per view and cascade.
     private var treeCells: [(kind: Int, start: Int, count: Int, min: SIMD3<Float>, max: SIMD3<Float>)] = []
     /// Tree cells drawn in the last main pass (of `treeCellCount`).
     public private(set) var lastDrawnTreeCells = 0
+    /// Of those, cells drawn with the distant LOD mesh.
+    public private(set) var lastLODTreeCells = 0
     public var treeCellCount: Int { treeCells.count }
     private var imageryNear: (tex: MTLTexture, centre: SIMD2<Double>, half: Double)?
     private var imageryFar: (tex: MTLTexture, centre: SIMD2<Double>, half: Double)?
@@ -148,6 +169,10 @@ public final class WorldRenderer {
     public var clouds: CloudLayer = .clear
     /// Cloud march steps per ray (device tier knob).
     public var cloudSteps = 64
+    /// Display grade strength (gentle filmic contrast and vibrance after the tone map; 0 = off).
+    public var colourGrade: Float = 1
+    /// Cloud self-shadow taps toward the sun per march sample (tier setting).
+    public var cloudLightSteps = 6
     /// Cloud march resolution divisor (2 = half resolution).
     public var cloudDownsample = 2
     /// Dynamic resolution: the scene renders at this fraction of the output size and is upscaled
@@ -158,17 +183,27 @@ public final class WorldRenderer {
     /// Per-device-tier render settings (the app and the CI frame-time test use the same presets).
     public struct Settings: Sendable, Equatable {
         public var renderScale: Float, cloudSteps: Int, cloudDownsample: Int, bloomIntensity: Float, ssaoStrength: Float
-        public init(renderScale: Float, cloudSteps: Int, cloudDownsample: Int, bloomIntensity: Float, ssaoStrength: Float) {
+        /// Cloud self-shadow taps per march sample.
+        public var cloudLightSteps: Int
+        public init(renderScale: Float, cloudSteps: Int, cloudDownsample: Int, bloomIntensity: Float, ssaoStrength: Float,
+                    cloudLightSteps: Int = 6) {
+            self.cloudLightSteps = cloudLightSteps
             self.renderScale = renderScale; self.cloudSteps = cloudSteps; self.cloudDownsample = cloudDownsample
             self.bloomIntensity = bloomIntensity; self.ssaoStrength = ssaoStrength
         }
-        public static let low = Settings(renderScale: 1, cloudSteps: 40, cloudDownsample: 2, bloomIntensity: 0.04, ssaoStrength: 0.5)
+        public static let low = Settings(renderScale: 1, cloudSteps: 40, cloudDownsample: 2, bloomIntensity: 0.04, ssaoStrength: 0.5,
+                                         cloudLightSteps: 4)
         public static let medium = Settings(renderScale: 1, cloudSteps: 48, cloudDownsample: 2, bloomIntensity: 0.05, ssaoStrength: 0.7)
-        public static let high = Settings(renderScale: 0.75, cloudSteps: 40, cloudDownsample: 4, bloomIntensity: 0.05, ssaoStrength: 0.7)
+        // 32 view steps and 4 light taps (was 40 and 6): clouds cost ~4 ms of the 16.7 ms high budget, and
+        // SkyWorld high sat at its limit (16.3 ms minimum, run 42582311298).
+        // Clouds 1/3 resolution at 22 view steps, 3 light taps: 26/4 left no headroom (run 42721244906: KMRY high
+        // 16.71, SkyWorld high 16.67 ms against 16.7); the Bayer step jitter keeps the lower count unbanded.
+        public static let high = Settings(renderScale: 0.75, cloudSteps: 22, cloudDownsample: 3, bloomIntensity: 0.05, ssaoStrength: 0.7,
+                                          cloudLightSteps: 3)
     }
 
     public func apply(_ s: Settings) {
-        renderScale = s.renderScale; cloudSteps = s.cloudSteps; cloudDownsample = s.cloudDownsample
+        renderScale = s.renderScale; cloudSteps = s.cloudSteps; cloudDownsample = s.cloudDownsample; cloudLightSteps = s.cloudLightSteps
         bloomIntensity = s.bloomIntensity; ssaoStrength = s.ssaoStrength
     }
     private var cloudRenderer: CloudRenderer?
@@ -353,31 +388,154 @@ public final class WorldRenderer {
     }
 
     /// Unit-height tree meshes (z 0…1): conifer (bare trunk, crown on top) and broad oak.
-    static func treeMeshes() -> (conifer: [PackedTerrainVertex], oak: [PackedTerrainVertex]) {
+    static func treeMeshes() -> (conifer: [PackedTerrainVertex], oak: [PackedTerrainVertex], coniferLow: [PackedTerrainVertex], oakLow: [PackedTerrainVertex]) {
         func q(_ x: Double) -> Int8 { Int8(max(-127, min(127, (x * 127).rounded()))) }
         func tri(_ out: inout [PackedTerrainVertex], _ a: SIMD3<Double>, _ b: SIMD3<Double>, _ c: SIMD3<Double>, bark: Bool) {
             let n = normalize(cross(b - a, c - a))
             for p in [a, b, c] { out.append(PackedTerrainVertex(px: Float(p.x), py: Float(p.y), pz: Float(p.z), nx: q(n.x), ny: q(n.y), nz: q(n.z), nw: bark ? -127 : 127)) }
         }
-        func frustum(_ out: inout [PackedTerrainVertex], z0: Double, r0: Double, z1: Double, r1: Double, sides: Int, bark: Bool) {
+        func vert(_ out: inout [PackedTerrainVertex], _ p: SIMD3<Double>, _ n: SIMD3<Double>, bark: Bool) {
+            out.append(PackedTerrainVertex(px: Float(p.x), py: Float(p.y), pz: Float(p.z), nx: q(n.x), ny: q(n.y), nz: q(n.z), nw: bark ? -127 : 127))
+        }
+        func frustum(_ out: inout [PackedTerrainVertex], z0: Double, r0: Double, z1: Double, r1: Double, sides: Int, bark: Bool,
+                     crown: (centre: Double, radius: Double, height: Double)? = nil, offset: SIMD2<Double> = .zero,
+                     whole: (centre: Double, radius: Double, height: Double)? = nil) {
+            // Crowns use smooth normals so a near crown shades as one rounded mass, not facets (art rounds
+            // 5–6). With `crown`, normals are those of the enclosing ellipsoid, continuous across stacked
+            // sections (per-section cone slopes left a crease at every ring); otherwise the cone's own slope.
+            let slope = (r0 - r1) / max(z1 - z0, 1e-6)
+            func normalAt(_ a: Double, _ r: Double, _ z: Double) -> SIMD3<Double> {
+                guard let e = crown else { return normalize(SIMD3(cos(a), sin(a), slope)) }
+                let h = max(r, 0.02) / (e.radius * e.radius)
+                let own = normalize(SIMD3(cos(a) * h, sin(a) * h, (z - e.centre) / (e.height * e.height)))
+                // A lobe blends 50/50 with the whole crown's ellipsoid normal at the same point, so the cluster
+                // shades as one mass with a lumpy outline (own normals alone left facets and dark creases, round 15).
+                guard let wc = whole else { return own }
+                let p = SIMD3(offset.x + r * cos(a), offset.y + r * sin(a), z)
+                let wn = normalize(SIMD3(p.x / (wc.radius * wc.radius), p.y / (wc.radius * wc.radius), (z - wc.centre) / (wc.height * wc.height)))
+                return normalize(own + wn)
+            }
             for k in 0..<sides {
                 let a0 = Double(k) / Double(sides) * 2 * .pi, a1 = Double(k + 1) / Double(sides) * 2 * .pi
-                let b0 = SIMD3(r0 * cos(a0), r0 * sin(a0), z0), b1 = SIMD3(r0 * cos(a1), r0 * sin(a1), z0)
-                let t0 = SIMD3(r1 * cos(a0), r1 * sin(a0), z1), t1 = SIMD3(r1 * cos(a1), r1 * sin(a1), z1)
-                tri(&out, b0, b1, t1, bark: bark)
-                if r1 > 0 { tri(&out, b0, t1, t0, bark: bark) }
+                let o = SIMD3(offset.x, offset.y, 0)
+                let b0 = SIMD3(r0 * cos(a0), r0 * sin(a0), z0) + o, b1 = SIMD3(r0 * cos(a1), r0 * sin(a1), z0) + o
+                let t0 = SIMD3(r1 * cos(a0), r1 * sin(a0), z1) + o, t1 = SIMD3(r1 * cos(a1), r1 * sin(a1), z1) + o
+                if bark {
+                    tri(&out, b0, b1, t1, bark: bark)
+                    if r1 > 0 { tri(&out, b0, t1, t0, bark: bark) }
+                    continue
+                }
+                let nb0 = normalAt(a0, r0, z0), nb1 = normalAt(a1, r0, z0)
+                if r1 > 0 {
+                    let nt0 = normalAt(a0, r1, z1), nt1 = normalAt(a1, r1, z1)
+                    vert(&out, b0, nb0, bark: false); vert(&out, b1, nb1, bark: false); vert(&out, t1, nt1, bark: false)
+                    vert(&out, b0, nb0, bark: false); vert(&out, t1, nt1, bark: false); vert(&out, t0, nt0, bark: false)
+                } else {
+                    // Apex: the facet's mid direction (cone) or straight up (ellipsoid), so the tip neither
+                    // pinches nor flattens.
+                    let apex = (crown == nil || whole != nil) ? normalAt((a0 + a1) / 2, 0, z1) : SIMD3<Double>(0, 0, 1)
+                    vert(&out, b0, nb0, bark: false); vert(&out, b1, nb1, bark: false); vert(&out, t1, apex, bark: false)
+                }
             }
         }
         var conifer: [PackedTerrainVertex] = [], oak: [PackedTerrainVertex] = []
         frustum(&conifer, z0: -0.03, r0: 0.018, z1: 0.6, r1: 0.012, sides: 5, bark: true)
-        frustum(&conifer, z0: 0.52, r0: 0.12, z1: 0.62, r1: 0.22, sides: 7, bark: false)
-        frustum(&conifer, z0: 0.62, r0: 0.22, z1: 0.82, r1: 0.17, sides: 7, bark: false)
-        frustum(&conifer, z0: 0.82, r0: 0.17, z1: 1.0, r1: 0, sides: 7, bark: false)
+        frustum(&conifer, z0: 0.52, r0: 0.12, z1: 0.62, r1: 0.22, sides: 9, bark: false)
+        frustum(&conifer, z0: 0.62, r0: 0.22, z1: 0.82, r1: 0.17, sides: 9, bark: false)
+        frustum(&conifer, z0: 0.82, r0: 0.17, z1: 1.0, r1: 0, sides: 9, bark: false)
         frustum(&oak, z0: -0.03, r0: 0.03, z1: 0.4, r1: 0.025, sides: 5, bark: true)
-        frustum(&oak, z0: 0.3, r0: 0.18, z1: 0.48, r1: 0.42, sides: 8, bark: false)
-        frustum(&oak, z0: 0.48, r0: 0.42, z1: 0.75, r1: 0.36, sides: 8, bark: false)
-        frustum(&oak, z0: 0.75, r0: 0.36, z1: 1.0, r1: 0, sides: 8, bark: false)
-        return (conifer, oak)
+        // Near broadleaf (drawn only within `treeLODDistance`): an 8-sided main crown and two offset 6-sided
+        // lobes, each with its own ellipsoid normals, so a crown reads as clumped foliage rather than one
+        // smooth sphere (art round 14). Crown starts low (0.2) so little trunk shows (round 9).
+        let oakCrown = (centre: 0.62, radius: 0.44, height: 0.38)
+        frustum(&oak, z0: 0.2, r0: 0.16, z1: 0.48, r1: 0.40, sides: 8, bark: false, crown: oakCrown)
+        frustum(&oak, z0: 0.48, r0: 0.40, z1: 0.75, r1: 0.33, sides: 8, bark: false, crown: oakCrown)
+        frustum(&oak, z0: 0.75, r0: 0.33, z1: 0.98, r1: 0, sides: 8, bark: false, crown: oakCrown)
+        for (off, zc, rr) in [(SIMD2(0.24, 0.10), 0.60, 0.25), (SIMD2(-0.16, -0.21), 0.66, 0.23)] {
+            let lobe = (centre: zc, radius: rr, height: rr * 0.95)
+            frustum(&oak, z0: zc - rr * 0.8, r0: rr * 0.45, z1: zc, r1: rr, sides: 6, bark: false, crown: lobe, offset: off, whole: oakCrown)
+            frustum(&oak, z0: zc, r0: rr, z1: zc + rr * 0.95, r1: 0, sides: 6, bark: false, crown: lobe, offset: off, whole: oakCrown)
+        }
+        // Distant LOD (beyond `treeLODDistance`): crown only, 6 sides, 6–18 triangles
+        // against 55–86, same silhouette height and width.
+        var coniferLow: [PackedTerrainVertex] = [], oakLow: [PackedTerrainVertex] = []
+        // 6 sides: from the LOD distance (350 m since round 15) 4-sided crowns read as diamonds.
+        frustum(&coniferLow, z0: 0.4, r0: 0.22, z1: 1.0, r1: 0, sides: 6, bark: false)
+        frustum(&oakLow, z0: 0.3, r0: 0.4, z1: 0.62, r1: 0.4, sides: 6, bark: false, crown: oakCrown)
+        frustum(&oakLow, z0: 0.62, r0: 0.4, z1: 1.0, r1: 0, sides: 6, bark: false, crown: oakCrown)
+        return (conifer, oak, coniferLow, oakLow)
+    }
+
+    /// A ready GPU imagery texture with its placement, built on any thread (`makeImagery`) and swapped in
+    /// on the render thread (`setDetailImagery`), so streaming never stalls a frame.
+    public struct PreparedImagery: @unchecked Sendable {
+        public let texture: MTLTexture
+        public let centre: SIMD2<Double>
+        public let half: Double
+    }
+
+    /// Mipmapped sRGB texture for an imagery mosaic (blocks the calling thread for the mip blit; call it
+    /// off the main thread when streaming).
+    public static func imageryTexture(_ i: RealWorldRenderData.Imagery, device: MTLDevice, queue: MTLCommandQueue) throws -> PreparedImagery {
+        let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm_srgb, width: i.size, height: i.size, mipmapped: true)
+        d.usage = [.shaderRead]
+        guard let t = device.makeTexture(descriptor: d) else { throw RendererError.commandQueue }
+        var rgba = [UInt8](repeating: 255, count: i.size * i.size * 4)
+        for p in 0..<(i.size * i.size) { rgba[4 * p] = i.rgb[3 * p]; rgba[4 * p + 1] = i.rgb[3 * p + 1]; rgba[4 * p + 2] = i.rgb[3 * p + 2] }
+        t.replace(region: MTLRegionMake2D(0, 0, i.size, i.size), mipmapLevel: 0, withBytes: rgba, bytesPerRow: i.size * 4)
+        if let cmd = queue.makeCommandBuffer(), let blit = cmd.makeBlitCommandEncoder() {
+            blit.generateMipmaps(for: t); blit.endEncoding(); cmd.commit(); cmd.waitUntilCompleted()
+        }
+        return PreparedImagery(texture: t, centre: i.centre, half: i.halfExtent)
+    }
+
+    /// Builds the streamed detail texture (call off the main thread).
+    public func makeImagery(_ i: RealWorldRenderData.Imagery) throws -> PreparedImagery {
+        try Self.imageryTexture(i, device: device, queue: queue)
+    }
+
+    /// Swaps the camera-following sharp imagery layer (nil removes it). The previous texture is released,
+    /// so streaming holds one detail texture at a time.
+    public func setDetailImagery(_ p: PreparedImagery?) {
+        imageryDetail = p.map { ($0.texture, $0.centre, $0.half) }
+    }
+
+    /// Centre and half extent of the current detail layer (nil = none).
+    public var detailImageryPlacement: (centre: SIMD2<Double>, half: Double)? { imageryDetail.map { ($0.centre, $0.half) } }
+
+    /// Uploads instanced trees, binned by kind and 400 m cell so each cell is one contiguous instance range
+    /// (culled per view and per shadow cascade). An empty list removes them.
+    public func setTrees(_ list: [RealWorldRenderData.Tree]) throws {
+        guard !list.isEmpty else { trees = nil; treeCells = []; return }
+        let meshes = Self.treeMeshes()
+        let treeVerts = meshes.conifer + meshes.oak + meshes.coniferLow + meshes.oakLow
+        let c0 = meshes.conifer.count, o0 = meshes.oak.count, c1 = meshes.coniferLow.count, o1 = meshes.oakLow.count
+        let ranges = [(0, c0), (c0, o0), (c0 + o0, c1), (c0 + o0 + c1, o1)]
+        func cellKey(_ t: RealWorldRenderData.Tree) -> (Int, Int, Int) {
+            (t.conifer ? 0 : 1, Int((t.position.x / 400).rounded(.down)), Int((t.position.y / 400).rounded(.down)))
+        }
+        let sorted = list.sorted { cellKey($0) < cellKey($1) }
+        var cells: [(kind: Int, start: Int, count: Int, min: SIMD3<Float>, max: SIMD3<Float>)] = []
+        for (i, t) in sorted.enumerated() {
+            let k = cellKey(t)
+            let lo = t.position - SIMD3(8, 8, 1), hi = t.position + SIMD3(8, 8, t.height + 1)
+            if let last = cells.last, cellKey(sorted[last.start]) == k {
+                cells[cells.count - 1].count += 1
+                cells[cells.count - 1].min = SIMD3(min(last.min.x, lo.x), min(last.min.y, lo.y), min(last.min.z, lo.z))
+                cells[cells.count - 1].max = SIMD3(max(last.max.x, hi.x), max(last.max.y, hi.y), max(last.max.z, hi.z))
+            } else {
+                cells.append((k.0, i, 1, lo, hi))
+            }
+        }
+        let inst = sorted.map { PackedTreeInstance(px: $0.position.x, py: $0.position.y, pz: $0.position.z, height: $0.height,
+                                                   r: $0.colour.x, g: $0.colour.y, b: $0.colour.z, kind: $0.conifer ? 0 : 1) }
+        precondition(MemoryLayout<PackedTreeInstance>.stride == 32)
+        guard let mb = treeVerts.withUnsafeBytes({ device.makeBuffer(bytes: $0.baseAddress!, length: $0.count, options: .storageModeShared) }),
+              let ib = inst.withUnsafeBytes({ device.makeBuffer(bytes: $0.baseAddress!, length: $0.count, options: .storageModeShared) }) else {
+            throw RendererError.commandQueue
+        }
+        treeCells = cells
+        trees = (mb, ranges.map { (start: $0.0, count: $0.1) }, ib)
     }
 
     /// Uploads real-world terrain chunks, tree instances and imagery.
@@ -395,50 +553,17 @@ public final class WorldRenderer {
             // assembled triangles from the wrong vertices (missing foreground, slabs across the sky).
             idx += c.indices.map { $0 + UInt32(base) }
         }
-        let meshes = Self.treeMeshes()
-        let treeVerts = meshes.conifer + meshes.oak
-        // Bin by kind, then 400 m cell, so each cell is one contiguous instance range.
-        func cellKey(_ t: RealWorldRenderData.Tree) -> (Int, Int, Int) {
-            (t.conifer ? 0 : 1, Int((t.position.x / 400).rounded(.down)), Int((t.position.y / 400).rounded(.down)))
-        }
-        let sorted = data.trees.sorted { cellKey($0) < cellKey($1) }
-        var cells: [(kind: Int, start: Int, count: Int, min: SIMD3<Float>, max: SIMD3<Float>)] = []
-        for (i, t) in sorted.enumerated() {
-            let k = cellKey(t)
-            let lo = t.position - SIMD3(8, 8, 1), hi = t.position + SIMD3(8, 8, t.height + 1)
-            if let last = cells.last, cellKey(sorted[last.start]) == k {
-                cells[cells.count - 1].count += 1
-                cells[cells.count - 1].min = SIMD3(min(last.min.x, lo.x), min(last.min.y, lo.y), min(last.min.z, lo.z))
-                cells[cells.count - 1].max = SIMD3(max(last.max.x, hi.x), max(last.max.y, hi.y), max(last.max.z, hi.z))
-            } else {
-                cells.append((k.0, i, 1, lo, hi))
-            }
-        }
-        treeCells = cells
-        let conifers = sorted.filter(\.conifer), oaks = sorted.filter { !$0.conifer }
-        let inst = (conifers + oaks).map { PackedTreeInstance(px: $0.position.x, py: $0.position.y, pz: $0.position.z, height: $0.height,
-                                                               r: $0.colour.x, g: $0.colour.y, b: $0.colour.z, kind: $0.conifer ? 0 : 1) }
         func buf<T>(_ a: [T]) throws -> MTLBuffer {
             guard !a.isEmpty, let b = a.withUnsafeBytes({ device.makeBuffer(bytes: $0.baseAddress!, length: $0.count, options: .storageModeShared) }) else {
                 throw RendererError.commandQueue
             }
             return b
         }
-        precondition(MemoryLayout<PackedTerrainVertex>.stride == 16 && MemoryLayout<PackedTreeInstance>.stride == 32)
-        real = (try buf(verts), try buf(idx), draws.map { (indexOffset: $0.0, indexCount: $0.1, baseVertex: $0.2, min: $0.3, max: $0.4) },
-                try buf(treeVerts), meshes.conifer.count, meshes.conifer.count, meshes.oak.count,
-                inst.isEmpty ? nil : try buf(inst), conifers.count, oaks.count)
+        precondition(MemoryLayout<PackedTerrainVertex>.stride == 16)
+        real = (try buf(verts), try buf(idx), draws.map { (indexOffset: $0.0, indexCount: $0.1, baseVertex: $0.2, min: $0.3, max: $0.4) })
+        try setTrees(data.trees)
         func imageryTexture(_ i: RealWorldRenderData.Imagery) throws -> MTLTexture {
-            let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm_srgb, width: i.size, height: i.size, mipmapped: true)
-            d.usage = [.shaderRead]
-            guard let t = device.makeTexture(descriptor: d) else { throw RendererError.commandQueue }
-            var rgba = [UInt8](repeating: 255, count: i.size * i.size * 4)
-            for p in 0..<(i.size * i.size) { rgba[4 * p] = i.rgb[3 * p]; rgba[4 * p + 1] = i.rgb[3 * p + 1]; rgba[4 * p + 2] = i.rgb[3 * p + 2] }
-            t.replace(region: MTLRegionMake2D(0, 0, i.size, i.size), mipmapLevel: 0, withBytes: rgba, bytesPerRow: i.size * 4)
-            if let cmd = queue.makeCommandBuffer(), let blit = cmd.makeBlitCommandEncoder() {
-                blit.generateMipmaps(for: t); blit.endEncoding(); cmd.commit(); cmd.waitUntilCompleted()
-            }
-            return t
+            try Self.imageryTexture(i, device: device, queue: queue).texture
         }
         imageryNear = try data.near.map { (try imageryTexture($0), $0.centre, $0.halfExtent) }
         imageryFar = try data.far.map { (try imageryTexture($0), $0.centre, $0.halfExtent) }
@@ -695,7 +820,7 @@ public final class WorldRenderer {
             e.setFragmentTexture(bloomTex, index: 1)
             e.setFragmentTexture((ssaoStrength > 0 ? aoTarget : nil) ?? scene, index: 2)
             e.setFragmentBytes(&tp, length: 16, index: 0)
-            var aoS = SIMD4<Float>(ssaoStrength > 0 ? ssaoStrength : 0, 0, 0, 0)
+            var aoS = SIMD4<Float>(ssaoStrength > 0 ? ssaoStrength : 0, colourGrade, 0, 0)
             e.setFragmentBytes(&aoS, length: 16, index: 1)
         }
         if antialiasing {
@@ -752,15 +877,27 @@ public final class WorldRenderer {
                         se.drawIndexedPrimitives(type: .triangle, indexCount: d.indexCount, indexType: .uint32, indexBuffer: rw.indices,
                                                  indexBufferOffset: d.indexOffset * 4)
                     }
-                    if let ib = rw.instances {
-                        se.setRenderPipelineState(shadowTreePipeline)
-                        se.setVertexBuffer(rw.treeMesh, offset: 0, index: 0)
-                        se.setVertexBuffer(ib, offset: 0, index: 2)
-                        for cell in treeCells where Self.boxVisible(lp, cell.min, cell.max) {
-                            se.setVertexBufferOffset(cell.start * MemoryLayout<PackedTreeInstance>.stride, index: 2)   // not baseInstance (ignored on the CI GPU)
-                            se.drawPrimitives(type: .triangle, vertexStart: cell.kind == 0 ? 0 : rw.oakStart,
-                                              vertexCount: cell.kind == 0 ? rw.coniferCount : rw.oakCount, instanceCount: cell.count)
-                        }
+                    se.setRenderPipelineState(shadowPipeline)
+                }
+                if let tr = trees {
+                    var su = ShadowUniforms(lightViewProj: cascades[ci], model: Self.translation(-c.position))
+                    se.setRenderPipelineState(shadowTreePipeline)
+                    se.setVertexBytes(&su, length: MemoryLayout<ShadowUniforms>.stride, index: 1)
+                    se.setVertexBuffer(tr.mesh, offset: 0, index: 0)
+                    se.setVertexBuffer(tr.instances, offset: 0, index: 2)
+                    // Only tree cells inside this cascade's light volume can cast into it.
+                    let lp = Self.clipPlanes(cascades[ci] * su.model)
+                    let eye = SIMD3<Float>(Float(c.position.x), Float(c.position.y), Float(c.position.z))
+                    let farCast2 = Self.treeShadowDistance * Self.treeShadowDistance
+                    for cell in treeCells where Self.boxVisible(lp, cell.min, cell.max) {
+                        let d2 = Self.boxDistance2(eye, cell.min, cell.max)
+                        // The outer cascade (~2 m texels) resolves a tree shadow as a texel or two: only cells
+                        // within `treeShadowDistance` cast into it.
+                        if ci > 0 && d2 > farCast2 { continue }
+                        // Full mesh only in the near cascade and near cells; LOD crowns cast the rest.
+                        let range = treeRange(kind: cell.kind, full: ci == 0 && d2 < Self.treeShadowFullDistance * Self.treeShadowFullDistance)
+                        se.setVertexBufferOffset(cell.start * MemoryLayout<PackedTreeInstance>.stride, index: 2)   // not baseInstance (ignored on the CI GPU)
+                        se.drawPrimitives(type: .triangle, vertexStart: range.start, vertexCount: range.count, instanceCount: cell.count)
                     }
                     se.setRenderPipelineState(shadowPipeline)
                 }
@@ -874,19 +1011,31 @@ public final class WorldRenderer {
                 drawn += 1
             }
             lastDrawnChunks = drawn
-            if let ib = rw.instances {
-                enc.setRenderPipelineState(treePipeline)
-                enc.setVertexBuffer(rw.treeMesh, offset: 0, index: 0)
-                enc.setVertexBuffer(ib, offset: 0, index: 2)
-                var cellsDrawn = 0
-                for cell in treeCells where Self.boxVisible(planes, cell.min + o, cell.max + o) {
-                    enc.setVertexBufferOffset(cell.start * MemoryLayout<PackedTreeInstance>.stride, index: 2)   // not baseInstance (ignored on the CI GPU)
-                    enc.drawPrimitives(type: .triangle, vertexStart: cell.kind == 0 ? 0 : rw.oakStart,
-                                       vertexCount: cell.kind == 0 ? rw.coniferCount : rw.oakCount, instanceCount: cell.count)
-                    cellsDrawn += 1
-                }
-                lastDrawnTreeCells = cellsDrawn
+            enc.setRenderPipelineState(pipeline)
+        }
+        if let tr = trees {
+            var u = uniforms(model: Self.translation(-c.position))
+            let planes = Self.planes(viewProj)
+            let o = SIMD3<Float>(Float(-c.position.x), Float(-c.position.y), Float(-c.position.z))
+            enc.setRenderPipelineState(treePipeline)
+            enc.setVertexBytes(&u, length: MemoryLayout<WorldUniforms>.stride, index: 1)
+            enc.setFragmentBytes(&u, length: MemoryLayout<WorldUniforms>.stride, index: 1)
+            enc.setVertexBuffer(tr.mesh, offset: 0, index: 0)
+            enc.setVertexBuffer(tr.instances, offset: 0, index: 2)
+            var cellsDrawn = 0
+            let eye = SIMD3<Float>(Float(c.position.x), Float(c.position.y), Float(c.position.z))
+            let lod2 = Self.treeLODDistance * Self.treeLODDistance
+            var lodCells = 0
+            for cell in treeCells where Self.boxVisible(planes, cell.min + o, cell.max + o) {
+                let full = Self.boxDistance2(eye, cell.min, cell.max) < lod2
+                let range = treeRange(kind: cell.kind, full: full)
+                enc.setVertexBufferOffset(cell.start * MemoryLayout<PackedTreeInstance>.stride, index: 2)   // not baseInstance (ignored on the CI GPU)
+                enc.drawPrimitives(type: .triangle, vertexStart: range.start, vertexCount: range.count, instanceCount: cell.count)
+                cellsDrawn += 1
+                if !full { lodCells += 1 }
             }
+            lastLODTreeCells = lodCells
+            lastDrawnTreeCells = cellsDrawn
             enc.setRenderPipelineState(pipeline)
         }
         if let a = aircraft, let p = aircraftPosition, let m = aircraftBodyToENU {
@@ -926,6 +1075,7 @@ public final class WorldRenderer {
             let cr = cloudRenderer!
             cr.steps = cloudSteps
             cr.downsample = cloudDownsample
+            cr.lightSteps = cloudLightSteps
             var cu = CloudUniforms(layer: clouds, steps: cloudSteps)
             let r = simd_normalize(simd_cross(fwd, upHint))
             let up = simd_cross(r, fwd)

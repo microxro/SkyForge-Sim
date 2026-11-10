@@ -65,6 +65,16 @@ actor OfflineImageryTransport: HTTPTransport {
             #expect(!r.nearRunway(Double(t.position.x), Double(t.position.y)))
             #expect(t.height >= 9 && t.height <= 19)
         }
+        // Stands: the conifer share varies between 200 m patches (not one uniform 55 % mix everywhere).
+        var cells: [SIMD2<Int>: (n: Int, c: Int)] = [:]
+        for t in trees {
+            let k = SIMD2(Int((t.position.x / 200).rounded(.down)), Int((t.position.y / 200).rounded(.down)))
+            cells[k, default: (0, 0)].n += 1
+            if t.conifer { cells[k, default: (0, 0)].c += 1 }
+        }
+        let shares = cells.values.filter { $0.n >= 30 }.map { Double($0.c) / Double($0.n) }
+        #expect(shares.count >= 4, "\(shares.count) patches with 30+ trees")
+        #expect((shares.max() ?? 0) - (shares.min() ?? 0) > 0.4, "conifer share range \(shares.min() ?? 0)–\(shares.max() ?? 0)")
     }
 
     @Test func sessionRestsOnTheRealRunway() async throws {
@@ -78,6 +88,21 @@ actor OfflineImageryTransport: HTTPTransport {
 }
 
 @Suite struct TreeThinningTests {
+    /// Clusters and rows survive; a lone tree (a dark car or shadow read as a crown) does not.
+    @Test func loneTreesAreDropped() {
+        func t(_ x: Float, _ y: Float) -> TreeInstance { TreeInstance(position: SIMD3(x, y, 0), height: 10, conifer: false, colour: .one) }
+        let cluster = [t(0, 0), t(6, 0), t(0, 6)]
+        let suburb = (0..<5).map { t(100 + Float($0) * 18, 0) }   // oaks 18 m apart
+        let lone = [t(300, 300), t(500, 500)]
+        let kept = RealWorldRegion.dropLoneTrees(cluster + suburb + lone)
+        #expect(kept.count == cluster.count + suburb.count, "\(kept.count)")
+        #expect(!kept.contains { $0.position.x >= 300 })
+        // On paved ground the suburban spacing is not enough: 2 within 10 m are needed.
+        let lot = [t(1000, 0), t(1015, 0)], lotCluster = [t(2000, 0), t(2005, 0), t(2000, 5)]
+        let keptPaved = RealWorldRegion.dropLoneTrees(lot + lotCluster, paved: Array(repeating: true, count: 5))
+        #expect(keptPaved.count == lotCluster.count, "\(keptPaved.count)")
+    }
+
     /// A dense 2 km forest capped at 5,000 trees keeps every tree near the centre and still reaches the edge.
     @Test func thinningKeepsNearDenseAndReachesFar() {
         var trees: [TreeInstance] = []

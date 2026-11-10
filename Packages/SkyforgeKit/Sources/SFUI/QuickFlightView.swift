@@ -12,6 +12,7 @@ import SFInstruments
 import SFQuickFlight
 import SFPlatform
 import SFContent
+import SFImagery
 import SFAtmosphere
 import SFWeather
 
@@ -51,6 +52,13 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
     /// In-cockpit view (3D panel with a live SF-1000 PFD) instead of the chase camera.
     @Published var cockpit = false
     private var pfdBusy = false
+    /// Camera-following sharp imagery (texture streaming): the loaded region, its tile sources and state.
+    private var realRegion: RealWorldRegion?
+    private var tileTransport: (any HTTPTransport)?
+    private var photoCrowns: [ImageryDelighting.Crown] = []
+    private var tileCache: KeyedCache?
+    private var detailBusy = false
+    private var lastDetailPosition: SIMD3<Double>?
     @Published var attribution: [String] = []
     /// SkyWorld detail for this device tier (used directly, or as the offline fallback).
     private var skyWorldDetail: QuickFlightDetail = .phone
@@ -88,7 +96,8 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
                             : LightingSetup.physicalPreset(.goldenHour, azimuthDegrees: 255, cameraHeightMetres: world.runwayElevation + 50)
         do { renderer = try WorldRenderer(device: device, colorFormat: .bgra8Unorm, lighting: lighting) }
         catch { status = .failed("Renderer: \(error)"); return }
-        try? renderer?.setCockpit(Cockpit.mesh(), screen: Cockpit.pfdCorners.map { SIMD3<Float>(Float($0.x), Float($0.y), Float($0.z)) })
+        do { try renderer?.setCockpit(Cockpit.mesh(), screen: Cockpit.pfdCorners.map { SIMD3<Float>(Float($0.x), Float($0.y), Float($0.z)) }) }
+        catch { attribution.append("Cockpit view unavailable: \(error)") }
         // Fair-weather cumulus; march quality by device tier (the march runs at half resolution).
         renderer?.clouds = .fairWeather
         renderer?.apply(tier == .low ? .low : (tier == .medium ? .medium : .high))
@@ -105,11 +114,13 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
     private func loadSkyWorld(detail: QuickFlightDetail) {
         let world = QuickFlightWorld()
         Task.detached(priority: .userInitiated) {
-            let soup = world.buildEnvironment(detail: detail)
+            let env = world.buildEnvironmentInstanced(detail: detail)
+            let trees = RealWorldRenderData.trees(env.trees)
             let aircraft = QuickFlightWorld.aircraftMesh()
             await MainActor.run {
                 do {
-                    try self.renderer?.setEnvironment(soup)
+                    try self.renderer?.setEnvironment(env.soup)
+                    try self.renderer?.setTrees(trees)
                     try self.renderer?.setAircraft(aircraft)
                     self.status = .ready
                 } catch { self.status = .failed("Upload: \(error)") }
@@ -142,6 +153,10 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
                         try self.renderer?.setRealWorld(data)
                         try self.renderer?.setAircraft(aircraft)
                         self.world = region
+                        self.realRegion = region
+                        self.photoCrowns = data.photoCrowns
+                        self.tileTransport = transport
+                        self.tileCache = cache
                         self.session = QuickFlightSession(world: region, start: start)
                         self.attribution = region.attribution + (weather.map { ["Weather: \($0.raw) (aviationweather.gov)"] } ?? [])
                         self.renderer?.clouds = weather?.layer ?? .fairWeather(fieldElevation: Float(region.runwayElevation))
@@ -207,12 +222,47 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
             camera = WorldCamera(position: cam.position, target: cam.target)
         }
         let c = session.bodyToENUColumns
-        try? r.encode(cmd: cmd, colour: tex, depth: depth, camera: camera,
-                      aircraftPosition: session.positionENU, aircraftBodyToENU: simd_double3x3(columns: (c.0, c.1, c.2)))
+        do {
+            try r.encode(cmd: cmd, colour: tex, depth: depth, camera: camera,
+                         aircraftPosition: session.positionENU, aircraftBodyToENU: simd_double3x3(columns: (c.0, c.1, c.2)))
+        } catch {
+            status = .failed("Rendering stopped: \(error)")   // say so instead of showing a blank view
+            return
+        }
         cmd.present(drawable)
         cmd.commit()
         hudCounter += 1
         if hudCounter % 2 == 0 { hud = session.data; crashed = session.crashed }
+        if hudCounter % 60 == 0 { refreshDetail() }
+    }
+
+    /// Re-centres the sharp imagery layer ahead of the aircraft once it has drifted 40 % of its half extent:
+    /// tiles come from the pack, the cache or the network, and the texture is built off the main thread,
+    /// then swapped in (one detail texture at a time, so memory stays bounded).
+    private func refreshDetail() {
+        guard let region = realRegion, region.detailStreamable, !detailBusy, let r = renderer, let transport = tileTransport else { return }
+        let p = session.positionENU
+        let heading = lastDetailPosition.map { p - $0 } ?? .zero
+        lastDetailPosition = p
+        let target = region.detailCentre(position: p, velocity: heading)
+        if let cur = r.detailImageryPlacement {
+            let d = target - cur.centre
+            if (d * d).sum().squareRoot() < cur.half * 0.4 { return }
+        }
+        detailBusy = true
+        let cache = tileCache, crowns = photoCrowns
+        nonisolated(unsafe) let builder = r
+        Task.detached(priority: .utility) {
+            var mosaic = await region.streamDetail(around: target, transport: transport, cache: cache)
+            if mosaic != nil { ImageryDelighting.removePhotoTrees(&mosaic!, crowns: crowns) { x, y in region.ground.water(x, y) ?? 0 } }
+            let prepared = mosaic.flatMap {
+                try? builder.makeImagery(RealWorldRenderData.Imagery(centre: $0.centre, halfExtent: $0.halfExtent, size: $0.size, rgb: $0.rgb))
+            }
+            await MainActor.run {
+                if let prepared { self.renderer?.setDetailImagery(prepared) }
+                self.detailBusy = false
+            }
+        }
     }
 }
 

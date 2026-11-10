@@ -609,15 +609,37 @@ public enum OSMMeshBuilder {
             let bottom = b.minHeightMetres > 0 ? base + b.minHeightMetres : base - max(0, foundation)
             guard top > bottom else { continue }
             let wall = wallColour(for: b), roof = roofColour(for: b)
+            // Contact band: the lowest ~0.8 m of a ground-standing wall is darker (ground occlusion and grime),
+            // so a box sits on the ground instead of floating on the photo (art round 14).
+            let band = b.minHeightMetres > 0 ? bottom : min(top, base + 0.8)
             for i in ring.indices {
                 let p = ring[i], q = ring[(i + 1) % ring.count]
-                soup.addQuad(SIMD3(p.x, p.y, bottom), SIMD3(q.x, q.y, bottom), SIMD3(q.x, q.y, top), SIMD3(p.x, p.y, top),
+                if band > bottom {
+                    soup.addQuad(SIMD3(p.x, p.y, bottom), SIMD3(q.x, q.y, bottom), SIMD3(q.x, q.y, band), SIMD3(p.x, p.y, band),
+                                 colour: wall * 0.62, material: .opaque)
+                }
+                soup.addQuad(SIMD3(p.x, p.y, band), SIMD3(q.x, q.y, band), SIMD3(q.x, q.y, top), SIMD3(p.x, p.y, top),
                              colour: wall, material: .opaque)
             }
             let tris = OSMGeometry.triangulate(ring)
-            for t in tris {
-                let a = ring[t.x], c1 = ring[t.y], c2 = ring[t.z]
-                soup.addFlat(SIMD3(a.x, a.y, top), SIMD3(c1.x, c1.y, top), SIMD3(c2.x, c2.y, top), colour: roof, material: .opaque)
+            if b.minHeightMetres <= 0, let hip = hippedRoof(b, ring: ring) {
+                // Ridge along the long axis; the sunlit and shaded slopes give a small house its volume
+                // from approach height, where a flat lid reads as a box.
+                let rise = hip.short / 2 * tan(30 * Double.pi / 180)
+                let rA = SIMD3(hip.ridgeA.x, hip.ridgeA.y, top + rise), rB = SIMD3(hip.ridgeB.x, hip.ridgeB.y, top + rise)
+                func v(_ i: Int) -> SIMD3<Double> { let p = ring[(i + hip.first) % 4]; return SIMD3(p.x, p.y, top) }
+                let ridged = simdLength(hip.ridgeB - hip.ridgeA) > 0.05   // a square house gets a pyramid
+                soup.addFlat(v(0), v(1), rB, colour: roof, material: .opaque)
+                if ridged { soup.addFlat(v(0), rB, rA, colour: roof, material: .opaque) }
+                soup.addFlat(v(1), v(2), rB, colour: roof, material: .opaque)
+                soup.addFlat(v(2), v(3), rA, colour: roof, material: .opaque)
+                if ridged { soup.addFlat(v(2), rA, rB, colour: roof, material: .opaque) }
+                soup.addFlat(v(3), v(0), rA, colour: roof, material: .opaque)
+            } else {
+                for t in tris {
+                    let a = ring[t.x], c1 = ring[t.y], c2 = ring[t.z]
+                    soup.addFlat(SIMD3(a.x, a.y, top), SIMD3(c1.x, c1.y, top), SIMD3(c2.x, c2.y, top), colour: roof, material: .opaque)
+                }
             }
             if b.minHeightMetres > 0 {
                 for t in tris {
@@ -627,6 +649,30 @@ public enum OSMMeshBuilder {
             }
         }
         return soup
+    }
+
+    /// Hipped-roof layout for a small four-cornered house (counter-clockwise `ring`): `first` is the corner
+    /// that starts a long edge, the ridge runs between `ridgeA` (near edge first+3→first) and `ridgeB`
+    /// (near edge first+1→first+2), inset half the short side from each end. Nil for other buildings:
+    /// tagged flat roofs, more or fewer than four corners, footprints over 400 m² or not roughly rectangular.
+    static func hippedRoof(_ b: OSMBuilding, ring: [SIMD2<Double>]) -> (first: Int, ridgeA: SIMD2<Double>, ridgeB: SIMD2<Double>, short: Double)? {
+        guard ring.count == 4 else { return nil }
+        let shape = b.tags["roof:shape"]
+        if let shape, shape != "hipped" && shape != "gabled" { return nil }
+        let houseLike: Set<String> = ["house", "detached", "semidetached_house", "residential", "bungalow", "farm", "cabin", "terrace"]
+        guard shape != nil || houseLike.contains(b.kind) else { return nil }
+        guard abs(OSMGeometry.signedArea(ring)) <= 400 else { return nil }
+        func len(_ i: Int) -> Double { simdLength(ring[(i + 1) % 4] - ring[i % 4]) }
+        // Roughly rectangular: opposite edges within 25 % of each other.
+        guard abs(len(0) - len(2)) < 0.25 * max(len(0), len(2)), abs(len(1) - len(3)) < 0.25 * max(len(1), len(3)) else { return nil }
+        let first = (len(0) + len(2)) >= (len(1) + len(3)) ? 0 : 1
+        let long = (len(first) + len(first + 2)) / 2, short = (len(first + 1) + len(first + 3)) / 2
+        guard short > 1 else { return nil }
+        let c = ring.reduce(.zero, +) / 4
+        let p = { (i: Int) in ring[(i + first) % 4] }
+        let axis = simdNormalize((p(1) + p(2)) / 2 - (p(3) + p(0)) / 2)
+        let half = max(0, long - short) / 2
+        return (first, c - axis * half, c + axis * half, short)
     }
 
     public static func roadColour(for r: OSMRoad) -> SIMD3<Float> {

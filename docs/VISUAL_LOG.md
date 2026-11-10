@@ -236,3 +236,315 @@ The clarity and micro-detail changes are not visible at 640×360.
 Round-3 structural change, chosen with the reviewer:
 - A z17 USGS approach layer at about 1 m/px (a8f0977, ADR-0017).
 - Next: SkyWorld relief and trees in the Metal path, procedural buildings tinted from the photo, aircraft exposure and shadow.
+
+## Bold round 3 — 1280×720 Metal frames (9f8c54a, run 42533862905)
+KMRY 5.0, KASE 6.0, KBFI 4.0, LSZS 4.5, NZQN 5.0, SkyWorld 4.5 (full-detail frame). **Average 4.83 (+0.75).**
+Findings:
+- The z17 layer and the full-HD frames show.
+- Photo trees and their baked shadows double the 3D trees (KMRY).
+- KBFI boxes are still pale.
+- LSZS is dark.
+- SkyWorld is flat, its tree belts read as walls, and the approach foreground had no objects.
+- A CPU reference render of the KMRY camera matches the GPU softness, so the GPU path is clean.
+Round-4 batch:
+1. Camera-following z18 detail streaming (ea82990).
+2. Photo tree and shadow suppression in the near band, where the 3D trees and shadow map take over.
+3. Foliage albedo floor for tree tints.
+4. SkyWorld objects also around the final approach.
+
+## Bold round 4 — 1280×720 Metal frames (2e80968, run 42537244102)
+KMRY 5.0, KASE 6.0, KBFI 4.0, LSZS 4.5, NZQN 5.0, SkyWorld 5.0. **Average 4.92 (+0.09, below 0.2).**
+Findings:
+- Only SkyWorld visibly improved, from the approach-area trees.
+- The LSZS lower half stayed at a mean of 34/255 even with the foliage floor, so lighting or shadow is the cause; a cumulus shadow is suspected.
+- KBFI roofs still pale.
+- A colour grade is estimated at about +0.2, but only after LSZS exposure is fixed and with a gentle toe.
+Same run: the frame-time step failed. SkyWorld high was 17.05 ms (baked approach trees doubled its shadow cost) and KMRY high 17.81 ms (extra imagery samples on every terrain pixel). Fixes:
+- SkyWorld trees are GPU-instanced and cell-culled (`setTrees`).
+- Hedgerow trees along farmed parcels.
+- Detail-layer and suppression samples run only where used, with explicit gradients.
+
+## Bold round 5: 1280×720 Metal frames (commit ab5c88a, run 42552583206)
+Scores: KMRY 4.5, KASE 6.0, KBFI 4.0, LSZS 5.0, NZQN 5.0, SkyWorld 5.5. **Average 5.00 (+0.08).** This is the second round in a row that gained less than 0.2.
+
+Findings:
+- **What worked:**
+  - The cloud-shadow fill light. LSZS's lower half is 34 → 46/255, and crowns and their shadows now read.
+  - The colour grade.
+  - The SkyWorld hedgerows.
+- **KMRY regressed:** the near ground was posterised.
+  - Cause: photo-tree suppression lifted building and terrain shadows to a flat local average and left hard dark rims.
+  - A numpy prototype on KMRY tiles showed the rims survive feathering, because the partly dark edge pixels stay below the darkness test.
+- **KBFI:** walls derived from the roof turned charcoal.
+- **SkyWorld:** near crowns were faceted, and fields turned lime.
+
+Round-6 batch, a structural change of approach:
+1. Suppression removed. The 3D trees stand on the photo's foliage pixels.
+2. Fallback roofs use the brighter half of their samples. Walls use a stucco/siding palette.
+3. Vibrance spares greens.
+4. Tree crowns get smooth radial normals.
+
+## Bold round 6: 1280×720 Metal frames (c769527, run 42554218498)
+Scores: KMRY 5.0, KASE 6.0, KBFI 4.5, LSZS 5.0, NZQN 5.0, SkyWorld 5.5. **Average 5.17 (+0.17).** This is the third round in a row under 0.2.
+
+Findings:
+- KMRY's posterisation is gone.
+- KBFI walls now read as stucco with lit and shaded sides. Some boxes still stand on paved lots.
+- SkyWorld crowns are still faceted. Cause: stacked crown sections with opposite slopes, not the shading normals.
+- Biggest lever (art director): four of the five real frames are capped by the bottom 40 % of the frame, which shows a magnified ~1 m/px photo.
+
+Round-7 batch, structural (b7affb8):
+- **Near-ground detail materials.** Each photo pixel within 800 m is classified, and each class adds its own high frequencies and normal tilt:
+  - grass
+  - dry grass
+  - soil
+  - pavement/roof
+- **Tree crowns.** Near broadleaf crowns get 12 sides and ellipsoid normals.
+
+## Bold round 7: 1280×720 Metal frames (499eca0, run 42557478493)
+Scores: KMRY 5.0, KASE 6.0, KBFI 4.5, LSZS 5.25, NZQN 5.0, SkyWorld 5.75. **Average 5.25 (+0.08).**
+
+Findings:
+- **What worked:** smooth SkyWorld crowns, the LSZS forest-floor floor, and the hinge dashes are gone.
+- **Accepted by the art director:** ground softness at this camera is in the photo, not magnification (ADR-0019).
+
+Round-8 batch, reusing the classifier:
+1. **Canopy trees.** 3D trees are placed on dark crowns that are not redder than green. Oak and shaded crowns had missed the forest score.
+2. **Crown shapes.** Per-instance crown width, squash and lean, shared by the main and shadow passes.
+3. **Aircraft paint.** Albedo is capped at 0.52; at 0.66 it sat at the tone-map shoulder.
+
+Not changed: shadow ambient stays physically based. Ambient is not multiplied by the shadow term; it is the clear-sky irradiance.
+
+## Bold round 8: 1280×720 Metal frames (5c2575c, run 42561292621, all CI green)
+Scores: KMRY 5.5, KASE 6.25, KBFI 4.75, LSZS 5.75, NZQN 5.0, SkyWorld 5.75. **Average 5.50 (+0.25).**
+
+What worked:
+- Dense 3D trees on photo canopy gave the largest real-airport gain since the z17 imagery.
+- The cause of the earlier misses: the 2 km final's foreground lay outside the tree disc, and oak and shaded canopy failed the forest score.
+
+New problems:
+- Crowns are cooler and bluer than the photo canopy.
+- Crowns stand beside their photo trees, so trees and shadows appear twice.
+- Some trees stand on shadowed pavement.
+- The aircraft still renders near 245/255.
+
+Round-9 batch:
+1. Trees snap to the darkest point within 3 m, the photo crown's centre.
+2. Dark-canopy placement requires green ≥ blue.
+3. Crown hue is clamped (blue ≤ 0.75 × green, red 0.65–1.05 × green).
+4. Foliage ambient is 0.7 × a sky/ground mix, standing in for occlusion inside the crown.
+5. Aircraft paint albedo capped at 0.40.
+
+## Bold round 9: 1280×720 Metal frames (feb6272, run 42562430575, tests and frame time green)
+Scores: KMRY 5.75, KASE 6.5, KBFI 5.0, LSZS 5.25, NZQN 5.0, SkyWorld 5.75. **Average 5.54 (+0.04).**
+
+Findings:
+- **What worked:** crown colours now match the photo (no more blue crowns), and trees snap onto their photo blobs.
+- **Regression:** the clamp's red ceiling of 1.05 × green turned LSZS forest khaki; saturation fell from 29 to 16.
+- **Still open:**
+  - The photo's own baked tree shadows remain beside the 3D trees.
+  - Some trees still stand on paved lots.
+  - The aircraft's sides render flat.
+
+Round-10 batch:
+1. **Crown colour:**
+   - Red is clamped to 0.70–0.90 × green, with saturation at least 0.25.
+   - Foliage ambient returns to 0.85; darkening applies only to downward-facing crown surfaces.
+2. **Placement:** dark canopy requires green ≥ blue + 0.015–0.04 and green ≥ 0.9 × red.
+3. **Crown shape:** crowns start at 0.2 of the tree's height, so less trunk shows.
+4. **Aircraft:** occlusion darkens the fuselage's lower curve.
+
+## Bold round 10: 1280×720 Metal frames (8d14b3c, run 42563635349)
+Scores: KMRY 5.75, KASE 6.5, KBFI 5.0, LSZS 5.5, NZQN 5.0, SkyWorld 5.75. **Average 5.58 (+0.04).**
+
+Findings:
+- Under 5 % of pixels changed in five of the six frames.
+- **LSZS saturation:** 18 on screen, against 29 in r8. The cause was the 0.25 saturation floor, which could never act while blue was already clamped to ≤ 0.75 × green.
+- **Tree snapping:** snapping to the darkest point drifted trees onto their own baked shadow.
+- **Aircraft:** shading changes don't show from above and behind.
+
+Round-11 batch:
+1. **Crown colour:** blue ≤ 0.55 × green and red 0.62–0.85 × green, which gives saturation of at least ~0.4. Luminance floor 0.08.
+2. **Snapping:** trees snap to the greenest point instead of the darkest.
+3. **Livery:** accent-blue fin, tailplane tips and fuselage-top stripe.
+4. **Deferred:** SkyWorld relief in view, because of the risk of terrain under the approach.
+
+## Bold rounds 11: 1280×720 Metal frames (34d36eb, run 42581086411, all green)
+Scores: KMRY 6.0, KASE 6.75, KBFI 5.25, LSZS 6.0, NZQN 5.25, SkyWorld 6.0. **Average 5.88 (+0.30).**
+
+Findings:
+- **What worked:**
+  - The crown saturation fix: LSZS is lit green forest again (saturation 18 → 26).
+  - The livery breaks up the white aircraft in every frame.
+  - The cheaper tree LOD shows no visible regression in stills.
+- **Still open:**
+  - The photo's own shadows sit beside the 3D trees (KMRY).
+  - Lone lollipop trees on bare lots (KBFI).
+  - NZQN's lake is unchanged for eight rounds.
+
+Round-12 batch:
+1. **Lake water:**
+   - A shallow turquoise body across the shore band.
+   - A broad sun sheen.
+   - Reflection scale 0.85 (was 0.6).
+2. **Lone trees:** trees with fewer than 2 neighbours within 10 m are dropped.
+3. **Crown variety:** ±4 % per-tree red/green hue.
+
+## Bold round 12: 1280×720 Metal frames (28cf4aa, run 42583714104)
+Scores: KMRY 5.75, KASE 6.75, KBFI 5.25, LSZS 6.0, NZQN 5.75, SkyWorld 6.0. **Average 5.92 (+0.04).**
+
+Findings:
+- **What worked:** NZQN water now reflects the sky (lower-half brightness 81 → 97).
+- **KMRY regressed:** the rule "2 neighbours within 10 m" removed real suburban oaks, which stand 10–25 m apart.
+- **Performance cuts not checked:** the review frames do not use the high cloud tier or the desktop tree cap. Their sky and SkyWorld are byte-identical to r11, so these frames cannot judge the cloud-step and tree-cap cuts.
+
+Round-13 batch:
+1. **Lone-tree rule:** a tree needs 1 neighbour within 20 m.
+2. **Tree brightness:** ±8 % jitter, applied after the floor.
+3. **Water:**
+   - A 60 m swell octave on rotated axes, against visible wavelet tiling.
+   - A wider shallows band.
+
+## Bold round 13: 1280×720 Metal frames (135c980, run 42585133971, all green)
+Scores: KMRY 6.0, KASE 6.75, KBFI 5.25, LSZS 6.0, NZQN 6.0, SkyWorld 6.0. **Average 6.00 (+0.08), the first round at 6.**
+
+Findings:
+- **What worked:**
+  - The swell octave makes NZQN read as a real lake.
+  - KMRY's tree density is restored.
+- **Still open:**
+  - KBFI's lot props are back.
+  - Single-pixel water sparkles.
+
+Round-14 work:
+1. **Photo-shadow decals: tried, not shipped.**
+   - The direction estimate (a pooled luminance profile around trees) found clear dips at KMRY (east) and KBFI (northwest), and none at KASE.
+   - Lifting each tree's shadow toward the ground colour beside it painted flat grey ovals over neighbouring crowns. That is the same flat-fill failure as the round-5 suppression.
+2. **Lone-tree rule by ground class:** trees on paved surroundings (5 of 8 ring samples bright and unsaturated) need 2 neighbours within 10 m. Elsewhere, 1 within 20 m.
+3. **Water sparkles:** the needle specular lobe only applies where wavelets resolve, capped at 12.
+
+## Bold round 14: 1280×720 Metal frames (1f9312c, run 42590247714)
+Scores: KMRY 6.0, KASE 6.75, KBFI 5.5, LSZS 6.0, NZQN 6.0, SkyWorld 6.0. **Average 6.04 (+0.04).**
+
+Findings:
+- **What worked:** the ground-class lone-tree rule cleared KBFI's lot props and kept KMRY's oaks.
+- **Glints:** the specular cap dims them; they now read as plausible glints.
+- **SkyWorld:** unchanged for seven rounds.
+
+Round-15 batch:
+1. **Multi-lobe crowns:** near broadleaf crowns are a 9-sided main crown plus two offset 7-sided lobes, each with its own ellipsoid normals (97 triangles, against 70). SkyWorld shares the mesh.
+2. **Highlight shoulder:** photo albedo above 0.28 is compressed (0.72 → 0.52), so near-white concrete and roofs no longer blow out.
+
+## Bold round 15: 1280×720 Metal frames (1aaf2da, run 42592435319)
+Scores: KMRY 6.0, KASE 6.75, KBFI 5.5, LSZS 6.0, NZQN 6.0, SkyWorld 6.0. **Average 6.04 (+0.00).**
+
+Findings:
+- Rounds 14 and 15 both gained less than 0.2.
+- **Lobed crowns:** they reach only trees within 350 m, which here means SkyWorld. Their own normals left facets and creases.
+- **Highlight shoulder:** it moved the brightest 1 % by only 5–6 of 255.
+
+Round-16 change, structural:
+- **Review coverage extended to the desktop/high tier.**
+  - The phone-tier review frames never showed the high tier, which has the 4096 px detail imagery, denser terrain and more trees.
+  - They also never covered the frame-budget cuts: cloud steps and light taps, and the 65k and 75k tree caps.
+  - CI now also captures all five airports and SkyWorld with `RealWorldDetail.desktop` and `Settings.high`.
+  - Both tiers are scored and reported.
+
+Same batch:
+1. Highlight shoulder: knee 0.22, slope 0.45.
+2. Lobe normals blended 50/50 with the whole crown's ellipsoid normal.
+3. Wall contact band: the lowest ~0.8 m of ground-standing walls at 0.62 × the wall colour.
+
+## Bold round 16: 12 Metal frames, phone and high tiers (dd41f05, run 42593932269)
+Phone: KMRY 6.0, KASE 6.75, KBFI 5.5, LSZS 6.0, NZQN 6.0, SkyWorld 6.0. **Average 6.04 (+0.00).**
+High: KMRY 6.0, KASE 6.5, KBFI 5.5, LSZS 6.25, NZQN 6.0, SkyWorld 6.25. **Average 6.08.**
+
+Findings:
+- The three round-16 changes are barely visible on phone (lower-half mean pixel difference ≤ 0.6).
+- **High tier:** denser trees help every scene, but the clouds show a regular 2×2 checker: quarter-resolution clouds with per-pixel jitter, under a tent filter sized for half resolution.
+- **High-tier KMRY:** blue patches in the mid-ground where phone shows tree shadows. The desktop near layer's water-mask cells are 8 m, so the 24-cell minimum admitted water bodies of only ~1,500 m².
+- **Highlights:** the brightest 1 % (≈ 224/255) is bare sand and concrete in the photo, not the aircraft (222 with the aircraft masked out). ACES is flat near white, so each shoulder step moved it only ~5 levels, and the grade's S-curve lifted it ~7 levels more.
+- **SkyWorld:** flat terrain, for nine rounds.
+
+Round-17 batch:
+1. **Cloud reconstruction at quarter resolution:** a 3×3 box over the low-res texels. Interleaved-gradient jitter is near uniform over any 3×3 block. Half resolution keeps the tent.
+2. **Water minimum is an area (6,000 m²), not a cell count:** test with 8 m cells (48 m shadow patch removed, 120 m pond kept).
+3. **Highlights:** knee 0.20, slope 0.32; the grade's S stops lifting above ~0.6.
+4. **SkyWorld relief:** hills up to ~240 m, 2–4.5 km either side of the runway axis (0.45 × on the town side) and past the far end. The runway, approach and climb-out are untouched (test).
+
+## Bold round 17: 12 Metal frames (710cdb7, run 42596319498)
+Phone: KMRY 6.25, KASE 6.75, KBFI 5.75, LSZS 6.0, NZQN 6.0, SkyWorld 6.5. **Average 6.21 (+0.17).**
+High: KMRY 6.25, KASE 7.0, KBFI 5.75, LSZS 6.5, NZQN 6.25, SkyWorld 6.75. **Average 6.42 (+0.34).** KASE high is the first frame at 7.
+
+Findings:
+- **Highlights:** the brightest 1 % fell 13 levels on KMRY and KBFI (221 → 208, 224 → 211, aircraft excluded); near concrete no longer reads clipped.
+- **Clouds:** the checker is gone and there are no halos at ridgelines. The 3×3 box over quarter-resolution texels softened them, though (sky fine detail 0.78 on high against 1.20 on phone).
+- **SkyWorld:** the hills show, but as a low, pale band.
+- **KMRY blue patches:** still there on high, and now on phone too. The source imagery settles it (dumped water mask over the near photo):
+  - The real pond north of the approach is detected, but its mask bleeds into the trees around it.
+  - The other patches are dense dark canopy: an oak and pine stand on the hillside south of the runway, a conifer strip, and town tree clusters.
+  - Laguna Grande and Roberts Lake are real but not detected (olive water colour). Left as is.
+  - Per 8×8 block (sRGB luminance standard deviation): ponds and sea 0.004–0.008, canopy 0.05 or more, town 0.14.
+
+Round-18 batch:
+1. **Water texture test:** each mask cell's water score is weighted by `1 − smoothstep(0.02, 0.04)` of the median luminance spread over its 3×3 neighbourhood. Test: textured dark canopy is not water; a smooth lake and its edge stay.
+2. **Clouds, quarter resolution:** 2×2 Bayer step jitter, with a composite of 4 bilinear taps at ±0.5 texel. That is an exact [1 2 1]² tent, which weights the four Bayer phases equally at any position, so the pattern cancels over a 3-texel footprint instead of the box's ~4.
+3. **Photo shadow toe:** below 0.07 albedo, lifted as `0.07·(al/0.07)^0.7` (0.02 → 0.03); fades by 1.2 km; not on water.
+4. **SkyWorld hills:** 340 m, starting 1.9 km off the axis (was 240 m from 2 km).
+5. **KBFI fallback boxes:** skipped where 5 of 8 photo samples 14 m out match the roof luminance (on a warehouse roof or car park the photo already shows). Test.
+
+## Bold round 18: 12 Metal frames (ba04e91, run 42600144759)
+Phone: KMRY 6.5, KASE 6.75, KBFI 5.75, LSZS 6.0, NZQN 6.0, SkyWorld 6.75. **Average 6.29 (+0.08).**
+High: KMRY 6.5, KASE 7.0, KBFI 5.75, LSZS 6.5, NZQN 6.25, SkyWorld 7.0. **Average 6.50 (+0.08).** High: KASE and SkyWorld at 7.
+
+Findings:
+- **KMRY false water:** gone on both tiers (blue pixels in the area 785 → 200 on high); the big lake still reads as water.
+- **SkyWorld hills:** now read as terrain.
+- **High-tier clouds:** no pattern, slightly crisper (fine detail 0.78 → 0.81; phone 1.20). Quarter resolution caps edge sharpness whatever the filter.
+- **Shadow toe:** invisible (KMRY darkest 1 % unchanged). At 0.07 it sits below most photo shadow albedo.
+- **KBFI skip test:** barely visible; the remaining boxes are uniform pale cubes.
+- **Remaining issues:**
+  - LSZS: one uniform canopy texture.
+  - NZQN and KASE (phone): smeared photo at grazing angles.
+
+Round-19 batch (first round under 0.2 since the structural change; a second would trigger another):
+1. **Toe:** knee 0.10, exponent 0.65 (0.03 → 0.046, 0.06 → 0.072).
+2. **High-tier clouds:** one-third resolution with 26 steps (quarter with 32). The Bayer tent path applies above downsample 2.5. 2 ms of headroom was measured.
+3. **Forest stands:** ~300 m noise sets the conifer share (12–88 %), with darker conifer and lighter broadleaf stand tones; half of each tree's height comes from its stand. Test: the conifer share varies by > 0.4 between 200 m patches.
+4. **Photo sampler:** anisotropy 16 (was 8).
+5. **KBFI fallback buildings:** darker siding and brick wall tones, and a fifth of them two-storey.
+
+## Bold round 19: 12 Metal frames (6fad245, run 42602113280)
+Phone: KMRY 6.75, KASE 6.75, KBFI 6.0, LSZS 6.25, NZQN 6.0, SkyWorld 6.75. **Average 6.42 (+0.13).**
+High: KMRY 6.75, KASE 7.25, KBFI 6.0, LSZS 6.75, NZQN 6.5, SkyWorld 7.0. **Average 6.71 (+0.21).**
+
+Findings:
+- **High-tier clouds:** now match phone (fine detail 1.18 against 1.21), with no pattern.
+- **Shadow toe:** softer, not washed out.
+- **KBFI:** the brick and siding tones sit in the scene.
+- **LSZS stands:** not yet readable as patches.
+- **Anisotropy 16:** made no visible difference.
+- **Process:** phone gained under 0.2 in rounds 18 and 19, so a structural change follows. The art director's pick: baked photo shadows and photo tree blobs are what hold KMRY, KBFI, NZQN and KASE-phone below 7.
+
+Round-20 structural change: **photo trees removed under the 3D trees** (`ImageryDelighting`, applied to the near and detail layers when the render data is built, and to the in-flight detail layer).
+1. **Discs:** one around each placed 3D tree, `h·(0.42 broadleaf | 0.25 conifer) + 0.25·h` for the photo crown plus its shadow, feathered 2.5 m.
+2. **Mask:** inside the discs, photo canopy (green above red and blue, not bright lawn) or shadow (luminance below 0.6–0.85 × its 10 m local mean). Water is excluded, and the mask fades where under 15–35 % of the ground within 25 m is unmasked (closed forest keeps its photo; nothing lit to fill from).
+3. **Fill:** push-pull inpainting (weighted 2×2 pyramid, then bilinear pull), in 512 px tiles with a 64 px apron, so holes take the lit ground next to them rather than an average (the round-13 decal's grey ovals).
+4. **Tests:**
+   - A blob and its shadow under a 3D tree are filled to the ground colour; the same blob without a tree is untouched; lit ground is unchanged.
+   - Water is kept, and closed forest is left alone.
+   - Push-pull fills from neighbours.
+5. **KMRY check on the real pack (phone near):** the golf-course trees and their shadows become fairway, with no ovals. 227k of 4.2M pixels changed; the 0.59 m detail layer changed 620k.
+
+## Round 20: de-lighting (b10d6c3 → 7deeb4c, run 42619494239). Unscored.
+- **Reviewer:** stopped on its usage limit before scoring (ADR-0020).
+- **Own regression check:**
+  - KMRY near band: fewer dark photo blobs under the 3D trees; the remaining dark patches are shadow-map shadows.
+  - KBFI near band: unchanged (few trees there).
+  - No ovals, rims or smears seen.
+- **Frame times:** within budget (SkyWorld high 16.16 ms, KMRY high 15.52 ms).
+
+Round-21 batch (the reviewer's round-19 fixes 2 and 5; unscored):
+1. **LSZS stands:** crisp edges (the conifer share is a smoothstep over ±0.08 of the noise, was ±0.22, range 10–90 %); conifer stands ~22 % darker and bluer-green, broadleaf stands lighter and yellower.
+2. **SkyWorld fields:** within-field variation, ±9 % brightness at ~55 m and a ±4 % green/red shift at ~35 m, faded where it would alias. Applied after `fieldFactor`, so the CPU mirror test still holds.
+- Round 21 own check (run 42722423559): the LSZS stands and SkyWorld in-field variation are barely visible at review distance; the high-tier clouds are unchanged by the 22/3 step cut. Unscored (ADR-0020).
