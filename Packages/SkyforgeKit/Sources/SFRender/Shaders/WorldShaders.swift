@@ -403,7 +403,13 @@ public enum WorldShaders {
         tilt = float2(0.0);
         if (k.grass > 0.01) {
             float blades = groundNoise(w + 5.3, 0.25) * o1, clumps = groundNoise(w - 9.1, 1.2) * o2, tone = groundNoise(w + 23.0, 6.0) * o4;
+            // Tufts at ~2.5 m (faded by a 1.25 m footprint, two pixels a cell): the scale between the clumps,
+            // which fade out within a few hundred metres, and the photo's own 5–20 m mottle (round 37 debug
+            // views: the final camera's near band had no grass texture at any scale it resolves).
+            float tufts = groundNoise(w + 41.0, 2.5) * saturate(1.0 - fp / 1.25);
             float3 g = float3(1.0 + 0.16 * blades + 0.15 * clumps);
+            g *= mix(float3(1.0), float3(0.84, 0.94, 0.80), saturate(-tufts) * 0.9);   // dense, darker tufts
+            g *= 1.0 + 0.10 * saturate(tufts);
             g *= mix(float3(1.0), float3(1.10, 1.03, 0.80), saturate(tone) * 0.6);     // sun-bleached patches
             g *= mix(float3(1.0), float3(0.86, 1.04, 0.92), saturate(-tone) * 0.6);    // lush patches
             f += (g - 1.0) * k.grass;
@@ -949,6 +955,7 @@ public enum WorldShaders {
         float groundMat = 0.0;                               // weight of the near-ground detail materials
         float2 groundTilt = float2(0.0);                     // their normal tilt (applied after the normal is final)
         float dbgPatch = 0.0, dbgNatural = 0.0;              // near-ground patch term and its class weight (debug view 3)
+        float3 ltMean = float3(-1.0);                        // the photo's ~30 m mean colour (near ground; -1 = none)
         float roadNear = 0.0;                                // road proximity from the near mask's second channel
         float2 photoW = in.rel.xy + u.cameraLocal.xy;      // region metres (imagery lookup)
         float2 dwx = dfdx(photoW), dwy = dfdy(photoW);
@@ -1018,6 +1025,7 @@ public enum WorldShaders {
                 float2 luv; bool lin; float lw0, lw1;
                 float3 lm = photoAlbedo(photoColour(u, imgNear, imgMid, imgFar, imgDetail, photoW, dwx * ls, dwy * ls, luv, lin, lw0, lw1));
                 float meanL = max(dot(lm, float3(0.2126, 0.7152, 0.0722)), 0.01);
+                ltMean = lm;
                 float aL = max(dot(albedo, float3(0.2126, 0.7152, 0.0722)), 1e-4);
                 float r = aL / meanL;
                 // tanh's argument clamped: fast-math tanh of a large value is inf/inf = NaN, and one NaN pixel
@@ -1049,6 +1057,14 @@ public enum WorldShaders {
             groundMat = (1.0 - smoothstep(500.0, 800.0, dist)) * (1.0 - saturate((wm - 0.2) / 0.2)) * (1.0 - rwCover);
             if (groundMat > 0.0) {
                 GroundClasses k = classifyGround(c, imgForest);
+                if (ltMean.x >= 0.0) {
+                    // Classes 60 % from the ~30 m mean colour: lawn whose pixels photograph blue-grey classed as
+                    // pavement and never took the grass material (round 37 debug view 3: the KBFI near band was
+                    // "pavement" behind ±20 % patches that only added mottle). A car park's mean stays grey.
+                    GroundClasses km = classifyGround(ltMean, imgForest);
+                    k.grass = mix(k.grass, km.grass, 0.6); k.dry = mix(k.dry, km.dry, 0.6);
+                    k.soil = mix(k.soil, km.soil, 0.6); k.pave = mix(k.pave, km.pave, 0.6);
+                }
                 float2 tilt;
                 // Footprint as twice the geometric mean of the two axes (was their sum): at the final camera's
                 // grazing angle the sum faded every octave finer than ~8 m out of the near band (round 34: KMRY and
@@ -1058,15 +1074,15 @@ public enum WorldShaders {
                 // Wear and growth patches at ~4 m and ~12 m on any natural ground (±12 % / ±10 %), the scale the
                 // 1.6 m US photo cannot carry.
                 float2 gw = in.rel.xy + u.cameraPos.xy;
-                // Round 35: not visible. Low-chroma lawn and dirt in the soft photo classify as pavement, so the
-                // patches now also reach unroaded "pavement" at 60 %; ±20 % / ±16 %, contrast-shaped into blotches
-                // (value noise alone sits near zero). They still fade out by a 3 m / 9 m footprint: fading at 5 m /
-                // 15 m left 4 m cells under two pixels, which aliased (FXAA test on ground pixels, CI run 43622678300).
-                float natural = saturate(k.grass + k.dry + k.soil + 0.6 * k.pave * (1.0 - roadNear));
+                // Round 37 debug view 3: at ±20 % / ±16 % these were present over 40–67 % of the near band but read
+                // as more of the photo's own 5–20 m mottle, not as texture. Back to ±10 % / ±8 %, natural classes
+                // only (the mean-colour classes above now catch the blue-grey lawn). Fade out by a 3 m / 9 m
+                // footprint (later fading aliased, CI run 43622678300).
+                float natural = saturate(k.grass + k.dry + k.soil);
                 float p4 = (smoothstep(-0.45, 0.45, groundNoise(gw + 63.0, 4.0)) * 2.0 - 1.0) * saturate(1.0 - fpw / 3.0);
                 float p12 = (smoothstep(-0.45, 0.45, groundNoise(gw - 41.0, 12.0)) * 2.0 - 1.0) * saturate(1.0 - fpw / 9.0);
-                f *= 1.0 + (0.20 * p4 + 0.16 * p12) * natural;
-                dbgPatch = (0.20 * p4 + 0.16 * p12) * natural * groundMat; dbgNatural = natural;
+                f *= 1.0 + (0.10 * p4 + 0.08 * p12) * natural;
+                dbgPatch = (0.10 * p4 + 0.08 * p12) * natural * groundMat; dbgNatural = natural;
                 albedo *= 1.0 + (f - 1.0) * groundMat;
                 groundTilt = tilt * groundMat;
             }
@@ -1247,7 +1263,9 @@ public enum WorldShaders {
             od *= thick / 3.0 / toSun.z;
             // Floor 0.25 (was 0.12): a cumulus shadow over dark forest left a near-black quarter of the frame
             // (round 35, LSZS high: four rounds of foliage lighting never moved it; the slope sits under the cloud).
-            float ct = max(0.25, exp(-0.30 * od));  // multiple scattering keeps cloud shadows soft, never black
+            // Floor 0.35 (round 37 debug view 2: the LSZS high slope is under the cumulus at the floor, ~0.25 of
+            // the direct sun, over ~0.04 albedo forest; 0.12 → 0.25 barely moved it).
+            float ct = max(0.35, exp(-0.30 * od));  // multiple scattering keeps cloud shadows soft, never black
             vis *= ct;
             cloudShade = 1.0 - ct;
         }

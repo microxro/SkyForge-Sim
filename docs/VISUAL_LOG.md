@@ -920,3 +920,25 @@ This is the third round under +0.2. Guessing at lighting terms has stopped payin
 Round-37 batch also includes, for the NZQN near lake:
 - Wind streaks about 25 m across.
 - Facet modulation ×2.6, clamped to 0.5–1.7.
+
+## Round 37 debug views: PR #6 0d75d55 (run 43625224382)
+Region-of-interest means, each channel a 0–1 term:
+
+| View | Region | R | G | B |
+|---|---|---|---|---|
+| 1: albedo (sRGB) | LSZS high slope (x 700–1280, y 430–720) | 0.165 | 0.230 | 0.213 |
+| 2: sun visibility / n·l / cloud shade | LSZS high slope | 0.50 | 0.65 | 0.50 |
+| 4: direct share / ambient share / irradiance | LSZS high slope | 0.54 | 0.46 | 0.57 |
+| 3: patch (0.5 = none) / ground weight / natural | KMRY near band (y 540–720) | 0.498 | 0.39 | 0.38 |
+| 3 | KBFI near band | 0.501 | 0.66 | 0.65 |
+
+Findings:
+- **LSZS high slope:** it sits under the cumulus shadow at the transmittance floor (the blue-cyan region in view 2), over forest whose albedo is about 0.04 linear. Raising the floor from 0.12 to 0.25 still left only a quarter of the direct sun, which is why it barely moved. The reviewer's "not cloud shadow" was a guess, and it was wrong.
+- **Near-ground patches:** they were present at full strength. The patch channel's standard deviation was 0.28–0.31 (patch ±15 %, saturating at ±0.25) over 41 % (KMRY) and 67 % (KBFI) of the band. They read as more of the photo's 5–20 m mottle, not as texture.
+- **The missing piece is grass texture:** blue-grey lawn classified as pavement, so it never received grass texture at any scale the final camera resolves.
+
+Round-38 batch:
+1. **Ground classes:** 60 % now come from the ~30 m mean photo colour. A car park's mean stays grey; a lawn's reads green.
+2. **Grass tufts:** a ~2.5 m octave (dense, darker tufts against paler ones) that fades by a 1.25 m footprint, two pixels per cell.
+3. **4 m and 12 m patches:** cut back to ±10 % and ±8 %, on natural classes only.
+4. **Cloud shadow:** transmittance floor 0.35.
