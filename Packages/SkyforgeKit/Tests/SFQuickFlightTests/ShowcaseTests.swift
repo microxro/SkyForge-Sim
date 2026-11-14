@@ -53,6 +53,12 @@ import SFTerrainCore
         // Real relief from the packed Terrarium tiles, not the coarse baseline.
         #expect(abs(region.runwayElevation - 50) < 30, "KMRY field elevation \(region.runwayElevation) m")
         #expect(region.attribution.contains { $0.contains("USGS") })
+        // The mid height mosaic (z12) comes from the pack too, and is what the terrain uses between the
+        // near square and the far ring.
+        let mid = try #require(region.midHeights, "z12 mid heights served offline")
+        #expect(mid.metresPerSample < 5)
+        let q = SIMD2(1_500.0, -1_200.0)                       // outside the 600 m near square, inside the mid one
+        #expect(abs(region.outerHeight(q.x, q.y) - mid.height(q.x, q.y)) < 1e-9)
     }
 
     @Test func packTransportServesHitsAndRefusesMissesOffline() async throws {

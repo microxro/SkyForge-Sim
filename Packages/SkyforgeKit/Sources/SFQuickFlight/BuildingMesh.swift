@@ -157,11 +157,13 @@ public enum BuildingMeshBuilder {
         return s.count >= 3 ? s : r
     }
 
-    /// Builds the mesh. `ground`: terrain height (m). `roofPhoto`: the ground photo's linear albedo at a
-    /// point (roofs take it as their fallback colour; nil = palette). Buildings are grouped into `cell`-metre
+    /// Builds the mesh. `ground`: terrain height (m). `roofPhoto`: one linear albedo for a footprint (centre,
+    /// ring), from the ground photo under it (roofs take it as their fallback colour; nil = palette). Each
+    /// roof is one uniform colour with procedural detail in the shader: per-pixel photo roofs carried the
+    /// photo's projected blotches and shadows (art round 23). Buildings are grouped into `cell`-metre
     /// squares, each one contiguous index range with bounds for culling.
     public static func build(_ buildings: [OSMBuilding], cell: Double = 500, ground: (Double, Double) -> Double,
-                             roofPhoto: ((SIMD2<Double>) -> SIMD3<Float>?)? = nil) -> BuildingMesh {
+                             roofPhoto: ((SIMD2<Double>, [SIMD2<Double>]) -> SIMD3<Float>?)? = nil) -> BuildingMesh {
         var mesh = BuildingMesh()
         struct Item { var b: OSMBuilding; var ring: [SIMD2<Double>]; var centre: SIMD2<Double>; var key: SIMD2<Int> }
         var items: [Item] = []
@@ -249,14 +251,14 @@ public enum BuildingMeshBuilder {
                 wall = pal[Int(h0 % UInt64(pal.count))] * Float(0.9 + 0.2 * rnd(3))
             }
             var roof: SIMD3<Float>
-            var photoRoof = false
-            if let c = b.roofColour { roof = c } else if let c = roofPhoto?(it.centre) {
-                roof = c; photoRoof = true
+            let photoRoof = false                                           // shader photo-roof bit: off (one colour per roof)
+            if let c = b.roofColour { roof = c } else if let c = roofPhoto?(it.centre, it.ring) {
+                roof = c
             } else {
                 let pal = pitched != nil ? roofPalette : flatRoofPalette
                 roof = pal[Int((h0 >> 16) % UInt64(pal.count))] * Float(0.9 + 0.2 * rnd(4))
             }
-            if style == .tower { photoRoof = false; roof = flatRoofPalette[Int((h0 >> 16) % UInt64(flatRoofPalette.count))] * 0.8 }
+            if style == .tower { roof = flatRoofPalette[Int((h0 >> 16) % UInt64(flatRoofPalette.count))] * 0.8 }
             let wallStyle = { (halfLen: Double) -> (UInt8, UInt8, UInt8, UInt8) in
                 (seed, style.rawValue, UInt8(max(1, min(255, (halfLen * 2).rounded()))), UInt8(min(255, storeys)))
             }

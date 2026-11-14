@@ -34,7 +34,13 @@ public enum PostShaders {
         return c * w;
     }
 
-    static float3 bl_tap(texture2d<float> t, float2 uv) { return min(t.sample(fx, uv).rgb, float3(6.0e4)); }
+    // Non-finite taps dropped by their exponent bits (fast math folds isnan away, and min(NaN, 6e4) gives 6e4:
+    // one NaN scene pixel became a 70 px white flare, art round 24).
+    static float3 bl_tap(texture2d<float> t, float2 uv) {
+        float3 v = t.sample(fx, uv).rgb;
+        uint3 e = as_type<uint3>(v) & 0x7f800000u;
+        return any(e == uint3(0x7f800000u)) ? float3(0.0) : min(v, float3(6.0e4));
+    }
 
     fragment float4 bloom_down_fragment(PostVarying in [[stage_in]], texture2d<float> t [[texture(0)]],
                                         constant BloomParams& bp [[buffer(0)]]) {

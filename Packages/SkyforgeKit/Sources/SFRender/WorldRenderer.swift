@@ -216,6 +216,11 @@ public final class WorldRenderer {
     public var cloudSteps = 64
     /// Display grade strength (gentle filmic contrast and vibrance after the tone map; 0 = off).
     public var colourGrade: Float = 1
+    /// Diagnostic output of the terrain and tree shader (0 = normal render). With bloom, SSAO, grade and
+    /// sharpening off, each channel shows its term directly as 0–1 (`WorldShaders` debug views): 1 albedo
+    /// (sRGB-encoded), 2 sun visibility / sun-facing (n·l) / cloud shade, 3 near-ground patch term (0.5 = none) /
+    /// ground-material weight / natural-class weight, 4 direct and ambient shares of the irradiance.
+    public var debugView = 0
     /// Cloud self-shadow taps toward the sun per march sample (tier setting).
     public var cloudLightSteps = 6
     /// Fine cloud structure strength (0 = reference density, 1 = billows and frayed edges).
@@ -513,7 +518,7 @@ public final class WorldRenderer {
         var cells: [(kind: Int, start: Int, count: Int, min: SIMD3<Float>, max: SIMD3<Float>)] = []
         for (i, t) in sorted.enumerated() {
             let k = cellKey(t)
-            let lo = t.position - SIMD3(8, 8, 1), hi = t.position + SIMD3(8, 8, t.height + 1)
+            let lo = t.position - SIMD3(14, 14, 1), hi = t.position + SIMD3(14, 14, t.height * 1.3 + 1)   // treeShape: size up to 1.28×, lobed crowns
             if let last = cells.last, cellKey(sorted[last.start]) == k {
                 cells[cells.count - 1].count += 1
                 cells[cells.count - 1].min = SIMD3(min(last.min.x, lo.x), min(last.min.y, lo.y), min(last.min.z, lo.z))
@@ -567,10 +572,19 @@ public final class WorldRenderer {
         try setBuildings(data.buildingMesh)
         runway = data.runway
         if let wm = data.waterMask {
-            let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .r32Float, width: wm.size, height: wm.size, mipmapped: false)
+            // Water in the red channel, road proximity (when there are roads) in the green.
+            let roads = data.roadMask.flatMap { $0.count == wm.values.count ? $0 : nil }
+            let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: roads == nil ? .r32Float : .rg32Float,
+                                                             width: wm.size, height: wm.size, mipmapped: false)
             d.usage = [.shaderRead]
             guard let t = device.makeTexture(descriptor: d) else { throw RendererError.commandQueue }
-            t.replace(region: MTLRegionMake2D(0, 0, wm.size, wm.size), mipmapLevel: 0, withBytes: wm.values, bytesPerRow: wm.size * 4)
+            if let roads {
+                var rg = [Float](repeating: 0, count: 2 * wm.values.count)
+                for k in 0..<wm.values.count { rg[2 * k] = wm.values[k]; rg[2 * k + 1] = roads[k] }
+                t.replace(region: MTLRegionMake2D(0, 0, wm.size, wm.size), mipmapLevel: 0, withBytes: rg, bytesPerRow: wm.size * 8)
+            } else {
+                t.replace(region: MTLRegionMake2D(0, 0, wm.size, wm.size), mipmapLevel: 0, withBytes: wm.values, bytesPerRow: wm.size * 4)
+            }
             waterTex = t
         } else { waterTex = nil }
     }
@@ -1033,7 +1047,7 @@ public final class WorldRenderer {
         let cascadeCount: Float = doShadows ? Float(ShadowCascades.count) : 0
         let uTableDims = SIMD4<Float>(dims.x, dims.y, dims.z, cascadeCount)
         let uZenith = SIMD4<Float>(L.skyZenith, Float(time.truncatingRemainder(dividingBy: 3_600)))
-        let uQuality = SIMD4<Float>(Float(max(1, min(3, shadowFilter))), 0, 0, 0)
+        let uQuality = SIMD4<Float>(Float(max(1, min(3, shadowFilter))), 0, Float(debugView), 0)
         let cloudLayer = CloudUniforms(layer: clouds, steps: 0).layer
         var uRunwayA = SIMD4<Float>(0, 0, 0, 1), uRunwayB = SIMD4<Float>(0, 0, 0, 0)
         if let rw = runway {

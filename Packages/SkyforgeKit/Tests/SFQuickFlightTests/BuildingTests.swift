@@ -147,3 +147,26 @@ import SFPreview
         #expect(mesh.buildingCount > 400 && mesh.triangleCount > 10_000)
     }
 }
+
+@Suite struct RoofAlbedoTests {
+    let square: [SIMD2<Double>] = [SIMD2(0, 0), SIMD2(20, 0), SIMD2(20, 20), SIMD2(0, 20)]
+
+    @Test func darkShadowAndBrightSkylightDoNotSetTheRoof() {
+        // Left quarter in black shadow, one bright skylight, the rest a mid grey roof.
+        let c = RealWorldRegion.roofAlbedo(ring: square, centre: SIMD2(10, 10)) { p in
+            if p.x < 5 { return SIMD3(repeating: 0.01) }
+            if abs(p.x - 12) < 2 && abs(p.y - 12) < 2 { return SIMD3(repeating: 0.6) }
+            return SIMD3(0.16, 0.15, 0.14)
+        }
+        let l = 0.2126 * c!.x + 0.7152 * c!.y + 0.0722 * c!.z
+        #expect(abs(l - 0.15) < 0.01)
+    }
+
+    @Test func luminanceIsHeldToRoofingAlbedos() {
+        let black = RealWorldRegion.roofAlbedo(ring: square, centre: SIMD2(10, 10)) { _ in SIMD3(repeating: 0.01) }!
+        let white = RealWorldRegion.roofAlbedo(ring: square, centre: SIMD2(10, 10)) { _ in SIMD3(repeating: 0.9) }!
+        #expect(abs(black.y - 0.08) < 0.005)
+        #expect(abs(white.y - 0.25) < 0.005)
+        #expect(RealWorldRegion.roofAlbedo(ring: square, centre: SIMD2(10, 10)) { _ in nil } == nil)
+    }
+}

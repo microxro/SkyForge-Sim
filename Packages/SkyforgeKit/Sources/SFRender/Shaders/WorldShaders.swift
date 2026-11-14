@@ -39,7 +39,7 @@ public enum WorldShaders {
         float4 imageryDetail;     // sharp inner imagery square: centre x, y, half extent, 1 if present
         float4 imageryMid;        // middle-distance imagery square: centre x, y, half extent, 1 if present
         float4 skyZenith;         // rgb zenith sky radiance (reflections), w = time (s)
-        float4 quality;           // x = shadow filter half width (taps), y = cabin interior fill (cockpit pass), z, w unused
+        float4 quality;           // x = shadow filter half width (taps), y = cabin interior fill (cockpit pass), z = debug view, w unused
         float4 runwayA;           // low threshold x, y (region metres), direction x, y (unit, toward the high end)
         float4 runwayB;           // length, width (m), low-end number (0 = none), 1 if a runway is drawn
     };
@@ -80,6 +80,20 @@ public enum WorldShaders {
         float2 xy = float2(cs.x * local.x - cs.y * local.y, cs.y * local.x + cs.x * local.y);
         float3 sl = float3(xy.x * crownW, xy.y * crownW, local.z * sz);
         sl.xy += (float2(u2, u3) - 0.5) * 0.12 * local.z;      // lean (no trig: this runs per vertex, per pass)
+        if (!bark) {
+            // Irregular crown outline: a one-sided bulge and a two-lobed stretch around the trunk, from the same
+            // hash, so neighbouring crowns stop reading as identical smooth spheres (round 38, KMRY near trees).
+            float r = length(local.xy);
+            float2 dn = local.xy / max(r, 1e-4);
+            float2 d1 = float2(u1 - 0.5, u2 - 0.5) * 2.0, d2 = normalize(float2(u2 - 0.5, u0 - 0.5) + float2(0.0, 0.001));
+            float c2 = dot(dn, d2);
+            float lobe = 1.0 + 0.35 * dot(dn, d1) + 0.20 * (2.0 * c2 * c2 - 1.0);   // ±22/14 % did not read (round 39)
+            sl.xy *= mix(1.0, lobe, saturate(r * 4.0));
+            sl.z *= 1.0 + 0.10 * (u3 - 0.5) * saturate(local.z * 2.0 - 0.6);
+        }
+        // Whole-tree size 0.72–1.28× from a second hash (round 39: KMRY's near trees still one size).
+        uint h2 = h * 0x9E3779B1u; h2 ^= h2 >> 16;
+        sl *= 0.72 + 0.56 * float(h2 & 0xFFu) / 255.0;
         return sl;
     }
 
@@ -171,6 +185,14 @@ public enum WorldShaders {
         o.normal = normalize(float3(nxy.x / crownW, nxy.y / crownW, n0.z / sz));   // inverse-transpose of the scale
         // Trunk vertices (marked by a negative normal w) are bark-coloured.
         o.albedo = w.normal.w < 0 ? float3(0.06, 0.045, 0.03) : float3(t.colour) * (0.85 + 0.3 * saturate(local.z));
+        if (w.normal.w >= 0) {
+            // Per-tree tone: ±18 % brightness and a warm (yellower) shift on about a third of the trees, so
+            // neighbours differ at a glance (round 39, KMRY near band).
+            uint th = as_type<uint>(int(floor(t.position.x * 4.0))) * 0x27D4EB2Du ^ as_type<uint>(int(floor(t.position.y * 4.0))) * 0x165667B1u;
+            th ^= th >> 15; th *= 0x85EBCA6Bu; th ^= th >> 13;
+            float tv = float(th & 0xFFu) / 255.0, tw = float((th >> 8) & 0xFFu) / 255.0;
+            o.albedo *= (0.82 + 0.36 * tv) * mix(float3(1.0), float3(1.10, 1.03, 0.84), saturate((tw - 0.65) / 0.35));
+        }
         o.material = w.normal.w < 0 ? 0.0 : 2.0;
         o.field = w.normal.w < 0 ? 1.0 : float(w.normal.w) / 127.0;      // leaf: how much sky the vertex sees
         o.local = float3(0.0);
@@ -284,8 +306,9 @@ public enum WorldShaders {
         float v = (a + (b - a) * tx) + ((c + (d - c) * tx) - (a + (b - a) * tx)) * ty;
         return v * 2.0 - 1.0;
     }
-    constant float3 fpSummer[7] = { float3(0.74, 0.90, 0.80), float3(1.22, 1.10, 1.28), float3(1.98, 1.41, 1.84),
-        float3(0.95, 0.60, 1.10), float3(1.70, 1.28, 2.05), float3(0.55, 0.70, 0.66), float3(1.32, 0.96, 1.30) };
+    constant float3 fpSummer[8] = { float3(0.74, 0.90, 0.80), float3(1.50, 1.25, 1.90), float3(2.40, 1.75, 3.30),
+        float3(0.95, 0.60, 0.95), float3(3.00, 2.00, 3.90), float3(0.55, 0.70, 0.66), float3(1.32, 0.96, 1.30),
+        float3(3.05, 2.40, 1.50) };   // as FieldPattern.summer
     constant float3 fpAutumn[6] = { float3(1.43, 1.03, 1.57), float3(0.78, 0.54, 1.00), float3(0.60, 0.68, 0.82),
         float3(1.22, 0.89, 1.38), float3(0.76, 0.77, 0.95), float3(1.67, 1.21, 2.00) };
     static float fieldCoverage(float x, float y, float weight, uint seed, float band, float4 grid, texture2d<float> parcels) {
@@ -310,7 +333,7 @@ public enum WorldShaders {
         float wv = fp_noise(x / 420.0, y / 420.0 - 9.1, seed ^ 0xA3u) * 22.0;
         float u = c * x + s * y + wu, v = -s * x + c * y + wv;
         uint h = fp_hash(int(floor(u / 110.0)), int(floor(v / 170.0)), seed);
-        uint idx = autumn ? h % 6u : h % 7u;
+        uint idx = autumn ? h % 6u : h % 8u;   // as FieldPattern (summer.count)
         bool pasture = !autumn && (idx == 0u || idx == 5u);
         bool ploughed = autumn ? idx == 1u : idx == 3u;
         float spacing = pasture ? 14.0 : 3.0 + 3.0 * fp_unit(h >> 8);
@@ -402,7 +425,13 @@ public enum WorldShaders {
         tilt = float2(0.0);
         if (k.grass > 0.01) {
             float blades = groundNoise(w + 5.3, 0.25) * o1, clumps = groundNoise(w - 9.1, 1.2) * o2, tone = groundNoise(w + 23.0, 6.0) * o4;
+            // Tufts at ~2.5 m (faded by a 1.25 m footprint, two pixels a cell): the scale between the clumps,
+            // which fade out within a few hundred metres, and the photo's own 5–20 m mottle (round 37 debug
+            // views: the final camera's near band had no grass texture at any scale it resolves).
+            float tufts = groundNoise(w + 41.0, 2.5) * saturate(1.0 - fp / 1.25);
             float3 g = float3(1.0 + 0.16 * blades + 0.15 * clumps);
+            g *= mix(float3(1.0), float3(0.84, 0.94, 0.80), saturate(-tufts) * 0.9);   // dense, darker tufts
+            g *= 1.0 + 0.10 * saturate(tufts);
             g *= mix(float3(1.0), float3(1.10, 1.03, 0.80), saturate(tone) * 0.6);     // sun-bleached patches
             g *= mix(float3(1.0), float3(0.86, 1.04, 0.92), saturate(-tone) * 0.6);    // lush patches
             f += (g - 1.0) * k.grass;
@@ -449,11 +478,11 @@ public enum WorldShaders {
         float fu = u / PU, fv = v / PV;
         float iu = floor(fu), iv = floor(fv);
         uint h = fp_hash(int(iu), int(iv), seed);
-        float3 col = autumn ? fpAutumn[h % 6u] : fpSummer[h % 7u];
+        float3 col = autumn ? fpAutumn[h % 6u] : fpSummer[h % 8u];
         float tu = fu - iu, tv = fv - iv;
         float along = ((h >> 24) & 1u) == 0u ? tu : tv;
         col *= 0.95 + 0.08 * along;
-        uint idx = autumn ? h % 6u : h % 7u;
+        uint idx = autumn ? h % 6u : h % 8u;   // as FieldPattern (summer.count)
         bool pasture = !autumn && (idx == 0u || idx == 5u);
         float spacing = pasture ? 14.0 : 3.0 + 3.0 * fp_unit(h >> 8);
         float coord = ((h >> 24) & 1u) == 0u ? u : v;
@@ -920,8 +949,10 @@ public enum WorldShaders {
     static float3 photoAlbedo(float3 c) {
         float3 a = pow(max(c, float3(0.0)), float3(1.08)) * 0.90;
         // Aerial photos are stretched so that concrete, sand and light roofs sit near white; real surfaces
-        // top out near 0.6, so the top of the range is compressed (0.9 → 0.65) and keeps its detail.
-        return select(a, 0.42 + (a - 0.42) * 0.48, a > 0.42);
+        // top out near 0.6, so the top of the range is compressed. Knee 0.24, slope 0.25 (0.8 → 0.38): with the
+        // 0.42/0.48 shoulder, 21–34 % of near-band pixels at KBFI and KMRY sat above 1.6× the band median and
+        // read as white blotches (art round 22; rounds 17–19 used 0.20/0.32 on a darker base).
+        return select(a, 0.24 + (a - 0.24) * 0.25, a > 0.24);
     }
 
     fragment float4 world_fragment(WorldVarying in [[stage_in]], constant WorldUniforms& u [[buffer(1)]],
@@ -945,6 +976,9 @@ public enum WorldShaders {
         float imgForest = 0.0;                               // canopy score of the imagery colour (real terrain)
         float groundMat = 0.0;                               // weight of the near-ground detail materials
         float2 groundTilt = float2(0.0);                     // their normal tilt (applied after the normal is final)
+        float dbgPatch = 0.0, dbgNatural = 0.0;              // near-ground patch term and its class weight (debug view 3)
+        float3 ltMean = float3(-1.0);                        // the photo's ~30 m mean colour (near ground; -1 = none)
+        float roadNear = 0.0;                                // road proximity from the near mask's second channel
         float2 photoW = in.rel.xy + u.cameraLocal.xy;      // region metres (imagery lookup)
         float2 dwx = dfdx(photoW), dwy = dfdy(photoW);
         if (m == 8.0) {
@@ -988,34 +1022,136 @@ public enum WorldShaders {
             // Canopy albedo floor (hue kept), the same 0.05 as the 3D tree tints: Sentinel-2 forest comes out
             // near-black (~0.03), so the ground between the 3D trees read as a dark smear (LSZS, rounds 4–6).
             float al = dot(albedo, float3(0.2126, 0.7152, 0.0722));
-            if (imgForest > 0.0 && al < 0.05) albedo = mix(albedo, albedo * (0.05 / max(al, 0.004)), imgForest);
+            // Floor 0.09 with a slight green lean: the forest floor between the crowns gets sky light (round 30:
+            // LSZS valley floor still dark).
+            if (imgForest > 0.0 && al < 0.09) albedo = mix(albedo, albedo * (0.09 / max(al, 0.004)) * float3(0.96, 1.04, 0.96), imgForest);   // 0.07 (0.05): near-black LSZS canopy under the 0.45 exposure (round 22)
             // Water: the near layer's mask (photo colour checked against land cover) inside it, the land
             // cover's water fraction carried by the outer layers beyond, blended across the near layer's edge.
             float wm = inNear ? mix(outerWater, waterMask.sample(imgSampler, nuv, level(0.0)).r, nearWeight) : outerWater;
+            // Water lies flat: the coarse land-cover fraction outside the near layer bled a lake onto the steep
+            // shore above it (round 26: the NZQN hillside above Lake Wakatipu rendered as smeared blue-grey
+            // water and never took the slope detail). The mesh normal of a lake surface is vertical.
+            wm *= smoothstep(0.93, 0.985, n.z);
+            if (inNear) roadNear = waterMask.sample(imgSampler, nuv, level(0.0)).g * nearWeight;
             // Shadow toe, the mirror of the shoulder: photo shadows below ~0.10 albedo are lifted (0.03 → 0.046,
             // 0.06 → 0.072) so the baked shadows under the 3D trees and buildings, which cast their own, stop
             // reading as doubled black (art round 17, KMRY; a 0.07/0.7 toe sat below most photo shadows, round 18).
             // Fades by 1.2 km; not on water.
+            // Local tone compression: each pixel held within ±40 % of the photo's ~30 m mean, so baked shadows,
+            // dark car parks and bright roofs in the photo do not read as black or white blotches next to the
+            // 3D scene's own lighting (art round 23: KMRY, KBFI). Near ground only; not on water or the runway.
+            float ltW = (1.0 - smoothstep(900.0, 1800.0, dist)) * (1.0 - saturate((wm - 0.2) / 0.2)) * (1.0 - rwCover);
+            if (ltW > 0.0) {
+                float fp0 = length(dwx) + length(dwy);
+                float ls = max(1.0, 30.0 / max(fp0, 1e-3));
+                float2 luv; bool lin; float lw0, lw1;
+                float3 lm = photoAlbedo(photoColour(u, imgNear, imgMid, imgFar, imgDetail, photoW, dwx * ls, dwy * ls, luv, lin, lw0, lw1));
+                float meanL = max(dot(lm, float3(0.2126, 0.7152, 0.0722)), 0.01);
+                ltMean = lm;
+                float aL = max(dot(albedo, float3(0.2126, 0.7152, 0.0722)), 1e-4);
+                float r = aL / meanL;
+                // tanh's argument clamped: fast-math tanh of a large value is inf/inf = NaN, and one NaN pixel
+                // bloomed into a 70 px white flare (art round 24, KMRY close).
+                // Within ~700 m the band tightens to ±25 % (round 35: the 1.6 m US photo's 3–10 m mottle of baked
+                // crown shadows and pale patches read as blotches at the final camera's near band; the procedural
+                // ground material below carries the detail there instead).
+                float nb = 1.0 - smoothstep(500.0, 1000.0, dist);
+                float amp = mix(0.4, 0.25, nb);
+                float rc = r < 1.0 ? 1.0 - amp * tanh(min((1.0 - r) / amp, 8.0)) : 1.0 + amp * tanh(min((r - 1.0) / amp, 8.0));
+                float k = rc / r;
+                float3 lifted = albedo * k;
+                // Lifted shadows take the local mean's chroma at their new luminance: scaling RGB alone kept and
+                // amplified the shadows' blue cast (round 24: saturated blue smears on the KBFI embankment).
+                lifted = mix(lifted, lm * (aL * k / meanL), saturate((k - 1.1) / 0.6));
+                // Near band: most of the chroma from the 30 m mean, so grey-blue and white photo blotches take the
+                // ground's own hue at their luminance (round 35: KBFI near ground mottled blue-grey and white).
+                lifted = mix(lifted, lm * (aL * k / meanL), 0.6 * nb);
+                // Near band, green ground: luminance 45 % of the way to the 30 m mean, so the soft 1.6 m photo's
+                // 5–20 m blotches give way to the grass material's own texture (rounds 34–38: every patch octave
+                // read as more photo mottle; the debug views showed the patches were present at full strength).
+                float gm = smoothstep(0.0, 0.02, lm.g - max(lm.r, lm.b) * 0.92);
+                // Cultivated and dry fields too (round 38: KASE's foreground field photo still smeared), at 80 %.
+                float hiM = max(lm.r, max(lm.g, lm.b));
+                gm = max(gm, 0.8 * smoothstep(0.08, 0.25, (lm.r - lm.b) / max(hiM, 1e-3)) * smoothstep(0.03, 0.08, meanL));
+                float lL = max(dot(lifted, float3(0.2126, 0.7152, 0.0722)), 1e-4);
+                lifted *= mix(1.0, meanL / lL, 0.45 * nb * gm);
+                albedo = mix(albedo, lifted, ltW);
+            }
             float alT = dot(albedo, float3(0.2126, 0.7152, 0.0722));
-            float toeW = (1.0 - smoothstep(400.0, 1200.0, dist)) * (1.0 - saturate((wm - 0.2) / 0.2));
-            if (alT < 0.10 && toeW > 0.0) {
-                float lifted = 0.10 * pow(max(alT, 1e-4) / 0.10, 0.65);
+            // Out to ~5 km at half strength beyond 1.2 km: dark photo forest on shaded mid-ring slopes stayed a
+            // near-black mass from the high camera (round 32, LSZS high), which sky light alone did not lift.
+            float toeW = max(1.0 - smoothstep(400.0, 1200.0, dist), 1.0 - smoothstep(3500.0, 6000.0, dist)) * (1.0 - saturate((wm - 0.2) / 0.2));   // full strength to ~4 km (round 33)
+            // Beyond ~1.5 km a higher toe (0.13, exponent 0.5): round 37 debug view 1 put the LSZS high valley
+            // wall at ~0.04 linear albedo (photo forest) under a cloud shadow; 0.04 → 0.067 there. The near
+            // canopy (LSZS final, 3D crowns over the photo) keeps the 0.10 toe.
+            float farT = smoothstep(1000.0, 2000.0, dist);
+            float toeT = mix(0.10, 0.13, farT);
+            if (alT < toeT && toeW > 0.0) {
+                float lifted = toeT * pow(max(alT, 1e-4) / toeT, mix(0.65, 0.5, farT));
                 albedo *= 1.0 + (lifted / max(alT, 1e-4) - 1.0) * toeW;
             }
             groundMat = (1.0 - smoothstep(500.0, 800.0, dist)) * (1.0 - saturate((wm - 0.2) / 0.2)) * (1.0 - rwCover);
             if (groundMat > 0.0) {
                 GroundClasses k = classifyGround(c, imgForest);
+                if (ltMean.x >= 0.0) {
+                    // Classes 60 % from the ~30 m mean colour: lawn whose pixels photograph blue-grey classed as
+                    // pavement and never took the grass material (round 37 debug view 3: the KBFI near band was
+                    // "pavement" behind ±20 % patches that only added mottle). A car park's mean stays grey.
+                    GroundClasses km = classifyGround(ltMean, imgForest);
+                    k.grass = mix(k.grass, km.grass, 0.6); k.dry = mix(k.dry, km.dry, 0.6);
+                    k.soil = mix(k.soil, km.soil, 0.6); k.pave = mix(k.pave, km.pave, 0.6);
+                }
                 float2 tilt;
-                float fpw = length(dwx) + length(dwy);
+                // Footprint as twice the geometric mean of the two axes (was their sum): at the final camera's
+                // grazing angle the sum faded every octave finer than ~8 m out of the near band (round 34: KMRY and
+                // KBFI near ground soft and mottled since round 24).
+                float fpw = 2.0 * sqrt(length(dwx) * length(dwy));
                 float3 f = groundMaterial(k, in.rel.xy + u.cameraPos.xy, max(fpw, 1e-3), tilt);
+                // Wear and growth patches at ~4 m and ~12 m on any natural ground (±12 % / ±10 %), the scale the
+                // 1.6 m US photo cannot carry.
+                float2 gw = in.rel.xy + u.cameraPos.xy;
+                // Round 37 debug view 3: at ±20 % / ±16 % these were present over 40–67 % of the near band but read
+                // as more of the photo's own 5–20 m mottle, not as texture. Back to ±10 % / ±8 %, natural classes
+                // only (the mean-colour classes above now catch the blue-grey lawn). Fade out by a 3 m / 9 m
+                // footprint (later fading aliased, CI run 43622678300).
+                float natural = saturate(k.grass + k.dry + k.soil);
+                float p4 = (smoothstep(-0.45, 0.45, groundNoise(gw + 63.0, 4.0)) * 2.0 - 1.0) * saturate(1.0 - fpw / 3.0);
+                float p12 = (smoothstep(-0.45, 0.45, groundNoise(gw - 41.0, 12.0)) * 2.0 - 1.0) * saturate(1.0 - fpw / 9.0);
+                f *= 1.0 + (0.10 * p4 + 0.08 * p12) * natural;
+                dbgPatch = (0.10 * p4 + 0.08 * p12) * natural * groundMat; dbgNatural = natural;
                 albedo *= 1.0 + (f - 1.0) * groundMat;
                 groundTilt = tilt * groundMat;
+            }
+            if (ltMean.x >= 0.0) {
+                // Crop rows on cultivated ground within ~1 km: the photo's fields smear into directional streaks at
+                // the final camera's grazing angle (round 39, KASE). Rows 3–6 m apart in ~150 m parcels on axes
+                // rotated 0.35 rad, ±10 %, faded by the footprint across the rows; the class comes from the 30 m
+                // mean colour (dry, warm ground). Derivatives come from the photo coordinates (taken outside the
+                // branches).
+                float hiM = max(ltMean.r, max(ltMean.g, ltMean.b));
+                float crop = smoothstep(0.08, 0.25, (ltMean.r - ltMean.b) / max(hiM, 1e-3))
+                           * smoothstep(0.03, 0.08, dot(ltMean, float3(0.2126, 0.7152, 0.0722)))
+                           * (1.0 - smoothstep(700.0, 1200.0, dist)) * (1.0 - saturate((wm - 0.2) / 0.2)) * (1.0 - rwCover) * (1.0 - roadNear);
+                if (crop > 0.01) {
+                    float2 pr = float2(0.94 * photoW.x + 0.34 * photoW.y, -0.34 * photoW.x + 0.94 * photoW.y);
+                    uint ph = fp_hash(int(floor(pr.x / 150.0)), int(floor(pr.y / 170.0)), 0x5EEDu);
+                    float ang = fp_unit(ph) * 3.14159265;
+                    float2 rd = float2(cos(ang), sin(ang));
+                    float spacing = 3.0 + 3.0 * fp_unit(ph >> 8);
+                    float fpR = length(float2(dot(dwx, rd), dot(dwy, rd)));
+                    float rows = cos(dot(photoW, rd) / spacing * 6.2831853) * saturate(1.0 - fpR * 4.0 / spacing);
+                    albedo *= 1.0 + 0.10 * rows * crop;
+                }
             }
             if (saturate((wm - 0.35) / 0.25) > 0.5) { imageryWater = true; albedo *= 0.7; shoreWm = wm; }
             m = imageryWater ? 1.0 : 7.0;
         }
         float2 fieldW = in.rel.xy + u.cameraLocal.xy;
         float fieldFp = length(fwidth(fieldW));              // derivatives outside divergent branches
+        // Footprint as the geometric mean of its two axes: on a slope seen at a grazing angle fwidth is
+        // the long axis, which faded every relief octave out (round 27: the NZQN hillside beside the high
+        // camera, a shaded slope smeared radially, never took the slope detail).
+        float fieldFpG = sqrt(length(dfdx(fieldW)) * length(dfdy(fieldW)));
         float localFp = length(fwidth(in.local));
         float2 uvFp = float2(length(float2(dfdx(in.uv.x), dfdy(in.uv.x))), length(float2(dfdx(in.uv.y), dfdy(in.uv.y))));
         float fieldBand = max(0.12, 2.5 * fwidth(in.field));
@@ -1032,11 +1168,22 @@ public enum WorldShaders {
                 // shift at ~35 m, so a parcel is not one flat tone (art round 19, SkyWorld phone). Outside
                 // fieldFactor, which mirrors the CPU FieldPattern exactly; faded where it would alias.
                 uint fs = uint(u.ambientGround.w);
-                float vFade = saturate(1.0 - fieldFp * 4.0 / 35.0);
+                float vFade = saturate(1.0 - fieldFpG * 4.0 / 35.0);   // geometric-mean footprint (round 30: faded out at grazing angles)
                 float nB = fp_noise(fieldW.x / 55.0 + 3.1, fieldW.y / 55.0 - 1.7, fs ^ 0x3Cu);
                 float nH = fp_noise(fieldW.x / 35.0 - 5.3, fieldW.y / 35.0 + 2.2, fs ^ 0xC5u);
-                f *= (1.0 + 0.09 * nB * vFade) * float3(1.0 - 0.04 * nH * vFade, 1.0 + 0.02 * nH * vFade, 1.0);
+                // Round 29: still read as flat parcels; stronger (±14 % at 55 m, ±7 % hue) plus wet/dry patches at
+                // ~140 m (±12 %, slightly yellower when dry) that cross several parcels like real soil does.
+                float vFadeL = saturate(1.0 - fieldFpG * 4.0 / 110.0);
+                float nL = fp_noise(fieldW.x / 110.0 + 11.7, fieldW.y / 110.0 - 8.9, fs ^ 0x5Au);
+                f *= (1.0 + 0.14 * nB * vFade) * float3(1.0 - 0.07 * nH * vFade, 1.0 + 0.035 * nH * vFade, 1.0);
+                // Round 30: ±12 % at 140 m was lost under the mowing stripes; ±25 % value, ±10 % hue at 110 m.
+                f *= (1.0 + 0.25 * nL * vFadeL) * float3(1.0 + 0.06 * nL * vFadeL, 1.0, 1.0 - 0.10 * nL * vFadeL);
                 albedo *= 1.0 + (f - 1.0) * fieldCov;
+                // Mature crops (factor red well above green: wheat, stubble, rapeseed) shifted warm after the
+                // factor, since the green grass base and partial coverage pulled them back to green on screen
+                // (round 33: only 1.5 % of SkyWorld's ground had red above green).
+                float warm = saturate((f.x - f.y) / max(f.y, 1e-3) * 2.5) * fieldCov;
+                albedo *= float3(1.0 + 0.16 * warm, 1.0 - 0.10 * warm, 1.0 - 0.18 * warm);
                 float2 rt = fieldRowTilt(fieldW.x, fieldW.y, fieldFp, uint(u.ambientGround.w), u.skyHorizon.w > 1.5) * fieldCov;
                 n = normalize(n + float3(rt, 0.0));
             }
@@ -1074,10 +1221,23 @@ public enum WorldShaders {
             n = normalize(n + float3(-gx, -gy, 0.0) * (0.12 * wFine * fade));
         }
         if (groundMat > 0.0 && !imageryWater) n = normalize(n + float3(-groundTilt, 0.0));
-        if (m == 7.0 && in.material == 7.0 && n.z < 0.9) {
+        // Photo terrain enters at 0.985 so the slope tone bands reach moderate slopes; its relief still starts
+        // at 0.97 through `steep` (round 32: the bands' wider gate sat inside a 0.97 gate and never applied).
+        if (m == 7.0 && ((in.material == 7.0 && n.z < 0.9) || (in.material == 8.0 && n.z < 0.985))) {
             // Steep ground: fall-line gullies, rock tone variation, scrub and scree (as SFPreview), each
-            // octave faded by pixel footprint so big slopes keep detail far away.
-            float steep = smoothstep(0.9, 0.7, n.z);
+            // octave faded by pixel footprint so big slopes keep detail far away. On the photo terrain too
+            // (art round 24: NZQN and KASE hillsides were the stretched 10 m photo's smear), with the relief
+            // at full strength and the tone changes at 60 % so the photo's own colours lead; no scrub or scree.
+            // The photo terrain's mesh normals come from a smoothed 30 m DEM, so its steep slopes rarely fall
+            // below 0.9 (round 25: the 0.9 gate never fired on the NZQN hillside or the KASE cliff).
+            float steep = in.material == 8.0 ? smoothstep(0.97, 0.82, n.z) : smoothstep(0.9, 0.7, n.z);
+            // No relief beside or between road ribbons (round 29: the KASE median sliver at 70 %).
+            steep *= 1.0 - roadNear;
+            float am = in.material == 8.0 ? 0.6 : 1.0;
+            float sfp = in.material == 8.0 ? fieldFpG : fieldFp;
+            // Relief on the photo terrain at 70 %: full strength tipped shaded slopes past the terminator, so
+            // the strip between the KASE road's carriageways went near-black (round 26).
+            float rm = in.material == 8.0 ? 0.7 : 1.0;
             float2 w = fieldW;      // true region metres (no jump at the 4 km noise wrap)
             float2 hz = n.xy; float hl = length(hz);
             float2 fall = hl > 1e-4 ? hz / hl : float2(1, 0), perp = float2(-fall.y, fall.x);
@@ -1086,35 +1246,59 @@ public enum WorldShaders {
             float ax = abs(n.x), ay = abs(n.y), asum = max(1e-3, ax + ay);
             #define TRI(ah, bv, off, dh, dz) ((ax * groundNoise(float2((w.y + (dh)) + (off) * (ah), (wz + (dz)) * (ah) / (bv)), ah) + \
                                               ay * groundNoise(float2((w.x + (dh)) - (off) * (ah), (wz + (dz)) * (ah) / (bv) - 7.0 * (ah)), ah)) / asum)
-            float gw = saturate(1.0 - fieldFp * 2.5 / 14.0) * steep;
+            float gw = saturate(1.0 - sfp * 2.5 / 14.0) * steep;
             if (gw > 0.0) {
                 float g = TRI(14.0, 70.0, 51.0, 0.0, 0.0), gp = TRI(14.0, 70.0, 51.0, 1.5, 0.0);
                 float dg = (gp - g) / 1.5 * 14.0;
-                n = normalize(n + float3(perp * (-dg * 0.35 * gw), 0.0));
-                albedo *= 1.0 - 0.28 * max(0.0, -g) * gw;
+                n = normalize(n + float3((perp * (-dg * 0.35 * gw)) * rm, 0.0));
+                albedo *= 1.0 - 0.28 * am * max(0.0, -g) * gw;
             }
-            float bw = saturate(1.0 - fieldFp * 2.5 / 45.0) * steep;
+            float bw = saturate(1.0 - sfp * 2.5 / 45.0) * steep;
             if (bw > 0.0) {
                 float b0 = TRI(45.0, 160.0, 91.0, 0.0, 0.0), b1 = TRI(45.0, 160.0, 91.0, 4.0, 0.0);
                 float db = (b1 - b0) / 4.0 * 45.0;
-                n = normalize(n + float3(perp * (-db * 0.45 * bw), 0.0));
+                n = normalize(n + float3((perp * (-db * 0.45 * bw)) * rm, 0.0));
                 float streak = TRI(9.0, 220.0, -41.0, 0.0, 0.0), ledge = TRI(320.0, 28.0, 13.0, 0.0, 0.0);
-                albedo *= (1.0 - 0.22 * max(0.0, streak) * bw) * (1.0 + 0.12 * max(0.0, ledge) * bw) * (1.0 - 0.10 * max(0.0, -b0) * bw);
+                albedo *= (1.0 - 0.22 * am * max(0.0, streak) * bw) * (1.0 + 0.12 * am * max(0.0, ledge) * bw) * (1.0 - 0.10 * am * max(0.0, -b0) * bw);
             }
-            float cw = saturate(1.0 - fieldFp * 2.5 / 4.0) * steep;
+            float cw = saturate(1.0 - sfp * 2.5 / 4.0) * steep;
             if (cw > 0.0) {
                 float cr = TRI(4.0, 10.0, -19.0, 0.0, 0.0), crp = TRI(4.0, 10.0, -19.0, 0.5, 0.0);
                 float ld = TRI(25.0, 3.5, 7.0, 0.0, 0.0), ldp = TRI(25.0, 3.5, 7.0, 0.0, 0.5);
                 float dc = (crp - cr) / 0.5 * 4.0, dl = (ldp - ld) / 0.5 * 3.5;
-                n = normalize(n + float3(perp * (-dc * 0.22 * cw) + fall * (dl * 0.18 * cw), 0.0));
-                albedo *= 1.0 - 0.12 * max(0.0, -cr) * cw;
+                n = normalize(n + float3((perp * (-dc * 0.22 * cw) + fall * (dl * 0.18 * cw)) * rm, 0.0));
+                albedo *= 1.0 - 0.12 * am * max(0.0, -cr) * cw;
+            }
+            // Photo terrain from the high camera (several metres per pixel): spurs and gully bands at ~150 m,
+            // the only relief scale that survives there, as shading and a tone band down the fall line.
+            float sw = (in.material == 8.0 ? 1.0 : 0.0) * saturate(1.0 - sfp * 2.5 / 150.0) * steep;
+            if (sw > 0.0) {
+                float s0 = TRI(150.0, 420.0, 23.0, 0.0, 0.0), s1 = TRI(150.0, 420.0, 23.0, 10.0, 0.0);
+                float ds = (s1 - s0) / 10.0 * 150.0;
+                n = normalize(n + float3((perp * (-ds * 0.55 * sw)) * rm, 0.0));
+                albedo *= 1.0 - 0.18 * max(0.0, -s0) * sw + 0.08 * max(0.0, s0) * sw;
             }
             #undef TRI
-            float big = groundNoise(w - 13.0, 64.0) * saturate(1.0 - fieldFp * 2.5 / 64.0);
-            float small = groundNoise(w + 3.0, 8.0) * saturate(1.0 - fieldFp * 2.5 / 8.0);
-            albedo *= 1.0 + (0.22 * big + 0.10 * small) * steep;
-            if (dot(albedo, float3(0.3, 0.6, 0.1)) < 0.3) {
-                float patch = groundNoise(w + 71.0, 32.0) * saturate(1.0 - fieldFp * 2.5 / 32.0);
+            float big = groundNoise(w - 13.0, 64.0) * saturate(1.0 - sfp * 2.5 / 64.0);
+            float small = groundNoise(w + 3.0, 8.0) * saturate(1.0 - sfp * 2.5 / 8.0);
+            albedo *= 1.0 + (0.22 * big + 0.10 * small) * steep * am;
+            if (in.material == 8.0) {
+                // Photo slopes: scrub (darker) and scree (lighter) patches as tone changes on the photo's own
+                // colour, so a soft, low-detail slope photo gains ground structure (round 29: NZQN and LSZS high).
+                // Round 30: ±22 % at 32 m sat under the photo's own noise. Scree fans and scrub bands at ~90 m,
+                // stronger with distance (±35 % beyond 3 km), the scrub a cooler green against the photo.
+                // Round 31: still invisible from the high camera. Bands at ~200 m stretched down the fall line
+                // (scree fans and scrub strips), ±30–40 %, on a wider slope gate than the relief.
+                float2 fl = float2(dot(w, fall), dot(w, perp));
+                float patch = groundNoise(float2(fl.x * 0.45, fl.y) + 71.0, 200.0) * saturate(1.0 - sfp * 2.5 / 200.0);
+                float sp = smoothstep(0.985, 0.85, n.z) * (1.0 - roadNear);
+                float scrub = smoothstep(0.08, 0.35, patch) * sp, scree = smoothstep(-0.12, -0.38, patch) * sp;
+                float pa = mix(0.30, 0.40, smoothstep(1000.0, 3000.0, dist));
+                albedo = mix(albedo, albedo * float3(0.70, 0.80, 0.74), scrub * pa / 0.3);
+                albedo *= 1.0 + pa * scree;
+            }
+            if (in.material == 7.0 && dot(albedo, float3(0.3, 0.6, 0.1)) < 0.3) {
+                float patch = groundNoise(w + 71.0, 32.0) * saturate(1.0 - sfp * 2.5 / 32.0);
                 float scrub = smoothstep(0.14, 0.36, patch) * steep * smoothstep(0.76, 0.84, n.z);
                 float scree = smoothstep(-0.2, -0.42, patch) * steep;
                 albedo = mix(albedo, float3(0.050, 0.072, 0.030), scrub * 0.75);
@@ -1134,14 +1318,18 @@ public enum WorldShaders {
                 if (t > 0.0) od += cl_density(wp + toSun * t, u.clouds);
             }
             od *= thick / 3.0 / toSun.z;
-            float ct = max(0.12, exp(-0.35 * od));  // multiple scattering keeps cloud shadows soft, never black
+            // Floor 0.25 (was 0.12): a cumulus shadow over dark forest left a near-black quarter of the frame
+            // (round 35, LSZS high: four rounds of foliage lighting never moved it; the slope sits under the cloud).
+            // Floor 0.35 (round 37 debug view 2: the LSZS high slope is under the cumulus at the floor, ~0.25 of
+            // the direct sun, over ~0.04 albedo forest; 0.12 → 0.25 barely moved it).
+            float ct = max(0.35, exp(-0.30 * od));  // multiple scattering keeps cloud shadows soft, never black
             vis *= ct;
             cloudShade = 1.0 - ct;
         }
         float3 ambient = mix(u.ambientGround.rgb, u.ambientSky.rgb, n.z * 0.5 + 0.5);
         // Fill light under a cumulus: the cloud's lit sides and base scatter sunlight down into its own
         // shadow, so it reads ~17 % of full sun (sky ambient alone left it at ~7 %). Sunlit ground gets none.
-        ambient += u.sunColour.rgb * (0.35 * toSun.z * cloudShade);
+        ambient += u.sunColour.rgb * (0.42 * toSun.z * cloudShade);
         if (u.quality.y > 0.0) {
             // Cabin interior: lit by the sky and the sunlit ground through the windows, from every side, and
             // by direct sun on the glare shield through the windscreen. The airframe's own shadow would
@@ -1169,6 +1357,10 @@ public enum WorldShaders {
             // Wind: ruffled water beside calmer slicks (250 m and 1 km patches), at any distance, so a lake
             // or a bay is not one uniform sheet.
             float ruffle = 0.30 + 0.70 * smoothstep(-0.30, 0.40, groundNoise(ww + 211.0, 256.0) + 0.6 * groundNoise(ww + 97.0, 1024.0));
+            // Wind streaks: long bands of rougher water along one wind direction (~25 m across, ~300 m long),
+            // so a near lake seen steeply is not one uniform sheet (round 36, NZQN).
+            float2 wa = float2(0.94 * ww.x + 0.34 * ww.y, -0.34 * ww.x + 0.94 * ww.y);
+            ruffle = saturate(ruffle + 0.35 * smoothstep(0.15, 0.55, groundNoise(float2(wa.x * 0.08, wa.y) + 57.0, 25.0)));
             slope *= 0.55 + 0.75 * ruffle;
             float3 wn = normalize(float3(-slope, 1.0));
             float3 r = reflect(dir, wn);
@@ -1185,7 +1377,11 @@ public enum WorldShaders {
             float3 refl = skyR + u.sunColour.rgb * glitter * vis;
             float3 body = albedo * (ambient * 0.6 + u.sunColour.rgb * max(0.0, toSun.z) * 0.15);
             // Sunlight scattered back out of the water column: the blue-green of clear water under sun.
-            body += float3(0.004, 0.030, 0.042) * u.sunColour.rgb * (max(0.0, toSun.z) * 0.55 * vis);
+            body += float3(0.004, 0.030, 0.042) * u.sunColour.rgb * (max(0.0, toSun.z) * 0.55 * vis) * (0.6 + 0.8 * ruffle);
+            // Seen steeply the surface reflects little, so the body carries the look: wave facets toward the sun
+            // brighter, away darker, and ruffled water scatters more (round 35: NZQN near lake one uniform navy).
+            float2 sunH = toSun.xy / max(length(toSun.xy), 1e-3);
+            body *= clamp(1.0 - 2.6 * dot(slope, sunH), 0.5, 1.7) * (0.80 + 0.4 * ruffle);   // ×2.6 (1.4 sat below review, round 36)
             // Sheen toward the sun from many unresolved facets, wider where the water is ruffled.
             refl += u.sunColour.rgb * pow(max(0.0, dot(rr, toSun)), mix(260.0, 40.0, ruffle)) * (0.5 + 1.5 * ruffle) * vis;
             if (imageryWater) {
@@ -1198,6 +1394,9 @@ public enum WorldShaders {
             }
             float reflScale = imageryWater ? 0.85 : 1.0;         // lakes mirror most of the sky (0.6 left them navy)
             col = mix(body, refl * reflScale, min(1.0, 0.08 + fres * (imageryWater ? 0.9 : 1.0)));
+            // The same facets and streaks on the whole surface colour, reflection included (round 38: on the
+            // dark body alone the NZQN near lake's streaks and facets stayed invisible).
+            col *= clamp(1.0 - 1.6 * dot(slope, sunH), 0.7, 1.35) * mix(1.0, 0.82 + 0.36 * ruffle, wFar);
             if (imageryWater) {
                 // Shoreline foam: the mask's transition band (wm 0.6–0.7), broken up by noise.
                 float band = 1.0 - smoothstep(0.6, 0.7, shoreWm);   // a thin line, not a white blob
@@ -1212,7 +1411,9 @@ public enum WorldShaders {
             // foliage, part of it replaced by light bounced from the ground below (art round 8: blue crowns).
             // Darkening on the crown's underside only (round 9: 0.7 over the whole crown dulled sunlit tops).
             float under = saturate(-n.z);
-            float3 foliageAmb = mix(ambient, u.ambientGround.rgb, 0.25 + 0.25 * under) * (0.85 - 0.25 * under);
+            // ×1.6: under the 0.45 exposure scale, shaded crowns on LSZS's north-facing forest went near-black
+            // (art round 23); the sky light inside a real conifer stand is dim but not absent.
+            float3 foliageAmb = mix(ambient, u.ambientGround.rgb, 0.25 + 0.25 * under) * (0.85 - 0.25 * under) * 1.6;
             // Leaf clumps: tone breaks up the crown at close range; the crown's own sky visibility (vertex
             // shade) darkens its inside and underside, so a tree reads as a mass of lobes, not one blob.
             float2 lw = in.rel.xy + u.cameraPos.xy;
@@ -1220,8 +1421,11 @@ public enum WorldShaders {
             float fine = groundNoise(lw - in.rel.z * float2(0.29, 0.52) - 7.0, 0.22);
             float nearT = saturate(1.0 - dist / 260.0);
             float tone = 1.0 + nearT * (0.30 * clump + 0.18 * fine);      // noise is −1…1
-            float occ = mix(0.35, 1.0, saturate(in.field));
-            col = albedo * tone * (u.sunColour.rgb * (wrap + back) * mix(1.0, occ, 0.5) * vis + foliageAmb * occ);
+            float occ = mix(0.5, 1.0, saturate(in.field));   // 0.5 (0.35): see foliageAmb
+            // Crowns in shadow get 40 % more sky light: a shaded forested valley wall read as a near-black mass
+            // from the high camera (rounds 31–34, LSZS high), which terrain-only lifts did not reach.
+            float fShade = 1.0 + 0.40 * (1.0 - saturate(vis * 2.0));
+            col = albedo * tone * (u.sunColour.rgb * (wrap + back) * mix(1.0, occ, 0.5) * vis + foliageAmb * occ * fShade);
         } else if (m == 10.0 || m == 11.0 || m == 12.0) {    // SF-1 airframe: painted skin, glazing, bright metal
             float3 L = in.local;
             float3 v = -dir;
@@ -1271,16 +1475,22 @@ public enum WorldShaders {
             float3 glassCol = fc.interior * (u.sunColour.rgb * max(0.0, ndl) * vis * 0.6 + ambient * aoW) * (1.0 - F)
                             + env * fc.tint * F + u.sunColour.rgb * ggxLobe(n, v, toSun, 0.10, fc.f0) * vis;
             col = mix(wallCol, glassCol, fc.glass);
-        } else if (m == 15.0) {                              // roof: the ground photo's colour (style.z bit 0) with roofing mottle
+        } else if (m == 15.0) {                              // roof: one colour per building (from the photo at load) with roofing mottle
             float3 a = albedo;
             if (fmod(in.style.z, 2.0) > 0.5) {
                 float2 ruv; bool rin;
                 float rw0, rw1;
-                a = photoAlbedo(photoColour(u, imgNear, imgMid, imgFar, imgDetail, photoW, dwx, dwy, ruv, rin, rw0, rw1));
+                // The roof's tone, not the photo projected onto it: sampled ~4 mips coarser (≈ 13 m at the US
+                // 1.6 m source), so the photo's skylights, cars and the roof's own baked shadow do not show as
+                // blotches on the 3D roof (art round 22, KBFI), and clamped to real roofing albedo.
+                a = photoAlbedo(photoColour(u, imgNear, imgMid, imgFar, imgDetail, photoW, dwx * 12.0, dwy * 12.0, ruv, rin, rw0, rw1));
+                float al = dot(a, float3(0.2126, 0.7152, 0.0722));
+                if (al > 0.32) a *= 0.32 / al;
             }
             float2 rw = in.rel.xy + u.cameraPos.xy;
             float fpw = length(dwx) + length(dwy);
-            a *= 1.0 + 0.10 * groundNoise(rw, 1.5) * saturate(1.0 - fpw / 0.75) + 0.08 * groundNoise(rw + 19.0, 9.0) * saturate(1.0 - fpw / 4.5);
+            a *= 1.0 + 0.10 * groundNoise(rw, 1.5) * saturate(1.0 - fpw / 0.75) + 0.08 * groundNoise(rw + 19.0, 9.0) * saturate(1.0 - fpw / 4.5)
+                   + 0.05 * groundNoise(rw * float2(1.0, 0.15) + 41.0, 4.0) * saturate(1.0 - fpw / 2.0);   // weathering streaks
             col = a * (u.sunColour.rgb * max(0.0, ndl) * vis + ambient);
         } else if (m == 6.0 || m == 5.0) {                   // aircraft paint / glass: GGX
             // Panel seams on the airframe (aircraft-sized local coordinates only, not painted scenery).
@@ -1320,7 +1530,10 @@ public enum WorldShaders {
             col = pbrDielectric(albedo, n, -dir, toSun, rough, u.sunColour.rgb, env, vis) * mix(1.0, ao, 0.5)
                 + albedo * ambient * (m == 6.0 ? 1.0 : 0.3) * ao;
         } else {
-            col = albedo * (u.sunColour.rgb * max(0.0, ndl) * vis + ambient);
+            // Photo terrain in shadow (cast or self-shadowed) gets 35 % more sky light: under the 0.45 exposure,
+            // shaded slopes read as featureless near-black masses (round 31: the LSZS high foreground slope).
+            float shadeLift = (m == 7.0 && in.material == 8.0) ? 1.0 + 0.35 * (1.0 - saturate(max(0.0, ndl) * vis * 3.0)) : 1.0;
+            col = albedo * (u.sunColour.rgb * max(0.0, ndl) * vis + ambient * shadeLift);
             if (m == 3.0) {                      // road: asphalt grain, painted lines, Blinn-Phong highlight
                 // The field channel is the position across the carriageway (−1 left edge … +1 right edge) on
                 // roads that carry a centre line and 0 everywhere on those that do not (OSMMeshBuilder.roads),
@@ -1330,6 +1543,14 @@ public enum WorldShaders {
                 float rfp = length(fwidth(rw));
                 float3 road = albedo * (1.0 + 0.10 * groundNoise(rw + 9.0, 0.5) * saturate(1.0 - rfp / 1.0)
                                             + 0.08 * groundNoise(rw - 33.0, 7.0) * saturate(1.0 - rfp / 14.0));
+                // Sit in the photo: a quarter of the photo's own (blurred) tone everywhere, more toward the
+                // carriageway edges, so the ribbon is not a dark overlay on the photo's road (art round 22, KASE).
+                {
+                    float2 pr; bool pin; float p0, p1;
+                    float3 under = photoAlbedo(photoColour(u, imgNear, imgMid, imgFar, imgDetail, photoW, dwx * 2.0, dwy * 2.0, pr, pin, p0, p1));
+                    float edge = smoothstep(0.7, 1.0, fa) * step(1e-4, fw);
+                    road = mix(road, under, 0.25 + 0.55 * edge);
+                }
                 float lines = (1.0 - smoothstep(0.0, 0.03 + fw, fa)) * step(1e-4, fw) * saturate(1.3 - fw * 6.0);
                 float3 paint = float3(0.46, 0.45, 0.42);
                 col = mix(road, paint, lines * 0.85) * (u.sunColour.rgb * max(0.0, ndl) * vis + ambient);
@@ -1338,9 +1559,36 @@ public enum WorldShaders {
                 col += u.sunColour.rgb * spec * vis;
             }
         }
+        if (u.quality.z > 0.5) {
+            // Debug views (WorldRenderer.debugView): each channel a 0–1 term, encoded so that the tone map
+            // (ACES, gamma 2.2) returns it unchanged when bloom, SSAO, grade and sharpening are off.
+            int mode = int(u.quality.z + 0.5);
+            float3 d = float3(0.0);
+            if (mode == 1) d = pow(max(albedo, float3(0.0)), float3(1.0 / 2.2));
+            else if (mode == 2) d = float3(vis, saturate(ndl), cloudShade);
+            else if (mode == 3) d = float3(0.5 + 2.0 * dbgPatch, groundMat, dbgNatural);
+            else if (mode == 4) {
+                float dL = dot(u.sunColour.rgb, float3(0.2126, 0.7152, 0.0722)) * max(0.0, ndl) * vis;
+                float aL = dot(ambient, float3(0.2126, 0.7152, 0.0722));
+                d = float3(dL, aL, 0.0) / max(dL + aL, 1e-4);
+                d.b = saturate((dL + aL) / max(dot(u.sunColour.rgb, float3(0.2126, 0.7152, 0.0722)), 1e-4));   // irradiance / full sun
+            }
+            return float4(acesInverse(pow(saturate(d), float3(2.2))), 1.0);
+        }
         float3 L, T;
         aerial(u, ins, tr, dir, dist, L, T);
         col = col * T + L;
+        {
+            // Valley haze (real terrain and SkyWorld, round 39): toward a desaturated horizon sky colour, none within ~800 m and up
+            // to 18 % by ~6 km, less where the table's aerial perspective already holds the colour. A shadowed
+            // forest slope 3–6 km out read as a near-black mass (round 38, LSZS high: the probe found it
+            // physically dark, ~0.05 albedo under a cloud shadow, with no in-scattered light lifting it).
+            // 30 % from the first metre (round 39 frames) turned every airport milky and cyan.
+            float hz = 0.18 * smoothstep(800.0, 6000.0, dist) * saturate(dot(T, float3(0.2126, 0.7152, 0.0722)));
+            float3 hzc = u.skyHorizon.rgb * 0.9;
+            hzc = mix(float3(dot(hzc, float3(0.2126, 0.7152, 0.0722))), hzc, 0.5);
+            col = mix(col, hzc, hz);
+        }
         return float4(col * u.sunColour.w, 1.0);    // linear HDR (× exposure); tone-mapped in post
     }
 

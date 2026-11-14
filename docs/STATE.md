@@ -1,8 +1,41 @@
-LAST_UPDATE: 2026-11-10T23:09:28Z
+LAST_UPDATE: 2026-11-14T19:35:00Z
 
 # SKYFORGE state
 
 ## Phase
+- 2026-11-14 (PR #6, branch `claude/ecstatic-davinci-tjahz4`): art rounds resumed after PR #5 merged.
+  - Scores (ultra tier, same reviewer):
+
+    | Round | Average of finals | Cockpit |
+    |---|---|---|
+    | 22 | 7.00 | 4.5 |
+    | 23 | 7.04 | 4.5 |
+    | 24 | 7.13 | 4.5 |
+    | 25 | 7.17 | 4.5 |
+    | 26 | 7.25 | 5.25 |
+    | 29 | 7.25 | 5.5 |
+    | 30 | 7.25 | 5.75 |
+    | 31 | 7.33 | 6.0 |
+    | 32 | 7.33 | 6.0 |
+    | 33 | 7.33 | 6.0 |
+    | 34 | 7.38 | 6.5 |
+    | 35 | 7.42 | 6.75 |
+    | 36 | 7.42 | 6.75 |
+    | 38 | 7.46 | 6.75 |
+    | 39 | 7.50 | 6.75 |
+
+    Best scene: KASE final 7.75. Rounds 27 and 28 were regression checks only.
+  - What landed:
+    - One roof colour per building.
+    - NaN-safe local tone compression.
+    - Bloom guard against non-finite pixels.
+    - Steep-slope relief on the photo terrain.
+    - Conifer stand contrast.
+    - Cockpit rework.
+    - Water gated by slope.
+    - Structural: a mid z12 height mosaic (`b051139`; z12 tiles in all packs through `tools/fetch_mid_heights.py`). Slopes 3–12 km out had been z10 blobs at about 156 m per sample.
+  - High-frame average: 6.65 at round 39 (6.38 at round 26).
+  - Next: read the round-37 debug views (`WorldRenderer.debugView`, `debug_*` frames and ROI means in the frames job logs) to find which term keeps the LSZS high slope dark and why the near-ground patches do not show; rounds 34–36 gained under +0.2 each. Frame budgets are recorded, not enforced (ADR-0021).
 Visual transformation (2026-11-10, PR #5, ADR-0021) is in progress; the Bold Mode summary below is the earlier baseline.
 - Landed (CI-compiled): new SF-1 aircraft model with per-pixel livery, glass and clear coat; OSM-sourced 3D buildings with facade/roof shading (bundled `buildings.sfb`, ODbL); four shadow cascades; mid-distance imagery layer; 2x supersampling and sharpening in the ultra preset; exposure scale 0.45 with near-identity photo albedo; per-airport review-frame jobs.
 - Landed 2026-11-10 (second batch): five tree species with ambient occlusion; rebuilt cockpit interior with cabin fill light; ESA WorldCover land cover grids in every pack (water at any distance); water shading (sky reflection, wind patches); tinted tower glass; fine cloud structure at ultra; magnification-aware local contrast on the ground photo; `LINZAerialProvider`.

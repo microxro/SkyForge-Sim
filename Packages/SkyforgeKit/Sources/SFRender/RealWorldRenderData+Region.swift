@@ -40,6 +40,8 @@ public struct RealWorldRenderData: Sendable {
     /// Sharp inner imagery square (US aerial photo along the approach), feathered into `near`.
     public var detail: Imagery?
     public var waterMask: (size: Int, values: [Float])?
+    /// Road proximity on the water mask's grid (0–1), carried in the mask texture's second channel.
+    public var roadMask: [Float]? = nil
     /// Where the 3D trees stand, for removing the photo's own trees and shadows from imagery streamed later
     /// (the in-flight detail layer), as `init(region:)` does for the near and detail layers.
     public var photoCrowns: [ImageryDelighting.Crown] = []
@@ -97,6 +99,7 @@ extension RealWorldRenderData {
         detail = imagery(det)
         photoCrowns = crowns
         buildings = region.roadMesh()
+        roadMask = region.roadMask(size: g.maskSize)
         buildingMesh = region.buildingMesh()
         mid = withWater(region.midImagery)
         runway = Runway(threshold: region.runwayThreshold, direction: region.runwayDirection, length: region.runwayLengthMetres,
