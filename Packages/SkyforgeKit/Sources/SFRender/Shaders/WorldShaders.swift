@@ -80,6 +80,17 @@ public enum WorldShaders {
         float2 xy = float2(cs.x * local.x - cs.y * local.y, cs.y * local.x + cs.x * local.y);
         float3 sl = float3(xy.x * crownW, xy.y * crownW, local.z * sz);
         sl.xy += (float2(u2, u3) - 0.5) * 0.12 * local.z;      // lean (no trig: this runs per vertex, per pass)
+        if (!bark) {
+            // Irregular crown outline: a one-sided bulge and a two-lobed stretch around the trunk, from the same
+            // hash, so neighbouring crowns stop reading as identical smooth spheres (round 38, KMRY near trees).
+            float r = length(local.xy);
+            float2 dn = local.xy / max(r, 1e-4);
+            float2 d1 = float2(u1 - 0.5, u2 - 0.5) * 2.0, d2 = normalize(float2(u2 - 0.5, u0 - 0.5) + float2(0.0, 0.001));
+            float c2 = dot(dn, d2);
+            float lobe = 1.0 + 0.22 * dot(dn, d1) + 0.14 * (2.0 * c2 * c2 - 1.0);
+            sl.xy *= mix(1.0, lobe, saturate(r * 4.0));
+            sl.z *= 1.0 + 0.10 * (u3 - 0.5) * saturate(local.z * 2.0 - 0.6);
+        }
         return sl;
     }
 
@@ -1048,6 +1059,9 @@ public enum WorldShaders {
                 // 5–20 m blotches give way to the grass material's own texture (rounds 34–38: every patch octave
                 // read as more photo mottle; the debug views showed the patches were present at full strength).
                 float gm = smoothstep(0.0, 0.02, lm.g - max(lm.r, lm.b) * 0.92);
+                // Cultivated and dry fields too (round 38: KASE's foreground field photo still smeared), at 80 %.
+                float hiM = max(lm.r, max(lm.g, lm.b));
+                gm = max(gm, 0.8 * smoothstep(0.08, 0.25, (lm.r - lm.b) / max(hiM, 1e-3)) * smoothstep(0.03, 0.08, meanL));
                 float lL = max(dot(lifted, float3(0.2126, 0.7152, 0.0722)), 1e-4);
                 lifted *= mix(1.0, meanL / lL, 0.45 * nb * gm);
                 albedo = mix(albedo, lifted, ltW);
@@ -1348,6 +1362,9 @@ public enum WorldShaders {
             }
             float reflScale = imageryWater ? 0.85 : 1.0;         // lakes mirror most of the sky (0.6 left them navy)
             col = mix(body, refl * reflScale, min(1.0, 0.08 + fres * (imageryWater ? 0.9 : 1.0)));
+            // The same facets and streaks on the whole surface colour, reflection included (round 38: on the
+            // dark body alone the NZQN near lake's streaks and facets stayed invisible).
+            col *= clamp(1.0 - 1.6 * dot(slope, sunH), 0.7, 1.35) * mix(1.0, 0.82 + 0.36 * ruffle, wFar);
             if (imageryWater) {
                 // Shoreline foam: the mask's transition band (wm 0.6–0.7), broken up by noise.
                 float band = 1.0 - smoothstep(0.6, 0.7, shoreWm);   // a thin line, not a white blob
@@ -1529,6 +1546,14 @@ public enum WorldShaders {
         float3 L, T;
         aerial(u, ins, tr, dir, dist, L, T);
         col = col * T + L;
+        if (u.skyHorizon.w < 0.5) {
+            // Valley haze on the real terrain: toward the horizon sky colour, up to 30 % by ~10 km, less where the
+            // table's aerial perspective already holds the colour. A shadowed forest slope 3–6 km out read as a
+            // near-black mass (round 38, LSZS high: the probe found it physically dark, ~0.05 albedo under a
+            // cloud shadow, with no in-scattered light lifting it).
+            float hz = 0.30 * (1.0 - exp(-dist / 3000.0)) * saturate(dot(T, float3(0.2126, 0.7152, 0.0722)));
+            col = mix(col, u.skyHorizon.rgb * 0.9, hz);
+        }
         return float4(col * u.sunColour.w, 1.0);    // linear HDR (× exposure); tone-mapped in post
     }
 

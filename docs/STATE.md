@@ -1,4 +1,4 @@
-LAST_UPDATE: 2026-11-14T18:20:00Z
+LAST_UPDATE: 2026-11-14T19:00:00Z
 
 # SKYFORGE state
 
@@ -21,6 +21,7 @@ LAST_UPDATE: 2026-11-14T18:20:00Z
     | 34 | 7.38 | 6.5 |
     | 35 | 7.42 | 6.75 |
     | 36 | 7.42 | 6.75 |
+    | 38 | 7.46 | 6.75 |
 
     Best scene: KASE final 7.75. Rounds 27 and 28 were regression checks only.
   - What landed:

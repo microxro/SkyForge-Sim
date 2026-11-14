@@ -950,3 +950,24 @@ Round-38 frames (52b2ef7, run 43626600606) before review:
 Two more changes went into the same review round:
 5. **Near band, green ground:** luminance is pulled 45 % of the way to the 30 m mean, so the grass material's texture replaces the photo's blotches.
 6. **Higher toe beyond about 1.5 km:** target 0.13, exponent 0.5. On the LSZS high valley wall, 0.04 becomes 0.067. The near canopy keeps the 0.10 toe.
+
+## Bold round 38: PR #6 38eed94 (run 43628077654, ultra tier)
+Same reviewer and scale.
+
+**Final camera:** KMRY 7.25, KASE 7.75, KBFI 7.25 (7.0), LSZS 7.5, NZQN 7.25, SkyWorld 7.75. **Average 7.46**.
+
+**High frames:** 6.58. **Cockpit:** 6.75.
+
+**Landed:** KBFI near ground. The blotch share fell from 10.5 % to 5.3 %, and the lawn now reads as one coherent green surface. This is the first near-ground change in four rounds to move a score.
+
+**No score change:**
+- **KMRY near band:** pale roofs and roads, so the grass pull has little to act on.
+- **LSZS high slope:** brighter (lower half 55.5 → 58.8) but still a near-black mass.
+- **NZQN near-lake streaks:** not visible.
+- **SkyWorld:** identical to round 36.
+
+Round-39 batch:
+1. **Valley haze on the real terrain** after the aerial table: toward the horizon sky colour, up to 30 % by about 10 km, scaled by the table's transmittance. The reviewer: a shadowed slope at 3–6 km needs in-scattered light, not more albedo.
+2. **Water:** facet (±) and streak modulation now applies to the whole water colour, reflection included, not only the dark body.
+3. **Green-ground luminance pull extended to cultivated and dry fields** at 80 % (KASE foreground).
+4. **Tree crowns:** irregular outlines (a one-sided bulge of ±22 % and a two-lobed stretch of ±14 %, from the per-tree hash) and a crown-height spread of ±5 %. Shadows use the same shape.
