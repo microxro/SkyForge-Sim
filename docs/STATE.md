@@ -1,8 +1,12 @@
-LAST_UPDATE: 2026-11-10T23:09:28Z
+LAST_UPDATE: 2026-11-14T09:46:00Z
 
 # SKYFORGE state
 
 ## Phase
+- 2026-11-14 (PR #6, branch `claude/ecstatic-davinci-tjahz4`): art rounds resumed after PR #5 merged.
+  - Scores (ultra tier, same reviewer): round 22 7.00, round 23 7.04.
+  - Round-24 structural batch (`14d4853`) is in CI: one roof colour per building, local tone compression on the near photo ground, brighter foliage ambient.
+  - Next: read run frames, send round 24 to the reviewer, iterate. Frame budgets are recorded, not enforced (ADR-0021).
 Visual transformation (2026-11-10, PR #5, ADR-0021) is in progress; the Bold Mode summary below is the earlier baseline.
 - Landed (CI-compiled): new SF-1 aircraft model with per-pixel livery, glass and clear coat; OSM-sourced 3D buildings with facade/roof shading (bundled `buildings.sfb`, ODbL); four shadow cascades; mid-distance imagery layer; 2x supersampling and sharpening in the ultra preset; exposure scale 0.45 with near-identity photo albedo; per-airport review-frame jobs.
 - Landed 2026-11-10 (second batch): five tree species with ambient occlusion; rebuilt cockpit interior with cabin fill light; ESA WorldCover land cover grids in every pack (water at any distance); water shading (sky reflection, wind patches); tinted tower glass; fine cloud structure at ultra; magnification-aware local contrast on the ground photo; `LINZAerialProvider`.
