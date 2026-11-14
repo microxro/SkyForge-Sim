@@ -1059,10 +1059,11 @@ public enum WorldShaders {
                 float2 gw = in.rel.xy + u.cameraPos.xy;
                 // Round 35: not visible. Low-chroma lawn and dirt in the soft photo classify as pavement, so the
                 // patches now also reach unroaded "pavement" at 60 %; ±20 % / ±16 %, contrast-shaped into blotches
-                // (value noise alone sits near zero), fading later (5 m / 15 m footprints).
+                // (value noise alone sits near zero). They still fade out by a 3 m / 9 m footprint: fading at 5 m /
+                // 15 m left 4 m cells under two pixels, which aliased (FXAA test on ground pixels, CI run 43622678300).
                 float natural = saturate(k.grass + k.dry + k.soil + 0.6 * k.pave * (1.0 - roadNear));
-                float p4 = (smoothstep(-0.35, 0.35, groundNoise(gw + 63.0, 4.0)) * 2.0 - 1.0) * saturate(1.0 - fpw / 5.0);
-                float p12 = (smoothstep(-0.35, 0.35, groundNoise(gw - 41.0, 12.0)) * 2.0 - 1.0) * saturate(1.0 - fpw / 15.0);
+                float p4 = (smoothstep(-0.45, 0.45, groundNoise(gw + 63.0, 4.0)) * 2.0 - 1.0) * saturate(1.0 - fpw / 3.0);
+                float p12 = (smoothstep(-0.45, 0.45, groundNoise(gw - 41.0, 12.0)) * 2.0 - 1.0) * saturate(1.0 - fpw / 9.0);
                 f *= 1.0 + (0.20 * p4 + 0.16 * p12) * natural;
                 albedo *= 1.0 + (f - 1.0) * groundMat;
                 groundTilt = tilt * groundMat;
