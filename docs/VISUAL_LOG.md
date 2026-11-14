@@ -702,3 +702,12 @@ Round-27 batch:
    - Lighter glare shield with a padded lip that catches the light.
 
 The "floating white arc" the reviewer took for the yoke is the cowling seen over the glare shield; the yoke is below the view.
+
+## Round 27 (5c7ec27, run 43586198123): not scored, regression check only
+- **NZQN high left hillside:** unchanged (mean difference 0.02). The water gate was not the cause.
+  - At full size the slope is shaded (ambient only) and seen at a grazing angle, so the photo smears radially even with 16× anisotropic filtering.
+  - Every relief octave faded on fwidth, which there is the long axis of the footprint.
+- **KASE road median:** changed (relief at 70 %).
+- **Cockpit:** the compass is smaller, but its 30 cm centre post read as a third windscreen pillar.
+
+Round-28 batch: slope-detail fades use the geometric mean of the two footprint axes on the photo terrain; the compass mount is a 6 cm stub.

@@ -217,7 +217,7 @@ public enum Cockpit {
         // Wet compass on the windscreen's centre post, just below the headliner: a small black housing
         // (about 4 cm across) with its card window and lubber line facing the pilot. Round 25: a stick and a
         // downward disc; round 26: a housing three times too large hanging in the windscreen.
-        slab(V(0.80, 0, -1.02), V(1.02, 0, -0.80), hw: 0.012, ht: 0.008, trim * 1.4)                // centre post
+        slab(V(0.80, 0, -1.02), V(0.85, 0, -0.97), hw: 0.012, ht: 0.008, trim * 1.4)                // short mount stub (round 27: a 30 cm post read as a third pillar)
         tube(V(0.835, 0, -0.985), V(0.865, 0, -0.985), 0.018, 0.018, sides: 12, SIMD3<Float>(0.025, 0.025, 0.027))
         disc(V(0.835, 0, -0.985), V(-1, 0, 0), 0.018, sides: 12, SIMD3<Float>(0.03, 0.03, 0.032))
         disc(V(0.834, 0, -0.986), V(-1, 0, 0), 0.012, sides: 12, SIMD3<Float>(0.02, 0.02, 0.022))

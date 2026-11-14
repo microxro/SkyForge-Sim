@@ -1044,6 +1044,10 @@ public enum WorldShaders {
         }
         float2 fieldW = in.rel.xy + u.cameraLocal.xy;
         float fieldFp = length(fwidth(fieldW));              // derivatives outside divergent branches
+        // Footprint as the geometric mean of its two axes: on a slope seen at a grazing angle fwidth is
+        // the long axis, which faded every relief octave out (round 27: the NZQN hillside beside the high
+        // camera, a shaded slope smeared radially, never took the slope detail).
+        float fieldFpG = sqrt(length(dfdx(fieldW)) * length(dfdy(fieldW)));
         float localFp = length(fwidth(in.local));
         float2 uvFp = float2(length(float2(dfdx(in.uv.x), dfdy(in.uv.x))), length(float2(dfdx(in.uv.y), dfdy(in.uv.y))));
         float fieldBand = max(0.12, 2.5 * fwidth(in.field));
@@ -1111,6 +1115,7 @@ public enum WorldShaders {
             // below 0.9 (round 25: the 0.9 gate never fired on the NZQN hillside or the KASE cliff).
             float steep = in.material == 8.0 ? smoothstep(0.97, 0.82, n.z) : smoothstep(0.9, 0.7, n.z);
             float am = in.material == 8.0 ? 0.6 : 1.0;
+            float sfp = in.material == 8.0 ? fieldFpG : fieldFp;
             // Relief on the photo terrain at 70 %: full strength tipped shaded slopes past the terminator, so
             // the strip between the KASE road's carriageways went near-black (round 26).
             float rm = in.material == 8.0 ? 0.7 : 1.0;
@@ -1122,14 +1127,14 @@ public enum WorldShaders {
             float ax = abs(n.x), ay = abs(n.y), asum = max(1e-3, ax + ay);
             #define TRI(ah, bv, off, dh, dz) ((ax * groundNoise(float2((w.y + (dh)) + (off) * (ah), (wz + (dz)) * (ah) / (bv)), ah) + \
                                               ay * groundNoise(float2((w.x + (dh)) - (off) * (ah), (wz + (dz)) * (ah) / (bv) - 7.0 * (ah)), ah)) / asum)
-            float gw = saturate(1.0 - fieldFp * 2.5 / 14.0) * steep;
+            float gw = saturate(1.0 - sfp * 2.5 / 14.0) * steep;
             if (gw > 0.0) {
                 float g = TRI(14.0, 70.0, 51.0, 0.0, 0.0), gp = TRI(14.0, 70.0, 51.0, 1.5, 0.0);
                 float dg = (gp - g) / 1.5 * 14.0;
                 n = normalize(n + float3((perp * (-dg * 0.35 * gw)) * rm, 0.0));
                 albedo *= 1.0 - 0.28 * am * max(0.0, -g) * gw;
             }
-            float bw = saturate(1.0 - fieldFp * 2.5 / 45.0) * steep;
+            float bw = saturate(1.0 - sfp * 2.5 / 45.0) * steep;
             if (bw > 0.0) {
                 float b0 = TRI(45.0, 160.0, 91.0, 0.0, 0.0), b1 = TRI(45.0, 160.0, 91.0, 4.0, 0.0);
                 float db = (b1 - b0) / 4.0 * 45.0;
@@ -1137,7 +1142,7 @@ public enum WorldShaders {
                 float streak = TRI(9.0, 220.0, -41.0, 0.0, 0.0), ledge = TRI(320.0, 28.0, 13.0, 0.0, 0.0);
                 albedo *= (1.0 - 0.22 * am * max(0.0, streak) * bw) * (1.0 + 0.12 * am * max(0.0, ledge) * bw) * (1.0 - 0.10 * am * max(0.0, -b0) * bw);
             }
-            float cw = saturate(1.0 - fieldFp * 2.5 / 4.0) * steep;
+            float cw = saturate(1.0 - sfp * 2.5 / 4.0) * steep;
             if (cw > 0.0) {
                 float cr = TRI(4.0, 10.0, -19.0, 0.0, 0.0), crp = TRI(4.0, 10.0, -19.0, 0.5, 0.0);
                 float ld = TRI(25.0, 3.5, 7.0, 0.0, 0.0), ldp = TRI(25.0, 3.5, 7.0, 0.0, 0.5);
@@ -1147,7 +1152,7 @@ public enum WorldShaders {
             }
             // Photo terrain from the high camera (several metres per pixel): spurs and gully bands at ~150 m,
             // the only relief scale that survives there, as shading and a tone band down the fall line.
-            float sw = (in.material == 8.0 ? 1.0 : 0.0) * saturate(1.0 - fieldFp * 2.5 / 150.0) * steep;
+            float sw = (in.material == 8.0 ? 1.0 : 0.0) * saturate(1.0 - sfp * 2.5 / 150.0) * steep;
             if (sw > 0.0) {
                 float s0 = TRI(150.0, 420.0, 23.0, 0.0, 0.0), s1 = TRI(150.0, 420.0, 23.0, 10.0, 0.0);
                 float ds = (s1 - s0) / 10.0 * 150.0;
@@ -1155,11 +1160,11 @@ public enum WorldShaders {
                 albedo *= 1.0 - 0.18 * max(0.0, -s0) * sw + 0.08 * max(0.0, s0) * sw;
             }
             #undef TRI
-            float big = groundNoise(w - 13.0, 64.0) * saturate(1.0 - fieldFp * 2.5 / 64.0);
-            float small = groundNoise(w + 3.0, 8.0) * saturate(1.0 - fieldFp * 2.5 / 8.0);
+            float big = groundNoise(w - 13.0, 64.0) * saturate(1.0 - sfp * 2.5 / 64.0);
+            float small = groundNoise(w + 3.0, 8.0) * saturate(1.0 - sfp * 2.5 / 8.0);
             albedo *= 1.0 + (0.22 * big + 0.10 * small) * steep * am;
             if (in.material == 7.0 && dot(albedo, float3(0.3, 0.6, 0.1)) < 0.3) {
-                float patch = groundNoise(w + 71.0, 32.0) * saturate(1.0 - fieldFp * 2.5 / 32.0);
+                float patch = groundNoise(w + 71.0, 32.0) * saturate(1.0 - sfp * 2.5 / 32.0);
                 float scrub = smoothstep(0.14, 0.36, patch) * steep * smoothstep(0.76, 0.84, n.z);
                 float scree = smoothstep(-0.2, -0.42, patch) * steep;
                 albedo = mix(albedo, float3(0.050, 0.072, 0.030), scrub * 0.75);
