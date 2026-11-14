@@ -1122,6 +1122,15 @@ public enum WorldShaders {
                 albedo *= 1.0 + (f - 1.0) * groundMat;
                 groundTilt = tilt * groundMat;
             }
+            {
+                // Mid-ring detail: luminance octaves at ~60 m and ~30 m from 0.8 to 15 km, faded by the footprint, so
+                // the soft photo of the high views gains structure (round 41: high frames level for five rounds).
+                float fpMid = max(length(dwx), length(dwy));
+                float midW = smoothstep(800.0, 2000.0, dist) * (1.0 - smoothstep(9000.0, 15000.0, dist)) * (1.0 - saturate((wm - 0.2) / 0.2)) * (1.0 - rwCover);
+                float md = 0.6 * groundNoise(photoW + 911.0, 60.0) * saturate(1.0 - fpMid * 3.0 / 60.0)
+                         + 0.4 * groundNoise(photoW - 517.0, 30.0) * saturate(1.0 - fpMid * 3.0 / 30.0);
+                albedo *= 1.0 + 0.16 * md * midW;
+            }
             if (ltMean.x >= 0.0) {
                 // Crop rows on cultivated ground within ~1 km: the photo's fields smear into directional streaks at
                 // the final camera's grazing angle (round 39, KASE). Rows 3–6 m apart in ~150 m parcels on axes
@@ -1139,10 +1148,14 @@ public enum WorldShaders {
                     // reads as fields (round 40: rows alone read as a weave). Not per parcel with margins: straight
                     // parcel edges and dark margins cut across the photo's own field boundaries as a grid
                     // (round-41 frames).
-                    float pt = smoothstep(-0.4, 0.4, groundNoise(photoW + 311.0, 120.0));
-                    float ph2 = smoothstep(-0.4, 0.4, groundNoise(photoW - 157.0, 160.0));
-                    float tone = 1.0 + 0.24 * (pt - 0.5);
-                    float3 hue = mix(float3(1.04, 1.0, 0.90), float3(0.95, 1.03, 0.98), ph2);
+                    // Round 41: ±12 % noise patches were lost in the photo's own variation. The patches now follow
+                    // the photo's fields: a phase from the 30 m mean colour (near constant inside a field, changing
+                    // across its edge) drives ±22 % tone and a hay-to-irrigated hue lean.
+                    float phase = dot(ltMean, float3(23.0, 31.0, 11.0)) + 0.3 * groundNoise(photoW + 311.0, 300.0);
+                    float pt = 0.5 + 0.5 * sin(phase * 6.2831853);
+                    float ph2 = 0.5 + 0.5 * sin(phase * 4.3982297 + 1.3);
+                    float tone = 1.0 + 0.44 * (pt - 0.5);
+                    float3 hue = mix(float3(1.10, 1.0, 0.78), float3(0.88, 1.06, 0.94), ph2);
                     hue /= dot(hue, float3(0.2126, 0.7152, 0.0722));      // hue only, luminance kept
                     float fpM = max(length(dwx), length(dwy));
                     albedo *= mix(float3(1.0), tone * hue, crop);

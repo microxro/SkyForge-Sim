@@ -1022,3 +1022,25 @@ Round-41 frames (47c7956, run 43649602100) before review:
 - **Crop-row hatch:** gone beyond the near band.
 - **Parcel margins:** they drew straight dark lines across KASE's foreground that ignore the photo's own field edges, and the band darkened from 83.2 to 78.6.
 - **Fix before review:** soft ~120 m tone patches (±12 %) and a ~160 m straw-to-green hue lean (luminance-neutral), with no parcel edges or margins. The rows keep their parcels, faded by pixel spacing.
+
+## Bold round 41: PR #7 273690d (run 43650626794, ultra tier)
+Same reviewer and scale.
+
+**Final camera:** KMRY 7.5, KASE 7.75 (7.5), KBFI 7.25, LSZS 7.5, NZQN 7.5, SkyWorld 7.75. **Average 7.54**.
+
+**High frames:** 6.65. **Cockpit:** 6.75.
+
+**Landed:** the KASE crop-row hatch is gone.
+
+**Did not show:**
+- **Patchwork:** ±12 % noise patches were lost in the photo's own variation.
+- **NZQN shore band and shallow tint:** both are under a pixel at the final camera's distance.
+
+Round-42 batch:
+1. **Field patchwork from the photo's own fields:**
+   - A phase from the 30 m mean colour (near constant inside a field, changing across its edge) drives the patches.
+   - ±22 % tone and a hay-to-irrigated hue lean, luminance-neutral.
+2. **Mid-ring detail:** luminance octaves at about 60 m and 30 m (±16 %) from 0.8 to 15 km, faded by the footprint, for the high views.
+3. **KBFI roofs:**
+   - Rooftop plant density raised to 1 box per 250 m², up to 14.
+   - Rows of low dark-glass skylights along the long axis of flat roofs over 900 m².

@@ -316,7 +316,8 @@ public enum BuildingMeshBuilder {
                 // Rooftop plant: boxes on larger flat roofs; a set-back penthouse on towers.
                 let plant = srgb(150, 152, 150) * Float(0.8 + 0.3 * rnd(5))
                 let plantStyle = roofStyle(false, photo: false)
-                func box(centre c: SIMD2<Double>, half hx: Double, _ hy: Double, angle: Double, z0: Double, z1: Double) {
+                func box(centre c: SIMD2<Double>, half hx: Double, _ hy: Double, angle: Double, z0: Double, z1: Double, colour: SIMD3<Float>? = nil) {
+                    let plant = colour ?? plant
                     let ca = cos(angle), sa = sin(angle)
                     let corners = [(-hx, -hy), (hx, -hy), (hx, hy), (-hx, hy)].map { SIMD2(c.x + ca * $0.0 - sa * $0.1, c.y + sa * $0.0 + ca * $0.1) }
                     guard corners.allSatisfy({ OSMGeometry.contains(ring, $0) }) else { return }
@@ -352,11 +353,23 @@ public enum BuildingMeshBuilder {
                         }
                         cap(pent, z: top + ph, colour: roof * 0.9, st: plantStyle)
                     }
-                    let count = min(7, max(1, Int(area / 450)))
+                    // Denser plant (art round 41: KBFI's flat roofs read as plain slabs at 1 box per 450 m²).
+                    let count = min(14, max(1, Int(area / 250)))
                     for k in 0..<count {
                         let c = SIMD2(x0 + (x1 - x0) * (0.12 + 0.76 * rnd(UInt64(20 + 3 * k))), y0 + (y1 - y0) * (0.12 + 0.76 * rnd(UInt64(21 + 3 * k))))
                         let s = 1.2 + 2.2 * rnd(UInt64(22 + 3 * k))
                         box(centre: c, half: s, s * (0.6 + 0.6 * rnd(UInt64(40 + k))), angle: ang, z0: top, z1: top + 1.1 + 1.6 * rnd(UInt64(60 + k)))
+                    }
+                    // Skylights on large flat roofs: a row of low dark-glass boxes along the long axis.
+                    if area > 900 && style != .tower {
+                        let glass = srgb(70, 80, 92)
+                        let lights = min(8, Int(area / 400))
+                        let ca = cos(ang), sa = sin(ang)
+                        let mid = SIMD2(x0 + (x1 - x0) * (0.3 + 0.4 * rnd(90)), y0 + (y1 - y0) * (0.3 + 0.4 * rnd(91)))
+                        for k in 0..<lights {
+                            let off = (Double(k) - Double(lights - 1) / 2) * 5.5
+                            box(centre: mid + SIMD2(ca, sa) * off, half: 1.6, 0.9, angle: ang, z0: top, z1: top + 0.35, colour: glass)
+                        }
                     }
                 }
             }
