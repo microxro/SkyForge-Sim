@@ -1125,7 +1125,7 @@ public enum WorldShaders {
             {
                 // Mid-ring detail: luminance octaves at ~60 m and ~30 m from 0.8 to 15 km, faded by the footprint, so
                 // the soft photo of the high views gains structure (round 41: high frames level for five rounds).
-                float fpMid = max(length(dwx), length(dwy));
+                float fpMid = 2.0 * sqrt(length(dwx) * length(dwy));   // geometric mean: the long axis faded it out at grazing angles (round 42)
                 float midW = smoothstep(800.0, 2000.0, dist) * (1.0 - smoothstep(9000.0, 15000.0, dist)) * (1.0 - saturate((wm - 0.2) / 0.2)) * (1.0 - rwCover);
                 float md = 0.6 * groundNoise(photoW + 911.0, 60.0) * saturate(1.0 - fpMid * 3.0 / 60.0)
                          + 0.4 * groundNoise(photoW - 517.0, 30.0) * saturate(1.0 - fpMid * 3.0 / 30.0);
@@ -1148,17 +1148,17 @@ public enum WorldShaders {
                     // reads as fields (round 40: rows alone read as a weave). Not per parcel with margins: straight
                     // parcel edges and dark margins cut across the photo's own field boundaries as a grid
                     // (round-41 frames).
-                    // Round 41: ±12 % noise patches were lost in the photo's own variation. The patches now follow
-                    // the photo's fields: a phase from the 30 m mean colour (near constant inside a field, changing
-                    // across its edge) drives ±22 % tone and a hay-to-irrigated hue lean.
-                    float phase = dot(ltMean, float3(23.0, 31.0, 11.0)) + 0.3 * groundNoise(photoW + 311.0, 300.0);
-                    float pt = 0.5 + 0.5 * sin(phase * 6.2831853);
-                    float ph2 = 0.5 + 0.5 * sin(phase * 4.3982297 + 1.3);
-                    float tone = 1.0 + 0.44 * (pt - 0.5);
-                    float3 hue = mix(float3(1.10, 1.0, 0.78), float3(0.88, 1.06, 0.94), ph2);
-                    hue /= dot(hue, float3(0.2126, 0.7152, 0.0722));      // hue only, luminance kept
+                    // Field contrast from the photo's own fields: each field's ~30 m mean against the ~150 m mean
+                    // around it, that difference pushed 80 % further (tone and hue), so neighbouring fields separate
+                    // along the photo's real boundaries. Round 41: ±12 % noise patches were lost in the photo; a
+                    // sine phase of the mean colour drew contour rings (round-42 frames).
+                    float lsF = max(1.0, 150.0 / max(length(dwx) + length(dwy), 1e-3));
+                    float2 fuv; bool fin; float fw0, fw1;
+                    float3 lm150 = photoAlbedo(photoColour(u, imgNear, imgMid, imgFar, imgDetail, photoW, dwx * lsF, dwy * lsF, fuv, fin, fw0, fw1));
+                    float3 fr = clamp(ltMean / max(lm150, float3(1e-3)), float3(0.6), float3(1.6));
+                    float3 amp = clamp(pow(fr, float3(0.8)), float3(0.75), float3(1.35));
                     float fpM = max(length(dwx), length(dwy));
-                    albedo *= mix(float3(1.0), tone * hue, crop);
+                    albedo *= mix(float3(1.0), amp, crop);
                     // Rows only where they span 8+ pixels along the long footprint axis (round 40: a 2–4 px hatch
                     // aliased into a screen-door weave over the KASE fields).
                     float ang = fp_unit(ph) * 3.14159265;

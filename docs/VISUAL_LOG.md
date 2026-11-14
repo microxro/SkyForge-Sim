@@ -1044,3 +1044,12 @@ Round-42 batch:
 3. **KBFI roofs:**
    - Rooftop plant density raised to 1 box per 250 m², up to 14.
    - Rows of low dark-glass skylights along the long axis of flat roofs over 900 m².
+
+Round-42 frames (d0fa0f4, run 43651812034) before review:
+- **Contour rings:** the sine phase of the mean colour drew rings over KASE's fields and slopes wherever the mean varied. This is a regression.
+- **Mid-ring detail:** absent from the high frames (≤ 41k pixels changed). The long-axis footprint faded it out at grazing angles.
+- **KBFI rooftop plant and skylights:** visible.
+
+Fixed before review:
+- **Field contrast:** each field's 30 m mean against the ~150 m mean around it, with that ratio pushed 80 % further (clamped to 0.75–1.35 per channel). Fields separate along the photo's own boundaries, with no bands.
+- **Mid-ring fade:** now uses the geometric-mean footprint.
