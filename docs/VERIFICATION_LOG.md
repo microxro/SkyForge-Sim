@@ -267,3 +267,25 @@ Method: `FrameTimeTests`, 30 frames after 3 warm-up frames; command-buffer GPU t
 - Gate: `tools/gate.sh fast` 245 tests pass at `4c34428`; `tools/check_licenses.py` OK.
 - Not verified: device frame rates; any comparison against MSFS beyond the reference screenshots the user supplied.
 
+- 2026-11-14T09:20:46Z gate fast on Linux x86_64: FAIL (HEAD af4ede2)
+- 2026-11-14T09:24:18Z gate fast on Linux x86_64: PASS (HEAD af4ede2)
+2026-11-14T09:36:17Z compaction; last commit d7faa5d
+- 2026-11-14T09:42:24Z gate fast on Linux x86_64: FAIL (HEAD d7faa5d)
+- 2026-11-14T09:45:07Z gate fast on Linux x86_64: PASS (HEAD d7faa5d)
+- 2026-11-14T10:02:28Z gate fast on Linux x86_64: PASS (HEAD 3287a56)
+- 2026-11-14T10:16:12Z gate fast on Linux x86_64: PASS (HEAD e6b2c66)
+- 2026-11-14T10:37:35Z gate fast on Linux x86_64: PASS (HEAD 4ac2b99)
+- 2026-11-14T10:51:20Z gate fast on Linux x86_64: PASS (HEAD 5c7ec27)
+- 2026-11-14T11:05:39Z gate fast on Linux x86_64: PASS (HEAD 59eacb6)
+- 2026-11-14T11:10:37Z gate fast on Linux x86_64: PASS (HEAD 59eacb6)
+- 2026-11-14T12:47:09Z gate fast on Linux x86_64: PASS (HEAD 626f557)
+- 2026-11-14T13:01:19Z gate fast on Linux x86_64: PASS (HEAD 26a42ba)
+- 2026-11-14T13:05:13Z gate fast on Linux x86_64: PASS (HEAD 6163802)
+- 2026-11-14T13:21:27Z gate fast on Linux x86_64: FAIL (HEAD 13a1375)
+- 2026-11-14T13:25:23Z gate fast on Linux x86_64: PASS (HEAD 13a1375)
+- 2026-11-14T13:32:29Z gate fast on Linux x86_64: PASS (HEAD 1e7e87c)
+- 2026-11-14T13:46:33Z gate fast on Linux x86_64: PASS (HEAD 1e00305)
+- 2026-11-14T13:49:50Z gate fast on Linux x86_64: PASS (HEAD 1e00305)
+- 2026-11-14T14:02:23Z gate fast on Linux x86_64: PASS (HEAD 321f0e9)
+- 2026-11-14T14:18:46Z gate fast on Linux x86_64: PASS (HEAD 4c1793d)
+2026-11-14T14:29:22Z compaction; last commit 8c53ea2

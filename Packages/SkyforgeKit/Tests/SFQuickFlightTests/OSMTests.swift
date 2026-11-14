@@ -325,10 +325,10 @@ actor ScriptedOSMTransport: HTTPTransport {
                 #expect(abs(Double(p.z) - (ground(Double(p.x), Double(p.y)) + 0.3)) < 1e-3)
             }
         }
-        // A straight road: 150 m at ≤ 20 m per quad → 8 quads, 7.5 m wide.
+        // A straight road: 150 m at the default ≤ 8 m per quad → 19 quads, 7.5 m wide.
         let straight = try Self.road(d, 2007)
         let s = OSMMeshBuilder.roads([straight]) { _, _ in 0 }
-        #expect(s.triangleCount == 16)
+        #expect(s.triangleCount == 38)
         let xs = s.positions.map(\.x)
         #expect(abs(Double(xs.max()! - xs.min()!) - 7.5) < 0.05)
         var tunnel = straight

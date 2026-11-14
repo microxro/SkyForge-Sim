@@ -478,9 +478,14 @@ public struct WorldGenerator: Sendable {
                 if Self.insideBuilding(SIMD2(x, y), chunk.buildings, margin: 2.5) { continue }
                 let conifer = biome == .boreal || z > 1_100 || (biome == .temperateForest && Hash.unit(rng.next()) < 0.3)
                     let tH = conifer ? 11 + Hash.unit(rng.next()) * 12 : 7 + Hash.unit(rng.next()) * 8
-                let crown = conifer ? tH * 0.19 : tH * (0.27 + Hash.unit(rng.next()) * 0.08)
-                chunk.trees.append(Tree(position: SIMD3(x, y, z), height: tH, crownRadius: crown, conifer: conifer,
-                                        colour: treeColour(conifer: conifer, pick: Hash.unit(rng.next()))))
+                var crown = conifer ? tH * 0.19 : tH * (0.27 + Hash.unit(rng.next()) * 0.08)
+                // Crown size ±30 % on top of the height spread (art round 30: crowns all one size).
+                let sizeK = 0.7 + 0.6 * Hash.unit(rng.next())
+                crown *= sizeK
+                // Per-tree brightness ±18 % so neighbouring crowns differ (art round 29: identical lollipop trees).
+                let shade = Float(0.82 + 0.36 * Hash.unit(rng.next()))
+                chunk.trees.append(Tree(position: SIMD3(x, y, z), height: tH * (0.85 + 0.3 * sizeK / 1.3), crownRadius: crown, conifer: conifer,
+                                        colour: treeColour(conifer: conifer, pick: Hash.unit(rng.next())) * shade))
             }
         }
     }

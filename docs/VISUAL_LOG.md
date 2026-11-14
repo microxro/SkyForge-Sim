@@ -559,3 +559,317 @@ Frames are Metal renders from the CI GPU at the ultra tier, 1280×720, four came
 | 42818081873 (trees, cockpit, ground detail) | KBFI, KMRY, NZQN | Trees read as species with lobes and shading; Seattle skyline present but towers flat grey; cockpit gauges visible but cabin unlit (black). NZQN: Sentinel-2 ground (10 m) is a blur, and the lake is cut by a straight line where the near layer's water mask ends. Near ground at US airports is limited by the source (USGS tiles are about 1.6 m per pixel; the finer export is an upsample, checked directly). |
 
 Changes made in response (frames pending at the time of writing): land cover water mask at any distance (ESA WorldCover), water reflecting the real sky with wind patches, cabin fill light, tinted reflective tower glass, fine cloud structure, magnification-aware local contrast for the ground photo, and LINZ 0.1–0.3 m aerial imagery for NZQN.
+
+## Bold round 22: new baseline after PR #5 (main af4ede2, run 42921068888, ultra tier)
+Same reviewer and scale as rounds 5–19 (ADR-0020 pause ended).
+
+**Final camera:** KMRY 7.0, KASE 7.25, KBFI 6.75, LSZS 6.75, NZQN 7.25, SkyWorld 7.0. **Average 7.00** (round-19 high tier: 6.71).
+
+| Airport | Close | High |
+|---|---|---|
+| KMRY | 7.25 | 6.75 |
+| KASE | 7.0 | 6.5 |
+| KBFI | 6.75 | 6.75 |
+| LSZS | 6.5 | 6.0 |
+| NZQN | 7.25 | 6.0 |
+
+KMRY cockpit: 4.5.
+
+**Improved most:** OSM buildings (KBFI +0.75, NZQN), the aircraft model, and a more photographic sky.
+
+**Regressed:**
+- **Near-band local contrast:** in the near band, 21 % (KBFI) and 34 % (KMRY) of pixels sit above 1.6× the band median, against 0–2.5 % in round 19. The near-identity photo albedo lost the round-17–19 shoulder, so concrete and roofs read as white blotches.
+- **LSZS:** the forest is near-black (lower half 64 → 35).
+- **KASE road ribbon:** broken, near-black, and floating over the cliff.
+
+Round-23 batch (top fixes 1–4):
+1. **Photo albedo shoulder:** knee 0.24, slope 0.25 (was 0.42/0.48), so 0.8 → 0.38.
+2. **OSM roofs:** take the photo's tone about 4 mips coarser (~13 m at US sources) instead of the projected photo, clamped to 0.32.
+3. **Roads:** asphalt 0.10–0.12 (was ~0.05). A quarter of the blurred photo tone is blended in, rising toward the carriageway edges. Draped every 8 m (was 20), with lift 0.4 m.
+4. **LSZS:** canopy photo floor 0.07 (0.05) and 3D tree tint floor 0.10 (0.08).
+
+Not done: the cockpit materials, and slope-aware detail on steep photo (fix 5).
+
+## Bold round 23: PR #6 d7faa5d (ultra tier)
+Same reviewer and scale.
+
+**Final camera:** KMRY 7.0, KASE 7.5, KBFI 6.75, LSZS 6.75, NZQN 7.25, SkyWorld 7.0. **Average 7.04** (round 22: 7.00). Cockpit 4.5.
+
+**Improved:** the KASE road ribbon (now drapes and reads as asphalt); fewer near-band blotches (share of pixels above 1.6× the band median: KMRY 33.5 % → 32.3 %, KBFI 21 % → 15.1 %).
+
+**Still wrong:**
+- **KBFI roofs:** a near-black oval roof (the photo's own shading projected onto it, even at the coarser mip).
+- **LSZS forest:** still near-black (lower-half mean 35.1 → 38.8).
+- **Baked shadows:** photo shadows and dark car parks still read as blotches beside the 3D lighting.
+
+Rounds 22 and 23 both gained under 0.2, so this batch is structural.
+
+Round-24 batch:
+1. **One roof colour per building, set at load:**
+   - Median of a 6 × 6 photo grid inside the footprint, ignoring the darkest fifth.
+   - Luminance held to 0.08–0.25 and saturation to 60 %.
+   - The shader's per-pixel photo roof is off; mottle and weathering streaks are procedural.
+2. **Local tone compression on the near photo ground (within 1.8 km):**
+   - Each pixel is held within ±40 % of the photo's ~30 m mean, with a soft tanh knee.
+   - Not applied on water or the runway.
+3. **Foliage ambient ×1.6, crown occlusion floor 0.5 (was 0.35):** for LSZS's near-black stands under the 0.45 exposure.
+
+Not done: slope-aware detail and the cockpit materials.
+
+## Bold round 24: PR #6 3287a56 (run 43582068030, ultra tier)
+Same reviewer and scale.
+
+**Final camera:** KMRY 7.25, KASE 7.5, KBFI 6.75, LSZS 7.0, NZQN 7.25, SkyWorld 7.0. **Average 7.13** (round 23: 7.04). Cockpit 4.5.
+
+| Airport | Close | High |
+|---|---|---|
+| KMRY | 7.0 | 6.75 |
+| KASE | 7.25 | 6.5 |
+| KBFI | 7.0 | 6.75 |
+| LSZS | 6.75 | 6.0 |
+| NZQN | 7.25 | 6.0 |
+
+**Improved:**
+- **KBFI roofs:** the near-black roof blob is gone; roofs read as clean uniform surfaces.
+- **LSZS forest:** crowns read individually, and the lower half is brighter (38.8 → 47.2).
+- **Near-band blotches:** KMRY 32.3 % → 27.6 %, KBFI 15.1 % → 11.6 %.
+
+**Regressed:**
+- **KBFI shadows:** lifted photo shadows turned saturated blue.
+- **KMRY close:** a 70 px white flare on a roof.
+- **KMRY tile roofs:** terracotta turned grey.
+
+Cause of the flare: fast-math `tanh` of a large argument returns NaN. The bloom tap's `min(NaN, 6e4)` gave 6e4, so one pixel bloomed.
+
+Round-25 batch:
+1. **Tone compression:**
+   - The `tanh` argument is clamped.
+   - Lifted pixels (over 1.1×) take the local mean's chroma at their new luminance, so shadows can't saturate.
+2. **Bloom taps:** non-finite values are dropped by checking their exponent bits.
+3. **Roof hue:** red and orange tile keeps 90 % saturation (others 60 %).
+4. **Steep-slope detail on the photo terrain:** fall-line gullies, ledges and crumple, as on SkyWorld. Relief is at full strength, tone at 60 %, with no scrub or scree.
+
+Not done: the cockpit materials.
+
+## Bold round 25: PR #6 e6b2c66 (run 43583381131, ultra tier)
+Same reviewer and scale.
+
+**Final camera:** KMRY 7.25, KASE 7.5, KBFI 7.0, LSZS 7.0, NZQN 7.25, SkyWorld 7.0. **Average 7.17** (round 24: 7.13). Cockpit 4.5. KMRY close rose from 7.0 to 7.25; the high frames are unchanged (6.0–6.75).
+
+**Fixed:**
+- **KBFI blue smears:** saturated-blue pixels in the lower band fell from 2,919 to 374.
+- **KMRY close flare:** gone.
+
+**Landed weakly:** tile roofs are slightly warmer; the source photo's tile colour is already desaturated.
+
+**Did not land:** the steep-slope detail. KASE high is byte-identical to round 24. The photo terrain's mesh normals come from a smoothed 30 m DEM, so the 0.9 gate never fired, and the small octaves fade out at high-camera footprints.
+
+Round-26 batch:
+1. **Slope gate on the photo terrain:** n.z < 0.97 (smoothstep 0.97 → 0.82). A new 150 m spur and gully octave (relief and a tone band) survives at several metres per pixel.
+2. **LSZS stands:** conifers another ~20 % darker and bluer (0.58/0.66/0.76); stand edges sharper (±0.05).
+3. **Cockpit:**
+   - Glare shield, panel, door panels and headliner are subdivided, with edge occlusion and moulded grain.
+   - Stitched seam on the glare shield.
+   - Avionics displays, digits, knobs and keys now sit on the box's real front face (they were inside it, hence the "stripes").
+   - A wet compass housing with a card window replaces the hanging disc.
+   - Slim headliner roll (was a fat black bar), sun visors, and pillars in trim colour.
+
+## Bold round 26: PR #6 4ac2b99 (run 43584489956, ultra tier)
+Same reviewer and scale.
+
+**Final camera:** KMRY 7.25, KASE 7.75, KBFI 7.0, LSZS 7.25, NZQN 7.25, SkyWorld 7.0. **Average 7.25** (round 25: 7.17). **Cockpit 5.25** (4.5).
+
+**Improved:**
+- **KASE cliff:** fall-line gullies, spurs and ledge bands (final 7.75, close 7.5).
+- **LSZS:** distinct conifer stands.
+- **Cockpit:** avionics displays and knobs read.
+
+**Regressed:**
+- **KASE road median:** a near-black sliver between the carriageways (relief tipping shaded slopes past the terminator).
+- **Compass:** a housing three times too large in the windscreen.
+
+**Unchanged:** NZQN high hillside (smeared blue-grey).
+
+Round-27 batch:
+1. **Water lies flat:** the water fraction is scaled by the mesh normal (smoothstep 0.93 → 0.985).
+   - Suspected cause: the coarse land-cover water outside the near layer bleeds onto the steep shore above Lake Wakatipu. That would render the slope as water (`m = 1`) and skip the slope detail.
+   - Unverified until the frames show it.
+2. **Photo-terrain relief at 70 %:** for the KASE median sliver.
+3. **Cockpit:**
+   - Compass a third the size, on a windscreen centre post.
+   - Headliner as a shallow arch of quilted strips with seams.
+   - Mid-grey moulded pillar covers.
+   - Lighter glare shield with a padded lip that catches the light.
+
+The "floating white arc" the reviewer took for the yoke is the cowling seen over the glare shield; the yoke is below the view.
+
+## Round 27 (5c7ec27, run 43586198123): not scored, regression check only
+- **NZQN high left hillside:** unchanged (mean difference 0.02). The water gate was not the cause.
+  - At full size the slope is shaded (ambient only) and seen at a grazing angle, so the photo smears radially even with 16× anisotropic filtering.
+  - Every relief octave faded on fwidth, which there is the long axis of the footprint.
+- **KASE road median:** changed (relief at 70 %).
+- **Cockpit:** the compass is smaller, but its 30 cm centre post read as a third windscreen pillar.
+
+Round-28 batch: slope-detail fades use the geometric mean of the two footprint axes on the photo terrain; the compass mount is a 6 cm stub.
+
+## Round 28 (59eacb6, run 43587252208): not scored; structural change
+- **NZQN high left hillside:** unchanged for the third round (mean difference 0.02).
+- **Root cause:** terrain heights outside the near square (3.2 km half extent) came from the z10 far mosaic, about 156 m per sample, under a 32 m ultra mid mesh.
+  - Every slope 3–12 km out was a smooth blob with the photo stretched over it.
+  - It was also too gentle for the slope gate, so no shader change could reach it.
+  - The same limit sits under the KASE and LSZS valley walls in the high frames.
+- **Structural fix:** a mid height mosaic (Terrarium z12, 1024² over the 12 km mid half extent, about 23 m per sample).
+  - Near → mid → far, each blended over its outer 15 %.
+  - Kept only when every tile is real Terrarium data, not the coarse global baseline.
+  - z12 tiles added to all six showcase packs with `tools/fetch_mid_heights.py` (same keyless AWS open-data source and attribution; about 18 MB).
+- **Compass:** the mount stub reads as intended.
+
+## Bold round 29: PR #6 b051139 (run 43588783942, ultra tier)
+Same reviewer and scale; compared with round 26.
+
+**Final camera:** KMRY 7.25, KASE 7.75, KBFI 7.0, LSZS 7.25, NZQN 7.25, SkyWorld 7.0. **Average 7.25** (unchanged; the finals moved under 1 level).
+
+**High frames:** KMRY 6.75, KASE 6.75, KBFI 6.75, LSZS 6.25, NZQN 6.5. **Average 6.58** (6.38). **Cockpit 5.5** (5.25).
+
+**Improved:**
+- **NZQN high:** the shore hillside has spurs and gullies with lit and shaded faces (the mid z12 height mosaic).
+- **KASE high:** drainage lines on the valley sides.
+- **Cockpit:** the compass is the right size and in the right place.
+
+**Still wrong:**
+- **KASE road median:** a fainter dark streak remains.
+- **Photo slopes:** the photo on them is still soft.
+- **Cockpit:** the headliner seams are too faint, there is no yoke in view, and the visor has no shape.
+
+Round-30 batch:
+1. **Road proximity mask:** in the near water-mask texture's second channel (rg32Float). Slope relief is zeroed within half the carriageway plus 4 m of an OSM road centreline, fading over 6 m more.
+2. **Photo slopes:** scrub (−22 %) and scree (+22 %) tone patches at 32 m, on the photo's own colour.
+3. **SkyWorld:**
+   - Field variation ±14 % at 55 m and ±7 % hue, plus ±12 % wet/dry patches at 140 m.
+   - Per-tree crown brightness ±18 %.
+4. **Cockpit:**
+   - Yoke hub raised to 0.5 m below the eye, with upswept horns at the bottom of the view.
+   - Headliner strips alternate ±8 %, with seams at 45 %.
+   - Stitched visor rims.
+   - A highlight edge on each pillar.
+   - Shaded carpet.
+
+## Bold round 30: PR #6 26a42ba (run 43596537161, ultra tier)
+Same reviewer and scale.
+
+**Scores:** finals 7.25 (unchanged), high frames 6.58 (unchanged), **cockpit 5.75** (5.5).
+
+**Fixed:**
+- **KASE road median:** the sliver is gone (road proximity mask).
+- **Cockpit:** the headliner and pillars read, and the yoke horns show.
+
+**Too faint to score (about 1 % pixel change):**
+- Slope scrub and scree at ±22 %.
+- SkyWorld field variation at ±14 %.
+- Crown brightness ±18 %.
+
+Rounds 29 and 30 both left the finals flat. Round 29 carried the structural change (the mid z12 height mosaic), which lifted the high frames.
+
+Round-31 batch (`6163802` plus this commit):
+1. **Yoke shaft:** leaves the panel below the PFD, with taller horn tips.
+2. **SkyWorld:**
+   - Variation fades by the geometric-mean footprint (it faded out at grazing angles).
+   - ±25 % value and ±10 % hue at 110 m.
+   - Crown size ±30 %.
+3. **Photo slopes:** scree fans and scrub bands at about 90 m. Amplitude rises from 25 % to 35 % beyond 3 km, and the scrub is a cooler green.
+4. **LSZS:** forest floor at 0.09 with a slight green lean.
+5. **Cockpit:**
+   - Crinkle finish on the panel face and lower panel.
+   - Rounded visor front edges.
+
+## Bold round 31: PR #6 13a1375 (run 43598001198, ultra tier)
+Same reviewer and scale.
+
+**Final camera:** KMRY 7.25, KASE 7.75, KBFI 7.0, LSZS 7.25, NZQN 7.25, SkyWorld 7.25. **Average 7.33** (round 30: 7.25).
+
+**High frames:** 6.58 (unchanged). **Cockpit 6.0** (5.75).
+
+**Improved:**
+- **SkyWorld:** field tone variation shows across the patchwork, including at grazing angles, and crown sizes vary.
+- **Cockpit:** the PFD is clear.
+
+**Did not show:**
+- Slope scree and scrub at 90 m.
+- The LSZS forest floor (little open ground between the crowns).
+- The cockpit crinkle finish. The yoke horns left the frame.
+
+Round-32 batch:
+1. **SkyWorld crop palette** (CPU `FieldPattern` and GPU together):
+   - Golden ripe wheat, pale stubble, and a lighter cut hay.
+   - A new eighth crop: flowering rapeseed.
+2. **Slope bands:** about 200 m, stretched down the fall line, ±30–40 %, on a wider slope gate (n.z < 0.985) and masked at roads.
+3. **Shaded photo terrain:** 35 % more sky light where the sun term is small (LSZS high foreground slope).
+4. **Cockpit:**
+   - Yoke horn tips back in view.
+   - Placards, a rocker-switch row and a fuel selector on the lower panel.
+
+## Bold round 32: PR #6 1e00305 (run 43600292820, ultra tier)
+Same reviewer and scale.
+
+**Scores:** finals 7.33, high frames 6.58, cockpit 6.0 (all unchanged).
+
+**SkyWorld:** more varied, but the new crops read as lime and chartreuse. Their ratios on the green grass base kept green above red, and lower-half saturation rose from 43 to 52.
+
+**Not visible:**
+- **Slope bands:** they sat inside the photo-terrain slope block, whose own gate was 0.97, so their wider gate never applied.
+- **Sky light on shaded terrain:** the LSZS high right slope is still near-black.
+- **Cockpit additions:** below the frame edge.
+
+CI note: `1e7e87c` failed the GPU/CPU field parity test. Two shader paths still took the crop index modulo 7; fixed in `1e00305`.
+
+Round-33 batch:
+1. **Crop ratios retuned** so mature crops have red above green in linear terms (CPU and GPU):
+   - wheat about 0.48/0.40/0.20
+   - stubble about 0.50/0.45/0.30
+   - rapeseed about 0.62/0.55/0.09
+2. **Photo-terrain slope block** entered at n.z < 0.985. The relief still starts at 0.97 through `steep`.
+3. **Shadow toe** out to about 5 km at half strength beyond 1.2 km (dark mid-ring photo forest).
+4. **Cockpit view** looks 7° down (was 5°), so the yoke tops and lower panel come into frame.
+
+## Bold round 33: PR #6 321f0e9 (run 43601747436, ultra tier)
+Same reviewer and scale.
+
+**Final camera:** KMRY 7.25, KASE 7.75, KBFI 7.0, LSZS 7.25, NZQN 7.25, SkyWorld 7.5. **Average 7.38** (round 32: 7.33).
+
+**High frames:** 6.58 (unchanged). **Cockpit:** 6.0 (unchanged).
+
+**SkyWorld:** calmer. Lime pixels fell from 13.3 % to 6.0 % and saturation from 52 to 44. Still, only 1.5 % of the ground had red above green on screen.
+
+**Slope bands:** a diff map against round 31 (before the 200 m bands) shows they fire. On the NZQN sunlit hill, about 50,000 pixels changed by more than 6, up to 52 levels. They read as part of the photo, so they add no score and the effort stops here.
+
+**LSZS high slope:** about 2 levels brighter; still dark.
+
+**Cockpit:** reframed, but the yoke is still out of view.
+
+Round-34 batch:
+1. **Mature crops shifted warm after the field factor:** red +16 %, green −10 %, blue −18 %, scaled by the factor's red-over-green and the coverage.
+2. **Shadow toe at full strength to about 4 km.**
+3. **Yoke:** raised again, with its horn tips in the bottom 60 px.
+4. **Cabin:** panel face and lower panel lighter dark grey (about 0.08–0.09).
+
+## Bold round 34: PR #6 4c1793d (run 43602791437, ultra tier)
+Same reviewer and scale. The reviewer corrected round 33's average to 7.33.
+
+**Final camera:** KMRY 7.25, KASE 7.75, KBFI 7.0, LSZS 7.25, NZQN 7.25, SkyWorld 7.75. **Average 7.38**.
+
+**High frames:** 6.58 (unchanged). **Cockpit 6.5** (6.0).
+
+**Improved:**
+- **SkyWorld:** warm tan, khaki and ochre crops. In the lower half, pixels with red above green rose from 0.2 % to 11.6 %.
+- **Cockpit:** the yoke horns and rim give the cabin depth, though the rim crosses the PFD's bottom strip.
+
+**Still dark:** the LSZS high slope (+2 levels from the toe).
+
+Round-35 batch:
+1. **Near-ground detail:**
+   - The material octaves fade by twice the geometric-mean footprint (they faded by the axis sum, which erased everything finer than ~8 m in the grazing near band).
+   - New ±12 % and ±10 % wear and growth patches at 4 m and 12 m on natural ground.
+   - Aimed at the KMRY and KBFI near ground, flat since round 24.
+2. **Foliage in shadow:** 40 % more sky light (the dark LSZS high valley wall, likely shaded 3D crowns).
+3. **SkyWorld stubble:** warmer (it read mint).
+4. **Yoke:** 1.5 cm lower, clearing the PFD's bottom strip.

@@ -676,18 +676,19 @@ public enum OSMMeshBuilder {
     }
 
     public static func roadColour(for r: OSMRoad) -> SIMD3<Float> {
-        if r.isUnpaved { return srgb(122, 106, 84) }
+        // Weathered asphalt is ~0.10–0.15 albedo; 58–68 sRGB (~0.05) rendered near-black ribbons (art round 22).
+        if r.isUnpaved { return srgb(130, 114, 92) }
         switch r.highway {
-        case .motorway, .motorwayLink, .trunk, .trunkLink: return srgb(58, 58, 60)
-        case .service: return srgb(80, 80, 80)
-        case .track: return srgb(96, 92, 86)
-        default: return srgb(68, 68, 70)
+        case .motorway, .motorwayLink, .trunk, .trunkLink: return srgb(92, 92, 94)
+        case .service: return srgb(106, 106, 104)
+        case .track: return srgb(112, 106, 98)
+        default: return srgb(98, 98, 100)
         }
     }
 
     /// Terrain-draped ribbons (material `.road`) `lift` metres above `ground`, resampled every
     /// ≤ `maxSegment` metres, mitred at bends (miter length capped at 2× half-width). Tunnels are skipped.
-    public static func roads(_ roads: [OSMRoad], lift: Double = 0.3, maxSegment: Double = 20,
+    public static func roads(_ roads: [OSMRoad], lift: Double = 0.4, maxSegment: Double = 8,   // 20 m floated over KASE slopes (round 22)
                              ground: (Double, Double) -> Double) -> TriangleSoup {
         var soup = TriangleSoup(origin: .zero)
         for r in roads where !r.isTunnel && r.points.count >= 2 {

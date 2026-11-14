@@ -90,6 +90,11 @@ public struct RealWorldRegion: FlightWorld {
     public let runwayElevation: Double
     public let nearHeights: HeightMosaic
     public let farHeights: HeightMosaic
+    /// Middle-range elevation (Terrarium z12, ~25–40 m per sample over the mid terrain ring), between the
+    /// near z14 and far z10 mosaics. Nil where the tiles are not to hand (then the far mosaic is used).
+    /// Without it every slope beyond the near square was z10 (~156 m per sample): smooth blobs with the
+    /// photo stretched over them, too gentle for the slope detail (art round 28: the NZQN shore hillside).
+    public var midHeights: HeightMosaic? = nil
     public internal(set) var ground: ImageryGround
     public let attribution: [String]
     public let detail: RealWorldDetail
@@ -112,6 +117,18 @@ public struct RealWorldRegion: FlightWorld {
 
     public enum LoadError: Error, Equatable { case unknownAirport(String), noRunwayGeometry(String) }
 
+    /// Height outside the near square: the mid mosaic, blended into the far one over its outer 15 %.
+    func outerHeight(_ x: Double, _ y: Double) -> Double {
+        guard let mid = midHeights else { return farHeights.height(x, y) }
+        let ex = mid.halfExtent - max(abs(x - mid.centre.x), abs(y - mid.centre.y))
+        if ex <= 0 { return farHeights.height(x, y) }
+        let band = 0.15 * mid.halfExtent
+        if ex >= band { return mid.height(x, y) }
+        let t = ex / band, w = t * t * (3 - 2 * t)
+        let f = farHeights.height(x, y)
+        return f + (mid.height(x, y) - f) * w
+    }
+
     public func height(_ x: Double, _ y: Double) -> Double {
         // Runways are flat: hold the published elevation over the paved area and blend 60 m out.
         let d = SIMD2(x, y) - runwayThreshold
@@ -124,12 +141,13 @@ public struct RealWorldRegion: FlightWorld {
         let blendWidth = 0.15 * nearHeights.halfExtent
         let natural: Double
         if ex <= 0 {
-            natural = max(0, farHeights.height(x, y))
+            natural = max(0, outerHeight(x, y))
         } else if ex >= blendWidth {
             natural = max(0, nearHeights.height(x, y))
         } else {
             let t = ex / blendWidth, w = t * t * (3 - 2 * t)
-            natural = max(0, farHeights.height(x, y) + (nearHeights.height(x, y) - farHeights.height(x, y)) * w)
+            let o = outerHeight(x, y)
+            natural = max(0, o + (nearHeights.height(x, y) - o) * w)
         }
         if over <= 0 { return runwayElevation }
         let t = min(1, over / 60)
@@ -162,6 +180,7 @@ public struct RealWorldRegion: FlightWorld {
         let nearCentre = -(v / max(len, 1)) * 900
         async let hNear = HeightMosaic.build(origin: origin, centre: nearCentre, halfExtent: detail.nearHalf, size: 512, zoom: 14, streamer: ts)
         async let hFar = HeightMosaic.build(origin: origin, centre: .zero, halfExtent: detail.farHalf, size: 512, zoom: 10, streamer: ts)
+        async let hMid = HeightMosaic.buildIfComplete(origin: origin, centre: .zero, halfExtent: detail.midHalf, size: 1_024, zoom: 12, streamer: ts)
         progress("Imagery")
         let usgs = USGSImageryProvider()
         // Bundled aerial surveys (LINZ, New Zealand) replace Sentinel-2 where the pack carries them.
@@ -214,6 +233,7 @@ public struct RealWorldRegion: FlightWorld {
                                   provider: midProvider, streamer: sMid) : nil
         async let osmFetch = OSMService(transport: transport, cache: cache).data(around: origin, halfExtent: min(detail.nearHalf, 3_000))
         let (hn, hf, inr, ifr) = await (hNear, hFar, iNear, iFar)
+        let hm = await hMid
         let idt = await iDetail
         var imd = await iMid
         progress("Buildings")
@@ -257,6 +277,7 @@ public struct RealWorldRegion: FlightWorld {
         // Dark runway and apron asphalt reads as water by colour; real water is flat and sizeable.
         region.ground = region.ground.cleaningWater(exclude: region.pavedArea) { x, y in max(0, hn.height(x, y)) }
         region.osm = osm
+        region.midHeights = hm
         if wantDetail { region.detailProvider = detailProvider }
         region.runwayLowNumber = Int(rwy.low.ident.prefix { $0.isNumber }) ?? 0
         if let cover {
@@ -276,8 +297,43 @@ public struct RealWorldRegion: FlightWorld {
     public func photoAlbedo(_ p: SIMD2<Double>) -> SIMD3<Float>? {
         guard let c = ground.near.sample(p.x, p.y) ?? midImagery?.sample(p.x, p.y) ?? ground.far?.sample(p.x, p.y) else { return nil }
         var a = SIMD3(powf(powf(c.x, 2.2), 1.08), powf(powf(c.y, 2.2), 1.08), powf(powf(c.z, 2.2), 1.08)) * 0.90
-        for k in 0..<3 where a[k] > 0.42 { a[k] = 0.42 + (a[k] - 0.42) * 0.48 }      // as the shader's photoAlbedo
+        for k in 0..<3 where a[k] > 0.24 { a[k] = 0.24 + (a[k] - 0.24) * 0.25 }      // as the shader's photoAlbedo
         return a
+    }
+
+    /// One roof colour for a footprint: the median of photo samples on a grid inside it, ignoring the darkest
+    /// fifth (shadows, dark vents and the photo's own building edges), with its luminance held to real roof
+    /// albedos (0.08–0.25) so no roof reads as a black or white blob.
+    public func roofAlbedo(centre: SIMD2<Double>, ring: [SIMD2<Double>]) -> SIMD3<Float>? {
+        Self.roofAlbedo(ring: ring, centre: centre) { self.photoAlbedo($0) }
+    }
+
+    static func roofAlbedo(ring: [SIMD2<Double>], centre: SIMD2<Double>, sample: (SIMD2<Double>) -> SIMD3<Float>?) -> SIMD3<Float>? {
+        guard ring.count >= 3 else { return sample(centre) }
+        var lo = ring[0], hi = ring[0]
+        for p in ring { lo = pointwiseMin(lo, p); hi = pointwiseMax(hi, p) }
+        var cols: [SIMD3<Float>] = []
+        let steps = 6
+        for j in 0..<steps {
+            for i in 0..<steps {
+                let p = lo + (hi - lo) * SIMD2((Double(i) + 0.5) / Double(steps), (Double(j) + 0.5) / Double(steps))
+                if OSMGeometry.contains(ring, p), let c = sample(p) { cols.append(c) }
+            }
+        }
+        if cols.isEmpty, let c = sample(centre) { cols.append(c) }
+        guard !cols.isEmpty else { return nil }
+        func lum(_ c: SIMD3<Float>) -> Float { 0.2126 * c.x + 0.7152 * c.y + 0.0722 * c.z }
+        cols.sort { lum($0) < lum($1) }
+        let kept = cols[(cols.count / 5)...]
+        var c = kept[kept.startIndex + kept.count / 2]
+        let l = lum(c)
+        let target = max(0.08, min(0.25, l))
+        c = l > 1e-4 ? c * (target / l) : SIMD3(repeating: target)
+        // Keep a hint of the photo's hue but not its saturation (green canopy over a roof edge); red and
+        // orange tile keeps nearly all of it (round 24: KMRY's terracotta roofs had turned grey).
+        let g = lum(c)
+        let tile = c.x > c.y && c.y >= c.z && c.x > 1.3 * max(c.z, 1e-4)
+        return pointwiseMax(SIMD3<Float>(repeating: 0.01), SIMD3(repeating: g) + (c - SIMD3(repeating: g)) * (tile ? 0.9 : 0.6))
     }
 
     /// Buildings as GPU-ready geometry with facade coordinates (nil when there are none). Roofs take the
@@ -285,11 +341,45 @@ public struct RealWorldRegion: FlightWorld {
     public func buildingMesh() -> BuildingMesh? {
         let list = buildings
         guard !list.isEmpty else { return nil }
-        let m = BuildingMeshBuilder.build(list, ground: { self.height($0, $1) }, roofPhoto: { self.photoAlbedo($0) })
+        let m = BuildingMeshBuilder.build(list, ground: { self.height($0, $1) }, roofPhoto: { self.roofAlbedo(centre: $0, ring: $1) })
         return m.indices.isEmpty ? nil : m
     }
 
     /// OSM roads as terrain-draped ribbons (nil without road data).
+    /// Road proximity on the near layer's mask grid (`size`², row 0 north): 1 within half the carriageway
+    /// plus `margin` m of a road centreline, fading to 0 over `fade` m more. The terrain shader drops its
+    /// slope relief there, so relief shading cannot darken the ground beside and between road ribbons
+    /// (art rounds 26–29: a dark sliver in the KASE dual carriageway's median). Nil without roads.
+    public func roadMask(size: Int, margin: Double = 4, fade: Double = 6) -> [Float]? {
+        guard let roads = osm?.roads, !roads.isEmpty, size > 1 else { return nil }
+        let m = ground.near, x0 = m.centre.x - m.halfExtent, y1 = m.centre.y + m.halfExtent
+        let px = 2 * m.halfExtent / Double(size)
+        var out = [Float](repeating: 0, count: size * size)
+        for r in roads where r.points.count >= 2 {
+            let inner = r.widthMetres / 2 + margin, outer = inner + fade
+            for k in 0..<(r.points.count - 1) {
+                let a = r.points[k], b = r.points[k + 1], ab = b - a
+                let len2 = max((ab * ab).sum(), 1e-6)
+                let lo = pointwiseMin(a, b) - SIMD2(repeating: outer), hi = pointwiseMax(a, b) + SIMD2(repeating: outer)
+                let i0 = max(0, Int(((lo.x - x0) / px).rounded(.down))), i1 = min(size - 1, Int(((hi.x - x0) / px).rounded(.up)))
+                let j0 = max(0, Int(((y1 - hi.y) / px).rounded(.down))), j1 = min(size - 1, Int(((y1 - lo.y) / px).rounded(.up)))
+                if i0 > i1 || j0 > j1 { continue }
+                for j in j0...j1 {
+                    let y = y1 - (Double(j) + 0.5) * px
+                    for i in i0...i1 {
+                        let p = SIMD2(x0 + (Double(i) + 0.5) * px, y)
+                        let t = max(0, min(1, ((p - a) * ab).sum() / len2))
+                        let d = p - (a + ab * t)
+                        let dist = (d * d).sum().squareRoot()
+                        let w = Float(max(0, min(1, (outer - dist) / fade)))
+                        if w > out[j * size + i] { out[j * size + i] = w }
+                    }
+                }
+            }
+        }
+        return out
+    }
+
     public func roadMesh() -> TriangleSoup? {
         guard let roads = osm?.roads, !roads.isEmpty else { return nil }
         return OSMMeshBuilder.roads(roads) { self.height($0, $1) }
@@ -583,7 +673,7 @@ public struct RealWorldRegion: FlightWorld {
                 if Hash.unit(rng.next()) > Double(canopy) * 0.9 || g.water > 0.3 { continue }
                 if nearRunway(px, py) || inBuilding(px, py) { continue }
                 let sA = standNoise.fbm(px / 320, py / 320, octaves: 2), sB = standNoise.fbm(px / 210 + 17.3, py / 210 - 9.1, octaves: 2)
-                let coniferShare = 0.10 + 0.80 * Double(ss(-0.08, 0.08, Float(sA)))   // crisp stand edges (round 19: blended into one mass)
+                let coniferShare = 0.06 + 0.88 * Double(ss(-0.05, 0.05, Float(sA)))   // crisp stand edges (round 19: blended into one mass; round 25: sharper)
                 let h = 9 + 10 * (0.5 * Hash.unit(rng.next()) + 0.5 * Double(ss(-0.4, 0.4, Float(sB))))   // half per stand
                 let conifer = Hash.unit(rng.next()) < coniferShare
                 var tint = g.albedo * 1.9 * Float(0.85 + 0.3 * Hash.unit(rng.next()))
@@ -591,7 +681,7 @@ public struct RealWorldRegion: FlightWorld {
                 tint.x *= Float(0.96 + 0.08 * Hash.unit(rng.next()))
                 // Foliage albedo floor (hue kept): dark Sentinel-2 forest gave near-black crowns (LSZS).
                 let tl = 0.2126 * tint.x + 0.7152 * tint.y + 0.0722 * tint.z
-                if tl < 0.08 { tint *= 0.08 / max(tl, 0.002) }   // (0.05 left dark crowns grey after the tone map)
+                if tl < 0.10 { tint *= 0.10 / max(tl, 0.002) }   // 0.10 (0.08): LSZS forest near-black under the 0.45 exposure (round 22)   // (0.05 left dark crowns grey after the tone map)
                 // Foliage hue range in linear albedo: blue ≤ 0.55 × green, red 0.62–0.85 × green, so saturation is
                 // at least ~0.4 and survives the tone map. Shaded photo canopy carries the sky's blue (teal crowns,
                 // round 8); red up to 1.05 × green turned alpine forest khaki (round 9); a 0.25 floor could not
@@ -602,7 +692,8 @@ public struct RealWorldRegion: FlightWorld {
                 tint *= Float(0.92 + 0.16 * Hash.unit(rng.next()))
                 // Stand tone: conifer stands ~22 % darker and bluer-green, broadleaf stands lighter and yellower
                 // (round 19: 0.86–0.90 against 1.07 did not read as separate stands at review distance).
-                tint *= conifer ? SIMD3<Float>(0.74, 0.80, 0.84) : SIMD3<Float>(1.10, 1.10, 0.94)
+                // Round 25: still one uniform green at LSZS; conifers another ~20 % darker and bluer.
+                tint *= conifer ? SIMD3<Float>(0.58, 0.66, 0.76) : SIMD3<Float>(1.12, 1.12, 0.92)
                 tint *= Float(0.93 + 0.14 * Double(ss(-0.4, 0.4, Float(sB))))
                 out.append(TreeInstance(position: SIMD3(Float(px), Float(py), Float(height(px, py))), height: Float(h), conifer: conifer, colour: tint))
                 // Paved surroundings: most of the ring 4 m out bright and unsaturated (lots, roads, roofs).
