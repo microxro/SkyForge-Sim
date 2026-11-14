@@ -136,6 +136,36 @@ import SFInstruments
                                 aircraftPosition: high.position, aircraftBodyToENU: high.bodyToENU)
         Self.save("ultra_\(ident)_high", wide)
 
+        // Debug views (WorldRenderer.debugView) for the terms the reviews could not tell apart: the LSZS high
+        // valley wall that stayed near black through four lighting changes, and the near-ground patches at
+        // the US airports that never showed. Means over the region of interest are printed for the log.
+        func debugFrames(_ name: String, camera: WorldCamera, aircraft: SIMD3<Double>, attitude: simd_double3x3, modes: [Int], roi: (Int, Int, Int, Int)) throws {
+            let saved = (r.bloomIntensity, r.ssaoStrength, r.colourGrade, r.sharpen)
+            r.bloomIntensity = 0; r.ssaoStrength = 0; r.colourGrade = 0; r.sharpen = 0
+            defer { (r.bloomIntensity, r.ssaoStrength, r.colourGrade, r.sharpen) = saved; r.debugView = 0 }
+            for mode in modes {
+                r.debugView = mode
+                let img = try r.render(width: w, height: h, camera: camera, aircraftPosition: aircraft, aircraftBodyToENU: attitude)
+                Self.save("debug_\(name)_v\(mode)", img)
+                var sum = SIMD3<Double>(repeating: 0), n = 0.0
+                for y in stride(from: roi.1, to: roi.3, by: 2) { for x in stride(from: roi.0, to: roi.2, by: 2) {
+                    let i = 3 * (y * w + x)
+                    sum += SIMD3(Double(img[i]), Double(img[i + 1]), Double(img[i + 2])) / 255; n += 1
+                } }
+                let m = sum / max(n, 1)
+                print(String(format: "debug %@ view %d roi mean r %.3f g %.3f b %.3f", name, mode, m.x, m.y, m.z))
+            }
+        }
+        if ident == "LSZS" {
+            try debugFrames("LSZS_high", camera: high.chase(distance: 24, height: 6), aircraft: high.position, attitude: high.bodyToENU, modes: [1, 2, 4], roi: (700, 430, 1280, 720))
+        }
+        if ident == "KMRY" || ident == "KBFI" {
+            r.setLighting(LightingSetup.physicalPreset(.midday, azimuthDegrees: 200, cameraHeightMetres: cam.position.z))
+            try debugFrames("\(ident)_final", camera: WorldCamera(position: cam.position, target: cam.target),
+                            aircraft: session.positionENU, attitude: body,
+                            modes: [1, 3], roi: (0, 540, 1280, 720))
+        }
+
         // 4. Cockpit on the final (one airport is enough to review the interior).
         if ident == "KMRY" {
             r.setLighting(LightingSetup.physicalPreset(.midday, azimuthDegrees: 200, cameraHeightMetres: cam.position.z))

@@ -898,3 +898,25 @@ Round-36 batch:
 2. **Cloud shadow:** transmittance floor 0.25 (from 0.12) and a gentler falloff; fill light under the cloud raised from 0.35 to 0.42 of the sun.
 3. **NZQN near lake:** the water body is modulated by wave facets toward or away from the sun (about ±28 %) and by ruffle; scattering is stronger where the water is ruffled.
 4. **SkyWorld stubble:** straw (3.00/2.00/3.90; red over green 1.30), on CPU and GPU.
+
+## Bold round 36: PR #6 92382be (run 43623273138, ultra tier)
+Same reviewer and scale. **All scores unchanged:** finals 7.42, high frames 6.58, cockpit 6.75, SkyWorld 7.75.
+
+Measured changes, all too small to move a score:
+- **KBFI near band:** the blotch share (pixels brighter than 1.6× the band median) fell from 11.7 % to 10.5 %, and the ground reads slightly warmer and greener. KMRY looks the same as round 35.
+- **4 m and 12 m patches:** still not visible.
+- **LSZS high slope:** unchanged, a mean difference of 0.58 levels. Cloud shadow is ruled out.
+- **NZQN near lake:** slight facet variation, but it still reads navy.
+- **LSZS final:** brighter and more saturated (27.9). This is the ceiling; no further canopy lift.
+
+This is the third round under +0.2. Guessing at lighting terms has stopped paying off, so round 37 adds instrumentation:
+- `WorldRenderer.debugView` writes one shader term per channel, encoded so the tone map returns it unchanged (bloom, SSAO, grade and sharpening off):
+  - **1:** albedo.
+  - **2:** sun visibility, n·l and cloud shade.
+  - **3:** near-ground patch term, ground-material weight and natural-class weight.
+  - **4:** direct share, ambient share and irradiance relative to full sun.
+- The showcase job saves `debug_LSZS_high_v1/2/4` and `debug_KMRY|KBFI_final_v1/3`, and prints region-of-interest means to the log.
+
+Round-37 batch also includes, for the NZQN near lake:
+- Wind streaks about 25 m across.
+- Facet modulation ×2.6, clamped to 0.5–1.7.

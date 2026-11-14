@@ -216,6 +216,11 @@ public final class WorldRenderer {
     public var cloudSteps = 64
     /// Display grade strength (gentle filmic contrast and vibrance after the tone map; 0 = off).
     public var colourGrade: Float = 1
+    /// Diagnostic output of the terrain and tree shader (0 = normal render). With bloom, SSAO, grade and
+    /// sharpening off, each channel shows its term directly as 0–1 (`WorldShaders` debug views): 1 albedo
+    /// (sRGB-encoded), 2 sun visibility / sun-facing (n·l) / cloud shade, 3 near-ground patch term (0.5 = none) /
+    /// ground-material weight / natural-class weight, 4 direct and ambient shares of the irradiance.
+    public var debugView = 0
     /// Cloud self-shadow taps toward the sun per march sample (tier setting).
     public var cloudLightSteps = 6
     /// Fine cloud structure strength (0 = reference density, 1 = billows and frayed edges).
@@ -1042,7 +1047,7 @@ public final class WorldRenderer {
         let cascadeCount: Float = doShadows ? Float(ShadowCascades.count) : 0
         let uTableDims = SIMD4<Float>(dims.x, dims.y, dims.z, cascadeCount)
         let uZenith = SIMD4<Float>(L.skyZenith, Float(time.truncatingRemainder(dividingBy: 3_600)))
-        let uQuality = SIMD4<Float>(Float(max(1, min(3, shadowFilter))), 0, 0, 0)
+        let uQuality = SIMD4<Float>(Float(max(1, min(3, shadowFilter))), 0, Float(debugView), 0)
         let cloudLayer = CloudUniforms(layer: clouds, steps: 0).layer
         var uRunwayA = SIMD4<Float>(0, 0, 0, 1), uRunwayB = SIMD4<Float>(0, 0, 0, 0)
         if let rw = runway {

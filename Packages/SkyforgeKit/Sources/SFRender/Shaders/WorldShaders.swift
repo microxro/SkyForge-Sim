@@ -39,7 +39,7 @@ public enum WorldShaders {
         float4 imageryDetail;     // sharp inner imagery square: centre x, y, half extent, 1 if present
         float4 imageryMid;        // middle-distance imagery square: centre x, y, half extent, 1 if present
         float4 skyZenith;         // rgb zenith sky radiance (reflections), w = time (s)
-        float4 quality;           // x = shadow filter half width (taps), y = cabin interior fill (cockpit pass), z, w unused
+        float4 quality;           // x = shadow filter half width (taps), y = cabin interior fill (cockpit pass), z = debug view, w unused
         float4 runwayA;           // low threshold x, y (region metres), direction x, y (unit, toward the high end)
         float4 runwayB;           // length, width (m), low-end number (0 = none), 1 if a runway is drawn
     };
@@ -948,6 +948,7 @@ public enum WorldShaders {
         float imgForest = 0.0;                               // canopy score of the imagery colour (real terrain)
         float groundMat = 0.0;                               // weight of the near-ground detail materials
         float2 groundTilt = float2(0.0);                     // their normal tilt (applied after the normal is final)
+        float dbgPatch = 0.0, dbgNatural = 0.0;              // near-ground patch term and its class weight (debug view 3)
         float roadNear = 0.0;                                // road proximity from the near mask's second channel
         float2 photoW = in.rel.xy + u.cameraLocal.xy;      // region metres (imagery lookup)
         float2 dwx = dfdx(photoW), dwy = dfdy(photoW);
@@ -1065,6 +1066,7 @@ public enum WorldShaders {
                 float p4 = (smoothstep(-0.45, 0.45, groundNoise(gw + 63.0, 4.0)) * 2.0 - 1.0) * saturate(1.0 - fpw / 3.0);
                 float p12 = (smoothstep(-0.45, 0.45, groundNoise(gw - 41.0, 12.0)) * 2.0 - 1.0) * saturate(1.0 - fpw / 9.0);
                 f *= 1.0 + (0.20 * p4 + 0.16 * p12) * natural;
+                dbgPatch = (0.20 * p4 + 0.16 * p12) * natural * groundMat; dbgNatural = natural;
                 albedo *= 1.0 + (f - 1.0) * groundMat;
                 groundTilt = tilt * groundMat;
             }
@@ -1280,6 +1282,10 @@ public enum WorldShaders {
             // Wind: ruffled water beside calmer slicks (250 m and 1 km patches), at any distance, so a lake
             // or a bay is not one uniform sheet.
             float ruffle = 0.30 + 0.70 * smoothstep(-0.30, 0.40, groundNoise(ww + 211.0, 256.0) + 0.6 * groundNoise(ww + 97.0, 1024.0));
+            // Wind streaks: long bands of rougher water along one wind direction (~25 m across, ~300 m long),
+            // so a near lake seen steeply is not one uniform sheet (round 36, NZQN).
+            float2 wa = float2(0.94 * ww.x + 0.34 * ww.y, -0.34 * ww.x + 0.94 * ww.y);
+            ruffle = saturate(ruffle + 0.35 * smoothstep(0.15, 0.55, groundNoise(float2(wa.x * 0.08, wa.y) + 57.0, 25.0)));
             slope *= 0.55 + 0.75 * ruffle;
             float3 wn = normalize(float3(-slope, 1.0));
             float3 r = reflect(dir, wn);
@@ -1300,7 +1306,7 @@ public enum WorldShaders {
             // Seen steeply the surface reflects little, so the body carries the look: wave facets toward the sun
             // brighter, away darker, and ruffled water scatters more (round 35: NZQN near lake one uniform navy).
             float2 sunH = toSun.xy / max(length(toSun.xy), 1e-3);
-            body *= clamp(1.0 - 1.4 * dot(slope, sunH), 0.6, 1.5) * (0.85 + 0.3 * ruffle);
+            body *= clamp(1.0 - 2.6 * dot(slope, sunH), 0.5, 1.7) * (0.80 + 0.4 * ruffle);   // ×2.6 (1.4 sat below review, round 36)
             // Sheen toward the sun from many unresolved facets, wider where the water is ruffled.
             refl += u.sunColour.rgb * pow(max(0.0, dot(rr, toSun)), mix(260.0, 40.0, ruffle)) * (0.5 + 1.5 * ruffle) * vis;
             if (imageryWater) {
@@ -1474,6 +1480,22 @@ public enum WorldShaders {
                 float spec = pow(max(0.0, dot(n, h)), 20.0) * 0.08;
                 col += u.sunColour.rgb * spec * vis;
             }
+        }
+        if (u.quality.z > 0.5) {
+            // Debug views (WorldRenderer.debugView): each channel a 0–1 term, encoded so that the tone map
+            // (ACES, gamma 2.2) returns it unchanged when bloom, SSAO, grade and sharpening are off.
+            int mode = int(u.quality.z + 0.5);
+            float3 d = float3(0.0);
+            if (mode == 1) d = pow(max(albedo, float3(0.0)), float3(1.0 / 2.2));
+            else if (mode == 2) d = float3(vis, saturate(ndl), cloudShade);
+            else if (mode == 3) d = float3(0.5 + 2.0 * dbgPatch, groundMat, dbgNatural);
+            else if (mode == 4) {
+                float dL = dot(u.sunColour.rgb, float3(0.2126, 0.7152, 0.0722)) * max(0.0, ndl) * vis;
+                float aL = dot(ambient, float3(0.2126, 0.7152, 0.0722));
+                d = float3(dL, aL, 0.0) / max(dL + aL, 1e-4);
+                d.b = saturate((dL + aL) / max(dot(u.sunColour.rgb, float3(0.2126, 0.7152, 0.0722)), 1e-4));   // irradiance / full sun
+            }
+            return float4(acesInverse(pow(saturate(d), float3(2.2))), 1.0);
         }
         float3 L, T;
         aerial(u, ins, tr, dir, dist, L, T);
