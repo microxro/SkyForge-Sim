@@ -284,9 +284,9 @@ public enum WorldShaders {
         float v = (a + (b - a) * tx) + ((c + (d - c) * tx) - (a + (b - a) * tx)) * ty;
         return v * 2.0 - 1.0;
     }
-    constant float3 fpSummer[8] = { float3(0.74, 0.90, 0.80), float3(1.30, 1.12, 1.10), float3(2.30, 1.55, 1.10),
-        float3(0.95, 0.60, 0.95), float3(1.95, 1.40, 1.70), float3(0.55, 0.70, 0.66), float3(1.32, 0.96, 1.30),
-        float3(2.20, 1.85, 0.70) };   // as FieldPattern.summer
+    constant float3 fpSummer[8] = { float3(0.74, 0.90, 0.80), float3(1.50, 1.25, 1.90), float3(2.40, 1.75, 3.30),
+        float3(0.95, 0.60, 0.95), float3(2.50, 1.95, 4.90), float3(0.55, 0.70, 0.66), float3(1.32, 0.96, 1.30),
+        float3(3.05, 2.40, 1.50) };   // as FieldPattern.summer
     constant float3 fpAutumn[6] = { float3(1.43, 1.03, 1.57), float3(0.78, 0.54, 1.00), float3(0.60, 0.68, 0.82),
         float3(1.22, 0.89, 1.38), float3(0.76, 0.77, 0.95), float3(1.67, 1.21, 2.00) };
     static float fieldCoverage(float x, float y, float weight, uint seed, float band, float4 grid, texture2d<float> parcels) {
@@ -1030,7 +1030,9 @@ public enum WorldShaders {
                 albedo = mix(albedo, lifted, ltW);
             }
             float alT = dot(albedo, float3(0.2126, 0.7152, 0.0722));
-            float toeW = (1.0 - smoothstep(400.0, 1200.0, dist)) * (1.0 - saturate((wm - 0.2) / 0.2));
+            // Out to ~5 km at half strength beyond 1.2 km: dark photo forest on shaded mid-ring slopes stayed a
+            // near-black mass from the high camera (round 32, LSZS high), which sky light alone did not lift.
+            float toeW = max(1.0 - smoothstep(400.0, 1200.0, dist), 0.5 * (1.0 - smoothstep(3000.0, 5500.0, dist))) * (1.0 - saturate((wm - 0.2) / 0.2));
             if (alT < 0.10 && toeW > 0.0) {
                 float lifted = 0.10 * pow(max(alT, 1e-4) / 0.10, 0.65);
                 albedo *= 1.0 + (lifted / max(alT, 1e-4) - 1.0) * toeW;
@@ -1117,7 +1119,9 @@ public enum WorldShaders {
             n = normalize(n + float3(-gx, -gy, 0.0) * (0.12 * wFine * fade));
         }
         if (groundMat > 0.0 && !imageryWater) n = normalize(n + float3(-groundTilt, 0.0));
-        if (m == 7.0 && ((in.material == 7.0 && n.z < 0.9) || (in.material == 8.0 && n.z < 0.97))) {
+        // Photo terrain enters at 0.985 so the slope tone bands reach moderate slopes; its relief still starts
+        // at 0.97 through `steep` (round 32: the bands' wider gate sat inside a 0.97 gate and never applied).
+        if (m == 7.0 && ((in.material == 7.0 && n.z < 0.9) || (in.material == 8.0 && n.z < 0.985))) {
             // Steep ground: fall-line gullies, rock tone variation, scrub and scree (as SFPreview), each
             // octave faded by pixel footprint so big slopes keep detail far away. On the photo terrain too
             // (art round 24: NZQN and KASE hillsides were the stretched 10 m photo's smear), with the relief

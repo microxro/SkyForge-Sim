@@ -807,3 +807,26 @@ Round-32 batch:
 4. **Cockpit:**
    - Yoke horn tips back in view.
    - Placards, a rocker-switch row and a fuel selector on the lower panel.
+
+## Bold round 32: PR #6 1e00305 (run 43600292820, ultra tier)
+Same reviewer and scale.
+
+**Scores:** finals 7.33, high frames 6.58, cockpit 6.0 (all unchanged).
+
+**SkyWorld:** more varied, but the new crops read as lime and chartreuse. Their ratios on the green grass base kept green above red, and lower-half saturation rose from 43 to 52.
+
+**Not visible:**
+- **Slope bands:** they sat inside the photo-terrain slope block, whose own gate was 0.97, so their wider gate never applied.
+- **Sky light on shaded terrain:** the LSZS high right slope is still near-black.
+- **Cockpit additions:** below the frame edge.
+
+CI note: `1e7e87c` failed the GPU/CPU field parity test. Two shader paths still took the crop index modulo 7; fixed in `1e00305`.
+
+Round-33 batch:
+1. **Crop ratios retuned** so mature crops have red above green in linear terms (CPU and GPU):
+   - wheat about 0.48/0.40/0.20
+   - stubble about 0.50/0.45/0.30
+   - rapeseed about 0.62/0.55/0.09
+2. **Photo-terrain slope block** entered at n.z < 0.985. The relief still starts at 0.97 through `steep`.
+3. **Shadow toe** out to about 5 km at half strength beyond 1.2 km (dark mid-ring photo forest).
+4. **Cockpit view** looks 7° down (was 5°), so the yoke tops and lower panel come into frame.

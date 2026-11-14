@@ -8,8 +8,9 @@ import SFPreview
 public enum Cockpit {
     /// Pilot eye point, left seat (body axes: x forward, y right, z down; origin at the CG).
     public static let eye = SIMD3<Double>(0.22, -0.26, -0.80)
-    /// Eye looks 5° below the body x axis (over the glare shield to the horizon).
-    public static let lookDown = 5.0 * Double.pi / 180
+    /// 7° (was 5°): the yoke tops and the lower panel come into the frame, as a trainer's left-seat view is
+    /// usually framed (art round 32: everything below the gauges sat outside the 55° view).
+    public static let lookDown = 7.0 * Double.pi / 180
 
     static let panelX = 1.12, panelTop = -0.40, panelBottom = 0.06, halfWidth = 0.54
     static let screenTilt = 12.0 * Double.pi / 180
