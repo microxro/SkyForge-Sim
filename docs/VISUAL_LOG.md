@@ -589,3 +589,29 @@ Round-23 batch (top fixes 1–4):
 4. **LSZS:** canopy photo floor 0.07 (0.05) and 3D tree tint floor 0.10 (0.08).
 
 Not done: the cockpit materials, and slope-aware detail on steep photo (fix 5).
+
+## Bold round 23: PR #6 d7faa5d (ultra tier)
+Same reviewer and scale.
+
+**Final camera:** KMRY 7.0, KASE 7.5, KBFI 6.75, LSZS 6.75, NZQN 7.25, SkyWorld 7.0. **Average 7.04** (round 22: 7.00). Cockpit 4.5.
+
+**Improved:** the KASE road ribbon (now drapes and reads as asphalt); fewer near-band blotches (share of pixels above 1.6× the band median: KMRY 33.5 % → 32.3 %, KBFI 21 % → 15.1 %).
+
+**Still wrong:**
+- **KBFI roofs:** a near-black oval roof (the photo's own shading projected onto it, even at the coarser mip).
+- **LSZS forest:** still near-black (lower-half mean 35.1 → 38.8).
+- **Baked shadows:** photo shadows and dark car parks still read as blotches beside the 3D lighting.
+
+Rounds 22 and 23 both gained under 0.2, so this batch is structural.
+
+Round-24 batch:
+1. **One roof colour per building, set at load:**
+   - Median of a 6 × 6 photo grid inside the footprint, ignoring the darkest fifth.
+   - Luminance held to 0.08–0.25 and saturation to 60 %.
+   - The shader's per-pixel photo roof is off; mottle and weathering streaks are procedural.
+2. **Local tone compression on the near photo ground (within 1.8 km):**
+   - Each pixel is held within ±40 % of the photo's ~30 m mean, with a soft tanh knee.
+   - Not applied on water or the runway.
+3. **Foliage ambient ×1.6, crown occlusion floor 0.5 (was 0.35):** for LSZS's near-black stands under the 0.45 exposure.
+
+Not done: slope-aware detail and the cockpit materials.

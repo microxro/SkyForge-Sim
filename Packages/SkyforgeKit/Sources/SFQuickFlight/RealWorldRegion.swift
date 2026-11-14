@@ -276,8 +276,41 @@ public struct RealWorldRegion: FlightWorld {
     public func photoAlbedo(_ p: SIMD2<Double>) -> SIMD3<Float>? {
         guard let c = ground.near.sample(p.x, p.y) ?? midImagery?.sample(p.x, p.y) ?? ground.far?.sample(p.x, p.y) else { return nil }
         var a = SIMD3(powf(powf(c.x, 2.2), 1.08), powf(powf(c.y, 2.2), 1.08), powf(powf(c.z, 2.2), 1.08)) * 0.90
-        for k in 0..<3 where a[k] > 0.42 { a[k] = 0.42 + (a[k] - 0.42) * 0.48 }      // as the shader's photoAlbedo
+        for k in 0..<3 where a[k] > 0.24 { a[k] = 0.24 + (a[k] - 0.24) * 0.25 }      // as the shader's photoAlbedo
         return a
+    }
+
+    /// One roof colour for a footprint: the median of photo samples on a grid inside it, ignoring the darkest
+    /// fifth (shadows, dark vents and the photo's own building edges), with its luminance held to real roof
+    /// albedos (0.08–0.25) so no roof reads as a black or white blob.
+    public func roofAlbedo(centre: SIMD2<Double>, ring: [SIMD2<Double>]) -> SIMD3<Float>? {
+        Self.roofAlbedo(ring: ring, centre: centre) { self.photoAlbedo($0) }
+    }
+
+    static func roofAlbedo(ring: [SIMD2<Double>], centre: SIMD2<Double>, sample: (SIMD2<Double>) -> SIMD3<Float>?) -> SIMD3<Float>? {
+        guard ring.count >= 3 else { return sample(centre) }
+        var lo = ring[0], hi = ring[0]
+        for p in ring { lo = pointwiseMin(lo, p); hi = pointwiseMax(hi, p) }
+        var cols: [SIMD3<Float>] = []
+        let steps = 6
+        for j in 0..<steps {
+            for i in 0..<steps {
+                let p = lo + (hi - lo) * SIMD2((Double(i) + 0.5) / Double(steps), (Double(j) + 0.5) / Double(steps))
+                if OSMGeometry.contains(ring, p), let c = sample(p) { cols.append(c) }
+            }
+        }
+        if cols.isEmpty, let c = sample(centre) { cols.append(c) }
+        guard !cols.isEmpty else { return nil }
+        func lum(_ c: SIMD3<Float>) -> Float { 0.2126 * c.x + 0.7152 * c.y + 0.0722 * c.z }
+        cols.sort { lum($0) < lum($1) }
+        let kept = cols[(cols.count / 5)...]
+        var c = kept[kept.startIndex + kept.count / 2]
+        let l = lum(c)
+        let target = max(0.08, min(0.25, l))
+        c = l > 1e-4 ? c * (target / l) : SIMD3(repeating: target)
+        // Keep a hint of the photo's hue but not its saturation (green canopy over a roof edge).
+        let g = lum(c)
+        return pointwiseMax(SIMD3<Float>(repeating: 0.01), SIMD3(repeating: g) + (c - SIMD3(repeating: g)) * 0.6)
     }
 
     /// Buildings as GPU-ready geometry with facade coordinates (nil when there are none). Roofs take the
@@ -285,7 +318,7 @@ public struct RealWorldRegion: FlightWorld {
     public func buildingMesh() -> BuildingMesh? {
         let list = buildings
         guard !list.isEmpty else { return nil }
-        let m = BuildingMeshBuilder.build(list, ground: { self.height($0, $1) }, roofPhoto: { self.photoAlbedo($0) })
+        let m = BuildingMeshBuilder.build(list, ground: { self.height($0, $1) }, roofPhoto: { self.roofAlbedo(centre: $0, ring: $1) })
         return m.indices.isEmpty ? nil : m
     }
 

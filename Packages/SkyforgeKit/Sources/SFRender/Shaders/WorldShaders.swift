@@ -998,6 +998,21 @@ public enum WorldShaders {
             // 0.06 → 0.072) so the baked shadows under the 3D trees and buildings, which cast their own, stop
             // reading as doubled black (art round 17, KMRY; a 0.07/0.7 toe sat below most photo shadows, round 18).
             // Fades by 1.2 km; not on water.
+            // Local tone compression: each pixel held within ±40 % of the photo's ~30 m mean, so baked shadows,
+            // dark car parks and bright roofs in the photo do not read as black or white blotches next to the
+            // 3D scene's own lighting (art round 23: KMRY, KBFI). Near ground only; not on water or the runway.
+            float ltW = (1.0 - smoothstep(900.0, 1800.0, dist)) * (1.0 - saturate((wm - 0.2) / 0.2)) * (1.0 - rwCover);
+            if (ltW > 0.0) {
+                float fp0 = length(dwx) + length(dwy);
+                float ls = max(1.0, 30.0 / max(fp0, 1e-3));
+                float2 luv; bool lin; float lw0, lw1;
+                float3 lm = photoAlbedo(photoColour(u, imgNear, imgMid, imgFar, imgDetail, photoW, dwx * ls, dwy * ls, luv, lin, lw0, lw1));
+                float meanL = max(dot(lm, float3(0.2126, 0.7152, 0.0722)), 0.01);
+                float aL = max(dot(albedo, float3(0.2126, 0.7152, 0.0722)), 1e-4);
+                float r = aL / meanL;
+                float rc = r < 1.0 ? 1.0 - 0.4 * tanh((1.0 - r) / 0.4) : 1.0 + 0.4 * tanh((r - 1.0) / 0.4);
+                albedo *= 1.0 + (rc / r - 1.0) * ltW;
+            }
             float alT = dot(albedo, float3(0.2126, 0.7152, 0.0722));
             float toeW = (1.0 - smoothstep(400.0, 1200.0, dist)) * (1.0 - saturate((wm - 0.2) / 0.2));
             if (alT < 0.10 && toeW > 0.0) {
@@ -1214,7 +1229,9 @@ public enum WorldShaders {
             // foliage, part of it replaced by light bounced from the ground below (art round 8: blue crowns).
             // Darkening on the crown's underside only (round 9: 0.7 over the whole crown dulled sunlit tops).
             float under = saturate(-n.z);
-            float3 foliageAmb = mix(ambient, u.ambientGround.rgb, 0.25 + 0.25 * under) * (0.85 - 0.25 * under);
+            // ×1.6: under the 0.45 exposure scale, shaded crowns on LSZS's north-facing forest went near-black
+            // (art round 23); the sky light inside a real conifer stand is dim but not absent.
+            float3 foliageAmb = mix(ambient, u.ambientGround.rgb, 0.25 + 0.25 * under) * (0.85 - 0.25 * under) * 1.6;
             // Leaf clumps: tone breaks up the crown at close range; the crown's own sky visibility (vertex
             // shade) darkens its inside and underside, so a tree reads as a mass of lobes, not one blob.
             float2 lw = in.rel.xy + u.cameraPos.xy;
@@ -1222,7 +1239,7 @@ public enum WorldShaders {
             float fine = groundNoise(lw - in.rel.z * float2(0.29, 0.52) - 7.0, 0.22);
             float nearT = saturate(1.0 - dist / 260.0);
             float tone = 1.0 + nearT * (0.30 * clump + 0.18 * fine);      // noise is −1…1
-            float occ = mix(0.35, 1.0, saturate(in.field));
+            float occ = mix(0.5, 1.0, saturate(in.field));   // 0.5 (0.35): see foliageAmb
             col = albedo * tone * (u.sunColour.rgb * (wrap + back) * mix(1.0, occ, 0.5) * vis + foliageAmb * occ);
         } else if (m == 10.0 || m == 11.0 || m == 12.0) {    // SF-1 airframe: painted skin, glazing, bright metal
             float3 L = in.local;
@@ -1273,7 +1290,7 @@ public enum WorldShaders {
             float3 glassCol = fc.interior * (u.sunColour.rgb * max(0.0, ndl) * vis * 0.6 + ambient * aoW) * (1.0 - F)
                             + env * fc.tint * F + u.sunColour.rgb * ggxLobe(n, v, toSun, 0.10, fc.f0) * vis;
             col = mix(wallCol, glassCol, fc.glass);
-        } else if (m == 15.0) {                              // roof: the ground photo's colour (style.z bit 0) with roofing mottle
+        } else if (m == 15.0) {                              // roof: one colour per building (from the photo at load) with roofing mottle
             float3 a = albedo;
             if (fmod(in.style.z, 2.0) > 0.5) {
                 float2 ruv; bool rin;
@@ -1287,7 +1304,8 @@ public enum WorldShaders {
             }
             float2 rw = in.rel.xy + u.cameraPos.xy;
             float fpw = length(dwx) + length(dwy);
-            a *= 1.0 + 0.10 * groundNoise(rw, 1.5) * saturate(1.0 - fpw / 0.75) + 0.08 * groundNoise(rw + 19.0, 9.0) * saturate(1.0 - fpw / 4.5);
+            a *= 1.0 + 0.10 * groundNoise(rw, 1.5) * saturate(1.0 - fpw / 0.75) + 0.08 * groundNoise(rw + 19.0, 9.0) * saturate(1.0 - fpw / 4.5)
+                   + 0.05 * groundNoise(rw * float2(1.0, 0.15) + 41.0, 4.0) * saturate(1.0 - fpw / 2.0);   // weathering streaks
             col = a * (u.sunColour.rgb * max(0.0, ndl) * vis + ambient);
         } else if (m == 6.0 || m == 5.0) {                   // aircraft paint / glass: GGX
             // Panel seams on the airframe (aircraft-sized local coordinates only, not painted scenery).
