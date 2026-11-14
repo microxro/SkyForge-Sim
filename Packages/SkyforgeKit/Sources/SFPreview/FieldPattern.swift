@@ -56,7 +56,7 @@ public struct FieldPattern: Sendable, Equatable {
         SIMD3(1.50, 1.25, 1.90),   // hay
         SIMD3(2.40, 1.75, 3.30),   // ripe wheat: golden straw
         SIMD3(0.95, 0.60, 0.95),   // ploughed soil
-        SIMD3(2.50, 1.95, 4.90),   // pale stubble
+        SIMD3(2.80, 2.00, 4.40),   // pale stubble (round 34: read mint; warmer)
         SIMD3(0.55, 0.70, 0.66),   // dark pasture
         SIMD3(1.32, 0.96, 1.30),   // fallow
         SIMD3(3.05, 2.40, 1.50),   // flowering rapeseed (a few fields)

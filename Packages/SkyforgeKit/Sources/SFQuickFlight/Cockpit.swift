@@ -315,8 +315,8 @@ public enum Cockpit {
             // Hub ~0.5 m below the eye (was 0.69 m, below the 55° view): the yoke's upswept horns just show
             // above the bottom edge, as from a trainer's left seat (art round 29: no yoke in view).
             // The shaft leaves the panel below the PFD (round 30: at the PFD's height it covered the screen).
-            tube(V(panelX - 0.01, y, -0.12), V(0.88, y, -0.28), 0.016, 0.016, sides: 10, chrome, .metal)
-            let hub = V(0.86, y, -0.29)
+            tube(V(panelX - 0.01, y, -0.11), V(0.88, y, -0.265), 0.016, 0.016, sides: 10, chrome, .metal)
+            let hub = V(0.86, y, -0.275)   // 1.5 cm lower than round 34: clears the PFD's bottom strip
             let n = 14
             for i in 0..<n {
                 let a0 = Double(i) / Double(n) * 2 * .pi, a1 = Double(i + 1) / Double(n) * 2 * .pi

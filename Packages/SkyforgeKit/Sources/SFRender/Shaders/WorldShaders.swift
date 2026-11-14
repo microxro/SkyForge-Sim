@@ -285,7 +285,7 @@ public enum WorldShaders {
         return v * 2.0 - 1.0;
     }
     constant float3 fpSummer[8] = { float3(0.74, 0.90, 0.80), float3(1.50, 1.25, 1.90), float3(2.40, 1.75, 3.30),
-        float3(0.95, 0.60, 0.95), float3(2.50, 1.95, 4.90), float3(0.55, 0.70, 0.66), float3(1.32, 0.96, 1.30),
+        float3(0.95, 0.60, 0.95), float3(2.80, 2.00, 4.40), float3(0.55, 0.70, 0.66), float3(1.32, 0.96, 1.30),
         float3(3.05, 2.40, 1.50) };   // as FieldPattern.summer
     constant float3 fpAutumn[6] = { float3(1.43, 1.03, 1.57), float3(0.78, 0.54, 1.00), float3(0.60, 0.68, 0.82),
         float3(1.22, 0.89, 1.38), float3(0.76, 0.77, 0.95), float3(1.67, 1.21, 2.00) };
@@ -1041,8 +1041,17 @@ public enum WorldShaders {
             if (groundMat > 0.0) {
                 GroundClasses k = classifyGround(c, imgForest);
                 float2 tilt;
-                float fpw = length(dwx) + length(dwy);
+                // Footprint as twice the geometric mean of the two axes (was their sum): at the final camera's
+                // grazing angle the sum faded every octave finer than ~8 m out of the near band (round 34: KMRY and
+                // KBFI near ground soft and mottled since round 24).
+                float fpw = 2.0 * sqrt(length(dwx) * length(dwy));
                 float3 f = groundMaterial(k, in.rel.xy + u.cameraPos.xy, max(fpw, 1e-3), tilt);
+                // Wear and growth patches at ~4 m and ~12 m on any natural ground (±12 % / ±10 %), the scale the
+                // 1.6 m US photo cannot carry.
+                float2 gw = in.rel.xy + u.cameraPos.xy;
+                float natural = saturate(k.grass + k.dry + k.soil);
+                float p4 = groundNoise(gw + 63.0, 4.0) * saturate(1.0 - fpw / 3.0), p12 = groundNoise(gw - 41.0, 12.0) * saturate(1.0 - fpw / 9.0);
+                f *= 1.0 + (0.12 * p4 + 0.10 * p12) * natural;
                 albedo *= 1.0 + (f - 1.0) * groundMat;
                 groundTilt = tilt * groundMat;
             }
@@ -1310,7 +1319,10 @@ public enum WorldShaders {
             float nearT = saturate(1.0 - dist / 260.0);
             float tone = 1.0 + nearT * (0.30 * clump + 0.18 * fine);      // noise is −1…1
             float occ = mix(0.5, 1.0, saturate(in.field));   // 0.5 (0.35): see foliageAmb
-            col = albedo * tone * (u.sunColour.rgb * (wrap + back) * mix(1.0, occ, 0.5) * vis + foliageAmb * occ);
+            // Crowns in shadow get 40 % more sky light: a shaded forested valley wall read as a near-black mass
+            // from the high camera (rounds 31–34, LSZS high), which terrain-only lifts did not reach.
+            float fShade = 1.0 + 0.40 * (1.0 - saturate(vis * 2.0));
+            col = albedo * tone * (u.sunColour.rgb * (wrap + back) * mix(1.0, occ, 0.5) * vis + foliageAmb * occ * fShade);
         } else if (m == 10.0 || m == 11.0 || m == 12.0) {    // SF-1 airframe: painted skin, glazing, bright metal
             float3 L = in.local;
             float3 v = -dir;

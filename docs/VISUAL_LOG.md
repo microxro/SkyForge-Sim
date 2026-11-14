@@ -851,3 +851,25 @@ Round-34 batch:
 2. **Shadow toe at full strength to about 4 km.**
 3. **Yoke:** raised again, with its horn tips in the bottom 60 px.
 4. **Cabin:** panel face and lower panel lighter dark grey (about 0.08–0.09).
+
+## Bold round 34: PR #6 4c1793d (run 43602791437, ultra tier)
+Same reviewer and scale. The reviewer corrected round 33's average to 7.33.
+
+**Final camera:** KMRY 7.25, KASE 7.75, KBFI 7.0, LSZS 7.25, NZQN 7.25, SkyWorld 7.75. **Average 7.38**.
+
+**High frames:** 6.58 (unchanged). **Cockpit 6.5** (6.0).
+
+**Improved:**
+- **SkyWorld:** warm tan, khaki and ochre crops. In the lower half, pixels with red above green rose from 0.2 % to 11.6 %.
+- **Cockpit:** the yoke horns and rim give the cabin depth, though the rim crosses the PFD's bottom strip.
+
+**Still dark:** the LSZS high slope (+2 levels from the toe).
+
+Round-35 batch:
+1. **Near-ground detail:**
+   - The material octaves fade by twice the geometric-mean footprint (they faded by the axis sum, which erased everything finer than ~8 m in the grazing near band).
+   - New ±12 % and ±10 % wear and growth patches at 4 m and 12 m on natural ground.
+   - Aimed at the KMRY and KBFI near ground, flat since round 24.
+2. **Foliage in shadow:** 40 % more sky light (the dark LSZS high valley wall, likely shaded 3D crowns).
+3. **SkyWorld stubble:** warmer (it read mint).
+4. **Yoke:** 1.5 cm lower, clearing the PFD's bottom strip.
