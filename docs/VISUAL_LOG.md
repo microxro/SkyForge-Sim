@@ -1053,3 +1053,23 @@ Round-42 frames (d0fa0f4, run 43651812034) before review:
 Fixed before review:
 - **Field contrast:** each field's 30 m mean against the ~150 m mean around it, with that ratio pushed 80 % further (clamped to 0.75–1.35 per channel). Fields separate along the photo's own boundaries, with no bands.
 - **Mid-ring fade:** now uses the geometric-mean footprint.
+
+## Bold round 42: PR #7 1d4bc07 (run 43652804502, ultra tier)
+Same reviewer and scale.
+
+**Final camera:** KMRY 7.5, KASE 7.75, KBFI 7.5 (7.25), LSZS 7.5, NZQN 7.5, SkyWorld 7.75. **Average 7.58**.
+
+**High frames:** 6.65. **Close:** KBFI 7.25 (7.0). **Cockpit:** 6.75.
+
+**Landed:**
+- **KBFI rooftop plant and skylights:** the blocks read as real buildings.
+- **KASE field contrast:** partial. The lower half's contrast rose from 31.7 to 34.4, with no grid or rings, but it still reads as one smeared field.
+
+**Did not show:** the mid-ring 30/60 m octaves are sub-pixel at the high camera's distances.
+
+Round-43 batch:
+1. **KASE field push:** the exponent goes from 0.8 to 1.4 where the 30 m / 150 m ratio is large (clamp 0.65–1.5). Boundaries sharpen while field interiors stay calm.
+2. **Mid ring (high frames):**
+   - Coarse 120 m and 240 m luminance octaves.
+   - Field contrast from the photo's 150 m / 600 m mean ratio, pushed 60 % further (0.75–1.33).
+3. **KBFI rooftop units:** a mix of mid-grey, white, pale tan and dark ducts.

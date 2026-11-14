@@ -1128,8 +1128,21 @@ public enum WorldShaders {
                 float fpMid = 2.0 * sqrt(length(dwx) * length(dwy));   // geometric mean: the long axis faded it out at grazing angles (round 42)
                 float midW = smoothstep(800.0, 2000.0, dist) * (1.0 - smoothstep(9000.0, 15000.0, dist)) * (1.0 - saturate((wm - 0.2) / 0.2)) * (1.0 - rwCover);
                 float md = 0.6 * groundNoise(photoW + 911.0, 60.0) * saturate(1.0 - fpMid * 3.0 / 60.0)
-                         + 0.4 * groundNoise(photoW - 517.0, 30.0) * saturate(1.0 - fpMid * 3.0 / 30.0);
-                albedo *= 1.0 + 0.16 * md * midW;
+                         + 0.4 * groundNoise(photoW - 517.0, 30.0) * saturate(1.0 - fpMid * 3.0 / 30.0)
+                         // Coarse octaves that survive at the high camera's distances (round 42: 30/60 m are sub-pixel there).
+                         + 0.8 * groundNoise(photoW + 233.0, 120.0) * saturate(1.0 - fpMid * 3.0 / 120.0)
+                         + 0.6 * groundNoise(photoW - 71.0, 240.0) * saturate(1.0 - fpMid * 3.0 / 240.0);
+                albedo *= 1.0 + 0.12 * md * midW;
+                if (midW > 0.01) {
+                    // Field contrast in the mid ring: the photo's ~150 m mean against its ~600 m mean, the ratio pushed
+                    // 60 % further, so the high views' farmland and slopes separate into parcels and stands.
+                    float lsA = max(1.0, 150.0 / max(length(dwx) + length(dwy), 1e-3)), lsB = lsA * 4.0;
+                    float2 muv; bool mIn; float m0, m1;
+                    float3 mA = photoAlbedo(photoColour(u, imgNear, imgMid, imgFar, imgDetail, photoW, dwx * lsA, dwy * lsA, muv, mIn, m0, m1));
+                    float3 mB = photoAlbedo(photoColour(u, imgNear, imgMid, imgFar, imgDetail, photoW, dwx * lsB, dwy * lsB, muv, mIn, m0, m1));
+                    float3 mr = clamp(mA / max(mB, float3(1e-3)), float3(0.6), float3(1.6));
+                    albedo *= mix(float3(1.0), clamp(pow(mr, float3(0.6)), float3(0.75), float3(1.33)), midW);
+                }
             }
             if (ltMean.x >= 0.0) {
                 // Crop rows on cultivated ground within ~1 km: the photo's fields smear into directional streaks at
@@ -1156,7 +1169,10 @@ public enum WorldShaders {
                     float2 fuv; bool fin; float fw0, fw1;
                     float3 lm150 = photoAlbedo(photoColour(u, imgNear, imgMid, imgFar, imgDetail, photoW, dwx * lsF, dwy * lsF, fuv, fin, fw0, fw1));
                     float3 fr = clamp(ltMean / max(lm150, float3(1e-3)), float3(0.6), float3(1.6));
-                    float3 amp = clamp(pow(fr, float3(0.8)), float3(0.75), float3(1.35));
+                    // Stronger where the field-to-surroundings difference is large (real boundaries sharpen,
+                    // interiors stay calm): exponent 0.8 → 1.4, clamp 0.65–1.5 (round 42: still one smeared field).
+                    float fg = saturate(length(log(fr)) * 5.0);
+                    float3 amp = clamp(pow(fr, float3(0.8 + 0.6 * fg)), float3(0.65), float3(1.5));
                     float fpM = max(length(dwx), length(dwy));
                     albedo *= mix(float3(1.0), amp, crop);
                     // Rows only where they span 8+ pixels along the long footprint axis (round 40: a 2–4 px hatch

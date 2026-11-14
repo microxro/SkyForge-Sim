@@ -358,7 +358,10 @@ public enum BuildingMeshBuilder {
                     for k in 0..<count {
                         let c = SIMD2(x0 + (x1 - x0) * (0.12 + 0.76 * rnd(UInt64(20 + 3 * k))), y0 + (y1 - y0) * (0.12 + 0.76 * rnd(UInt64(21 + 3 * k))))
                         let s = 1.2 + 2.2 * rnd(UInt64(22 + 3 * k))
-                        box(centre: c, half: s, s * (0.6 + 0.6 * rnd(UInt64(40 + k))), angle: ang, z0: top, z1: top + 1.1 + 1.6 * rnd(UInt64(60 + k)))
+                        // Unit colours: mid-grey, white, pale tan or dark duct (art round 42: every unit one grey).
+                        let pick = rnd(UInt64(80 + k))
+                        let unit: SIMD3<Float> = pick < 0.35 ? plant : (pick < 0.65 ? srgb(214, 214, 208) : (pick < 0.85 ? srgb(190, 176, 150) : srgb(70, 72, 74)))
+                        box(centre: c, half: s, s * (0.6 + 0.6 * rnd(UInt64(40 + k))), angle: ang, z0: top, z1: top + 1.1 + 1.6 * rnd(UInt64(60 + k)), colour: unit)
                     }
                     // Skylights on large flat roofs: a row of low dark-glass boxes along the long axis.
                     if area > 900 && style != .tower {
