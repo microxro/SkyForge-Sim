@@ -1066,12 +1066,12 @@ public enum WorldShaders {
                 // shift at ~35 m, so a parcel is not one flat tone (art round 19, SkyWorld phone). Outside
                 // fieldFactor, which mirrors the CPU FieldPattern exactly; faded where it would alias.
                 uint fs = uint(u.ambientGround.w);
-                float vFade = saturate(1.0 - fieldFp * 4.0 / 35.0);
+                float vFade = saturate(1.0 - fieldFpG * 4.0 / 35.0);   // geometric-mean footprint (round 30: faded out at grazing angles)
                 float nB = fp_noise(fieldW.x / 55.0 + 3.1, fieldW.y / 55.0 - 1.7, fs ^ 0x3Cu);
                 float nH = fp_noise(fieldW.x / 35.0 - 5.3, fieldW.y / 35.0 + 2.2, fs ^ 0xC5u);
                 // Round 29: still read as flat parcels; stronger (±14 % at 55 m, ±7 % hue) plus wet/dry patches at
                 // ~140 m (±12 %, slightly yellower when dry) that cross several parcels like real soil does.
-                float vFadeL = saturate(1.0 - fieldFp * 4.0 / 140.0);
+                float vFadeL = saturate(1.0 - fieldFpG * 4.0 / 140.0);
                 float nL = fp_noise(fieldW.x / 140.0 + 11.7, fieldW.y / 140.0 - 8.9, fs ^ 0x5Au);
                 f *= (1.0 + 0.14 * nB * vFade) * float3(1.0 - 0.07 * nH * vFade, 1.0 + 0.035 * nH * vFade, 1.0);
                 f *= (1.0 + 0.12 * nL * vFadeL) * float3(1.0 + 0.03 * nL * vFadeL, 1.0, 1.0 - 0.05 * nL * vFadeL);
