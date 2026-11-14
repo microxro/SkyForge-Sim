@@ -711,3 +711,15 @@ The "floating white arc" the reviewer took for the yoke is the cowling seen over
 - **Cockpit:** the compass is smaller, but its 30 cm centre post read as a third windscreen pillar.
 
 Round-28 batch: slope-detail fades use the geometric mean of the two footprint axes on the photo terrain; the compass mount is a 6 cm stub.
+
+## Round 28 (59eacb6, run 43587252208): not scored; structural change
+- **NZQN high left hillside:** unchanged for the third round (mean difference 0.02).
+- **Root cause:** terrain heights outside the near square (3.2 km half extent) came from the z10 far mosaic, about 156 m per sample, under a 32 m ultra mid mesh.
+  - Every slope 3–12 km out was a smooth blob with the photo stretched over it.
+  - It was also too gentle for the slope gate, so no shader change could reach it.
+  - The same limit sits under the KASE and LSZS valley walls in the high frames.
+- **Structural fix:** a mid height mosaic (Terrarium z12, 1024² over the 12 km mid half extent, about 23 m per sample).
+  - Near → mid → far, each blended over its outer 15 %.
+  - Kept only when every tile is real Terrarium data, not the coarse global baseline.
+  - z12 tiles added to all six showcase packs with `tools/fetch_mid_heights.py` (same keyless AWS open-data source and attribution; about 18 MB).
+- **Compass:** the mount stub reads as intended.

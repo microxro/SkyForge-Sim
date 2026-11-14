@@ -90,6 +90,11 @@ public struct RealWorldRegion: FlightWorld {
     public let runwayElevation: Double
     public let nearHeights: HeightMosaic
     public let farHeights: HeightMosaic
+    /// Middle-range elevation (Terrarium z12, ~25–40 m per sample over the mid terrain ring), between the
+    /// near z14 and far z10 mosaics. Nil where the tiles are not to hand (then the far mosaic is used).
+    /// Without it every slope beyond the near square was z10 (~156 m per sample): smooth blobs with the
+    /// photo stretched over them, too gentle for the slope detail (art round 28: the NZQN shore hillside).
+    public var midHeights: HeightMosaic? = nil
     public internal(set) var ground: ImageryGround
     public let attribution: [String]
     public let detail: RealWorldDetail
@@ -112,6 +117,18 @@ public struct RealWorldRegion: FlightWorld {
 
     public enum LoadError: Error, Equatable { case unknownAirport(String), noRunwayGeometry(String) }
 
+    /// Height outside the near square: the mid mosaic, blended into the far one over its outer 15 %.
+    func outerHeight(_ x: Double, _ y: Double) -> Double {
+        guard let mid = midHeights else { return farHeights.height(x, y) }
+        let ex = mid.halfExtent - max(abs(x - mid.centre.x), abs(y - mid.centre.y))
+        if ex <= 0 { return farHeights.height(x, y) }
+        let band = 0.15 * mid.halfExtent
+        if ex >= band { return mid.height(x, y) }
+        let t = ex / band, w = t * t * (3 - 2 * t)
+        let f = farHeights.height(x, y)
+        return f + (mid.height(x, y) - f) * w
+    }
+
     public func height(_ x: Double, _ y: Double) -> Double {
         // Runways are flat: hold the published elevation over the paved area and blend 60 m out.
         let d = SIMD2(x, y) - runwayThreshold
@@ -124,12 +141,13 @@ public struct RealWorldRegion: FlightWorld {
         let blendWidth = 0.15 * nearHeights.halfExtent
         let natural: Double
         if ex <= 0 {
-            natural = max(0, farHeights.height(x, y))
+            natural = max(0, outerHeight(x, y))
         } else if ex >= blendWidth {
             natural = max(0, nearHeights.height(x, y))
         } else {
             let t = ex / blendWidth, w = t * t * (3 - 2 * t)
-            natural = max(0, farHeights.height(x, y) + (nearHeights.height(x, y) - farHeights.height(x, y)) * w)
+            let o = outerHeight(x, y)
+            natural = max(0, o + (nearHeights.height(x, y) - o) * w)
         }
         if over <= 0 { return runwayElevation }
         let t = min(1, over / 60)
@@ -162,6 +180,7 @@ public struct RealWorldRegion: FlightWorld {
         let nearCentre = -(v / max(len, 1)) * 900
         async let hNear = HeightMosaic.build(origin: origin, centre: nearCentre, halfExtent: detail.nearHalf, size: 512, zoom: 14, streamer: ts)
         async let hFar = HeightMosaic.build(origin: origin, centre: .zero, halfExtent: detail.farHalf, size: 512, zoom: 10, streamer: ts)
+        async let hMid = HeightMosaic.buildIfComplete(origin: origin, centre: .zero, halfExtent: detail.midHalf, size: 1_024, zoom: 12, streamer: ts)
         progress("Imagery")
         let usgs = USGSImageryProvider()
         // Bundled aerial surveys (LINZ, New Zealand) replace Sentinel-2 where the pack carries them.
@@ -214,6 +233,7 @@ public struct RealWorldRegion: FlightWorld {
                                   provider: midProvider, streamer: sMid) : nil
         async let osmFetch = OSMService(transport: transport, cache: cache).data(around: origin, halfExtent: min(detail.nearHalf, 3_000))
         let (hn, hf, inr, ifr) = await (hNear, hFar, iNear, iFar)
+        let hm = await hMid
         let idt = await iDetail
         var imd = await iMid
         progress("Buildings")
@@ -257,6 +277,7 @@ public struct RealWorldRegion: FlightWorld {
         // Dark runway and apron asphalt reads as water by colour; real water is flat and sizeable.
         region.ground = region.ground.cleaningWater(exclude: region.pavedArea) { x, y in max(0, hn.height(x, y)) }
         region.osm = osm
+        region.midHeights = hm
         if wantDetail { region.detailProvider = detailProvider }
         region.runwayLowNumber = Int(rwy.low.ident.prefix { $0.isNumber }) ?? 0
         if let cover {
