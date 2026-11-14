@@ -830,3 +830,24 @@ Round-33 batch:
 2. **Photo-terrain slope block** entered at n.z < 0.985. The relief still starts at 0.97 through `steep`.
 3. **Shadow toe** out to about 5 km at half strength beyond 1.2 km (dark mid-ring photo forest).
 4. **Cockpit view** looks 7° down (was 5°), so the yoke tops and lower panel come into frame.
+
+## Bold round 33: PR #6 321f0e9 (run 43601747436, ultra tier)
+Same reviewer and scale.
+
+**Final camera:** KMRY 7.25, KASE 7.75, KBFI 7.0, LSZS 7.25, NZQN 7.25, SkyWorld 7.5. **Average 7.38** (round 32: 7.33).
+
+**High frames:** 6.58 (unchanged). **Cockpit:** 6.0 (unchanged).
+
+**SkyWorld:** calmer. Lime pixels fell from 13.3 % to 6.0 % and saturation from 52 to 44. Still, only 1.5 % of the ground had red above green on screen.
+
+**Slope bands:** a diff map against round 31 (before the 200 m bands) shows they fire. On the NZQN sunlit hill, about 50,000 pixels changed by more than 6, up to 52 levels. They read as part of the photo, so they add no score and the effort stops here.
+
+**LSZS high slope:** about 2 levels brighter; still dark.
+
+**Cockpit:** reframed, but the yoke is still out of view.
+
+Round-34 batch:
+1. **Mature crops shifted warm after the field factor:** red +16 %, green −10 %, blue −18 %, scaled by the factor's red-over-green and the coverage.
+2. **Shadow toe at full strength to about 4 km.**
+3. **Yoke:** raised again, with its horn tips in the bottom 60 px.
+4. **Cabin:** panel face and lower panel lighter dark grey (about 0.08–0.09).

@@ -1032,7 +1032,7 @@ public enum WorldShaders {
             float alT = dot(albedo, float3(0.2126, 0.7152, 0.0722));
             // Out to ~5 km at half strength beyond 1.2 km: dark photo forest on shaded mid-ring slopes stayed a
             // near-black mass from the high camera (round 32, LSZS high), which sky light alone did not lift.
-            float toeW = max(1.0 - smoothstep(400.0, 1200.0, dist), 0.5 * (1.0 - smoothstep(3000.0, 5500.0, dist))) * (1.0 - saturate((wm - 0.2) / 0.2));
+            float toeW = max(1.0 - smoothstep(400.0, 1200.0, dist), 1.0 - smoothstep(3500.0, 6000.0, dist)) * (1.0 - saturate((wm - 0.2) / 0.2));   // full strength to ~4 km (round 33)
             if (alT < 0.10 && toeW > 0.0) {
                 float lifted = 0.10 * pow(max(alT, 1e-4) / 0.10, 0.65);
                 albedo *= 1.0 + (lifted / max(alT, 1e-4) - 1.0) * toeW;
@@ -1082,6 +1082,11 @@ public enum WorldShaders {
                 // Round 30: ±12 % at 140 m was lost under the mowing stripes; ±25 % value, ±10 % hue at 110 m.
                 f *= (1.0 + 0.25 * nL * vFadeL) * float3(1.0 + 0.06 * nL * vFadeL, 1.0, 1.0 - 0.10 * nL * vFadeL);
                 albedo *= 1.0 + (f - 1.0) * fieldCov;
+                // Mature crops (factor red well above green: wheat, stubble, rapeseed) shifted warm after the
+                // factor, since the green grass base and partial coverage pulled them back to green on screen
+                // (round 33: only 1.5 % of SkyWorld's ground had red above green).
+                float warm = saturate((f.x - f.y) / max(f.y, 1e-3) * 2.5) * fieldCov;
+                albedo *= float3(1.0 + 0.16 * warm, 1.0 - 0.10 * warm, 1.0 - 0.18 * warm);
                 float2 rt = fieldRowTilt(fieldW.x, fieldW.y, fieldFp, uint(u.ambientGround.w), u.skyHorizon.w > 1.5) * fieldCov;
                 n = normalize(n + float3(rt, 0.0));
             }

@@ -131,9 +131,9 @@ public enum Cockpit {
         func P(_ y: Double, _ z: Double, _ off: Double = 0) -> V { panel(y, z) + pn * off }
 
         // Panel face and the lower panel down to the firewall.
-        shaded(panel(-w, panelTop), panel(w, panelTop), panel(w, panelBottom), panel(-w, panelBottom), panelCol * 1.3, nu: 16, nv: 8, ao: 0.30, grain: 0.14, seed: 2)   // crinkle finish (round 30)
+        shaded(panel(-w, panelTop), panel(w, panelTop), panel(w, panelBottom), panel(-w, panelBottom), panelCol * 1.6, nu: 16, nv: 8, ao: 0.30, grain: 0.14, seed: 2)   // crinkle finish (round 30)
         // Lower panel in a dark textured (crinkle) finish rather than flat black (round 30).
-        shaded(panel(-w, panelBottom), panel(w, panelBottom), V(1.02, w, floorZ), V(1.02, -w, floorZ), shield * 2.0, nu: 16, nv: 8, ao: 0.4, grain: 0.18, seed: 3)
+        shaded(panel(-w, panelBottom), panel(w, panelBottom), V(1.02, w, floorZ), V(1.02, -w, floorZ), shield * 3.2, nu: 16, nv: 8, ao: 0.4, grain: 0.18, seed: 3)
         // PFD bezel (the screen itself is a separate textured quad).
         let pc = pfdCorners.map { $0 - V(-0.002, 0, 0) }
         let bez = 0.018
@@ -315,8 +315,8 @@ public enum Cockpit {
             // Hub ~0.5 m below the eye (was 0.69 m, below the 55° view): the yoke's upswept horns just show
             // above the bottom edge, as from a trainer's left seat (art round 29: no yoke in view).
             // The shaft leaves the panel below the PFD (round 30: at the PFD's height it covered the screen).
-            tube(V(panelX - 0.01, y, -0.12), V(0.88, y, -0.26), 0.016, 0.016, sides: 10, chrome, .metal)
-            let hub = V(0.86, y, -0.27)
+            tube(V(panelX - 0.01, y, -0.12), V(0.88, y, -0.28), 0.016, 0.016, sides: 10, chrome, .metal)
+            let hub = V(0.86, y, -0.29)
             let n = 14
             for i in 0..<n {
                 let a0 = Double(i) / Double(n) * 2 * .pi, a1 = Double(i + 1) / Double(n) * 2 * .pi
@@ -327,7 +327,7 @@ public enum Cockpit {
             disc(hub + V(0.012, 0, 0), V(1, 0, 0), 0.034, sides: 14, SIMD3<Float>(0.03, 0.03, 0.032))
             for sgn in [-1.0, 1.0] {
                 tube(hub + V(0, sgn * 0.14, 0.04), hub + V(0, sgn * 0.14, -0.06), 0.022, 0.022, sides: 8, black)
-                tube(hub + V(0, sgn * 0.14, -0.06), hub + V(-0.01, sgn * 0.12, -0.19), 0.022, 0.018, sides: 8, black)   // upswept horn tip (just in view)
+                tube(hub + V(0, sgn * 0.14, -0.06), hub + V(-0.01, sgn * 0.125, -0.15), 0.024, 0.020, sides: 8, SIMD3<Float>(0.05, 0.05, 0.055))   // upswept horn tip (in the bottom 60 px)
             }
             disc(hub + V(-0.014, -0.14, -0.03), V(-1, 0, 0), 0.006, sides: 8, SIMD3<Float>(0.5, 0.03, 0.03))
         }
