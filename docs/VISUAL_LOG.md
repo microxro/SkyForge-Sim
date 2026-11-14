@@ -1017,3 +1017,8 @@ Round-41 batch:
 2. **Field patchwork:** each parcel has its own tone (±12 %) and a straw-to-green lean, with a 1–2 m darker margin.
 3. **Wet shore:** land just outside the water mask is darker and cooler.
 4. **Near-lake shallow tint:** strength raised from 0.6 to 0.8.
+
+Round-41 frames (47c7956, run 43649602100) before review:
+- **Crop-row hatch:** gone beyond the near band.
+- **Parcel margins:** they drew straight dark lines across KASE's foreground that ignore the photo's own field edges, and the band darkened from 83.2 to 78.6.
+- **Fix before review:** soft ~120 m tone patches (±12 %) and a ~160 m straw-to-green hue lean (luminance-neutral), with no parcel edges or margins. The rows keep their parcels, faded by pixel spacing.

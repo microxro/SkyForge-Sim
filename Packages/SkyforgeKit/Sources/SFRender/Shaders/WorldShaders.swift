@@ -1135,16 +1135,17 @@ public enum WorldShaders {
                 if (crop > 0.01) {
                     float2 pr = float2(0.94 * photoW.x + 0.34 * photoW.y, -0.34 * photoW.x + 0.94 * photoW.y);
                     uint ph = fp_hash(int(floor(pr.x / 150.0)), int(floor(pr.y / 170.0)), 0x5EEDu);
-                    // Field patchwork: each parcel its own tone (±12 %) and a straw-to-green lean, with a darker
-                    // 1–2 m margin, so the ground reads as fields (round 40: rows alone on uniform parcels read
-                    // as a weave).
-                    float tone = 1.0 + 0.24 * (fp_unit(ph >> 16) - 0.5);
-                    float3 hue = mix(float3(1.05, 1.0, 0.88), float3(0.94, 1.04, 0.98), fp_unit(ph >> 4));
-                    float2 fq = fract(pr / float2(150.0, 170.0)) * float2(150.0, 170.0);
-                    float edgeD = min(min(fq.x, 150.0 - fq.x), min(fq.y, 170.0 - fq.y));
+                    // Field patchwork: soft ~120 m patches of tone (±12 %) and a straw-to-green lean, so the ground
+                    // reads as fields (round 40: rows alone read as a weave). Not per parcel with margins: straight
+                    // parcel edges and dark margins cut across the photo's own field boundaries as a grid
+                    // (round-41 frames).
+                    float pt = smoothstep(-0.4, 0.4, groundNoise(photoW + 311.0, 120.0));
+                    float ph2 = smoothstep(-0.4, 0.4, groundNoise(photoW - 157.0, 160.0));
+                    float tone = 1.0 + 0.24 * (pt - 0.5);
+                    float3 hue = mix(float3(1.04, 1.0, 0.90), float3(0.95, 1.03, 0.98), ph2);
+                    hue /= dot(hue, float3(0.2126, 0.7152, 0.0722));      // hue only, luminance kept
                     float fpM = max(length(dwx), length(dwy));
-                    float margin = (1.0 - smoothstep(1.0, 2.0 + fpM, edgeD)) * saturate(1.0 - fpM / 4.0);
-                    albedo *= mix(float3(1.0), tone * hue * (1.0 - 0.18 * margin), crop);
+                    albedo *= mix(float3(1.0), tone * hue, crop);
                     // Rows only where they span 8+ pixels along the long footprint axis (round 40: a 2–4 px hatch
                     // aliased into a screen-door weave over the KASE fields).
                     float ang = fp_unit(ph) * 3.14159265;
