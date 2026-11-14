@@ -1547,12 +1547,15 @@ public enum WorldShaders {
         aerial(u, ins, tr, dir, dist, L, T);
         col = col * T + L;
         if (u.skyHorizon.w < 0.5) {
-            // Valley haze on the real terrain: toward the horizon sky colour, up to 30 % by ~10 km, less where the
-            // table's aerial perspective already holds the colour. A shadowed forest slope 3–6 km out read as a
-            // near-black mass (round 38, LSZS high: the probe found it physically dark, ~0.05 albedo under a
-            // cloud shadow, with no in-scattered light lifting it).
-            float hz = 0.30 * (1.0 - exp(-dist / 3000.0)) * saturate(dot(T, float3(0.2126, 0.7152, 0.0722)));
-            col = mix(col, u.skyHorizon.rgb * 0.9, hz);
+            // Valley haze on the real terrain: toward a desaturated horizon sky colour, none within ~800 m and up
+            // to 18 % by ~6 km, less where the table's aerial perspective already holds the colour. A shadowed
+            // forest slope 3–6 km out read as a near-black mass (round 38, LSZS high: the probe found it
+            // physically dark, ~0.05 albedo under a cloud shadow, with no in-scattered light lifting it).
+            // 30 % from the first metre (round 39 frames) turned every airport milky and cyan.
+            float hz = 0.18 * smoothstep(800.0, 6000.0, dist) * saturate(dot(T, float3(0.2126, 0.7152, 0.0722)));
+            float3 hzc = u.skyHorizon.rgb * 0.9;
+            hzc = mix(float3(dot(hzc, float3(0.2126, 0.7152, 0.0722))), hzc, 0.5);
+            col = mix(col, hzc, hz);
         }
         return float4(col * u.sunColour.w, 1.0);    // linear HDR (× exposure); tone-mapped in post
     }
