@@ -873,3 +873,28 @@ Round-35 batch:
 2. **Foliage in shadow:** 40 % more sky light (the dark LSZS high valley wall, likely shaded 3D crowns).
 3. **SkyWorld stubble:** warmer (it read mint).
 4. **Yoke:** 1.5 cm lower, clearing the PFD's bottom strip.
+
+## Bold round 35: PR #6 8c53ea2 (run 43604226441, ultra tier)
+Same reviewer and scale.
+
+**Final camera:** KMRY 7.25, KASE 7.75, KBFI 7.0, LSZS 7.5 (7.25), NZQN 7.25, SkyWorld 7.75. **Average 7.42**.
+
+**High frames:** 6.58 (unchanged). **Cockpit 6.75** (6.5).
+
+**Improved:**
+- **LSZS forest:** brighter in the final and close frames, with shaded crowns green and conifer stands still distinct.
+- **Cockpit:** the PFD's bottom strip is clear of the yoke.
+
+**Not visible:**
+- **KMRY and KBFI near-ground octaves.** The cause: the soft, low-chroma photo of lawn and dirt classifies as pavement, so the "natural" weight was near zero. Value noise also sits near zero, so ±12 % read as about ±4 %.
+- **LSZS high slope.** It lies under the cumulus shadow (cloud transmittance floor 0.12), which the foliage lift does not reach.
+
+**Round 35 gain:** +0.04, the second round in a row under +0.2. The batch below is the structural change: the near band's look now comes from re-synthesised ground rather than photo mottle.
+
+Round-36 batch:
+1. **Near-ground re-synthesis (structural):**
+   - Within about 700 m, photo luminance is held to ±25 % of the 30 m mean (±40 % farther out), and 60 % of the chroma comes from that mean. The 3–10 m blue-grey and white photo blotches take the ground's own hue.
+   - The 4 m and 12 m patches are contrast-shaped, raised to ±20 % and ±16 %, and fade later. They also reach unroaded ground classed as pavement, at 60 %.
+2. **Cloud shadow:** transmittance floor 0.25 (from 0.12) and a gentler falloff; fill light under the cloud raised from 0.35 to 0.42 of the sun.
+3. **NZQN near lake:** the water body is modulated by wave facets toward or away from the sun (about ±28 %) and by ruffle; scattering is stronger where the water is ruffled.
+4. **SkyWorld stubble:** straw (3.00/2.00/3.90; red over green 1.30), on CPU and GPU.

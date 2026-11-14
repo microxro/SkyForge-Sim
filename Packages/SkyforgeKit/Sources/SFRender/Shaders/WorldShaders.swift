@@ -285,7 +285,7 @@ public enum WorldShaders {
         return v * 2.0 - 1.0;
     }
     constant float3 fpSummer[8] = { float3(0.74, 0.90, 0.80), float3(1.50, 1.25, 1.90), float3(2.40, 1.75, 3.30),
-        float3(0.95, 0.60, 0.95), float3(2.80, 2.00, 4.40), float3(0.55, 0.70, 0.66), float3(1.32, 0.96, 1.30),
+        float3(0.95, 0.60, 0.95), float3(3.00, 2.00, 3.90), float3(0.55, 0.70, 0.66), float3(1.32, 0.96, 1.30),
         float3(3.05, 2.40, 1.50) };   // as FieldPattern.summer
     constant float3 fpAutumn[6] = { float3(1.43, 1.03, 1.57), float3(0.78, 0.54, 1.00), float3(0.60, 0.68, 0.82),
         float3(1.22, 0.89, 1.38), float3(0.76, 0.77, 0.95), float3(1.67, 1.21, 2.00) };
@@ -1021,12 +1021,20 @@ public enum WorldShaders {
                 float r = aL / meanL;
                 // tanh's argument clamped: fast-math tanh of a large value is inf/inf = NaN, and one NaN pixel
                 // bloomed into a 70 px white flare (art round 24, KMRY close).
-                float rc = r < 1.0 ? 1.0 - 0.4 * tanh(min((1.0 - r) / 0.4, 8.0)) : 1.0 + 0.4 * tanh(min((r - 1.0) / 0.4, 8.0));
+                // Within ~700 m the band tightens to ±25 % (round 35: the 1.6 m US photo's 3–10 m mottle of baked
+                // crown shadows and pale patches read as blotches at the final camera's near band; the procedural
+                // ground material below carries the detail there instead).
+                float nb = 1.0 - smoothstep(500.0, 1000.0, dist);
+                float amp = mix(0.4, 0.25, nb);
+                float rc = r < 1.0 ? 1.0 - amp * tanh(min((1.0 - r) / amp, 8.0)) : 1.0 + amp * tanh(min((r - 1.0) / amp, 8.0));
                 float k = rc / r;
                 float3 lifted = albedo * k;
                 // Lifted shadows take the local mean's chroma at their new luminance: scaling RGB alone kept and
                 // amplified the shadows' blue cast (round 24: saturated blue smears on the KBFI embankment).
                 lifted = mix(lifted, lm * (aL * k / meanL), saturate((k - 1.1) / 0.6));
+                // Near band: most of the chroma from the 30 m mean, so grey-blue and white photo blotches take the
+                // ground's own hue at their luminance (round 35: KBFI near ground mottled blue-grey and white).
+                lifted = mix(lifted, lm * (aL * k / meanL), 0.6 * nb);
                 albedo = mix(albedo, lifted, ltW);
             }
             float alT = dot(albedo, float3(0.2126, 0.7152, 0.0722));
@@ -1049,9 +1057,13 @@ public enum WorldShaders {
                 // Wear and growth patches at ~4 m and ~12 m on any natural ground (±12 % / ±10 %), the scale the
                 // 1.6 m US photo cannot carry.
                 float2 gw = in.rel.xy + u.cameraPos.xy;
-                float natural = saturate(k.grass + k.dry + k.soil);
-                float p4 = groundNoise(gw + 63.0, 4.0) * saturate(1.0 - fpw / 3.0), p12 = groundNoise(gw - 41.0, 12.0) * saturate(1.0 - fpw / 9.0);
-                f *= 1.0 + (0.12 * p4 + 0.10 * p12) * natural;
+                // Round 35: not visible. Low-chroma lawn and dirt in the soft photo classify as pavement, so the
+                // patches now also reach unroaded "pavement" at 60 %; ±20 % / ±16 %, contrast-shaped into blotches
+                // (value noise alone sits near zero), fading later (5 m / 15 m footprints).
+                float natural = saturate(k.grass + k.dry + k.soil + 0.6 * k.pave * (1.0 - roadNear));
+                float p4 = (smoothstep(-0.35, 0.35, groundNoise(gw + 63.0, 4.0)) * 2.0 - 1.0) * saturate(1.0 - fpw / 5.0);
+                float p12 = (smoothstep(-0.35, 0.35, groundNoise(gw - 41.0, 12.0)) * 2.0 - 1.0) * saturate(1.0 - fpw / 15.0);
+                f *= 1.0 + (0.20 * p4 + 0.16 * p12) * natural;
                 albedo *= 1.0 + (f - 1.0) * groundMat;
                 groundTilt = tilt * groundMat;
             }
@@ -1230,14 +1242,16 @@ public enum WorldShaders {
                 if (t > 0.0) od += cl_density(wp + toSun * t, u.clouds);
             }
             od *= thick / 3.0 / toSun.z;
-            float ct = max(0.12, exp(-0.35 * od));  // multiple scattering keeps cloud shadows soft, never black
+            // Floor 0.25 (was 0.12): a cumulus shadow over dark forest left a near-black quarter of the frame
+            // (round 35, LSZS high: four rounds of foliage lighting never moved it; the slope sits under the cloud).
+            float ct = max(0.25, exp(-0.30 * od));  // multiple scattering keeps cloud shadows soft, never black
             vis *= ct;
             cloudShade = 1.0 - ct;
         }
         float3 ambient = mix(u.ambientGround.rgb, u.ambientSky.rgb, n.z * 0.5 + 0.5);
         // Fill light under a cumulus: the cloud's lit sides and base scatter sunlight down into its own
         // shadow, so it reads ~17 % of full sun (sky ambient alone left it at ~7 %). Sunlit ground gets none.
-        ambient += u.sunColour.rgb * (0.35 * toSun.z * cloudShade);
+        ambient += u.sunColour.rgb * (0.42 * toSun.z * cloudShade);
         if (u.quality.y > 0.0) {
             // Cabin interior: lit by the sky and the sunlit ground through the windows, from every side, and
             // by direct sun on the glare shield through the windscreen. The airframe's own shadow would
@@ -1281,7 +1295,11 @@ public enum WorldShaders {
             float3 refl = skyR + u.sunColour.rgb * glitter * vis;
             float3 body = albedo * (ambient * 0.6 + u.sunColour.rgb * max(0.0, toSun.z) * 0.15);
             // Sunlight scattered back out of the water column: the blue-green of clear water under sun.
-            body += float3(0.004, 0.030, 0.042) * u.sunColour.rgb * (max(0.0, toSun.z) * 0.55 * vis);
+            body += float3(0.004, 0.030, 0.042) * u.sunColour.rgb * (max(0.0, toSun.z) * 0.55 * vis) * (0.6 + 0.8 * ruffle);
+            // Seen steeply the surface reflects little, so the body carries the look: wave facets toward the sun
+            // brighter, away darker, and ruffled water scatters more (round 35: NZQN near lake one uniform navy).
+            float2 sunH = toSun.xy / max(length(toSun.xy), 1e-3);
+            body *= clamp(1.0 - 1.4 * dot(slope, sunH), 0.6, 1.5) * (0.85 + 0.3 * ruffle);
             // Sheen toward the sun from many unresolved facets, wider where the water is ruffled.
             refl += u.sunColour.rgb * pow(max(0.0, dot(rr, toSun)), mix(260.0, 40.0, ruffle)) * (0.5 + 1.5 * ruffle) * vis;
             if (imageryWater) {
