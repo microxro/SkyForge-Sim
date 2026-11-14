@@ -308,9 +308,11 @@ public struct RealWorldRegion: FlightWorld {
         let l = lum(c)
         let target = max(0.08, min(0.25, l))
         c = l > 1e-4 ? c * (target / l) : SIMD3(repeating: target)
-        // Keep a hint of the photo's hue but not its saturation (green canopy over a roof edge).
+        // Keep a hint of the photo's hue but not its saturation (green canopy over a roof edge); red and
+        // orange tile keeps nearly all of it (round 24: KMRY's terracotta roofs had turned grey).
         let g = lum(c)
-        return pointwiseMax(SIMD3<Float>(repeating: 0.01), SIMD3(repeating: g) + (c - SIMD3(repeating: g)) * 0.6)
+        let tile = c.x > c.y && c.y >= c.z && c.x > 1.3 * max(c.z, 1e-4)
+        return pointwiseMax(SIMD3<Float>(repeating: 0.01), SIMD3(repeating: g) + (c - SIMD3(repeating: g)) * (tile ? 0.9 : 0.6))
     }
 
     /// Buildings as GPU-ready geometry with facade coordinates (nil when there are none). Roofs take the

@@ -615,3 +615,38 @@ Round-24 batch:
 3. **Foliage ambient ×1.6, crown occlusion floor 0.5 (was 0.35):** for LSZS's near-black stands under the 0.45 exposure.
 
 Not done: slope-aware detail and the cockpit materials.
+
+## Bold round 24: PR #6 3287a56 (run 43582068030, ultra tier)
+Same reviewer and scale.
+
+**Final camera:** KMRY 7.25, KASE 7.5, KBFI 6.75, LSZS 7.0, NZQN 7.25, SkyWorld 7.0. **Average 7.13** (round 23: 7.04). Cockpit 4.5.
+
+| Airport | Close | High |
+|---|---|---|
+| KMRY | 7.0 | 6.75 |
+| KASE | 7.25 | 6.5 |
+| KBFI | 7.0 | 6.75 |
+| LSZS | 6.75 | 6.0 |
+| NZQN | 7.25 | 6.0 |
+
+**Improved:**
+- **KBFI roofs:** the near-black roof blob is gone; roofs read as clean uniform surfaces.
+- **LSZS forest:** crowns read individually, and the lower half is brighter (38.8 → 47.2).
+- **Near-band blotches:** KMRY 32.3 % → 27.6 %, KBFI 15.1 % → 11.6 %.
+
+**Regressed:**
+- **KBFI shadows:** lifted photo shadows turned saturated blue.
+- **KMRY close:** a 70 px white flare on a roof.
+- **KMRY tile roofs:** terracotta turned grey.
+
+Cause of the flare: fast-math `tanh` of a large argument returns NaN. The bloom tap's `min(NaN, 6e4)` gave 6e4, so one pixel bloomed.
+
+Round-25 batch:
+1. **Tone compression:**
+   - The `tanh` argument is clamped.
+   - Lifted pixels (over 1.1×) take the local mean's chroma at their new luminance, so shadows can't saturate.
+2. **Bloom taps:** non-finite values are dropped by checking their exponent bits.
+3. **Roof hue:** red and orange tile keeps 90 % saturation (others 60 %).
+4. **Steep-slope detail on the photo terrain:** fall-line gullies, ledges and crumple, as on SkyWorld. Relief is at full strength, tone at 60 %, with no scrub or scree.
+
+Not done: the cockpit materials.

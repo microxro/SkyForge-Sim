@@ -1010,8 +1010,15 @@ public enum WorldShaders {
                 float meanL = max(dot(lm, float3(0.2126, 0.7152, 0.0722)), 0.01);
                 float aL = max(dot(albedo, float3(0.2126, 0.7152, 0.0722)), 1e-4);
                 float r = aL / meanL;
-                float rc = r < 1.0 ? 1.0 - 0.4 * tanh((1.0 - r) / 0.4) : 1.0 + 0.4 * tanh((r - 1.0) / 0.4);
-                albedo *= 1.0 + (rc / r - 1.0) * ltW;
+                // tanh's argument clamped: fast-math tanh of a large value is inf/inf = NaN, and one NaN pixel
+                // bloomed into a 70 px white flare (art round 24, KMRY close).
+                float rc = r < 1.0 ? 1.0 - 0.4 * tanh(min((1.0 - r) / 0.4, 8.0)) : 1.0 + 0.4 * tanh(min((r - 1.0) / 0.4, 8.0));
+                float k = rc / r;
+                float3 lifted = albedo * k;
+                // Lifted shadows take the local mean's chroma at their new luminance: scaling RGB alone kept and
+                // amplified the shadows' blue cast (round 24: saturated blue smears on the KBFI embankment).
+                lifted = mix(lifted, lm * (aL * k / meanL), saturate((k - 1.1) / 0.6));
+                albedo = mix(albedo, lifted, ltW);
             }
             float alT = dot(albedo, float3(0.2126, 0.7152, 0.0722));
             float toeW = (1.0 - smoothstep(400.0, 1200.0, dist)) * (1.0 - saturate((wm - 0.2) / 0.2));
@@ -1091,10 +1098,13 @@ public enum WorldShaders {
             n = normalize(n + float3(-gx, -gy, 0.0) * (0.12 * wFine * fade));
         }
         if (groundMat > 0.0 && !imageryWater) n = normalize(n + float3(-groundTilt, 0.0));
-        if (m == 7.0 && in.material == 7.0 && n.z < 0.9) {
+        if (m == 7.0 && (in.material == 7.0 || in.material == 8.0) && n.z < 0.9) {
             // Steep ground: fall-line gullies, rock tone variation, scrub and scree (as SFPreview), each
-            // octave faded by pixel footprint so big slopes keep detail far away.
+            // octave faded by pixel footprint so big slopes keep detail far away. On the photo terrain too
+            // (art round 24: NZQN and KASE hillsides were the stretched 10 m photo's smear), with the relief
+            // at full strength and the tone changes at 60 % so the photo's own colours lead; no scrub or scree.
             float steep = smoothstep(0.9, 0.7, n.z);
+            float am = in.material == 8.0 ? 0.6 : 1.0;
             float2 w = fieldW;      // true region metres (no jump at the 4 km noise wrap)
             float2 hz = n.xy; float hl = length(hz);
             float2 fall = hl > 1e-4 ? hz / hl : float2(1, 0), perp = float2(-fall.y, fall.x);
@@ -1108,7 +1118,7 @@ public enum WorldShaders {
                 float g = TRI(14.0, 70.0, 51.0, 0.0, 0.0), gp = TRI(14.0, 70.0, 51.0, 1.5, 0.0);
                 float dg = (gp - g) / 1.5 * 14.0;
                 n = normalize(n + float3(perp * (-dg * 0.35 * gw), 0.0));
-                albedo *= 1.0 - 0.28 * max(0.0, -g) * gw;
+                albedo *= 1.0 - 0.28 * am * max(0.0, -g) * gw;
             }
             float bw = saturate(1.0 - fieldFp * 2.5 / 45.0) * steep;
             if (bw > 0.0) {
@@ -1116,7 +1126,7 @@ public enum WorldShaders {
                 float db = (b1 - b0) / 4.0 * 45.0;
                 n = normalize(n + float3(perp * (-db * 0.45 * bw), 0.0));
                 float streak = TRI(9.0, 220.0, -41.0, 0.0, 0.0), ledge = TRI(320.0, 28.0, 13.0, 0.0, 0.0);
-                albedo *= (1.0 - 0.22 * max(0.0, streak) * bw) * (1.0 + 0.12 * max(0.0, ledge) * bw) * (1.0 - 0.10 * max(0.0, -b0) * bw);
+                albedo *= (1.0 - 0.22 * am * max(0.0, streak) * bw) * (1.0 + 0.12 * am * max(0.0, ledge) * bw) * (1.0 - 0.10 * am * max(0.0, -b0) * bw);
             }
             float cw = saturate(1.0 - fieldFp * 2.5 / 4.0) * steep;
             if (cw > 0.0) {
@@ -1124,13 +1134,13 @@ public enum WorldShaders {
                 float ld = TRI(25.0, 3.5, 7.0, 0.0, 0.0), ldp = TRI(25.0, 3.5, 7.0, 0.0, 0.5);
                 float dc = (crp - cr) / 0.5 * 4.0, dl = (ldp - ld) / 0.5 * 3.5;
                 n = normalize(n + float3(perp * (-dc * 0.22 * cw) + fall * (dl * 0.18 * cw), 0.0));
-                albedo *= 1.0 - 0.12 * max(0.0, -cr) * cw;
+                albedo *= 1.0 - 0.12 * am * max(0.0, -cr) * cw;
             }
             #undef TRI
             float big = groundNoise(w - 13.0, 64.0) * saturate(1.0 - fieldFp * 2.5 / 64.0);
             float small = groundNoise(w + 3.0, 8.0) * saturate(1.0 - fieldFp * 2.5 / 8.0);
-            albedo *= 1.0 + (0.22 * big + 0.10 * small) * steep;
-            if (dot(albedo, float3(0.3, 0.6, 0.1)) < 0.3) {
+            albedo *= 1.0 + (0.22 * big + 0.10 * small) * steep * am;
+            if (in.material == 7.0 && dot(albedo, float3(0.3, 0.6, 0.1)) < 0.3) {
                 float patch = groundNoise(w + 71.0, 32.0) * saturate(1.0 - fieldFp * 2.5 / 32.0);
                 float scrub = smoothstep(0.14, 0.36, patch) * steep * smoothstep(0.76, 0.84, n.z);
                 float scree = smoothstep(-0.2, -0.42, patch) * steep;
