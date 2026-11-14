@@ -1000,3 +1000,20 @@ Round-40 batch:
 2. **Crown outline and size:** bulge ±35 % and lobes ±20 %. Whole-tree size is now 0.72–1.28× from a second hash, and tree cell culling bounds widened to match.
 3. **Per-tree tone:** brightness ±18 %, with a warm shift on about a third of trees.
 4. **Valley haze on SkyWorld** as well as the real terrain.
+
+## Bold round 40: a8f8287 (run 43632167796, ultra tier; merged with PR #6)
+Same reviewer and scale.
+
+**Final camera:** KMRY 7.5 (7.25), KASE 7.5 (7.75), KBFI 7.25, LSZS 7.5, NZQN 7.5, SkyWorld 7.75. **Average 7.50**.
+
+**High frames:** 6.65. **Cockpit:** 6.75. KMRY close 7.5 (7.25).
+
+**Landed:** KMRY trees now differ clearly in size, outline and tone, and the suburb reads as mixed planting.
+
+**Regression:** KASE final. The crop rows aliased into a fine 2–4 px diagonal hatch that read as a screen-door weave. No parcel grid was visible.
+
+Round-41 batch:
+1. **Crop rows:** shown only where the row spacing spans 8–14 or more pixels along the long footprint axis.
+2. **Field patchwork:** each parcel has its own tone (±12 %) and a straw-to-green lean, with a 1–2 m darker margin.
+3. **Wet shore:** land just outside the water mask is darker and cooler.
+4. **Near-lake shallow tint:** strength raised from 0.6 to 0.8.

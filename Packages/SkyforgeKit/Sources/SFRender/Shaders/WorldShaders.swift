@@ -1135,15 +1135,32 @@ public enum WorldShaders {
                 if (crop > 0.01) {
                     float2 pr = float2(0.94 * photoW.x + 0.34 * photoW.y, -0.34 * photoW.x + 0.94 * photoW.y);
                     uint ph = fp_hash(int(floor(pr.x / 150.0)), int(floor(pr.y / 170.0)), 0x5EEDu);
+                    // Field patchwork: each parcel its own tone (±12 %) and a straw-to-green lean, with a darker
+                    // 1–2 m margin, so the ground reads as fields (round 40: rows alone on uniform parcels read
+                    // as a weave).
+                    float tone = 1.0 + 0.24 * (fp_unit(ph >> 16) - 0.5);
+                    float3 hue = mix(float3(1.05, 1.0, 0.88), float3(0.94, 1.04, 0.98), fp_unit(ph >> 4));
+                    float2 fq = fract(pr / float2(150.0, 170.0)) * float2(150.0, 170.0);
+                    float edgeD = min(min(fq.x, 150.0 - fq.x), min(fq.y, 170.0 - fq.y));
+                    float fpM = max(length(dwx), length(dwy));
+                    float margin = (1.0 - smoothstep(1.0, 2.0 + fpM, edgeD)) * saturate(1.0 - fpM / 4.0);
+                    albedo *= mix(float3(1.0), tone * hue * (1.0 - 0.18 * margin), crop);
+                    // Rows only where they span 8+ pixels along the long footprint axis (round 40: a 2–4 px hatch
+                    // aliased into a screen-door weave over the KASE fields).
                     float ang = fp_unit(ph) * 3.14159265;
                     float2 rd = float2(cos(ang), sin(ang));
                     float spacing = 3.0 + 3.0 * fp_unit(ph >> 8);
-                    float fpR = length(float2(dot(dwx, rd), dot(dwy, rd)));
-                    float rows = cos(dot(photoW, rd) / spacing * 6.2831853) * saturate(1.0 - fpR * 4.0 / spacing);
+                    float rows = cos(dot(photoW, rd) / spacing * 6.2831853) * smoothstep(8.0, 14.0, spacing / max(fpM, 1e-3));
                     albedo *= 1.0 + 0.10 * rows * crop;
                 }
             }
             if (saturate((wm - 0.35) / 0.25) > 0.5) { imageryWater = true; albedo *= 0.7; shoreWm = wm; }
+            else {
+                // Wet shore: land just outside the water mask's edge darker and a little cooler (round 40, NZQN:
+                // the lake met the land with no wet line).
+                float wet = smoothstep(0.08, 0.30, wm);
+                albedo *= mix(float3(1.0), float3(0.70, 0.74, 0.78), wet);
+            }
             m = imageryWater ? 1.0 : 7.0;
         }
         float2 fieldW = in.rel.xy + u.cameraLocal.xy;
@@ -1388,7 +1405,7 @@ public enum WorldShaders {
                 // Shallows: a lighter green-turquoise body across the shore band (the mask's 0.6–0.9 rise), so
                 // a lake edge reads as depth rather than a navy cut-out (art round 11, NZQN).
                 float shallow = 1.0 - smoothstep(0.6, 0.97, shoreWm);   // wider band (round 12: read only at mid-distance)
-                body = mix(body, float3(0.05, 0.11, 0.10) * (ambient * 0.8 + u.sunColour.rgb * max(0.0, toSun.z) * 0.35), shallow * 0.6);
+                body = mix(body, float3(0.05, 0.11, 0.10) * (ambient * 0.8 + u.sunColour.rgb * max(0.0, toSun.z) * 0.35), shallow * 0.8);   // 0.6 (round 40: shore still abrupt)
                 // Broad sheen toward the sun from many small wave facets (the 900/60 lobes are single glints).
                 refl += u.sunColour.rgb * pow(max(0.0, dot(r, toSun)), 12.0) * 0.12 * vis;
             }

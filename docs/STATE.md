@@ -1,9 +1,9 @@
-LAST_UPDATE: 2026-11-14T19:35:00Z
+LAST_UPDATE: 2026-11-14T22:50:00Z
 
 # SKYFORGE state
 
 ## Phase
-- 2026-11-14 (PR #6, branch `claude/ecstatic-davinci-tjahz4`): art rounds resumed after PR #5 merged.
+- 2026-11-14 (PR #6 merged at round 40; work continues on `claude/ecstatic-davinci-tjahz4` in a new PR): art rounds resumed after PR #5 merged.
   - Scores (ultra tier, same reviewer):
 
     | Round | Average of finals | Cockpit |
@@ -23,6 +23,7 @@ LAST_UPDATE: 2026-11-14T19:35:00Z
     | 36 | 7.42 | 6.75 |
     | 38 | 7.46 | 6.75 |
     | 39 | 7.50 | 6.75 |
+    | 40 | 7.50 | 6.75 |
 
     Best scene: KASE final 7.75. Rounds 27 and 28 were regression checks only.
   - What landed:
