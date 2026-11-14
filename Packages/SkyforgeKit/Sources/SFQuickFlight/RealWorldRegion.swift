@@ -618,7 +618,7 @@ public struct RealWorldRegion: FlightWorld {
                 if Hash.unit(rng.next()) > Double(canopy) * 0.9 || g.water > 0.3 { continue }
                 if nearRunway(px, py) || inBuilding(px, py) { continue }
                 let sA = standNoise.fbm(px / 320, py / 320, octaves: 2), sB = standNoise.fbm(px / 210 + 17.3, py / 210 - 9.1, octaves: 2)
-                let coniferShare = 0.10 + 0.80 * Double(ss(-0.08, 0.08, Float(sA)))   // crisp stand edges (round 19: blended into one mass)
+                let coniferShare = 0.06 + 0.88 * Double(ss(-0.05, 0.05, Float(sA)))   // crisp stand edges (round 19: blended into one mass; round 25: sharper)
                 let h = 9 + 10 * (0.5 * Hash.unit(rng.next()) + 0.5 * Double(ss(-0.4, 0.4, Float(sB))))   // half per stand
                 let conifer = Hash.unit(rng.next()) < coniferShare
                 var tint = g.albedo * 1.9 * Float(0.85 + 0.3 * Hash.unit(rng.next()))
@@ -637,7 +637,8 @@ public struct RealWorldRegion: FlightWorld {
                 tint *= Float(0.92 + 0.16 * Hash.unit(rng.next()))
                 // Stand tone: conifer stands ~22 % darker and bluer-green, broadleaf stands lighter and yellower
                 // (round 19: 0.86–0.90 against 1.07 did not read as separate stands at review distance).
-                tint *= conifer ? SIMD3<Float>(0.74, 0.80, 0.84) : SIMD3<Float>(1.10, 1.10, 0.94)
+                // Round 25: still one uniform green at LSZS; conifers another ~20 % darker and bluer.
+                tint *= conifer ? SIMD3<Float>(0.58, 0.66, 0.76) : SIMD3<Float>(1.12, 1.12, 0.92)
                 tint *= Float(0.93 + 0.14 * Double(ss(-0.4, 0.4, Float(sB))))
                 out.append(TreeInstance(position: SIMD3(Float(px), Float(py), Float(height(px, py))), height: Float(h), conifer: conifer, colour: tint))
                 // Paved surroundings: most of the ring 4 m out bright and unsaturated (lots, roads, roofs).

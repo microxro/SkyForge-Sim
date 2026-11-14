@@ -1098,12 +1098,14 @@ public enum WorldShaders {
             n = normalize(n + float3(-gx, -gy, 0.0) * (0.12 * wFine * fade));
         }
         if (groundMat > 0.0 && !imageryWater) n = normalize(n + float3(-groundTilt, 0.0));
-        if (m == 7.0 && (in.material == 7.0 || in.material == 8.0) && n.z < 0.9) {
+        if (m == 7.0 && ((in.material == 7.0 && n.z < 0.9) || (in.material == 8.0 && n.z < 0.97))) {
             // Steep ground: fall-line gullies, rock tone variation, scrub and scree (as SFPreview), each
             // octave faded by pixel footprint so big slopes keep detail far away. On the photo terrain too
             // (art round 24: NZQN and KASE hillsides were the stretched 10 m photo's smear), with the relief
             // at full strength and the tone changes at 60 % so the photo's own colours lead; no scrub or scree.
-            float steep = smoothstep(0.9, 0.7, n.z);
+            // The photo terrain's mesh normals come from a smoothed 30 m DEM, so its steep slopes rarely fall
+            // below 0.9 (round 25: the 0.9 gate never fired on the NZQN hillside or the KASE cliff).
+            float steep = in.material == 8.0 ? smoothstep(0.97, 0.82, n.z) : smoothstep(0.9, 0.7, n.z);
             float am = in.material == 8.0 ? 0.6 : 1.0;
             float2 w = fieldW;      // true region metres (no jump at the 4 km noise wrap)
             float2 hz = n.xy; float hl = length(hz);
@@ -1135,6 +1137,15 @@ public enum WorldShaders {
                 float dc = (crp - cr) / 0.5 * 4.0, dl = (ldp - ld) / 0.5 * 3.5;
                 n = normalize(n + float3(perp * (-dc * 0.22 * cw) + fall * (dl * 0.18 * cw), 0.0));
                 albedo *= 1.0 - 0.12 * am * max(0.0, -cr) * cw;
+            }
+            // Photo terrain from the high camera (several metres per pixel): spurs and gully bands at ~150 m,
+            // the only relief scale that survives there, as shading and a tone band down the fall line.
+            float sw = (in.material == 8.0 ? 1.0 : 0.0) * saturate(1.0 - fieldFp * 2.5 / 150.0) * steep;
+            if (sw > 0.0) {
+                float s0 = TRI(150.0, 420.0, 23.0, 0.0, 0.0), s1 = TRI(150.0, 420.0, 23.0, 10.0, 0.0);
+                float ds = (s1 - s0) / 10.0 * 150.0;
+                n = normalize(n + float3(perp * (-ds * 0.55 * sw), 0.0));
+                albedo *= 1.0 - 0.18 * max(0.0, -s0) * sw + 0.08 * max(0.0, s0) * sw;
             }
             #undef TRI
             float big = groundNoise(w - 13.0, 64.0) * saturate(1.0 - fieldFp * 2.5 / 64.0);

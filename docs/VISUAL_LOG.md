@@ -650,3 +650,26 @@ Round-25 batch:
 4. **Steep-slope detail on the photo terrain:** fall-line gullies, ledges and crumple, as on SkyWorld. Relief is at full strength, tone at 60 %, with no scrub or scree.
 
 Not done: the cockpit materials.
+
+## Bold round 25: PR #6 e6b2c66 (run 43583381131, ultra tier)
+Same reviewer and scale.
+
+**Final camera:** KMRY 7.25, KASE 7.5, KBFI 7.0, LSZS 7.0, NZQN 7.25, SkyWorld 7.0. **Average 7.17** (round 24: 7.13). Cockpit 4.5. KMRY close rose from 7.0 to 7.25; the high frames are unchanged (6.0–6.75).
+
+**Fixed:**
+- **KBFI blue smears:** saturated-blue pixels in the lower band fell from 2,919 to 374.
+- **KMRY close flare:** gone.
+
+**Landed weakly:** tile roofs are slightly warmer; the source photo's tile colour is already desaturated.
+
+**Did not land:** the steep-slope detail. KASE high is byte-identical to round 24. The photo terrain's mesh normals come from a smoothed 30 m DEM, so the 0.9 gate never fired, and the small octaves fade out at high-camera footprints.
+
+Round-26 batch:
+1. **Slope gate on the photo terrain:** n.z < 0.97 (smoothstep 0.97 → 0.82). A new 150 m spur and gully octave (relief and a tone band) survives at several metres per pixel.
+2. **LSZS stands:** conifers another ~20 % darker and bluer (0.58/0.66/0.76); stand edges sharper (±0.05).
+3. **Cockpit:**
+   - Glare shield, panel, door panels and headliner are subdivided, with edge occlusion and moulded grain.
+   - Stitched seam on the glare shield.
+   - Avionics displays, digits, knobs and keys now sit on the box's real front face (they were inside it, hence the "stripes").
+   - A wet compass housing with a card window replaces the hanging disc.
+   - Slim headliner roll (was a fat black bar), sun visors, and pillars in trim colour.
