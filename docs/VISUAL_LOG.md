@@ -1073,3 +1073,17 @@ Round-43 batch:
    - Coarse 120 m and 240 m luminance octaves.
    - Field contrast from the photo's 150 m / 600 m mean ratio, pushed 60 % further (0.75–1.33).
 3. **KBFI rooftop units:** a mix of mid-grey, white, pale tan and dark ducts.
+
+## Bold round 43: PR #7 2a513dd (ultra tier)
+Same reviewer and scale.
+
+**Final camera:** KMRY 7.5, KASE 7.75, KBFI 7.5, LSZS 7.5, NZQN 7.5, SkyWorld 7.75. **Average 7.58** (unchanged).
+
+**High frames:** 6.70 (6.65); KASE high 7.0, its first rise above 6.75. **Cockpit:** 6.75.
+
+**Main limit named:** on steep slopes the 10 m photo stretches down the fall line into streaks (KASE high right side, NZQN left hillside, LSZS slopes).
+
+Round-44 batch:
+1. **Steep-slope replacement (structural, after rounds 42–43 under +0.2):** where the photo's stretch 1/n.z passes ~1.6×, blend to procedural rock, scree and scrub, fully past ~2.6×.
+   - Tinted from the photo's 150 m mean; 30 % of the photo's own luminance kept for exposure.
+   - Fall-line octaves at 150, 40 and 12 m (footprint-faded) plus 60 m scrub patches.

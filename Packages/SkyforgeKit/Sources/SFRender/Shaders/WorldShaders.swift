@@ -1343,6 +1343,25 @@ public enum WorldShaders {
                 float pa = mix(0.30, 0.40, smoothstep(1000.0, 3000.0, dist));
                 albedo = mix(albedo, albedo * float3(0.70, 0.80, 0.74), scrub * pa / 0.3);
                 albedo *= 1.0 + pa * scree;
+                // Round 44: where the 10 m photo stretches more than ~1.6× down the slope (1/n.z) its pixels smear
+                // into streaks (round-43 review: KASE high right side, NZQN hillside, LSZS slopes). Blend to
+                // procedural rock, scree and scrub tinted from the photo's 150 m mean, fully past ~2.6×; 30 % of
+                // the photo's own luminance stays so exposure and the large forms are kept.
+                float stretchW = smoothstep(1.6, 2.6, 1.0 / max(n.z, 0.05)) * (1.0 - roadNear);
+                if (stretchW > 0.01) {
+                    float lsS = max(1.0, 150.0 / max(length(dwx) + length(dwy), 1e-3));
+                    float2 suv; bool sIn; float s0w, s1w;
+                    float3 sm = photoAlbedo(photoColour(u, imgNear, imgMid, imgFar, imgDetail, photoW, dwx * lsS, dwy * lsS, suv, sIn, s0w, s1w));
+                    float smL = max(dot(sm, float3(0.2126, 0.7152, 0.0722)), 1e-4);
+                    float3 rock = sm * clamp(pow(max(dot(albedo, float3(0.2126, 0.7152, 0.0722)), 1e-4) / smL, 0.3), 0.75, 1.3);
+                    float g0 = groundNoise(float2(fl.x * 0.2, fl.y) - 29.0, 150.0) * saturate(1.0 - sfp * 2.5 / 150.0);
+                    float g1 = groundNoise(float2(fl.x * 0.25, fl.y) + 13.0, 40.0) * saturate(1.0 - sfp * 2.5 / 40.0);
+                    float g2 = groundNoise(float2(fl.x * 0.5, fl.y) - 7.0, 12.0) * saturate(1.0 - sfp * 2.5 / 12.0);
+                    rock *= 1.0 + 0.30 * g0 + 0.25 * g1 + 0.15 * g2;
+                    float sc = smoothstep(0.15, 0.45, groundNoise(w + 517.0, 60.0)) * saturate(1.0 - sfp * 2.5 / 60.0);
+                    rock = mix(rock, rock * float3(0.68, 0.82, 0.70), 0.6 * max(sc, 0.5 * scrub));
+                    albedo = mix(albedo, rock, stretchW);
+                }
             }
             if (in.material == 7.0 && dot(albedo, float3(0.3, 0.6, 0.1)) < 0.3) {
                 float patch = groundNoise(w + 71.0, 32.0) * saturate(1.0 - sfp * 2.5 / 32.0);
