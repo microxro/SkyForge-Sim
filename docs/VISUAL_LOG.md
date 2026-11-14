@@ -977,3 +977,26 @@ Round-39 frames (0ef9aa9, run 43629348206) before review:
   - Lower-half brightness rose 6–20 levels; the y 200–400 contrast fell about 15 %.
   - LSZS final rose 55.8 → 62.1, past the ceiling the reviewer set.
 - Haze retuned before review: none within about 800 m, at most 18 % by 6 km, toward a horizon colour desaturated by half.
+
+## Bold round 39: PR #6 4bb4b9c (run 43630710363, ultra tier)
+Same reviewer and scale.
+
+**Final camera:** KMRY 7.25, KASE 7.75, KBFI 7.25, LSZS 7.5, NZQN 7.5 (7.25), SkyWorld 7.75. **Average 7.50**.
+
+**High frames:** LSZS high 6.5 (6.25). **Average 6.65** (6.58). **Cockpit:** 6.75.
+
+**Landed:**
+- **Valley haze:** the LSZS high slope reads as a valley in cloud shadow, not a black mass. The 7–14 % loss of distant contrast is judged not a regression ("keep it about here").
+- **NZQN near lake:** facets and streaks are visible on the whole surface colour.
+
+**Did not show:**
+- **Irregular crowns:** too subtle at ±22 %.
+- **Field luminance pull:** KASE's fields are stretched by the grazing angle, not blotchy.
+
+Round-40 batch:
+1. **Crop rows on cultivated ground within about 1 km** (class from the 30 m mean colour):
+   - Rows 3–6 m apart, ±10 %, in ~150×170 m parcels on axes rotated 0.35 rad.
+   - Faded by the footprint across the rows.
+2. **Crown outline and size:** bulge ±35 % and lobes ±20 %. Whole-tree size is now 0.72–1.28× from a second hash, and tree cell culling bounds widened to match.
+3. **Per-tree tone:** brightness ±18 %, with a warm shift on about a third of trees.
+4. **Valley haze on SkyWorld** as well as the real terrain.

@@ -518,7 +518,7 @@ public final class WorldRenderer {
         var cells: [(kind: Int, start: Int, count: Int, min: SIMD3<Float>, max: SIMD3<Float>)] = []
         for (i, t) in sorted.enumerated() {
             let k = cellKey(t)
-            let lo = t.position - SIMD3(8, 8, 1), hi = t.position + SIMD3(8, 8, t.height + 1)
+            let lo = t.position - SIMD3(14, 14, 1), hi = t.position + SIMD3(14, 14, t.height * 1.3 + 1)   // treeShape: size up to 1.28×, lobed crowns
             if let last = cells.last, cellKey(sorted[last.start]) == k {
                 cells[cells.count - 1].count += 1
                 cells[cells.count - 1].min = SIMD3(min(last.min.x, lo.x), min(last.min.y, lo.y), min(last.min.z, lo.z))

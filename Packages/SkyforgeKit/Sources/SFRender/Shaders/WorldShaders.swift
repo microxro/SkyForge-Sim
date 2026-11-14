@@ -87,10 +87,13 @@ public enum WorldShaders {
             float2 dn = local.xy / max(r, 1e-4);
             float2 d1 = float2(u1 - 0.5, u2 - 0.5) * 2.0, d2 = normalize(float2(u2 - 0.5, u0 - 0.5) + float2(0.0, 0.001));
             float c2 = dot(dn, d2);
-            float lobe = 1.0 + 0.22 * dot(dn, d1) + 0.14 * (2.0 * c2 * c2 - 1.0);
+            float lobe = 1.0 + 0.35 * dot(dn, d1) + 0.20 * (2.0 * c2 * c2 - 1.0);   // ±22/14 % did not read (round 39)
             sl.xy *= mix(1.0, lobe, saturate(r * 4.0));
             sl.z *= 1.0 + 0.10 * (u3 - 0.5) * saturate(local.z * 2.0 - 0.6);
         }
+        // Whole-tree size 0.72–1.28× from a second hash (round 39: KMRY's near trees still one size).
+        uint h2 = h * 0x9E3779B1u; h2 ^= h2 >> 16;
+        sl *= 0.72 + 0.56 * float(h2 & 0xFFu) / 255.0;
         return sl;
     }
 
@@ -182,6 +185,14 @@ public enum WorldShaders {
         o.normal = normalize(float3(nxy.x / crownW, nxy.y / crownW, n0.z / sz));   // inverse-transpose of the scale
         // Trunk vertices (marked by a negative normal w) are bark-coloured.
         o.albedo = w.normal.w < 0 ? float3(0.06, 0.045, 0.03) : float3(t.colour) * (0.85 + 0.3 * saturate(local.z));
+        if (w.normal.w >= 0) {
+            // Per-tree tone: ±18 % brightness and a warm (yellower) shift on about a third of the trees, so
+            // neighbours differ at a glance (round 39, KMRY near band).
+            uint th = as_type<uint>(int(floor(t.position.x * 4.0))) * 0x27D4EB2Du ^ as_type<uint>(int(floor(t.position.y * 4.0))) * 0x165667B1u;
+            th ^= th >> 15; th *= 0x85EBCA6Bu; th ^= th >> 13;
+            float tv = float(th & 0xFFu) / 255.0, tw = float((th >> 8) & 0xFFu) / 255.0;
+            o.albedo *= (0.82 + 0.36 * tv) * mix(float3(1.0), float3(1.10, 1.03, 0.84), saturate((tw - 0.65) / 0.35));
+        }
         o.material = w.normal.w < 0 ? 0.0 : 2.0;
         o.field = w.normal.w < 0 ? 1.0 : float(w.normal.w) / 127.0;      // leaf: how much sky the vertex sees
         o.local = float3(0.0);
@@ -1111,6 +1122,27 @@ public enum WorldShaders {
                 albedo *= 1.0 + (f - 1.0) * groundMat;
                 groundTilt = tilt * groundMat;
             }
+            if (ltMean.x >= 0.0) {
+                // Crop rows on cultivated ground within ~1 km: the photo's fields smear into directional streaks at
+                // the final camera's grazing angle (round 39, KASE). Rows 3–6 m apart in ~150 m parcels on axes
+                // rotated 0.35 rad, ±10 %, faded by the footprint across the rows; the class comes from the 30 m
+                // mean colour (dry, warm ground). Derivatives come from the photo coordinates (taken outside the
+                // branches).
+                float hiM = max(ltMean.r, max(ltMean.g, ltMean.b));
+                float crop = smoothstep(0.08, 0.25, (ltMean.r - ltMean.b) / max(hiM, 1e-3))
+                           * smoothstep(0.03, 0.08, dot(ltMean, float3(0.2126, 0.7152, 0.0722)))
+                           * (1.0 - smoothstep(700.0, 1200.0, dist)) * (1.0 - saturate((wm - 0.2) / 0.2)) * (1.0 - rwCover) * (1.0 - roadNear);
+                if (crop > 0.01) {
+                    float2 pr = float2(0.94 * photoW.x + 0.34 * photoW.y, -0.34 * photoW.x + 0.94 * photoW.y);
+                    uint ph = fp_hash(int(floor(pr.x / 150.0)), int(floor(pr.y / 170.0)), 0x5EEDu);
+                    float ang = fp_unit(ph) * 3.14159265;
+                    float2 rd = float2(cos(ang), sin(ang));
+                    float spacing = 3.0 + 3.0 * fp_unit(ph >> 8);
+                    float fpR = length(float2(dot(dwx, rd), dot(dwy, rd)));
+                    float rows = cos(dot(photoW, rd) / spacing * 6.2831853) * saturate(1.0 - fpR * 4.0 / spacing);
+                    albedo *= 1.0 + 0.10 * rows * crop;
+                }
+            }
             if (saturate((wm - 0.35) / 0.25) > 0.5) { imageryWater = true; albedo *= 0.7; shoreWm = wm; }
             m = imageryWater ? 1.0 : 7.0;
         }
@@ -1546,8 +1578,8 @@ public enum WorldShaders {
         float3 L, T;
         aerial(u, ins, tr, dir, dist, L, T);
         col = col * T + L;
-        if (u.skyHorizon.w < 0.5) {
-            // Valley haze on the real terrain: toward a desaturated horizon sky colour, none within ~800 m and up
+        {
+            // Valley haze (real terrain and SkyWorld, round 39): toward a desaturated horizon sky colour, none within ~800 m and up
             // to 18 % by ~6 km, less where the table's aerial perspective already holds the colour. A shadowed
             // forest slope 3–6 km out read as a near-black mass (round 38, LSZS high: the probe found it
             // physically dark, ~0.05 albedo under a cloud shadow, with no in-scattered light lifting it).
