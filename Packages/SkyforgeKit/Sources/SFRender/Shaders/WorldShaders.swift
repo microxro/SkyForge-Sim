@@ -994,6 +994,10 @@ public enum WorldShaders {
             // Water: the near layer's mask (photo colour checked against land cover) inside it, the land
             // cover's water fraction carried by the outer layers beyond, blended across the near layer's edge.
             float wm = inNear ? mix(outerWater, waterMask.sample(imgSampler, nuv, level(0.0)).r, nearWeight) : outerWater;
+            // Water lies flat: the coarse land-cover fraction outside the near layer bled a lake onto the steep
+            // shore above it (round 26: the NZQN hillside above Lake Wakatipu rendered as smeared blue-grey
+            // water and never took the slope detail). The mesh normal of a lake surface is vertical.
+            wm *= smoothstep(0.93, 0.985, n.z);
             // Shadow toe, the mirror of the shoulder: photo shadows below ~0.10 albedo are lifted (0.03 → 0.046,
             // 0.06 → 0.072) so the baked shadows under the 3D trees and buildings, which cast their own, stop
             // reading as doubled black (art round 17, KMRY; a 0.07/0.7 toe sat below most photo shadows, round 18).
@@ -1107,6 +1111,9 @@ public enum WorldShaders {
             // below 0.9 (round 25: the 0.9 gate never fired on the NZQN hillside or the KASE cliff).
             float steep = in.material == 8.0 ? smoothstep(0.97, 0.82, n.z) : smoothstep(0.9, 0.7, n.z);
             float am = in.material == 8.0 ? 0.6 : 1.0;
+            // Relief on the photo terrain at 70 %: full strength tipped shaded slopes past the terminator, so
+            // the strip between the KASE road's carriageways went near-black (round 26).
+            float rm = in.material == 8.0 ? 0.7 : 1.0;
             float2 w = fieldW;      // true region metres (no jump at the 4 km noise wrap)
             float2 hz = n.xy; float hl = length(hz);
             float2 fall = hl > 1e-4 ? hz / hl : float2(1, 0), perp = float2(-fall.y, fall.x);
@@ -1119,14 +1126,14 @@ public enum WorldShaders {
             if (gw > 0.0) {
                 float g = TRI(14.0, 70.0, 51.0, 0.0, 0.0), gp = TRI(14.0, 70.0, 51.0, 1.5, 0.0);
                 float dg = (gp - g) / 1.5 * 14.0;
-                n = normalize(n + float3(perp * (-dg * 0.35 * gw), 0.0));
+                n = normalize(n + float3((perp * (-dg * 0.35 * gw)) * rm, 0.0));
                 albedo *= 1.0 - 0.28 * am * max(0.0, -g) * gw;
             }
             float bw = saturate(1.0 - fieldFp * 2.5 / 45.0) * steep;
             if (bw > 0.0) {
                 float b0 = TRI(45.0, 160.0, 91.0, 0.0, 0.0), b1 = TRI(45.0, 160.0, 91.0, 4.0, 0.0);
                 float db = (b1 - b0) / 4.0 * 45.0;
-                n = normalize(n + float3(perp * (-db * 0.45 * bw), 0.0));
+                n = normalize(n + float3((perp * (-db * 0.45 * bw)) * rm, 0.0));
                 float streak = TRI(9.0, 220.0, -41.0, 0.0, 0.0), ledge = TRI(320.0, 28.0, 13.0, 0.0, 0.0);
                 albedo *= (1.0 - 0.22 * am * max(0.0, streak) * bw) * (1.0 + 0.12 * am * max(0.0, ledge) * bw) * (1.0 - 0.10 * am * max(0.0, -b0) * bw);
             }
@@ -1135,7 +1142,7 @@ public enum WorldShaders {
                 float cr = TRI(4.0, 10.0, -19.0, 0.0, 0.0), crp = TRI(4.0, 10.0, -19.0, 0.5, 0.0);
                 float ld = TRI(25.0, 3.5, 7.0, 0.0, 0.0), ldp = TRI(25.0, 3.5, 7.0, 0.0, 0.5);
                 float dc = (crp - cr) / 0.5 * 4.0, dl = (ldp - ld) / 0.5 * 3.5;
-                n = normalize(n + float3(perp * (-dc * 0.22 * cw) + fall * (dl * 0.18 * cw), 0.0));
+                n = normalize(n + float3((perp * (-dc * 0.22 * cw) + fall * (dl * 0.18 * cw)) * rm, 0.0));
                 albedo *= 1.0 - 0.12 * am * max(0.0, -cr) * cw;
             }
             // Photo terrain from the high camera (several metres per pixel): spurs and gully bands at ~150 m,
@@ -1144,7 +1151,7 @@ public enum WorldShaders {
             if (sw > 0.0) {
                 float s0 = TRI(150.0, 420.0, 23.0, 0.0, 0.0), s1 = TRI(150.0, 420.0, 23.0, 10.0, 0.0);
                 float ds = (s1 - s0) / 10.0 * 150.0;
-                n = normalize(n + float3(perp * (-ds * 0.55 * sw), 0.0));
+                n = normalize(n + float3((perp * (-ds * 0.55 * sw)) * rm, 0.0));
                 albedo *= 1.0 - 0.18 * max(0.0, -s0) * sw + 0.08 * max(0.0, s0) * sw;
             }
             #undef TRI

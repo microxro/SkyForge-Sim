@@ -673,3 +673,32 @@ Round-26 batch:
    - Avionics displays, digits, knobs and keys now sit on the box's real front face (they were inside it, hence the "stripes").
    - A wet compass housing with a card window replaces the hanging disc.
    - Slim headliner roll (was a fat black bar), sun visors, and pillars in trim colour.
+
+## Bold round 26: PR #6 4ac2b99 (run 43584489956, ultra tier)
+Same reviewer and scale.
+
+**Final camera:** KMRY 7.25, KASE 7.75, KBFI 7.0, LSZS 7.25, NZQN 7.25, SkyWorld 7.0. **Average 7.25** (round 25: 7.17). **Cockpit 5.25** (4.5).
+
+**Improved:**
+- **KASE cliff:** fall-line gullies, spurs and ledge bands (final 7.75, close 7.5).
+- **LSZS:** distinct conifer stands.
+- **Cockpit:** avionics displays and knobs read.
+
+**Regressed:**
+- **KASE road median:** a near-black sliver between the carriageways (relief tipping shaded slopes past the terminator).
+- **Compass:** a housing three times too large in the windscreen.
+
+**Unchanged:** NZQN high hillside (smeared blue-grey).
+
+Round-27 batch:
+1. **Water lies flat:** the water fraction is scaled by the mesh normal (smoothstep 0.93 → 0.985).
+   - Suspected cause: the coarse land-cover water outside the near layer bleeds onto the steep shore above Lake Wakatipu. That would render the slope as water (`m = 1`) and skip the slope detail.
+   - Unverified until the frames show it.
+2. **Photo-terrain relief at 70 %:** for the KASE median sliver.
+3. **Cockpit:**
+   - Compass a third the size, on a windscreen centre post.
+   - Headliner as a shallow arch of quilted strips with seams.
+   - Mid-grey moulded pillar covers.
+   - Lighter glare shield with a padded lip that catches the light.
+
+The "floating white arc" the reviewer took for the yoke is the cowling seen over the glare shield; the yoke is below the view.

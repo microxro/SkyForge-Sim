@@ -204,7 +204,7 @@ public enum Cockpit {
         // Glare shield (anti-glare cap) with a raised lip and the rear edge.
         let gsBackL = panel(-w, panelTop), gsBackR = panel(w, panelTop)
         let gsFrontL = V(1.48, -w, panelTop - 0.03), gsFrontR = V(1.48, w, panelTop - 0.03)
-        shaded(gsBackL - V(0.03, 0, 0.012), gsBackR - V(0.03, 0, 0.012), gsFrontR, gsFrontL, shield * 1.6, nu: 14, nv: 6, ao: 0.45, grain: 0.10, seed: 4)
+        shaded(gsBackL - V(0.03, 0, 0.012), gsBackR - V(0.03, 0, 0.012), gsFrontR, gsFrontL, shield * 2.4, nu: 14, nv: 6, ao: 0.45, grain: 0.10, seed: 4)
         // Stitched seam along the glare shield's rear edge (a fine lighter line), as on a padded cover.
         for i in 0..<36 {
             let y0 = -w + 0.03 + Double(i) * (2 * w - 0.06) / 36
@@ -213,20 +213,20 @@ public enum Cockpit {
                  SIMD3<Float>(0.09, 0.09, 0.095))
         }
         quad(gsBackL - V(0.03, 0, 0.012), gsBackR - V(0.03, 0, 0.012), gsBackR, gsBackL, shield)
-        tube(gsBackL - V(0.03, 0, 0.012), gsBackR - V(0.03, 0, 0.012), 0.008, 0.008, sides: 6, SIMD3<Float>(0.04, 0.04, 0.042))
-        // Wet compass at the windscreen's top centre: a black housing on a short bracket, its card window
-        // (white numerals on black, a lubber line) facing the pilot. Round 24: a stick with a flat disc
-        // facing down read as a hanging disc.
-        box(V(0.835, -0.012, -1.015), V(0.865, 0.012, -0.985), black)
-        tube(V(0.80, 0, -0.95), V(0.88, 0, -0.95), 0.030, 0.030, sides: 14, SIMD3<Float>(0.025, 0.025, 0.027))
-        disc(V(0.80, 0, -0.95), V(-1, 0, 0), 0.030, sides: 14, SIMD3<Float>(0.03, 0.03, 0.032))
-        disc(V(0.7985, 0, -0.952), V(-1, 0, 0), 0.020, sides: 14, SIMD3<Float>(0.02, 0.02, 0.022))
-        for k in 0..<5 {                                                      // card numerals
-            let y = -0.014 + Double(k) * 0.007
-            quad(V(0.797, y - 0.0015, -0.957), V(0.797, y + 0.0015, -0.957), V(0.797, y + 0.0015, -0.949), V(0.797, y - 0.0015, -0.949),
+        tube(gsBackL - V(0.03, 0, 0.012), gsBackR - V(0.03, 0, 0.012), 0.010, 0.010, sides: 10, SIMD3<Float>(0.10, 0.10, 0.105))   // padded lip catches the light
+        // Wet compass on the windscreen's centre post, just below the headliner: a small black housing
+        // (about 4 cm across) with its card window and lubber line facing the pilot. Round 25: a stick and a
+        // downward disc; round 26: a housing three times too large hanging in the windscreen.
+        slab(V(0.80, 0, -1.02), V(1.02, 0, -0.80), hw: 0.012, ht: 0.008, trim * 1.4)                // centre post
+        tube(V(0.835, 0, -0.985), V(0.865, 0, -0.985), 0.018, 0.018, sides: 12, SIMD3<Float>(0.025, 0.025, 0.027))
+        disc(V(0.835, 0, -0.985), V(-1, 0, 0), 0.018, sides: 12, SIMD3<Float>(0.03, 0.03, 0.032))
+        disc(V(0.834, 0, -0.986), V(-1, 0, 0), 0.012, sides: 12, SIMD3<Float>(0.02, 0.02, 0.022))
+        for k in 0..<4 {                                                      // card numerals
+            let y = -0.0075 + Double(k) * 0.005
+            quad(V(0.8332, y - 0.001, -0.989), V(0.8332, y + 0.001, -0.989), V(0.8332, y + 0.001, -0.983), V(0.8332, y - 0.001, -0.983),
                  SIMD3<Float>(0.70, 0.70, 0.66))
         }
-        quad(V(0.7965, -0.0008, -0.968), V(0.7965, 0.0008, -0.968), V(0.7965, 0.0008, -0.936), V(0.7965, -0.0008, -0.936),
+        quad(V(0.8325, -0.0006, -0.996), V(0.8325, 0.0006, -0.996), V(0.8325, 0.0006, -0.974), V(0.8325, -0.0006, -0.974),
              SIMD3<Float>(0.75, 0.30, 0.05))                                   // lubber line
         // Door panels, armrests, window sills and pillars.
         for side in [-1.0, 1.0] {
@@ -238,11 +238,21 @@ public enum Cockpit {
             box(V(-0.35, side > 0 ? y - 0.04 : y, 0.18), V(0.35, side > 0 ? y : y + 0.04, 0.34), SIMD3<Float>(0.07, 0.065, 0.06))
             tube(V(-0.30, y - side * 0.03, -0.30), V(-0.12, y - side * 0.03, -0.30), 0.011, 0.011, sides: 6, chrome, .metal)
             // Windscreen pillar and door post.
-            tube(V(1.46, side * (w - 0.01), panelTop - 0.03), V(0.78, side * (w - 0.02), -1.02), 0.020, 0.020, sides: 8, trim * 0.8)
+            // Moulded plastic pillar covers in a mid grey with smooth normals (round 26: flat black bars).
+            tube(V(1.46, side * (w - 0.01), panelTop - 0.03), V(0.78, side * (w - 0.02), -1.02), 0.024, 0.022, sides: 10, trim * 1.5)
             tube(V(-0.35, side * (w + 0.01), panelTop), V(-0.35, side * (w - 0.02), -1.02), 0.036, 0.036, sides: 6, trim)
         }
         // Headliner (the wing centre section is above it) and its front edge.
-        shaded(V(0.80, -w, -1.03), V(0.80, w, -1.03), V(-1.1, w, -1.03), V(-1.1, -w, -1.03), headliner, nu: 10, nv: 8, ao: 0.30, grain: 0.04, seed: 7)
+        // Headliner: a shallow arch (5 cm higher at the centre) in quilted panels: each strip shaded on its
+        // own, with a darker seam between strips (round 26: one flat grey slab across the top of the view).
+        let strips = 6
+        func archZ(_ y: Double) -> Double { -1.03 - 0.05 * (1 - (y / w) * (y / w)) }
+        for k in 0..<strips {
+            let y0 = -w + 2 * w * Double(k) / Double(strips), y1 = -w + 2 * w * Double(k + 1) / Double(strips)
+            shaded(V(0.80, y0, archZ(y0)), V(0.80, y1, archZ(y1)), V(-1.1, y1, archZ(y1)), V(-1.1, y0, archZ(y0)),
+                   headliner, nu: 2, nv: 10, ao: 0.22, grain: 0.07, seed: UInt32(7 + k))
+            if k > 0 { tube(V(0.80, y0, archZ(y0) + 0.003), V(-1.1, y0, archZ(y0) + 0.003), 0.004, 0.004, sides: 4, headliner * 0.6) }
+        }
         // Front edge: a slim padded roll in the headliner's colour (round 24: a fat black bar across the view).
         tube(V(0.80, -w, -1.02), V(0.80, w, -1.02), 0.016, 0.016, sides: 8, headliner * 0.7)
         // Sun visors folded up against the headliner, one per seat, on a chrome pivot rod.
