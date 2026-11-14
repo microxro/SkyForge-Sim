@@ -1,12 +1,30 @@
-LAST_UPDATE: 2026-11-14T09:46:00Z
+LAST_UPDATE: 2026-11-14T11:22:00Z
 
 # SKYFORGE state
 
 ## Phase
 - 2026-11-14 (PR #6, branch `claude/ecstatic-davinci-tjahz4`): art rounds resumed after PR #5 merged.
-  - Scores (ultra tier, same reviewer): round 22 7.00, round 23 7.04.
-  - Round-24 structural batch (`14d4853`) is in CI: one roof colour per building, local tone compression on the near photo ground, brighter foliage ambient.
-  - Next: read run frames, send round 24 to the reviewer, iterate. Frame budgets are recorded, not enforced (ADR-0021).
+  - Scores (ultra tier, same reviewer):
+
+    | Round | Average of finals | Cockpit |
+    |---|---|---|
+    | 22 | 7.00 | 4.5 |
+    | 23 | 7.04 | 4.5 |
+    | 24 | 7.13 | 4.5 |
+    | 25 | 7.17 | 4.5 |
+    | 26 | 7.25 | 5.25 |
+
+    Best scene: KASE final 7.75. Rounds 27 and 28 were regression checks only.
+  - What landed:
+    - One roof colour per building.
+    - NaN-safe local tone compression.
+    - Bloom guard against non-finite pixels.
+    - Steep-slope relief on the photo terrain.
+    - Conifer stand contrast.
+    - Cockpit rework.
+    - Water gated by slope.
+    - Structural: a mid z12 height mosaic (`b051139`; z12 tiles in all packs through `tools/fetch_mid_heights.py`). Slopes 3–12 km out had been z10 blobs at about 156 m per sample.
+  - Next: round 29 (run 43588783942) is with the reviewer; then the top fixes. Frame budgets are recorded, not enforced (ADR-0021).
 Visual transformation (2026-11-10, PR #5, ADR-0021) is in progress; the Bold Mode summary below is the earlier baseline.
 - Landed (CI-compiled): new SF-1 aircraft model with per-pixel livery, glass and clear coat; OSM-sourced 3D buildings with facade/roof shading (bundled `buildings.sfb`, ODbL); four shadow cascades; mid-distance imagery layer; 2x supersampling and sharpening in the ultra preset; exposure scale 0.45 with near-identity photo albedo; per-airport review-frame jobs.
 - Landed 2026-11-10 (second batch): five tree species with ambient occlusion; rebuilt cockpit interior with cabin fill light; ESA WorldCover land cover grids in every pack (water at any distance); water shading (sky reflection, wind patches); tinted tower glass; fine cloud structure at ultra; magnification-aware local contrast on the ground photo; `LINZAerialProvider`.
