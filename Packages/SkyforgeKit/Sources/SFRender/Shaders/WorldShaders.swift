@@ -311,7 +311,7 @@ public enum WorldShaders {
         float wv = fp_noise(x / 420.0, y / 420.0 - 9.1, seed ^ 0xA3u) * 22.0;
         float u = c * x + s * y + wu, v = -s * x + c * y + wv;
         uint h = fp_hash(int(floor(u / 110.0)), int(floor(v / 170.0)), seed);
-        uint idx = autumn ? h % 6u : h % 7u;
+        uint idx = autumn ? h % 6u : h % 8u;   // as FieldPattern (summer.count)
         bool pasture = !autumn && (idx == 0u || idx == 5u);
         bool ploughed = autumn ? idx == 1u : idx == 3u;
         float spacing = pasture ? 14.0 : 3.0 + 3.0 * fp_unit(h >> 8);
@@ -454,7 +454,7 @@ public enum WorldShaders {
         float tu = fu - iu, tv = fv - iv;
         float along = ((h >> 24) & 1u) == 0u ? tu : tv;
         col *= 0.95 + 0.08 * along;
-        uint idx = autumn ? h % 6u : h % 7u;
+        uint idx = autumn ? h % 6u : h % 8u;   // as FieldPattern (summer.count)
         bool pasture = !autumn && (idx == 0u || idx == 5u);
         float spacing = pasture ? 14.0 : 3.0 + 3.0 * fp_unit(h >> 8);
         float coord = ((h >> 24) & 1u) == 0u ? u : v;
