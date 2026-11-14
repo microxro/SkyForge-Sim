@@ -559,3 +559,33 @@ Frames are Metal renders from the CI GPU at the ultra tier, 1280×720, four came
 | 42818081873 (trees, cockpit, ground detail) | KBFI, KMRY, NZQN | Trees read as species with lobes and shading; Seattle skyline present but towers flat grey; cockpit gauges visible but cabin unlit (black). NZQN: Sentinel-2 ground (10 m) is a blur, and the lake is cut by a straight line where the near layer's water mask ends. Near ground at US airports is limited by the source (USGS tiles are about 1.6 m per pixel; the finer export is an upsample, checked directly). |
 
 Changes made in response (frames pending at the time of writing): land cover water mask at any distance (ESA WorldCover), water reflecting the real sky with wind patches, cabin fill light, tinted reflective tower glass, fine cloud structure, magnification-aware local contrast for the ground photo, and LINZ 0.1–0.3 m aerial imagery for NZQN.
+
+## Bold round 22: new baseline after PR #5 (main af4ede2, run 42921068888, ultra tier)
+Same reviewer and scale as rounds 5–19 (ADR-0020 pause ended).
+
+**Final camera:** KMRY 7.0, KASE 7.25, KBFI 6.75, LSZS 6.75, NZQN 7.25, SkyWorld 7.0. **Average 7.00** (round-19 high tier: 6.71).
+
+| Airport | Close | High |
+|---|---|---|
+| KMRY | 7.25 | 6.75 |
+| KASE | 7.0 | 6.5 |
+| KBFI | 6.75 | 6.75 |
+| LSZS | 6.5 | 6.0 |
+| NZQN | 7.25 | 6.0 |
+
+KMRY cockpit: 4.5.
+
+**Improved most:** OSM buildings (KBFI +0.75, NZQN), the aircraft model, and a more photographic sky.
+
+**Regressed:**
+- **Near-band local contrast:** in the near band, 21 % (KBFI) and 34 % (KMRY) of pixels sit above 1.6× the band median, against 0–2.5 % in round 19. The near-identity photo albedo lost the round-17–19 shoulder, so concrete and roofs read as white blotches.
+- **LSZS:** the forest is near-black (lower half 64 → 35).
+- **KASE road ribbon:** broken, near-black, and floating over the cliff.
+
+Round-23 batch (top fixes 1–4):
+1. **Photo albedo shoulder:** knee 0.24, slope 0.25 (was 0.42/0.48), so 0.8 → 0.38.
+2. **OSM roofs:** take the photo's tone about 4 mips coarser (~13 m at US sources) instead of the projected photo, clamped to 0.32.
+3. **Roads:** asphalt 0.10–0.12 (was ~0.05). A quarter of the blurred photo tone is blended in, rising toward the carriageway edges. Draped every 8 m (was 20), with lift 0.4 m.
+4. **LSZS:** canopy photo floor 0.07 (0.05) and 3D tree tint floor 0.10 (0.08).
+
+Not done: the cockpit materials, and slope-aware detail on steep photo (fix 5).

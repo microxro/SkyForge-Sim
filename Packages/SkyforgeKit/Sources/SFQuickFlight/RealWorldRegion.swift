@@ -591,7 +591,7 @@ public struct RealWorldRegion: FlightWorld {
                 tint.x *= Float(0.96 + 0.08 * Hash.unit(rng.next()))
                 // Foliage albedo floor (hue kept): dark Sentinel-2 forest gave near-black crowns (LSZS).
                 let tl = 0.2126 * tint.x + 0.7152 * tint.y + 0.0722 * tint.z
-                if tl < 0.08 { tint *= 0.08 / max(tl, 0.002) }   // (0.05 left dark crowns grey after the tone map)
+                if tl < 0.10 { tint *= 0.10 / max(tl, 0.002) }   // 0.10 (0.08): LSZS forest near-black under the 0.45 exposure (round 22)   // (0.05 left dark crowns grey after the tone map)
                 // Foliage hue range in linear albedo: blue ≤ 0.55 × green, red 0.62–0.85 × green, so saturation is
                 // at least ~0.4 and survives the tone map. Shaded photo canopy carries the sky's blue (teal crowns,
                 // round 8); red up to 1.05 × green turned alpine forest khaki (round 9); a 0.25 floor could not

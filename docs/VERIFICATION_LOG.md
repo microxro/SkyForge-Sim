@@ -267,3 +267,5 @@ Method: `FrameTimeTests`, 30 frames after 3 warm-up frames; command-buffer GPU t
 - Gate: `tools/gate.sh fast` 245 tests pass at `4c34428`; `tools/check_licenses.py` OK.
 - Not verified: device frame rates; any comparison against MSFS beyond the reference screenshots the user supplied.
 
+- 2026-11-14T09:20:46Z gate fast on Linux x86_64: FAIL (HEAD af4ede2)
+- 2026-11-14T09:24:18Z gate fast on Linux x86_64: PASS (HEAD af4ede2)

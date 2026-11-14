@@ -920,8 +920,10 @@ public enum WorldShaders {
     static float3 photoAlbedo(float3 c) {
         float3 a = pow(max(c, float3(0.0)), float3(1.08)) * 0.90;
         // Aerial photos are stretched so that concrete, sand and light roofs sit near white; real surfaces
-        // top out near 0.6, so the top of the range is compressed (0.9 → 0.65) and keeps its detail.
-        return select(a, 0.42 + (a - 0.42) * 0.48, a > 0.42);
+        // top out near 0.6, so the top of the range is compressed. Knee 0.24, slope 0.25 (0.8 → 0.38): with the
+        // 0.42/0.48 shoulder, 21–34 % of near-band pixels at KBFI and KMRY sat above 1.6× the band median and
+        // read as white blotches (art round 22; rounds 17–19 used 0.20/0.32 on a darker base).
+        return select(a, 0.24 + (a - 0.24) * 0.25, a > 0.24);
     }
 
     fragment float4 world_fragment(WorldVarying in [[stage_in]], constant WorldUniforms& u [[buffer(1)]],
@@ -988,7 +990,7 @@ public enum WorldShaders {
             // Canopy albedo floor (hue kept), the same 0.05 as the 3D tree tints: Sentinel-2 forest comes out
             // near-black (~0.03), so the ground between the 3D trees read as a dark smear (LSZS, rounds 4–6).
             float al = dot(albedo, float3(0.2126, 0.7152, 0.0722));
-            if (imgForest > 0.0 && al < 0.05) albedo = mix(albedo, albedo * (0.05 / max(al, 0.004)), imgForest);
+            if (imgForest > 0.0 && al < 0.07) albedo = mix(albedo, albedo * (0.07 / max(al, 0.004)), imgForest);   // 0.07 (0.05): near-black LSZS canopy under the 0.45 exposure (round 22)
             // Water: the near layer's mask (photo colour checked against land cover) inside it, the land
             // cover's water fraction carried by the outer layers beyond, blended across the near layer's edge.
             float wm = inNear ? mix(outerWater, waterMask.sample(imgSampler, nuv, level(0.0)).r, nearWeight) : outerWater;
@@ -1276,7 +1278,12 @@ public enum WorldShaders {
             if (fmod(in.style.z, 2.0) > 0.5) {
                 float2 ruv; bool rin;
                 float rw0, rw1;
-                a = photoAlbedo(photoColour(u, imgNear, imgMid, imgFar, imgDetail, photoW, dwx, dwy, ruv, rin, rw0, rw1));
+                // The roof's tone, not the photo projected onto it: sampled ~4 mips coarser (≈ 13 m at the US
+                // 1.6 m source), so the photo's skylights, cars and the roof's own baked shadow do not show as
+                // blotches on the 3D roof (art round 22, KBFI), and clamped to real roofing albedo.
+                a = photoAlbedo(photoColour(u, imgNear, imgMid, imgFar, imgDetail, photoW, dwx * 12.0, dwy * 12.0, ruv, rin, rw0, rw1));
+                float al = dot(a, float3(0.2126, 0.7152, 0.0722));
+                if (al > 0.32) a *= 0.32 / al;
             }
             float2 rw = in.rel.xy + u.cameraPos.xy;
             float fpw = length(dwx) + length(dwy);
@@ -1330,6 +1337,14 @@ public enum WorldShaders {
                 float rfp = length(fwidth(rw));
                 float3 road = albedo * (1.0 + 0.10 * groundNoise(rw + 9.0, 0.5) * saturate(1.0 - rfp / 1.0)
                                             + 0.08 * groundNoise(rw - 33.0, 7.0) * saturate(1.0 - rfp / 14.0));
+                // Sit in the photo: a quarter of the photo's own (blurred) tone everywhere, more toward the
+                // carriageway edges, so the ribbon is not a dark overlay on the photo's road (art round 22, KASE).
+                {
+                    float2 pr; bool pin; float p0, p1;
+                    float3 under = photoAlbedo(photoColour(u, imgNear, imgMid, imgFar, imgDetail, photoW, dwx * 2.0, dwy * 2.0, pr, pin, p0, p1));
+                    float edge = smoothstep(0.7, 1.0, fa) * step(1e-4, fw);
+                    road = mix(road, under, 0.25 + 0.55 * edge);
+                }
                 float lines = (1.0 - smoothstep(0.0, 0.03 + fw, fa)) * step(1e-4, fw) * saturate(1.3 - fw * 6.0);
                 float3 paint = float3(0.46, 0.45, 0.42);
                 col = mix(road, paint, lines * 0.85) * (u.sunColour.rgb * max(0.0, ndl) * vis + ambient);
