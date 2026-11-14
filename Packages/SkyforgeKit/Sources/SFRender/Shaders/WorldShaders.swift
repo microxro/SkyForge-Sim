@@ -991,7 +991,9 @@ public enum WorldShaders {
             // Canopy albedo floor (hue kept), the same 0.05 as the 3D tree tints: Sentinel-2 forest comes out
             // near-black (~0.03), so the ground between the 3D trees read as a dark smear (LSZS, rounds 4–6).
             float al = dot(albedo, float3(0.2126, 0.7152, 0.0722));
-            if (imgForest > 0.0 && al < 0.07) albedo = mix(albedo, albedo * (0.07 / max(al, 0.004)), imgForest);   // 0.07 (0.05): near-black LSZS canopy under the 0.45 exposure (round 22)
+            // Floor 0.09 with a slight green lean: the forest floor between the crowns gets sky light (round 30:
+            // LSZS valley floor still dark).
+            if (imgForest > 0.0 && al < 0.09) albedo = mix(albedo, albedo * (0.09 / max(al, 0.004)) * float3(0.96, 1.04, 0.96), imgForest);   // 0.07 (0.05): near-black LSZS canopy under the 0.45 exposure (round 22)
             // Water: the near layer's mask (photo colour checked against land cover) inside it, the land
             // cover's water fraction carried by the outer layers beyond, blended across the near layer's edge.
             float wm = inNear ? mix(outerWater, waterMask.sample(imgSampler, nuv, level(0.0)).r, nearWeight) : outerWater;
@@ -1071,10 +1073,11 @@ public enum WorldShaders {
                 float nH = fp_noise(fieldW.x / 35.0 - 5.3, fieldW.y / 35.0 + 2.2, fs ^ 0xC5u);
                 // Round 29: still read as flat parcels; stronger (±14 % at 55 m, ±7 % hue) plus wet/dry patches at
                 // ~140 m (±12 %, slightly yellower when dry) that cross several parcels like real soil does.
-                float vFadeL = saturate(1.0 - fieldFpG * 4.0 / 140.0);
-                float nL = fp_noise(fieldW.x / 140.0 + 11.7, fieldW.y / 140.0 - 8.9, fs ^ 0x5Au);
+                float vFadeL = saturate(1.0 - fieldFpG * 4.0 / 110.0);
+                float nL = fp_noise(fieldW.x / 110.0 + 11.7, fieldW.y / 110.0 - 8.9, fs ^ 0x5Au);
                 f *= (1.0 + 0.14 * nB * vFade) * float3(1.0 - 0.07 * nH * vFade, 1.0 + 0.035 * nH * vFade, 1.0);
-                f *= (1.0 + 0.12 * nL * vFadeL) * float3(1.0 + 0.03 * nL * vFadeL, 1.0, 1.0 - 0.05 * nL * vFadeL);
+                // Round 30: ±12 % at 140 m was lost under the mowing stripes; ±25 % value, ±10 % hue at 110 m.
+                f *= (1.0 + 0.25 * nL * vFadeL) * float3(1.0 + 0.06 * nL * vFadeL, 1.0, 1.0 - 0.10 * nL * vFadeL);
                 albedo *= 1.0 + (f - 1.0) * fieldCov;
                 float2 rt = fieldRowTilt(fieldW.x, fieldW.y, fieldFp, uint(u.ambientGround.w), u.skyHorizon.w > 1.5) * fieldCov;
                 n = normalize(n + float3(rt, 0.0));
@@ -1175,9 +1178,13 @@ public enum WorldShaders {
             if (in.material == 8.0) {
                 // Photo slopes: scrub (darker) and scree (lighter) patches as tone changes on the photo's own
                 // colour, so a soft, low-detail slope photo gains ground structure (round 29: NZQN and LSZS high).
-                float patch = groundNoise(w + 71.0, 32.0) * saturate(1.0 - sfp * 2.5 / 32.0);
-                float scrub = smoothstep(0.14, 0.40, patch) * steep, scree = smoothstep(-0.2, -0.45, patch) * steep;
-                albedo *= (1.0 - 0.22 * scrub) * (1.0 + 0.22 * scree);
+                // Round 30: ±22 % at 32 m sat under the photo's own noise. Scree fans and scrub bands at ~90 m,
+                // stronger with distance (±35 % beyond 3 km), the scrub a cooler green against the photo.
+                float patch = groundNoise(w + 71.0, 90.0) * saturate(1.0 - sfp * 2.5 / 90.0);
+                float scrub = smoothstep(0.10, 0.38, patch) * steep, scree = smoothstep(-0.15, -0.42, patch) * steep;
+                float pa = mix(0.25, 0.35, smoothstep(1000.0, 3000.0, dist));
+                albedo = mix(albedo, albedo * float3(0.70, 0.80, 0.74), scrub * pa / 0.3);
+                albedo *= 1.0 + pa * scree;
             }
             if (in.material == 7.0 && dot(albedo, float3(0.3, 0.6, 0.1)) < 0.3) {
                 float patch = groundNoise(w + 71.0, 32.0) * saturate(1.0 - sfp * 2.5 / 32.0);

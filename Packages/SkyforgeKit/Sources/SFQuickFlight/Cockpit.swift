@@ -130,8 +130,9 @@ public enum Cockpit {
         func P(_ y: Double, _ z: Double, _ off: Double = 0) -> V { panel(y, z) + pn * off }
 
         // Panel face and the lower panel down to the firewall.
-        shaded(panel(-w, panelTop), panel(w, panelTop), panel(w, panelBottom), panel(-w, panelBottom), panelCol, nu: 12, nv: 6, ao: 0.30, grain: 0.05, seed: 2)
-        shaded(panel(-w, panelBottom), panel(w, panelBottom), V(1.02, w, floorZ), V(1.02, -w, floorZ), shield, nu: 8, nv: 4, ao: 0.4, seed: 3)
+        shaded(panel(-w, panelTop), panel(w, panelTop), panel(w, panelBottom), panel(-w, panelBottom), panelCol * 1.3, nu: 16, nv: 8, ao: 0.30, grain: 0.14, seed: 2)   // crinkle finish (round 30)
+        // Lower panel in a dark textured (crinkle) finish rather than flat black (round 30).
+        shaded(panel(-w, panelBottom), panel(w, panelBottom), V(1.02, w, floorZ), V(1.02, -w, floorZ), shield * 2.0, nu: 16, nv: 8, ao: 0.4, grain: 0.18, seed: 3)
         // PFD bezel (the screen itself is a separate textured quad).
         let pc = pfdCorners.map { $0 - V(-0.002, 0, 0) }
         let bez = 0.018
@@ -261,6 +262,7 @@ public enum Cockpit {
         // Sun visors folded up against the headliner, one per seat, on a chrome pivot rod.
         for y in [eye.y, -eye.y] {
             slab(V(0.78, y, -1.012), V(0.60, y, -1.012), hw: 0.16, ht: 0.008, headliner * 0.82)
+            tube(V(0.60, y - 0.16, -1.010), V(0.60, y + 0.16, -1.010), 0.011, 0.011, sides: 8, headliner * 0.86)   // rounded front edge
             // A darker stitched rim so the visor reads as a padded board, not a flat grey patch.
             for (a, b) in [(V(0.60, y - 0.16, -1.003), V(0.60, y + 0.16, -1.003)), (V(0.60, y - 0.16, -1.003), V(0.78, y - 0.16, -1.003)),
                            (V(0.60, y + 0.16, -1.003), V(0.78, y + 0.16, -1.003))] {

@@ -753,3 +753,31 @@ Round-30 batch:
    - Stitched visor rims.
    - A highlight edge on each pillar.
    - Shaded carpet.
+
+## Bold round 30: PR #6 26a42ba (run 43596537161, ultra tier)
+Same reviewer and scale.
+
+**Scores:** finals 7.25 (unchanged), high frames 6.58 (unchanged), **cockpit 5.75** (5.5).
+
+**Fixed:**
+- **KASE road median:** the sliver is gone (road proximity mask).
+- **Cockpit:** the headliner and pillars read, and the yoke horns show.
+
+**Too faint to score (about 1 % pixel change):**
+- Slope scrub and scree at ±22 %.
+- SkyWorld field variation at ±14 %.
+- Crown brightness ±18 %.
+
+Rounds 29 and 30 both left the finals flat. Round 29 carried the structural change (the mid z12 height mosaic), which lifted the high frames.
+
+Round-31 batch (`6163802` plus this commit):
+1. **Yoke shaft:** leaves the panel below the PFD, with taller horn tips.
+2. **SkyWorld:**
+   - Variation fades by the geometric-mean footprint (it faded out at grazing angles).
+   - ±25 % value and ±10 % hue at 110 m.
+   - Crown size ±30 %.
+3. **Photo slopes:** scree fans and scrub bands at about 90 m. Amplitude rises from 25 % to 35 % beyond 3 km, and the scrub is a cooler green.
+4. **LSZS:** forest floor at 0.09 with a slight green lean.
+5. **Cockpit:**
+   - Crinkle finish on the panel face and lower panel.
+   - Rounded visor front edges.
