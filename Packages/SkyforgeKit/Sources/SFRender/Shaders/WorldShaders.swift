@@ -947,6 +947,7 @@ public enum WorldShaders {
         float imgForest = 0.0;                               // canopy score of the imagery colour (real terrain)
         float groundMat = 0.0;                               // weight of the near-ground detail materials
         float2 groundTilt = float2(0.0);                     // their normal tilt (applied after the normal is final)
+        float roadNear = 0.0;                                // road proximity from the near mask's second channel
         float2 photoW = in.rel.xy + u.cameraLocal.xy;      // region metres (imagery lookup)
         float2 dwx = dfdx(photoW), dwy = dfdy(photoW);
         if (m == 8.0) {
@@ -998,6 +999,7 @@ public enum WorldShaders {
             // shore above it (round 26: the NZQN hillside above Lake Wakatipu rendered as smeared blue-grey
             // water and never took the slope detail). The mesh normal of a lake surface is vertical.
             wm *= smoothstep(0.93, 0.985, n.z);
+            if (inNear) roadNear = waterMask.sample(imgSampler, nuv, level(0.0)).g * nearWeight;
             // Shadow toe, the mirror of the shoulder: photo shadows below ~0.10 albedo are lifted (0.03 → 0.046,
             // 0.06 → 0.072) so the baked shadows under the 3D trees and buildings, which cast their own, stop
             // reading as doubled black (art round 17, KMRY; a 0.07/0.7 toe sat below most photo shadows, round 18).
@@ -1067,7 +1069,12 @@ public enum WorldShaders {
                 float vFade = saturate(1.0 - fieldFp * 4.0 / 35.0);
                 float nB = fp_noise(fieldW.x / 55.0 + 3.1, fieldW.y / 55.0 - 1.7, fs ^ 0x3Cu);
                 float nH = fp_noise(fieldW.x / 35.0 - 5.3, fieldW.y / 35.0 + 2.2, fs ^ 0xC5u);
-                f *= (1.0 + 0.09 * nB * vFade) * float3(1.0 - 0.04 * nH * vFade, 1.0 + 0.02 * nH * vFade, 1.0);
+                // Round 29: still read as flat parcels; stronger (±14 % at 55 m, ±7 % hue) plus wet/dry patches at
+                // ~140 m (±12 %, slightly yellower when dry) that cross several parcels like real soil does.
+                float vFadeL = saturate(1.0 - fieldFp * 4.0 / 140.0);
+                float nL = fp_noise(fieldW.x / 140.0 + 11.7, fieldW.y / 140.0 - 8.9, fs ^ 0x5Au);
+                f *= (1.0 + 0.14 * nB * vFade) * float3(1.0 - 0.07 * nH * vFade, 1.0 + 0.035 * nH * vFade, 1.0);
+                f *= (1.0 + 0.12 * nL * vFadeL) * float3(1.0 + 0.03 * nL * vFadeL, 1.0, 1.0 - 0.05 * nL * vFadeL);
                 albedo *= 1.0 + (f - 1.0) * fieldCov;
                 float2 rt = fieldRowTilt(fieldW.x, fieldW.y, fieldFp, uint(u.ambientGround.w), u.skyHorizon.w > 1.5) * fieldCov;
                 n = normalize(n + float3(rt, 0.0));
@@ -1114,6 +1121,8 @@ public enum WorldShaders {
             // The photo terrain's mesh normals come from a smoothed 30 m DEM, so its steep slopes rarely fall
             // below 0.9 (round 25: the 0.9 gate never fired on the NZQN hillside or the KASE cliff).
             float steep = in.material == 8.0 ? smoothstep(0.97, 0.82, n.z) : smoothstep(0.9, 0.7, n.z);
+            // No relief beside or between road ribbons (round 29: the KASE median sliver at 70 %).
+            steep *= 1.0 - roadNear;
             float am = in.material == 8.0 ? 0.6 : 1.0;
             float sfp = in.material == 8.0 ? fieldFpG : fieldFp;
             // Relief on the photo terrain at 70 %: full strength tipped shaded slopes past the terminator, so
@@ -1163,6 +1172,13 @@ public enum WorldShaders {
             float big = groundNoise(w - 13.0, 64.0) * saturate(1.0 - sfp * 2.5 / 64.0);
             float small = groundNoise(w + 3.0, 8.0) * saturate(1.0 - sfp * 2.5 / 8.0);
             albedo *= 1.0 + (0.22 * big + 0.10 * small) * steep * am;
+            if (in.material == 8.0) {
+                // Photo slopes: scrub (darker) and scree (lighter) patches as tone changes on the photo's own
+                // colour, so a soft, low-detail slope photo gains ground structure (round 29: NZQN and LSZS high).
+                float patch = groundNoise(w + 71.0, 32.0) * saturate(1.0 - sfp * 2.5 / 32.0);
+                float scrub = smoothstep(0.14, 0.40, patch) * steep, scree = smoothstep(-0.2, -0.45, patch) * steep;
+                albedo *= (1.0 - 0.22 * scrub) * (1.0 + 0.22 * scree);
+            }
             if (in.material == 7.0 && dot(albedo, float3(0.3, 0.6, 0.1)) < 0.3) {
                 float patch = groundNoise(w + 71.0, 32.0) * saturate(1.0 - sfp * 2.5 / 32.0);
                 float scrub = smoothstep(0.14, 0.36, patch) * steep * smoothstep(0.76, 0.84, n.z);

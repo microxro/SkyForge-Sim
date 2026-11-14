@@ -567,10 +567,19 @@ public final class WorldRenderer {
         try setBuildings(data.buildingMesh)
         runway = data.runway
         if let wm = data.waterMask {
-            let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .r32Float, width: wm.size, height: wm.size, mipmapped: false)
+            // Water in the red channel, road proximity (when there are roads) in the green.
+            let roads = data.roadMask.flatMap { $0.count == wm.values.count ? $0 : nil }
+            let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: roads == nil ? .r32Float : .rg32Float,
+                                                             width: wm.size, height: wm.size, mipmapped: false)
             d.usage = [.shaderRead]
             guard let t = device.makeTexture(descriptor: d) else { throw RendererError.commandQueue }
-            t.replace(region: MTLRegionMake2D(0, 0, wm.size, wm.size), mipmapLevel: 0, withBytes: wm.values, bytesPerRow: wm.size * 4)
+            if let roads {
+                var rg = [Float](repeating: 0, count: 2 * wm.values.count)
+                for k in 0..<wm.values.count { rg[2 * k] = wm.values[k]; rg[2 * k + 1] = roads[k] }
+                t.replace(region: MTLRegionMake2D(0, 0, wm.size, wm.size), mipmapLevel: 0, withBytes: rg, bytesPerRow: wm.size * 8)
+            } else {
+                t.replace(region: MTLRegionMake2D(0, 0, wm.size, wm.size), mipmapLevel: 0, withBytes: wm.values, bytesPerRow: wm.size * 4)
+            }
             waterTex = t
         } else { waterTex = nil }
     }

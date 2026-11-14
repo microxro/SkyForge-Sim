@@ -240,6 +240,8 @@ public enum Cockpit {
             // Windscreen pillar and door post.
             // Moulded plastic pillar covers in a mid grey with smooth normals (round 26: flat black bars).
             tube(V(1.46, side * (w - 0.01), panelTop - 0.03), V(0.78, side * (w - 0.02), -1.02), 0.024, 0.022, sides: 10, trim * 1.5)
+            // A lighter moulded edge along the pillar's inner face catches the cabin light.
+            tube(V(1.44, side * (w - 0.035), panelTop - 0.035), V(0.77, side * (w - 0.045), -1.015), 0.006, 0.006, sides: 6, trim * 2.6)
             tube(V(-0.35, side * (w + 0.01), panelTop), V(-0.35, side * (w - 0.02), -1.02), 0.036, 0.036, sides: 6, trim)
         }
         // Headliner (the wing centre section is above it) and its front edge.
@@ -249,19 +251,25 @@ public enum Cockpit {
         func archZ(_ y: Double) -> Double { -1.03 - 0.05 * (1 - (y / w) * (y / w)) }
         for k in 0..<strips {
             let y0 = -w + 2 * w * Double(k) / Double(strips), y1 = -w + 2 * w * Double(k + 1) / Double(strips)
+            // Strips alternate ±8 % and seams sit at 45 % so the quilting reads at a glance (round 29: too faint).
             shaded(V(0.80, y0, archZ(y0)), V(0.80, y1, archZ(y1)), V(-1.1, y1, archZ(y1)), V(-1.1, y0, archZ(y0)),
-                   headliner, nu: 2, nv: 10, ao: 0.22, grain: 0.07, seed: UInt32(7 + k))
-            if k > 0 { tube(V(0.80, y0, archZ(y0) + 0.003), V(-1.1, y0, archZ(y0) + 0.003), 0.004, 0.004, sides: 4, headliner * 0.6) }
+                   headliner * (k % 2 == 0 ? 1.08 : 0.92), nu: 2, nv: 10, ao: 0.32, grain: 0.09, seed: UInt32(7 + k))
+            if k > 0 { tube(V(0.80, y0, archZ(y0) + 0.003), V(-1.1, y0, archZ(y0) + 0.003), 0.006, 0.006, sides: 4, headliner * 0.45) }
         }
         // Front edge: a slim padded roll in the headliner's colour (round 24: a fat black bar across the view).
         tube(V(0.80, -w, -1.02), V(0.80, w, -1.02), 0.016, 0.016, sides: 8, headliner * 0.7)
         // Sun visors folded up against the headliner, one per seat, on a chrome pivot rod.
         for y in [eye.y, -eye.y] {
             slab(V(0.78, y, -1.012), V(0.60, y, -1.012), hw: 0.16, ht: 0.008, headliner * 0.82)
+            // A darker stitched rim so the visor reads as a padded board, not a flat grey patch.
+            for (a, b) in [(V(0.60, y - 0.16, -1.003), V(0.60, y + 0.16, -1.003)), (V(0.60, y - 0.16, -1.003), V(0.78, y - 0.16, -1.003)),
+                           (V(0.60, y + 0.16, -1.003), V(0.78, y + 0.16, -1.003))] {
+                tube(a, b, 0.005, 0.005, sides: 4, headliner * 0.5)
+            }
             tube(V(0.785, y - 0.17, -1.018), V(0.785, y + 0.17, -1.018), 0.004, 0.004, sides: 6, chrome, .metal)
         }
         // Floor carpet, a seat-rail step, and rudder pedals with toe plates.
-        quad(V(1.02, -w, floorZ), V(1.02, w, floorZ), V(-1.1, w, floorZ), V(-1.1, -w, floorZ), carpet)
+        shaded(V(1.02, -w, floorZ), V(1.02, w, floorZ), V(-1.1, w, floorZ), V(-1.1, -w, floorZ), carpet * 1.4, nu: 8, nv: 8, ao: 0.4, grain: 0.15, seed: 11)
         for y in [eye.y, -eye.y] {
             for dy in [-0.09, 0.09] {
                 box(V(0.90, y + dy - 0.045, 0.34), V(0.96, y + dy + 0.045, 0.50), SIMD3<Float>(0.06, 0.06, 0.065))
@@ -289,8 +297,10 @@ public enum Cockpit {
         slab(V(-1.04, 0, 0.18), V(-1.10, 0, -0.55), hw: 0.50, ht: 0.05, seatCol)
         // Yokes (pilot and co-pilot): shaft, rim as a ring of tubes, grips and a push-to-talk button.
         for y in [eye.y, -eye.y] {
-            tube(V(panelX - 0.01, y, -0.06), V(0.88, y, -0.10), 0.016, 0.016, sides: 10, chrome, .metal)
-            let hub = V(0.86, y, -0.115)
+            // Hub ~0.5 m below the eye (was 0.69 m, below the 55° view): the yoke's upswept horns just show
+            // above the bottom edge, as from a trainer's left seat (art round 29: no yoke in view).
+            tube(V(panelX - 0.01, y, -0.24), V(0.88, y, -0.29), 0.016, 0.016, sides: 10, chrome, .metal)
+            let hub = V(0.86, y, -0.30)
             let n = 14
             for i in 0..<n {
                 let a0 = Double(i) / Double(n) * 2 * .pi, a1 = Double(i + 1) / Double(n) * 2 * .pi
@@ -299,7 +309,10 @@ public enum Cockpit {
                 tube(p0, p1, 0.0165, 0.0165, sides: 6, black)
             }
             disc(hub + V(0.012, 0, 0), V(1, 0, 0), 0.034, sides: 14, SIMD3<Float>(0.03, 0.03, 0.032))
-            for sgn in [-1.0, 1.0] { tube(hub + V(0, sgn * 0.14, -0.04), hub + V(0, sgn * 0.14, 0.04), 0.022, 0.022, sides: 8, black) }
+            for sgn in [-1.0, 1.0] {
+                tube(hub + V(0, sgn * 0.14, 0.04), hub + V(0, sgn * 0.14, -0.06), 0.022, 0.022, sides: 8, black)
+                tube(hub + V(0, sgn * 0.14, -0.06), hub + V(-0.01, sgn * 0.12, -0.11), 0.022, 0.018, sides: 8, black)   // upswept horn tip
+            }
             disc(hub + V(-0.014, -0.14, -0.03), V(-1, 0, 0), 0.006, sides: 8, SIMD3<Float>(0.5, 0.03, 0.03))
         }
         return s

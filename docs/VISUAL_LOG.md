@@ -723,3 +723,33 @@ Round-28 batch: slope-detail fades use the geometric mean of the two footprint a
   - Kept only when every tile is real Terrarium data, not the coarse global baseline.
   - z12 tiles added to all six showcase packs with `tools/fetch_mid_heights.py` (same keyless AWS open-data source and attribution; about 18 MB).
 - **Compass:** the mount stub reads as intended.
+
+## Bold round 29: PR #6 b051139 (run 43588783942, ultra tier)
+Same reviewer and scale; compared with round 26.
+
+**Final camera:** KMRY 7.25, KASE 7.75, KBFI 7.0, LSZS 7.25, NZQN 7.25, SkyWorld 7.0. **Average 7.25** (unchanged; the finals moved under 1 level).
+
+**High frames:** KMRY 6.75, KASE 6.75, KBFI 6.75, LSZS 6.25, NZQN 6.5. **Average 6.58** (6.38). **Cockpit 5.5** (5.25).
+
+**Improved:**
+- **NZQN high:** the shore hillside has spurs and gullies with lit and shaded faces (the mid z12 height mosaic).
+- **KASE high:** drainage lines on the valley sides.
+- **Cockpit:** the compass is the right size and in the right place.
+
+**Still wrong:**
+- **KASE road median:** a fainter dark streak remains.
+- **Photo slopes:** the photo on them is still soft.
+- **Cockpit:** the headliner seams are too faint, there is no yoke in view, and the visor has no shape.
+
+Round-30 batch:
+1. **Road proximity mask:** in the near water-mask texture's second channel (rg32Float). Slope relief is zeroed within half the carriageway plus 4 m of an OSM road centreline, fading over 6 m more.
+2. **Photo slopes:** scrub (−22 %) and scree (+22 %) tone patches at 32 m, on the photo's own colour.
+3. **SkyWorld:**
+   - Field variation ±14 % at 55 m and ±7 % hue, plus ±12 % wet/dry patches at 140 m.
+   - Per-tree crown brightness ±18 %.
+4. **Cockpit:**
+   - Yoke hub raised to 0.5 m below the eye, with upswept horns at the bottom of the view.
+   - Headliner strips alternate ±8 %, with seams at 45 %.
+   - Stitched visor rims.
+   - A highlight edge on each pillar.
+   - Shaded carpet.

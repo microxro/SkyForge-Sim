@@ -346,6 +346,40 @@ public struct RealWorldRegion: FlightWorld {
     }
 
     /// OSM roads as terrain-draped ribbons (nil without road data).
+    /// Road proximity on the near layer's mask grid (`size`², row 0 north): 1 within half the carriageway
+    /// plus `margin` m of a road centreline, fading to 0 over `fade` m more. The terrain shader drops its
+    /// slope relief there, so relief shading cannot darken the ground beside and between road ribbons
+    /// (art rounds 26–29: a dark sliver in the KASE dual carriageway's median). Nil without roads.
+    public func roadMask(size: Int, margin: Double = 4, fade: Double = 6) -> [Float]? {
+        guard let roads = osm?.roads, !roads.isEmpty, size > 1 else { return nil }
+        let m = ground.near, x0 = m.centre.x - m.halfExtent, y1 = m.centre.y + m.halfExtent
+        let px = 2 * m.halfExtent / Double(size)
+        var out = [Float](repeating: 0, count: size * size)
+        for r in roads where r.points.count >= 2 {
+            let inner = r.widthMetres / 2 + margin, outer = inner + fade
+            for k in 0..<(r.points.count - 1) {
+                let a = r.points[k], b = r.points[k + 1], ab = b - a
+                let len2 = max((ab * ab).sum(), 1e-6)
+                let lo = pointwiseMin(a, b) - SIMD2(repeating: outer), hi = pointwiseMax(a, b) + SIMD2(repeating: outer)
+                let i0 = max(0, Int(((lo.x - x0) / px).rounded(.down))), i1 = min(size - 1, Int(((hi.x - x0) / px).rounded(.up)))
+                let j0 = max(0, Int(((y1 - hi.y) / px).rounded(.down))), j1 = min(size - 1, Int(((y1 - lo.y) / px).rounded(.up)))
+                if i0 > i1 || j0 > j1 { continue }
+                for j in j0...j1 {
+                    let y = y1 - (Double(j) + 0.5) * px
+                    for i in i0...i1 {
+                        let p = SIMD2(x0 + (Double(i) + 0.5) * px, y)
+                        let t = max(0, min(1, ((p - a) * ab).sum() / len2))
+                        let d = p - (a + ab * t)
+                        let dist = (d * d).sum().squareRoot()
+                        let w = Float(max(0, min(1, (outer - dist) / fade)))
+                        if w > out[j * size + i] { out[j * size + i] = w }
+                    }
+                }
+            }
+        }
+        return out
+    }
+
     public func roadMesh() -> TriangleSoup? {
         guard let roads = osm?.roads, !roads.isEmpty else { return nil }
         return OSMMeshBuilder.roads(roads) { self.height($0, $1) }
