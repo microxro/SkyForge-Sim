@@ -51,12 +51,13 @@ public struct FieldPattern: Sendable, Equatable {
     /// the vertex colour's large-scale variation. Muted earth tones only (review: a lime parcel).
     static let summer: [SIMD3<Float>] = [
         SIMD3(0.74, 0.90, 0.80),   // pasture
-        SIMD3(1.22, 1.10, 1.28),   // hay
-        SIMD3(1.98, 1.41, 1.84),   // ripe wheat
-        SIMD3(0.95, 0.60, 1.10),   // ploughed soil
-        SIMD3(1.70, 1.28, 2.05),   // stubble
+        SIMD3(1.30, 1.12, 1.10),   // hay
+        SIMD3(2.30, 1.55, 1.10),   // ripe wheat: golden straw (round 31: the patchwork was all greens)
+        SIMD3(0.95, 0.60, 0.95),   // ploughed soil
+        SIMD3(1.95, 1.40, 1.70),   // pale stubble
         SIMD3(0.55, 0.70, 0.66),   // dark pasture
         SIMD3(1.32, 0.96, 1.30),   // fallow
+        SIMD3(2.20, 1.85, 0.70),   // flowering rapeseed (a few fields)
     ]
     static let autumnCrops: [SIMD3<Float>] = [
         SIMD3(1.43, 1.03, 1.57), SIMD3(0.78, 0.54, 1.00), SIMD3(0.60, 0.68, 0.82),

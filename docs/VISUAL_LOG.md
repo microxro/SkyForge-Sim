@@ -781,3 +781,29 @@ Round-31 batch (`6163802` plus this commit):
 5. **Cockpit:**
    - Crinkle finish on the panel face and lower panel.
    - Rounded visor front edges.
+
+## Bold round 31: PR #6 13a1375 (run 43598001198, ultra tier)
+Same reviewer and scale.
+
+**Final camera:** KMRY 7.25, KASE 7.75, KBFI 7.0, LSZS 7.25, NZQN 7.25, SkyWorld 7.25. **Average 7.33** (round 30: 7.25).
+
+**High frames:** 6.58 (unchanged). **Cockpit 6.0** (5.75).
+
+**Improved:**
+- **SkyWorld:** field tone variation shows across the patchwork, including at grazing angles, and crown sizes vary.
+- **Cockpit:** the PFD is clear.
+
+**Did not show:**
+- Slope scree and scrub at 90 m.
+- The LSZS forest floor (little open ground between the crowns).
+- The cockpit crinkle finish. The yoke horns left the frame.
+
+Round-32 batch:
+1. **SkyWorld crop palette** (CPU `FieldPattern` and GPU together):
+   - Golden ripe wheat, pale stubble, and a lighter cut hay.
+   - A new eighth crop: flowering rapeseed.
+2. **Slope bands:** about 200 m, stretched down the fall line, ±30–40 %, on a wider slope gate (n.z < 0.985) and masked at roads.
+3. **Shaded photo terrain:** 35 % more sky light where the sun term is small (LSZS high foreground slope).
+4. **Cockpit:**
+   - Yoke horn tips back in view.
+   - Placards, a rocker-switch row and a fuel selector on the lower panel.

@@ -202,6 +202,18 @@ public enum Cockpit {
             let y = -0.50 + Double(i) * 0.053
             disc(P(y, -0.020, 0.006), pn, 0.0105, sides: 10, i % 5 == 0 ? white : SIMD3<Float>(0.03, 0.03, 0.032))
         }
+        // Lower panel: placards, a row of rocker switches and a fuel selector, so the strip under the gauges
+        // is not empty black (round 31).
+        for i in 0..<6 {
+            let y = -0.44 + Double(i) * 0.05
+            quad(P(y, 0.030, 0.002), P(y + 0.03, 0.030, 0.002), P(y + 0.03, 0.045, 0.002), P(y, 0.045, 0.002), SIMD3<Float>(0.55, 0.55, 0.52))
+        }
+        for i in 0..<8 {
+            let y = 0.12 + Double(i) * 0.045
+            box(P(y, 0.020, 0.0) - V(0.012, 0.012, 0.012), P(y, 0.020, 0.0) + V(0.0, 0.012, 0.012), i % 3 == 0 ? SIMD3<Float>(0.45, 0.06, 0.04) : SIMD3<Float>(0.10, 0.10, 0.11))
+        }
+        disc(P(0.0, 0.035, 0.004), pn, 0.028, sides: 18, SIMD3<Float>(0.30, 0.04, 0.03))                 // fuel selector
+        quad(P(-0.022, 0.031, 0.008), P(0.022, 0.031, 0.008), P(0.022, 0.039, 0.008), P(-0.022, 0.039, 0.008), SIMD3<Float>(0.75, 0.75, 0.72))   // selector pointer
         // Glare shield (anti-glare cap) with a raised lip and the rear edge.
         let gsBackL = panel(-w, panelTop), gsBackR = panel(w, panelTop)
         let gsFrontL = V(1.48, -w, panelTop - 0.03), gsFrontR = V(1.48, w, panelTop - 0.03)
@@ -314,7 +326,7 @@ public enum Cockpit {
             disc(hub + V(0.012, 0, 0), V(1, 0, 0), 0.034, sides: 14, SIMD3<Float>(0.03, 0.03, 0.032))
             for sgn in [-1.0, 1.0] {
                 tube(hub + V(0, sgn * 0.14, 0.04), hub + V(0, sgn * 0.14, -0.06), 0.022, 0.022, sides: 8, black)
-                tube(hub + V(0, sgn * 0.14, -0.06), hub + V(-0.01, sgn * 0.12, -0.15), 0.022, 0.018, sides: 8, black)   // upswept horn tip
+                tube(hub + V(0, sgn * 0.14, -0.06), hub + V(-0.01, sgn * 0.12, -0.19), 0.022, 0.018, sides: 8, black)   // upswept horn tip (just in view)
             }
             disc(hub + V(-0.014, -0.14, -0.03), V(-1, 0, 0), 0.006, sides: 8, SIMD3<Float>(0.5, 0.03, 0.03))
         }

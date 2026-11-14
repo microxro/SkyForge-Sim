@@ -284,8 +284,9 @@ public enum WorldShaders {
         float v = (a + (b - a) * tx) + ((c + (d - c) * tx) - (a + (b - a) * tx)) * ty;
         return v * 2.0 - 1.0;
     }
-    constant float3 fpSummer[7] = { float3(0.74, 0.90, 0.80), float3(1.22, 1.10, 1.28), float3(1.98, 1.41, 1.84),
-        float3(0.95, 0.60, 1.10), float3(1.70, 1.28, 2.05), float3(0.55, 0.70, 0.66), float3(1.32, 0.96, 1.30) };
+    constant float3 fpSummer[8] = { float3(0.74, 0.90, 0.80), float3(1.30, 1.12, 1.10), float3(2.30, 1.55, 1.10),
+        float3(0.95, 0.60, 0.95), float3(1.95, 1.40, 1.70), float3(0.55, 0.70, 0.66), float3(1.32, 0.96, 1.30),
+        float3(2.20, 1.85, 0.70) };   // as FieldPattern.summer
     constant float3 fpAutumn[6] = { float3(1.43, 1.03, 1.57), float3(0.78, 0.54, 1.00), float3(0.60, 0.68, 0.82),
         float3(1.22, 0.89, 1.38), float3(0.76, 0.77, 0.95), float3(1.67, 1.21, 2.00) };
     static float fieldCoverage(float x, float y, float weight, uint seed, float band, float4 grid, texture2d<float> parcels) {
@@ -449,7 +450,7 @@ public enum WorldShaders {
         float fu = u / PU, fv = v / PV;
         float iu = floor(fu), iv = floor(fv);
         uint h = fp_hash(int(iu), int(iv), seed);
-        float3 col = autumn ? fpAutumn[h % 6u] : fpSummer[h % 7u];
+        float3 col = autumn ? fpAutumn[h % 6u] : fpSummer[h % 8u];
         float tu = fu - iu, tv = fv - iv;
         float along = ((h >> 24) & 1u) == 0u ? tu : tv;
         col *= 0.95 + 0.08 * along;
@@ -1180,9 +1181,13 @@ public enum WorldShaders {
                 // colour, so a soft, low-detail slope photo gains ground structure (round 29: NZQN and LSZS high).
                 // Round 30: ±22 % at 32 m sat under the photo's own noise. Scree fans and scrub bands at ~90 m,
                 // stronger with distance (±35 % beyond 3 km), the scrub a cooler green against the photo.
-                float patch = groundNoise(w + 71.0, 90.0) * saturate(1.0 - sfp * 2.5 / 90.0);
-                float scrub = smoothstep(0.10, 0.38, patch) * steep, scree = smoothstep(-0.15, -0.42, patch) * steep;
-                float pa = mix(0.25, 0.35, smoothstep(1000.0, 3000.0, dist));
+                // Round 31: still invisible from the high camera. Bands at ~200 m stretched down the fall line
+                // (scree fans and scrub strips), ±30–40 %, on a wider slope gate than the relief.
+                float2 fl = float2(dot(w, fall), dot(w, perp));
+                float patch = groundNoise(float2(fl.x * 0.45, fl.y) + 71.0, 200.0) * saturate(1.0 - sfp * 2.5 / 200.0);
+                float sp = smoothstep(0.985, 0.85, n.z) * (1.0 - roadNear);
+                float scrub = smoothstep(0.08, 0.35, patch) * sp, scree = smoothstep(-0.12, -0.38, patch) * sp;
+                float pa = mix(0.30, 0.40, smoothstep(1000.0, 3000.0, dist));
                 albedo = mix(albedo, albedo * float3(0.70, 0.80, 0.74), scrub * pa / 0.3);
                 albedo *= 1.0 + pa * scree;
             }
@@ -1401,7 +1406,10 @@ public enum WorldShaders {
             col = pbrDielectric(albedo, n, -dir, toSun, rough, u.sunColour.rgb, env, vis) * mix(1.0, ao, 0.5)
                 + albedo * ambient * (m == 6.0 ? 1.0 : 0.3) * ao;
         } else {
-            col = albedo * (u.sunColour.rgb * max(0.0, ndl) * vis + ambient);
+            // Photo terrain in shadow (cast or self-shadowed) gets 35 % more sky light: under the 0.45 exposure,
+            // shaded slopes read as featureless near-black masses (round 31: the LSZS high foreground slope).
+            float shadeLift = (m == 7.0 && in.material == 8.0) ? 1.0 + 0.35 * (1.0 - saturate(max(0.0, ndl) * vis * 3.0)) : 1.0;
+            col = albedo * (u.sunColour.rgb * max(0.0, ndl) * vis + ambient * shadeLift);
             if (m == 3.0) {                      // road: asphalt grain, painted lines, Blinn-Phong highlight
                 // The field channel is the position across the carriageway (−1 left edge … +1 right edge) on
                 // roads that carry a centre line and 0 everywhere on those that do not (OSMMeshBuilder.roads),
