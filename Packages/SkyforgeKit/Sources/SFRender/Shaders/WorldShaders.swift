@@ -1044,14 +1044,25 @@ public enum WorldShaders {
                 // Near band: most of the chroma from the 30 m mean, so grey-blue and white photo blotches take the
                 // ground's own hue at their luminance (round 35: KBFI near ground mottled blue-grey and white).
                 lifted = mix(lifted, lm * (aL * k / meanL), 0.6 * nb);
+                // Near band, green ground: luminance 45 % of the way to the 30 m mean, so the soft 1.6 m photo's
+                // 5–20 m blotches give way to the grass material's own texture (rounds 34–38: every patch octave
+                // read as more photo mottle; the debug views showed the patches were present at full strength).
+                float gm = smoothstep(0.0, 0.02, lm.g - max(lm.r, lm.b) * 0.92);
+                float lL = max(dot(lifted, float3(0.2126, 0.7152, 0.0722)), 1e-4);
+                lifted *= mix(1.0, meanL / lL, 0.45 * nb * gm);
                 albedo = mix(albedo, lifted, ltW);
             }
             float alT = dot(albedo, float3(0.2126, 0.7152, 0.0722));
             // Out to ~5 km at half strength beyond 1.2 km: dark photo forest on shaded mid-ring slopes stayed a
             // near-black mass from the high camera (round 32, LSZS high), which sky light alone did not lift.
             float toeW = max(1.0 - smoothstep(400.0, 1200.0, dist), 1.0 - smoothstep(3500.0, 6000.0, dist)) * (1.0 - saturate((wm - 0.2) / 0.2));   // full strength to ~4 km (round 33)
-            if (alT < 0.10 && toeW > 0.0) {
-                float lifted = 0.10 * pow(max(alT, 1e-4) / 0.10, 0.65);
+            // Beyond ~1.5 km a higher toe (0.13, exponent 0.5): round 37 debug view 1 put the LSZS high valley
+            // wall at ~0.04 linear albedo (photo forest) under a cloud shadow; 0.04 → 0.067 there. The near
+            // canopy (LSZS final, 3D crowns over the photo) keeps the 0.10 toe.
+            float farT = smoothstep(1000.0, 2000.0, dist);
+            float toeT = mix(0.10, 0.13, farT);
+            if (alT < toeT && toeW > 0.0) {
+                float lifted = toeT * pow(max(alT, 1e-4) / toeT, mix(0.65, 0.5, farT));
                 albedo *= 1.0 + (lifted / max(alT, 1e-4) - 1.0) * toeW;
             }
             groundMat = (1.0 - smoothstep(500.0, 800.0, dist)) * (1.0 - saturate((wm - 0.2) / 0.2)) * (1.0 - rwCover);

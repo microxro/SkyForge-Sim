@@ -942,3 +942,11 @@ Round-38 batch:
 2. **Grass tufts:** a ~2.5 m octave (dense, darker tufts against paler ones) that fades by a 1.25 m footprint, two pixels per cell.
 3. **4 m and 12 m patches:** cut back to ±10 % and ±8 %, on natural classes only.
 4. **Cloud shadow:** transmittance floor 0.35.
+
+Round-38 frames (52b2ef7, run 43626600606) before review:
+- KBFI and KMRY near bands shifted only slightly.
+- LSZS high irradiance went from 0.57 to 0.58 of full sun (view 4). The 0.35 cloud floor adds little because the slope's direct share in shadow is small.
+
+Two more changes went into the same review round:
+5. **Near band, green ground:** luminance is pulled 45 % of the way to the 30 m mean, so the grass material's texture replaces the photo's blotches.
+6. **Higher toe beyond about 1.5 km:** target 0.13, exponent 0.5. On the LSZS high valley wall, 0.04 becomes 0.067. The near canopy keeps the 0.10 toe.
