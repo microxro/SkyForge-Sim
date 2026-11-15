@@ -1179,7 +1179,7 @@ public enum WorldShaders {
                 if (nb > 0.0) {
                     float3 lw = float3(0.2126, 0.7152, 0.0722);
                     float lc = max(dot(lifted, lw), 1e-4);
-                    float blue = smoothstep(0.0, 0.025, lifted.b - max(lifted.r * 0.85, lifted.g));   // purple too (round 59)
+                    float blue = smoothstep(0.0, 0.06, (lifted.b - max(lifted.r * 0.85, lifted.g)) / max(lifted.b, 1e-3));   // purple too (round 59); relative (59c)
                     float3 neutral = lc * float3(1.04, 1.0, 0.86) / dot(float3(1.04, 1.0, 0.86), lw);
                     lifted = mix(lifted, neutral, 0.85 * blue * nb);
                     float2 luv4; bool lin4; float lw4a, lw4b;
@@ -1206,12 +1206,14 @@ public enum WorldShaders {
             {
                 // At any distance, and purple too (round 59: NZQN high's slope is ~400 m out and red ≈ blue > green).
                 float farB = (1.0 - saturate((wm - 0.2) / 0.2)) * (1.0 - rwCover);
-                float blueF = smoothstep(0.0, 0.03, albedo.b - max(albedo.r * 0.85, albedo.g));
+                // Relative to blue (round 59c: the slope's albedo is ~(63, 66, 68) sRGB, an excess of ~0.003 linear, so an
+                // absolute 0.03 ramp gave ~3 % strength; the grade then spread it into purple patches).
+                float blueF = smoothstep(0.0, 0.06, (albedo.b - max(albedo.r * 0.85, albedo.g)) / max(albedo.b, 1e-3));
                 if (farB * blueF > 0.0) {
                     float3 lw3 = float3(0.2126, 0.7152, 0.0722);
                     float lb = dot(albedo, lw3);
                     float3 warm = lb * float3(1.02, 1.0, 0.80) / dot(float3(1.02, 1.0, 0.80), lw3);
-                    albedo = mix(albedo, warm, 0.75 * farB * blueF);
+                    albedo = mix(albedo, warm, 0.9 * farB * blueF);
                 }
             }
             float alT = dot(albedo, float3(0.2126, 0.7152, 0.0722));

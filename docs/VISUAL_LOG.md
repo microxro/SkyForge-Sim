@@ -1634,3 +1634,5 @@ Tree counts: LSZS 650k (capped), KASE 650k (capped), NZQN 116k (+70k scrub), KMR
   - The photo-ground in-scatter keeps 85 % chroma by 6 km (was 100 % by 4 km).
 - **Round 59 result:** NZQN high unchanged. The purple slope is ~400 m out (inside the 0.7 km start) and has r ≈ b > g, so the `b > 0.9·r` test never fired.
 - **Round 59b:** the blue/purple neutral applies at any distance on land, and both tests use `b − max(0.85·r, g)`. NZQN high debug views 1/2/4 added to find the cause if it persists.
+- **Round 59b result:** NZQN high unchanged (purple fraction 0.45 → 0.446). Debug views 2 and 4 show the slope fully sunlit and lit mostly by direct sun, so the cause is not ambient. Debug view 1 shows the final albedo at ~(63, 66, 68) sRGB, a blue excess of ~0.003 linear, which the absolute 0.03 ramp scaled to ~3 % strength.
+- **Round 59c:** both blue tests are relative to the blue channel, `(b − max(0.85·r, g)) / b` over 0–0.06, with a 90 % pull beyond the near band.
