@@ -116,7 +116,7 @@ import SFPreview
             for t in f.trees { #expect(!QuickFlightWorld.inside(SIMD2(t.position.x, t.position.y), f.buildings, margin: 2)) }
             let q = f.yard.center - w.runwayThreshold
             let along = (q * w.runwayDirection).sum(), across = abs(q.x * w.runwayDirection.y - q.y * w.runwayDirection.x)
-            #expect(!(along > -4_500 && across < 120), "farmyard on the final path at \(f.yard.center)")
+            #expect(!(along > -4_500 && across < 20), "farmyard on the final path at \(f.yard.center)")
         }
         for b in farms {
             let h = pattern.hedge(Float(b.center.x), Float(b.center.y))

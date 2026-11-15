@@ -1353,3 +1353,16 @@ Round-50 batch:
    - Shadow bands at least 2 px wide.
 3. **NZQN shelf:** rings at 40 m and 90 m, and a stronger turquoise tint.
 4. **Cockpit:** the vent 1.5× larger, plus a second vent on the right.
+
+### Round 50 frames (CI run 43705389095, before review)
+
+All jobs green. Lower-half luminance against round 49b is within 0.6 everywhere.
+
+- **SkyWorld:** both foreground farmsteads had disappeared.
+  - The full-size yard had to clear the hedges, and the final-path exclusion covered 140 m either side.
+  - Fix: the yard now shrinks to fit (or is dropped) instead of rejecting the farm, and the exclusion is 40 m either side of the centreline.
+  - A probe shows a farmstead 300 m ahead of the aircraft, 107 m right of the path.
+- **KASE cliff:** the cool-grey blocks with bright rims read as flat concrete quadrilaterals.
+  - Fix: outlines are warped ±7 m at about 14 m, so blocks are ragged.
+  - Faces vary ±25 % at 40 m and 12 m.
+  - Block colour keeps a quarter of the local rock's hue.

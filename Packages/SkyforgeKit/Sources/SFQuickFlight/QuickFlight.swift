@@ -128,7 +128,7 @@ public struct QuickFlightWorld: FlightWorld {
         }
         let steads = parcelFarmsteads(b.soup.fieldPattern, foci: foci, radius: r, roads: roads)
         let farms = steads.flatMap(\.buildings)
-        for f in steads {
+        for f in steads where f.yard.halfSize.x > 0 {
             b.addGroundPatch(center: f.yard.center, halfSize: f.yard.halfSize, heading: f.heading, colour: srgb(132, 124, 108))   // gravel
             if let t = f.track { b.addGroundPatch(center: t.center, halfSize: t.halfSize, heading: t.heading, colour: srgb(118, 104, 84)) }
         }
@@ -206,23 +206,33 @@ public struct QuickFlightWorld: FlightWorld {
                     let parts: [(SIMD2<Double>, SIMD2<Double>, BuildingKind, Bool)] = [
                         (house, SIMD2(5.5, 7), .house, false), (barn, SIMD2(9, 13), .barn, false), (shed, SIMD2(3.5, 5), .barn, true)]
                     // Gravel yard under and between the three buildings (house −8…32 m along, −9…28 m across).
-                    let yardC = yard + ia * 12 + ic * 9.5, yardHalf = SIMD2(20.0, 18.5)
-                    let corners = [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)].map { yardC + ia * ($0.0 * yardHalf.x) + ic * ($0.1 * yardHalf.y) }
+                    // The yard shrinks to fit the parcel rather than costing the farmstead (round 50: a full-size yard
+                    // that touched a hedge dropped both farms in the SkyWorld foreground).
+                    var yardC = yard + ia * 12 + ic * 9.5, yardHalf = SIMD2(20.0, 18.5)
+                    func corners(_ c: SIMD2<Double>, _ hs: SIMD2<Double>) -> [SIMD2<Double>] {
+                        [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)].map { c + ia * ($0.0 * hs.x) + ic * ($0.1 * hs.y) }
+                    }
                     func clear(_ p: SIMD2<Double>) -> Bool {
                         let q = p - runway.threshold
                         let alongRwy = (q * runwayDirection).sum(), acrossRwy = abs(q.x * runwayDirection.y - q.y * runwayDirection.x)
                         // Off the runway and its approach, and none on the final path under the aircraft (round 49).
                         return !recipe.isWater(p.x, p.y) && roadDistance(p) > 16
                             && !(alongRwy > -1_200 && alongRwy < runway.length + 400 && acrossRwy < 260)
-                            && !(alongRwy > -4_500 && acrossRwy < 140)
+                            && !(alongRwy > -4_500 && acrossRwy < 40)
                     }
                     let fits = parts.allSatisfy { p, half, _, _ in
                         let hd = pattern.hedge(Float(p.x), Float(p.y))
                         return hd.parcel == key && Double(hd.distance) > (half * half).sum().squareRoot() + 4 && clear(p)
-                    } && corners.allSatisfy { p in
-                        let hd = pattern.hedge(Float(p.x), Float(p.y)); return hd.parcel == key && hd.distance > 2 && clear(p)
                     }
                     if !fits { continue }
+                    func yardFits(_ c: SIMD2<Double>, _ hs: SIMD2<Double>) -> Bool {
+                        corners(c, hs).allSatisfy { p in let hd = pattern.hedge(Float(p.x), Float(p.y)); return hd.parcel == key && hd.distance > 2 }
+                    }
+                    var hasYard = true
+                    if !yardFits(yardC, yardHalf) {
+                        yardC = yard + ia * 10 + ic * 7; yardHalf = SIMD2(16, 14)
+                        hasYard = yardFits(yardC, yardHalf)
+                    }
                     let wall = houseWalls[Int((h >> 8) % UInt64(houseWalls.count))]
                     let roofC = houseRoofs[Int((h >> 12) % UInt64(houseRoofs.count))]
                     // Weathered barn red and grey or dark-green metal roofs (round 49: saturated red boxes).
@@ -240,6 +250,7 @@ public struct QuickFlightWorld: FlightWorld {
                     }
                     // Track from the yard's outer edge to the nearest hedge (the parcel's corner side).
                     var track: Patch?
+                    if !hasYard { yardHalf = .zero }
                     let start = yardC - ic * yardHalf.y
                     var len = 0.0
                     while len < 60 {
@@ -248,7 +259,7 @@ public struct QuickFlightWorld: FlightWorld {
                         if hd.parcel != key || hd.distance < 1.5 { break }
                         len += 2
                     }
-                    if len >= 4 {
+                    if len >= 4 && hasYard {
                         track = Patch(center: start - ic * (len / 2) + ia * 4, halfSize: SIMD2(1.6, len / 2 + 0.5),
                                       heading: heading)
                     }

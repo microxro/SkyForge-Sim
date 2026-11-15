@@ -1507,8 +1507,13 @@ public enum WorldShaders {
                     // pixel to pixel, curved slopes warped the cells into swirling contour rings; the same warp drew the
                     // earlier hairlines). Only the rim / shadow offset follows the fall line.
                     float bw2 = max(3.0, sfp * 2.5);                // rim / shadow band ~3 m, ≥ 2.5 px (round 49: thin)
-                    float oIn = outcropCells(w, 35.0, 0.25, oe);   // 35 m blocks (round 48: 22 m were 5–8 px)
-                    float oUp = outcropCells(w - fall * bw2, 35.0, 0.25, oe);   // uphill (fall points downhill)
+                    // Outlines warped ±7 m at ~14 m so the blocks are ragged rock, not the Worley cells' straight-edged
+                    // polygons (round 50: crisp grey quadrilaterals read as concrete pads).
+                    float2 wq = w + 7.0 * float2(groundNoise(w + 3.1, 14.0), groundNoise(w - 8.7, 14.0));
+                    float2 wu = w - fall * bw2;
+                    wu += 7.0 * float2(groundNoise(wu + 3.1, 14.0), groundNoise(wu - 8.7, 14.0));
+                    float oIn = outcropCells(wq, 35.0, 0.25, oe);  // 35 m blocks (round 48: 22 m were 5–8 px)
+                    float oUp = outcropCells(wu, 35.0, 0.25, oe);  // uphill (fall points downhill)
                     float oFade = smoothstep(2.0, 3.5, 35.0 / max(sfp, 1e-3) / 3.0);
                     float outcrop = oIn * oFade;
                     float shadowLine = saturate(oUp - oIn) * oFade;      // band just below a block
@@ -1520,10 +1525,10 @@ public enum WorldShaders {
                     // Cool grey at 0.72× so the blocks part from the warm soil by hue, an upper rim 1.6× the
                     // surrounding slope and a −55 % shadow band (round 49: 0.5× warm blocks with a rim relative to
                     // the dark block still read as soft stains against the photo's own dark patches).
-                    float3 rockC = float3(rkL) * 0.72 * float3(0.92, 0.98, 1.08);
+                    float3 rockC = mix(float3(rkL), rock, 0.25) * 0.72 * float3(0.95, 0.99, 1.05);
                     float3 slopeC = rock;
                     rock *= 1.0 + 0.10 * oFade;                    // keeps the slope's mean with the blocks and shadow bands
-                    rock = mix(rock, rockC * (1.0 + 0.2 * g2), outcrop);
+                    rock = mix(rock, rockC * (1.0 + 0.25 * g1 + 0.25 * g2), outcrop);   // fractured faces, not a flat fill
                     rock = mix(rock, slopeC * 1.6, litEdge);
                     rock *= 1.0 - 0.55 * shadowLine;
                     albedo = mix(albedo, rock, stretchW);
