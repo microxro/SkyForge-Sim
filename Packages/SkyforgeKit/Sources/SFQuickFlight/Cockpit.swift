@@ -251,6 +251,19 @@ public enum Cockpit {
             // Door pocket and handle.
             box(V(-0.35, side > 0 ? y - 0.04 : y, 0.18), V(0.35, side > 0 ? y : y + 0.04, 0.34), SIMD3<Float>(0.07, 0.065, 0.06))
             tube(V(-0.30, y - side * 0.03, -0.30), V(-0.12, y - side * 0.03, -0.30), 0.011, 0.011, sides: 6, chrome, .metal)
+            // Upholstered insert between the armrest and the pocket: lighter fabric with a darker piped border, so the
+            // door reads as a trimmed panel rather than one flat sheet (art round 44: the side panels were untextured).
+            let yi = y - side * 0.004
+            shaded(V(0.80, yi, -0.08), V(-0.95, yi, -0.08), V(-0.95, yi, 0.15), V(0.80, yi, 0.15), door * 1.35, nu: 14, nv: 4, ao: 0.25, grain: 0.12, seed: side > 0 ? 21 : 22)
+            for (pa, pb) in [(V(0.80, yi - side * 0.003, -0.08), V(-0.95, yi - side * 0.003, -0.08)), (V(0.80, yi - side * 0.003, 0.15), V(-0.95, yi - side * 0.003, 0.15)),
+                             (V(0.80, yi - side * 0.003, -0.08), V(0.80, yi - side * 0.003, 0.15))] {
+                tube(pa, pb, 0.006, 0.006, sides: 4, door * 0.55)
+            }
+            // A moulded crease under the window sill catches the cabin light.
+            tube(V(panelX - 0.02, y - side * 0.006, -0.26), V(-1.05, y - side * 0.006, -0.26), 0.008, 0.008, sides: 6, door * 1.6)
+            // Inside door handle at the front of the armrest: a dark recessed cup and a chrome lever.
+            box(V(0.58, side > 0 ? y - 0.012 : y, -0.20), V(0.74, side > 0 ? y : y + 0.012, -0.12), SIMD3<Float>(0.02, 0.02, 0.022))
+            tube(V(0.60, y - side * 0.022, -0.16), V(0.72, y - side * 0.03, -0.155), 0.010, 0.008, sides: 8, chrome, .metal)
             // Windscreen pillar and door post.
             // Moulded plastic pillar covers in a mid grey with smooth normals (round 26: flat black bars).
             tube(V(1.46, side * (w - 0.01), panelTop - 0.03), V(0.78, side * (w - 0.02), -1.02), 0.024, 0.022, sides: 10, trim * 1.5)
@@ -284,7 +297,14 @@ public enum Cockpit {
             tube(V(0.785, y - 0.17, -1.018), V(0.785, y + 0.17, -1.018), 0.004, 0.004, sides: 6, chrome, .metal)
         }
         // Floor carpet, a seat-rail step, and rudder pedals with toe plates.
-        shaded(V(1.02, -w, floorZ), V(1.02, w, floorZ), V(-1.1, w, floorZ), V(-1.1, -w, floorZ), carpet * 1.4, nu: 8, nv: 8, ao: 0.4, grain: 0.15, seed: 11)
+        // Carpet darker toward the firewall, in the footwell's shadow (art round 44: an even floor read flat), with a
+        // rubber heel mat under each set of pedals.
+        shaded(V(1.02, -w, floorZ), V(1.02, w, floorZ), V(0.45, w, floorZ), V(0.45, -w, floorZ), carpet * 0.95, nu: 8, nv: 4, ao: 0.45, grain: 0.18, seed: 11)
+        shaded(V(0.45, -w, floorZ), V(0.45, w, floorZ), V(-1.1, w, floorZ), V(-1.1, -w, floorZ), carpet * 1.45, nu: 8, nv: 8, ao: 0.4, grain: 0.15, seed: 12)
+        for y in [eye.y, -eye.y] {
+            shaded(V(0.86, y - 0.16, floorZ - 0.004), V(0.86, y + 0.16, floorZ - 0.004), V(0.55, y + 0.16, floorZ - 0.004), V(0.55, y - 0.16, floorZ - 0.004),
+                   SIMD3<Float>(0.030, 0.030, 0.032), nu: 6, nv: 4, ao: 0.2, grain: 0.25, seed: y > 0 ? 13 : 14)
+        }
         for y in [eye.y, -eye.y] {
             for dy in [-0.09, 0.09] {
                 box(V(0.90, y + dy - 0.045, 0.34), V(0.96, y + dy + 0.045, 0.50), SIMD3<Float>(0.06, 0.06, 0.065))

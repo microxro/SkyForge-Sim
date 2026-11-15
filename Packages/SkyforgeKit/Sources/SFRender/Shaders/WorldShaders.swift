@@ -1150,22 +1150,36 @@ public enum WorldShaders {
                 float magW = smoothstep(1.4, 2.6, dbgTexel / max(fpG, 1e-3)) * smoothstep(2.5, 4.0, dbgTexel)
                            * (1.0 - saturate((wm - 0.2) / 0.2)) * (1.0 - rwCover) * (1.0 - roadNear);
                 if (magW > 0.01) {
-                    float ls20 = max(1.0, 20.0 / max(length(dwx) + length(dwy), 1e-3));
+                    // Isotropic ~20 m mean (round 45: an anisotropic mean kept the sideways smear): both footprint axes
+                    // set to the same length along their own directions.
+                    float L = max(20.0, max(length(dwx), length(dwy)));
+                    float2 ix = dwx / max(length(dwx), 1e-4) * L, iy = dwy / max(length(dwy), 1e-4) * L;
                     float2 auv; bool aIn; float a0, a1;
-                    float3 m20 = photoAlbedo(photoColour(u, imgNear, imgMid, imgFar, imgDetail, photoW, dwx * ls20, dwy * ls20, auv, aIn, a0, a1));
+                    float3 m20 = photoAlbedo(photoColour(u, imgNear, imgMid, imgFar, imgDetail, photoW, ix, iy, auv, aIn, a0, a1));
                     float mL = dot(m20, float3(0.2126, 0.7152, 0.0722));
+                    // The same dark-ground toe lift the photo itself took above (round 45: without it the LSZS high
+                    // slope went back to near black).
+                    {
+                        float toeW2 = max(1.0 - smoothstep(400.0, 1200.0, dist), 1.0 - smoothstep(3500.0, 6000.0, dist));
+                        float farT2 = smoothstep(1000.0, 2000.0, dist), toeT2 = mix(0.10, 0.13, farT2);
+                        if (mL < toeT2) {
+                            float lifted = toeT2 * pow(max(mL, 1e-4) / toeT2, mix(0.65, 0.5, farT2));
+                            m20 *= 1.0 + (lifted / max(mL, 1e-4) - 1.0) * toeW2;
+                        }
+                    }
                     float canopy = smoothstep(0.0, 0.03, m20.g - max(m20.r, m20.b)) * smoothstep(0.16, 0.06, mL);
-                    float f10 = saturate(1.0 - fpG * 2.5 / 10.0), f25 = saturate(1.0 - fpG * 2.5 / 25.0);
-                    // Canopy: crown clumps (ridged 10 m noise) with gaps in 25 m stands; open ground: soft 10/25 m patches.
-                    float crowns = (1.0 - abs(groundNoise(photoW + 47.0, 10.0))) * 2.0 - 1.0;
-                    float stands = groundNoise(photoW - 113.0, 25.0);
-                    float pc = 0.28 * crowns * f10 + 0.18 * stands * f25;
-                    float po = 0.14 * groundNoise(photoW + 389.0, 10.0) * f10 + 0.16 * groundNoise(photoW - 271.0, 25.0) * f25;
-                    float3 procA = m20 * (1.0 + mix(po, pc, canopy));
-                    // Keep 25 % of the photo's own deviation from its mean so real tracks and edges stay.
+                    // Features 2–4 px across at this range (~6–12 m), faded at 1.5 px per feature rather than 2.5.
+                    float f6 = saturate(1.0 - fpG * 1.5 / 6.0), f12 = saturate(1.0 - fpG * 1.5 / 12.0);
+                    float crowns = (1.0 - abs(groundNoise(photoW + 47.0, 6.0))) * 2.0 - 1.0;
+                    float stands = groundNoise(photoW - 113.0, 12.0);
+                    float pc = 0.30 * (crowns - 0.0) * f6 + 0.20 * stands * f12;
+                    float po = 0.16 * groundNoise(photoW + 389.0, 6.0) * f6 + 0.16 * groundNoise(photoW - 271.0, 12.0) * f12;
+                    // Luminance-neutral about the mean: the octaves are zero-mean and clamped symmetrically.
+                    float3 procA = m20 * clamp(1.0 + mix(po, pc, canopy), 0.55, 1.45);
+                    // 10 % of the photo's own deviation (tracks and edges), was 25 % (round 45: carried the smear).
                     float3 dev = clamp(albedo / max(m20, float3(1e-3)), float3(0.5), float3(2.0));
-                    procA *= pow(dev, float3(0.25));
-                    albedo = mix(albedo, procA, 0.85 * magW);
+                    procA *= pow(dev, float3(0.10));
+                    albedo = mix(albedo, procA, 0.9 * magW);
                 }
             }
             {
@@ -1426,12 +1440,16 @@ public enum WorldShaders {
                     // Outcrops and ledges with crisp edges and their own shadow line below (round-44 review: the cliff
                     // still read soft). Rock at ~55 % of the local mean's luminance, greyed; the threshold edge
                     // widens with the footprint so it never aliases.
-                    float oe = max(0.03, sfp / 25.0);
-                    float on = groundNoise(float2(fl.x * 0.7, fl.y) + 301.0, 25.0);
-                    float onUp = groundNoise(float2((fl.x - 5.0) * 0.7, fl.y) + 301.0, 25.0);   // 5 m uphill (fall points downhill)
-                    float oFade = saturate(1.0 - sfp * 2.5 / 25.0);
-                    float outcrop = smoothstep(0.30 - oe, 0.30 + oe, on) * oFade;
-                    float shadowLine = saturate(smoothstep(0.30 - oe, 0.30 + oe, onUp) - smoothstep(0.30 - oe, 0.30 + oe, on)) * oFade;
+                    // Round 45: thresholded isotropic noise drew swirling contour rings on the KASE cliff. Ridged noise
+                    // stretched 3:1 along the contour (fl.y), broken by a 40 m mask into short outcrops, faded where a
+                    // ~8 m ledge band is under ~4–8 px on screen.
+                    float oe = max(0.03, sfp / 30.0);
+                    float rn = 1.0 - abs(groundNoise(float2(fl.x, fl.y * 0.33) + 301.0, 18.0));
+                    float rnUp = 1.0 - abs(groundNoise(float2(fl.x - 4.0, fl.y * 0.33) + 301.0, 18.0));   // 4 m uphill (fall points downhill)
+                    float oMask = smoothstep(0.05, 0.30, groundNoise(w - 811.0, 40.0));
+                    float oFade = smoothstep(4.0, 8.0, 8.0 / max(sfp, 1e-3)) * oMask;
+                    float outcrop = smoothstep(0.78 - oe, 0.78 + oe, rn) * oFade;
+                    float shadowLine = saturate(smoothstep(0.78 - oe, 0.78 + oe, rnUp) - smoothstep(0.78 - oe, 0.78 + oe, rn)) * oFade;
                     float3 rockC = mix(float3(smL), sm, 0.35) * 0.55 * float3(1.02, 1.0, 0.96);
                     rock = mix(rock, rockC * (1.0 + 0.2 * g2), outcrop);
                     rock *= 1.0 - 0.45 * shadowLine;

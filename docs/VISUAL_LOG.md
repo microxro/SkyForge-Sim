@@ -1138,3 +1138,29 @@ Round-45 frames (d15e96f, run 43661627056) before review:
 - **High frames:** 1–3 points darker in mean luminance (LSZS high 99.7 → 96.6).
 - **KASE high:** the right-side foreground reads crisper and less melted.
 - **LSZS and KBFI high:** gain slight texture.
+
+## Bold round 45: PR #8 d15e96f (run 43661627056, ultra tier)
+Same reviewer and scale.
+
+**Final camera:** KMRY 7.5, KASE 7.5 (7.75), KBFI 7.5, LSZS 7.5, NZQN 7.5, SkyWorld 7.75. **Average 7.54** (7.58). A regression.
+
+**High frames:** 6.65 (6.70); LSZS high 6.25 (6.5). **Cockpit:** 6.75.
+
+**What went wrong:**
+- **Magnified-photo detail:** the KASE high smear survived. The 20 m mean was sampled anisotropically along the same axis, 25 % of the photo's deviation was kept, and the 10/25 m octaves were faded at this range.
+- **Darkening:** the LSZS high right slope went back to near black. The 20 m mean skipped the photo's dark-ground toe lift.
+- **Rock ledges:** thresholded isotropic noise drew swirling contour rings on the KASE final cliff.
+- **Field boundary lines:** barely visible.
+
+Round-46 batch:
+1. **Magnified photo:**
+   - An isotropic 20 m mean with the same toe lift.
+   - Zero-mean 6/12 m octaves faded at 1.5 px per feature, clamped symmetrically (0.55–1.45).
+   - 10 % of the photo's deviation kept, up to 90 % blend.
+2. **Ledges:**
+   - Ridged noise stretched 3:1 along the contour, broken by a 40 m mask into short outcrops.
+   - Faded where an ~8 m band is under 4–8 px on screen.
+3. **Cockpit:**
+   - An upholstered door insert with a piped border, and a moulded crease under the sill.
+   - A recessed inside door handle at the armrest front.
+   - Carpet darker toward the firewall, with rubber heel mats.
