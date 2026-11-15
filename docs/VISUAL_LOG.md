@@ -1309,3 +1309,23 @@ Round-49 batch:
 3. **SkyWorld:**
    - Grass darkens up to 16 % with slope, with a warmer tone on sun-facing slopes.
    - Farmsteads on every 5th rural-road point at 65 % (every 9th at 45 %), each with a small shed beside the house and barn.
+
+### Round 49 frames (CI run 43702269615, before review)
+
+All jobs green. Lower-half luminance against round 48e is within 0.4 everywhere.
+
+**SkyWorld:** the frame is unchanged apart from 107 pixels on the horizon.
+- The final camera looks across flat parcels, so the slope tone has nothing to act on.
+- Farms are placed only along rural roads, and no rural road crosses those fields.
+
+**KMRY near band:** changed by 0.05 levels on average. The stronger pull barely moves it.
+
+Round-49b batch, added before review:
+1. **SkyWorld farmsteads in the fields:** about one farmed parcel in six gets a house, barn and shed in a corner.
+   - Laid out on the parcel axes.
+   - Clear of hedgerows, roads, water and the runway approach.
+   - Trees inside a farm footprint are dropped.
+   - A test checks that each building sits inside a farmed parcel and off the approach.
+2. **NZQN shallow shelf:** the water mask is averaged over rings 20 m and 40 m out (near layer only).
+   - The shallows now reach 30–60 m from shore, instead of following the mask's one-texel rise.
+3. **Cockpit:** an eyeball air vent above the two small gauges, with a chrome bezel, a ball nozzle and louvre slots.

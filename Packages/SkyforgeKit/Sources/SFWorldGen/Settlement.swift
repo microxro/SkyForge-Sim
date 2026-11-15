@@ -41,6 +41,13 @@ public struct Building: Sendable, Equatable {
     public var wallColour: LinearRGB
     public var roofColour: LinearRGB
     public var variant: UInt32
+
+    public init(center: SIMD2<Double>, halfSize: SIMD2<Double>, heading: Double, baseHeight: Double, wallHeight: Double,
+                roof: RoofType, roofPitch: Double, kind: BuildingKind, wallColour: LinearRGB, roofColour: LinearRGB, variant: UInt32) {
+        self.center = center; self.halfSize = halfSize; self.heading = heading; self.baseHeight = baseHeight
+        self.wallHeight = wallHeight; self.roof = roof; self.roofPitch = roofPitch; self.kind = kind
+        self.wallColour = wallColour; self.roofColour = roofColour; self.variant = variant
+    }
 }
 
 public struct Tree: Sendable, Equatable {

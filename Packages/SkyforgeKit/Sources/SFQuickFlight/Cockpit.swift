@@ -184,6 +184,23 @@ public enum Cockpit {
         }
         for z in rows { for y in [-0.035, 0.075, 0.185] { fittings(y, z, r: 0.043) } }
         fittings(-0.475, -0.295, r: 0.033); fittings(-0.475, -0.195, r: 0.033)
+        // Eyeball air vent above the two small gauges: a dark housing with a chrome bezel and a ball nozzle
+        // turned a little toward the pilot, with a slotted face (art round 48: vents asked for on the panel).
+        do {
+            let c = P(-0.475, -0.368, 0.002)
+            ring(c, pn, 0.016, 0.021, sides: 24, chrome, .metal)
+            disc(c + pn * 0.0005, pn, 0.016, sides: 24, SIMD3<Float>(0.012, 0.012, 0.013))
+            let aim = unit(pn + pr * 0.25 - pu * 0.15)
+            tube(c, c + aim * 0.011, 0.0125, 0.011, sides: 14, SIMD3<Float>(0.06, 0.06, 0.065))
+            let face = c + aim * 0.0115
+            disc(face, aim, 0.011, sides: 14, SIMD3<Float>(0.02, 0.02, 0.022))
+            let (a1, a2) = perp(aim)
+            for k in -2...2 {                                                 // louvre slots
+                let o = a2 * (Double(k) * 0.0036)
+                quad(face + aim * 0.0004 + o - a1 * 0.008 - a2 * 0.0007, face + aim * 0.0004 + o + a1 * 0.008 - a2 * 0.0007,
+                     face + aim * 0.0004 + o + a1 * 0.008 + a2 * 0.0007, face + aim * 0.0004 + o - a1 * 0.008 + a2 * 0.0007, SIMD3<Float>(0.10, 0.10, 0.105))
+            }
+        }
         // Avionics stack: four units with a lit display, a row of keys and two knobs.
         for k in 0..<4 {
             let z0 = -0.385 + Double(k) * 0.055

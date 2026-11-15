@@ -44,7 +44,7 @@ public struct FieldPattern: Sendable, Equatable {
     public static let parcelU: Float = 110, parcelV: Float = 170
     /// Half-width of a hedgerow (metres): a 2.4 m dark strip along every parcel border.
     public static let hedgeHalfWidth: Float = 1.2
-    static let angle: Float = 0.35
+    public static let angle: Float = 0.35
 
     /// Crop albedos relative to the summer grassland colour the terrain vertices carry (linear ratios of
     /// pasture, hay, wheat, ploughed soil, stubble to sRGB 124/132/70, tempered 15 %), so the factor keeps

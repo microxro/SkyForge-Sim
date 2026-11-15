@@ -109,20 +109,27 @@ public struct QuickFlightWorld: FlightWorld {
             foci.map { f -> (Double, SIMD2<Double>) in let d = p - f; return ((d * d).sum().squareRoot(), f) }.min { $0.0 < $1.0 }!
         }
         let lo = SIMD2(foci.map(\.x).min()! - r, foci.map(\.y).min()! - r), hi = SIMD2(foci.map(\.x).max()! + r, foci.map(\.y).max()! + r)
+        var roads: [Road] = [], chunkTrees: [(tree: Tree, dist: Double)] = []
         for cy in Int((lo.y / cs).rounded(.down))...Int((hi.y / cs).rounded(.down)) {
             for cx in Int((lo.x / cs).rounded(.down))...Int((hi.x / cs).rounded(.down)) {
                 let centre = SIMD2((Double(cx) + 0.5) * cs, (Double(cy) + 0.5) * cs)
                 if nearest(centre).dist > r + cs { continue }
                 let chunk = generator.generateChunk(cx: cx, cy: cy)
                 b.addRoads(chunk.roads, near: nearest(centre).focus, radius: r * 1.3)
+                roads += chunk.roads
                 for bl in chunk.buildings where nearest(bl.center).dist < r { b.addBuilding(bl) }
                 for lot in chunk.parkingLots { b.addParkingLot(lot) }
                 for t in chunk.trees {
                     let dist = nearest(SIMD2(t.position.x, t.position.y)).dist
                     if !SceneBuilder.keepTree(t.position, dist: dist, radius: r) { continue }
-                    if collectTrees { collected.append(t) } else { b.addTree(t, detail: dist < d.treeDetailRadius ? 2 : 1) }
+                    chunkTrees.append((t, dist))
                 }
             }
+        }
+        let farms = parcelFarmsteads(b.soup.fieldPattern, foci: foci, radius: r, roads: roads)
+        for bl in farms { b.addBuilding(bl) }
+        for (t, dist) in chunkTrees where !Self.inside(SIMD2(t.position.x, t.position.y), farms, margin: 4) {
+            if collectTrees { collected.append(t) } else { b.addTree(t, detail: dist < d.treeDetailRadius ? 2 : 1) }
         }
         let hedges = hedgerowTrees(b.soup.fieldPattern, foci: foci, radius: r)
         if collectTrees { collected += hedges } else { for t in hedges { b.addTree(t, detail: 1) } }
@@ -138,6 +145,87 @@ public struct QuickFlightWorld: FlightWorld {
         b.addRunway(runway, elevation: runwayElevation)
         b.addAirportKit(runway, elevation: runwayElevation)
         return (b.soup, collected)
+    }
+
+    /// Farmsteads in a corner of about one farmed parcel in six: a house, a barn and a shed on the parcel
+    /// axes, clear of the hedgerows, roads, water and the runway approach. Farms used to line only the
+    /// rural roads, and none reached the open fields the SkyWorld final camera looks across (art round 49).
+    func parcelFarmsteads(_ fieldPattern: FieldPattern?, foci: [SIMD2<Double>], radius r: Double, roads: [Road]) -> [Building] {
+        var out: [Building] = []
+        guard let pattern = fieldPattern, let grid = pattern.parcels else { return out }
+        let a = Double(FieldPattern.angle)
+        let du = SIMD2(cos(a), sin(a)), dv = SIMD2(-sin(a), cos(a))
+        let halfU = Double(FieldPattern.parcelU) / 2, halfV = Double(FieldPattern.parcelV) / 2
+        let houseWalls = [srgb(206, 196, 172), srgb(188, 176, 156), srgb(214, 208, 196), srgb(170, 150, 124)]
+        let houseRoofs = [srgb(118, 64, 48), srgb(96, 90, 86), srgb(134, 82, 58)]
+        func roadDistance(_ p: SIMD2<Double>) -> Double {
+            var best = Double.infinity
+            for road in roads {
+                for k in 0..<max(0, road.points.count - 1) {
+                    let s0 = road.points[k], s1 = road.points[k + 1], e = s1 - s0
+                    if min(s0.x, s1.x) > p.x + 40 || max(s0.x, s1.x) < p.x - 40 || min(s0.y, s1.y) > p.y + 40 || max(s0.y, s1.y) < p.y - 40 { continue }
+                    let t = max(0, min(1, ((p - s0) * e).sum() / max(1e-9, (e * e).sum())))
+                    let q = s0 + e * t - p
+                    best = min(best, (q * q).sum().squareRoot())
+                }
+            }
+            return best
+        }
+        for gy in 0..<grid.height {
+            for gx in 0..<grid.width {
+                let key = SIMD2(grid.iu0 + Int32(gx), grid.iv0 + Int32(gy))
+                guard grid.isOn(key) else { continue }
+                let h = Hash.int(Int(key.x), Int(key.y), seed: 0xFA57)
+                if Hash.unit(h) > 0.17 { continue }
+                let c = pattern.parcelCentre(key)
+                let centre = SIMD2(Double(c.x), Double(c.y))
+                guard foci.contains(where: { f in let e = centre - f; return (e * e).sum() < r * r }) else { continue }
+                let heading = h & 4 == 0 ? a : a + Double.pi / 2
+                let along = SIMD2(cos(heading), sin(heading)), across = SIMD2(-sin(heading), cos(heading))
+                let su: Double = h & 1 == 0 ? 1 : -1, sv: Double = h & 2 == 0 ? 1 : -1
+                // The parcel centre ignores the grid's ±22 m warp: try the four corners, keep the first whose
+                // buildings all sit inside this parcel and clear of its hedges.
+                for (cu, cv) in [(su, sv), (su, -sv), (-su, sv), (-su, -sv)] {
+                    let yard = centre + du * cu * (halfU - 30) + dv * cv * (halfV - 38)
+                    let inward = centre - yard   // barn and shed toward the parcel's middle
+                    let ia = along * (((inward * along).sum() < 0) ? -1.0 : 1.0), ic = across * (((inward * across).sum() < 0) ? -1.0 : 1.0)
+                    let house = yard, barn = yard + ia * 21 + ic * 9, shed = yard - ia * 2 + ic * 17
+                    let parts: [(SIMD2<Double>, SIMD2<Double>, BuildingKind, Bool)] = [
+                        (house, SIMD2(5.5, 7), .house, false), (barn, SIMD2(9, 13), .barn, false), (shed, SIMD2(3.5, 5), .barn, true)]
+                    let fits = parts.allSatisfy { p, half, _, _ in
+                        let hd = pattern.hedge(Float(p.x), Float(p.y))
+                        let q = p - runway.threshold
+                        let alongRwy = (q * runwayDirection).sum(), acrossRwy = abs(q.x * runwayDirection.y - q.y * runwayDirection.x)
+                        return hd.parcel == key && Double(hd.distance) > (half * half).sum().squareRoot() + 4
+                            && !recipe.isWater(p.x, p.y) && roadDistance(p) > 16
+                            && !(alongRwy > -1_200 && alongRwy < runway.length + 400 && acrossRwy < 260)
+                    }
+                    if !fits { continue }
+                    let wall = houseWalls[Int((h >> 8) % UInt64(houseWalls.count))]
+                    let roofC = houseRoofs[Int((h >> 12) % UInt64(houseRoofs.count))]
+                    for (p, half, kind, isShed) in parts {
+                        out.append(Building(center: p, halfSize: half, heading: heading, baseHeight: height(p.x, p.y),
+                                            wallHeight: isShed ? 3.2 : (kind == .barn ? 6.5 : 5.6), roof: .gabled,
+                                            roofPitch: kind == .barn ? 0.75 : 0.6, kind: kind,
+                                            wallColour: isShed ? srgb(118, 104, 84) : (kind == .barn ? srgb(132, 46, 36) : wall),
+                                            roofColour: kind == .barn ? srgb(82, 80, 78) : roofC,
+                                            variant: UInt32(truncatingIfNeeded: h >> 16) &+ (isShed ? 2 : kind == .barn ? 1 : 0)))
+                    }
+                    break
+                }
+            }
+        }
+        return out
+    }
+
+    /// Whether a point is within `margin` of any footprint in `buildings`.
+    static func inside(_ p: SIMD2<Double>, _ buildings: [Building], margin: Double) -> Bool {
+        buildings.contains { b in
+            let d = p - b.center
+            if abs(d.x) > 60 || abs(d.y) > 60 { return false }
+            let c = cos(b.heading), s = sin(b.heading)
+            return abs(c * d.x + s * d.y) < b.halfSize.x + margin && abs(-s * d.x + c * d.y) < b.halfSize.y + margin
+        }
     }
 
     /// Broadleaf trees along the hedgerows of farmed parcels (every ~9 m with gaps, ~22 % kept), so the

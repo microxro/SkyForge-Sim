@@ -97,6 +97,29 @@ import SFPreview
         }
         #expect(w.buildEnvironmentInstanced(detail: d).trees == inst.trees, "deterministic")
     }
+
+    /// Farmsteads stand in farmed parcels (house, barn, shed each inside its parcel), off the runway
+    /// approach, and no instanced tree grows through one.
+    @Test func farmsteadsSitInFarmedParcels() throws {
+        let w = QuickFlightWorld()
+        var d = QuickFlightDetail.phone
+        d.objectRadius = 2_000; d.nearHalfExtent = 1_500; d.nearStep = 25; d.midHalfExtent = 3_000; d.midStep = 150; d.farHalfExtent = 6_000; d.farStep = 500
+        let inst = w.buildEnvironmentInstanced(detail: d)
+        let pattern = try #require(inst.soup.fieldPattern), grid = try #require(pattern.parcels)
+        let farms = w.parcelFarmsteads(pattern, foci: [w.runwayCentre, w.runwayThreshold - w.runwayDirection * 2_600],
+                                       radius: d.objectRadius, roads: [])
+        #expect(farms.count >= 30 && farms.count % 3 == 0, "\(farms.count) farm buildings")
+        for b in farms {
+            let h = pattern.hedge(Float(b.center.x), Float(b.center.y))
+            #expect(grid.isOn(h.parcel) && h.distance > 8, "farm building at \(b.center) on a hedge or unfarmed parcel")
+            let q = b.center - w.runwayThreshold
+            let along = (q * w.runwayDirection).sum(), across = abs(q.x * w.runwayDirection.y - q.y * w.runwayDirection.x)
+            #expect(!(along > -1_200 && along < w.runwayLengthMetres + 400 && across < 260), "farm on the approach at \(b.center)")
+        }
+        for t in inst.trees where t.height < 9 {   // hedgerow trees are 9–16 m and stand on hedges
+            #expect(!QuickFlightWorld.inside(SIMD2(t.position.x, t.position.y), farms, margin: 2), "tree through a farm building at \(t.position)")
+        }
+    }
 }
 
 @Suite struct SkyWorldReliefTests {

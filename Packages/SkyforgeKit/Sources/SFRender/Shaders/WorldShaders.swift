@@ -1009,6 +1009,7 @@ public enum WorldShaders {
         float m = in.material;
         bool imageryWater = false;
         float shoreWm = 0.0;                                 // water-mask value (imagery water) for shoreline foam
+        float shoreWide = 1.0;                               // mean water mask 20–40 m around (1 = open water)
         float imgForest = 0.0;                               // canopy score of the imagery colour (real terrain)
         float groundMat = 0.0;                               // weight of the near-ground detail materials
         float2 groundTilt = float2(0.0);                     // their normal tilt (applied after the normal is final)
@@ -1293,7 +1294,22 @@ public enum WorldShaders {
                     albedo *= 1.0 + 0.10 * rows * crop;
                 }
             }
-            if (saturate((wm - 0.35) / 0.25) > 0.5) { imageryWater = true; albedo *= 0.7; shoreWm = wm; }
+            if (saturate((wm - 0.35) / 0.25) > 0.5) {
+                imageryWater = true; albedo *= 0.7; shoreWm = wm;
+                // Shallow fringe: the mask's mean over two rings 20 and 40 m out, so the shallows reach 30–60 m
+                // from the shore instead of the mask's one-texel rise (art round 48, NZQN: the lake met the land
+                // as a cut-out with no shelf).
+                if (inNear) {
+                    float k = 0.5 / u.imageryNear.z, acc = 0.0;
+                    for (int i = 0; i < 8; i++) {
+                        float a = float(i) * 0.7853982 + 0.39;
+                        float2 d = float2(cos(a), -sin(a)) * k;
+                        acc += waterMask.sample(imgSampler, nuv + d * 20.0, level(0.0)).r
+                             + waterMask.sample(imgSampler, nuv + d * 40.0, level(0.0)).r;
+                    }
+                    shoreWide = mix(1.0, saturate(acc / 16.0), nearWeight);
+                }
+            }
             else {
                 // Wet shore: land just outside the water mask's edge darker and a little cooler (round 40, NZQN:
                 // the lake met the land with no wet line).
@@ -1599,7 +1615,8 @@ public enum WorldShaders {
                 // Shallows: a lighter green-turquoise body across the shore band (the mask's 0.6–0.9 rise), so
                 // a lake edge reads as depth rather than a navy cut-out (art round 11, NZQN).
                 float shallow = 1.0 - smoothstep(0.6, 0.97, shoreWm);   // wider band (round 12: read only at mid-distance)
-                body = mix(body, float3(0.05, 0.11, 0.10) * (ambient * 0.8 + u.sunColour.rgb * max(0.0, toSun.z) * 0.35), shallow * 0.8);   // 0.6 (round 40: shore still abrupt)
+                float wide = 1.0 - smoothstep(0.55, 0.97, shoreWide);   // 30–60 m shelf (round 49)
+                body = mix(body, float3(0.05, 0.11, 0.10) * (ambient * 0.8 + u.sunColour.rgb * max(0.0, toSun.z) * 0.35), max(shallow * 0.8, wide * 0.5));   // 0.6 (round 40: shore still abrupt)
                 // Broad sheen toward the sun from many small wave facets (the 900/60 lobes are single glints).
                 refl += u.sunColour.rgb * pow(max(0.0, dot(r, toSun)), 12.0) * 0.12 * vis;
             }
