@@ -1179,7 +1179,7 @@ public enum WorldShaders {
                 if (nb > 0.0) {
                     float3 lw = float3(0.2126, 0.7152, 0.0722);
                     float lc = max(dot(lifted, lw), 1e-4);
-                    float blue = smoothstep(0.0, 0.025, lifted.b - max(lifted.r, lifted.g));
+                    float blue = smoothstep(0.0, 0.025, lifted.b - max(lifted.r * 0.85, lifted.g));   // purple too (round 59)
                     float3 neutral = lc * float3(1.04, 1.0, 0.86) / dot(float3(1.04, 1.0, 0.86), lw);
                     lifted = mix(lifted, neutral, 0.85 * blue * nb);
                     float2 luv4; bool lin4; float lw4a, lw4b;
@@ -1204,8 +1204,9 @@ public enum WorldShaders {
             // Beyond the near band: blue-dominant land photo (shaded slopes photograph sky-blue/purple; round-58 review,
             // NZQN high's left slope) toward a warm neutral at its luminance, as the near band does since round 51.
             {
-                float farB = smoothstep(700.0, 1500.0, dist) * (1.0 - saturate((wm - 0.2) / 0.2));
-                float blueF = smoothstep(0.0, 0.03, albedo.b - max(albedo.r * 0.9, albedo.g));
+                // At any distance, and purple too (round 59: NZQN high's slope is ~400 m out and red ≈ blue > green).
+                float farB = (1.0 - saturate((wm - 0.2) / 0.2)) * (1.0 - rwCover);
+                float blueF = smoothstep(0.0, 0.03, albedo.b - max(albedo.r * 0.85, albedo.g));
                 if (farB * blueF > 0.0) {
                     float3 lw3 = float3(0.2126, 0.7152, 0.0722);
                     float lb = dot(albedo, lw3);

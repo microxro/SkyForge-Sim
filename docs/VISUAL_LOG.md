@@ -1632,3 +1632,5 @@ Tree counts: LSZS 650k (capped), KASE 650k (capped), NZQN 116k (+70k scrub), KMR
 - **Round 59:**
   - Blue-dominant land photo beyond 0.7–1.5 km is pulled 75 % toward a warm neutral at its luminance; the near band has done this since round 51.
   - The photo-ground in-scatter keeps 85 % chroma by 6 km (was 100 % by 4 km).
+- **Round 59 result:** NZQN high unchanged. The purple slope is ~400 m out (inside the 0.7 km start) and has r ≈ b > g, so the `b > 0.9·r` test never fired.
+- **Round 59b:** the blue/purple neutral applies at any distance on land, and both tests use `b − max(0.85·r, g)`. NZQN high debug views 1/2/4 added to find the cause if it persists.
