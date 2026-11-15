@@ -1615,6 +1615,14 @@ public enum WorldShaders {
         // Fill light under a cumulus: the cloud's lit sides and base scatter sunlight down into its own
         // shadow, so it reads ~17 % of full sun (sky ambient alone left it at ~7 %). Sunlit ground gets none.
         ambient += u.sunColour.rgb * (0.42 * toSun.z * cloudShade);
+        // Photo ground: the sky light that fills shadows at 55 % of its chroma, as an aerial camera's white
+        // balance renders it. Debug view 1 showed KMRY's near-band albedo muted grey-green; the sky-blue and
+        // orange blotches of the final frame were the soft tree and building shadows lit by blue sky beside
+        // warm sunlit grass (rounds 48–51: every albedo pull on that band moved it under 0.2 levels).
+        if (m == 7.0 && in.material == 8.0) {
+            float ambL = dot(ambient, float3(0.2126, 0.7152, 0.0722));
+            ambient = mix(float3(ambL), ambient, 0.55);
+        }
         if (u.quality.y > 0.0) {
             // Cabin interior: lit by the sky and the sunlit ground through the windows, from every side, and
             // by direct sun on the glare shield through the windscreen. The airframe's own shadow would

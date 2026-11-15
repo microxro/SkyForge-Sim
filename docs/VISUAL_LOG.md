@@ -1401,3 +1401,15 @@ All jobs green. Lower-half luminance against round 50b is within 0.6 everywhere.
     - Half the near-band chroma comes from a ~120 m mean (a quarter on green ground).
     - A fixed chroma cap was rejected: linear grass sits near 0.7 chroma and would have gone grey.
 - **KASE slabs:** bright top rims now show at 2×.
+
+### Round 51b frames (CI run 43716986870, before review)
+
+The chroma fix moved KMRY's near band by 0.07 levels (near-band saturation 0.258 → 0.251).
+
+**Root cause, from debug view 1 (albedo):** the near-band albedo is already muted grey-green with mild orange.
+- The final frame's sky-blue and orange blotches are lighting, not photo colour.
+- The blue patches are soft tree and building shadows lit only by the blue sky ambient.
+- The orange is warm sun on dry grass.
+- Rounds 48–51 changed albedo, which is why none of them moved this band.
+
+**Fix:** on photo ground the shadow-filling sky light keeps 55 % of its chroma, as an aerial camera's white balance renders it. SkyWorld's procedural terrain is unchanged.
