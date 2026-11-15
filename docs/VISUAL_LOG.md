@@ -1285,3 +1285,27 @@ Round-48e frames (94cbf4a, run 43700909816) before review:
 - **Swirls:** gone from the KASE cliff.
 - **Outcrops:** faint polygonal blocks now show.
 - **Luminance:** KASE final 82.0 (82.9) and close 79.3 (80.2); everything else within 0.2 of round 47. Sent for review as round 48.
+
+## Bold round 48: PR #9 94cbf4a (run 43700909816, ultra tier)
+Same reviewer and scale.
+
+**Final camera:** KMRY 7.5, KASE 7.75, KBFI 7.5, LSZS 7.5, NZQN 7.5, SkyWorld 7.75. **Average 7.58**.
+
+**High frames:** 6.70. **Cockpit:** 7.25 (7.0); the glareshield sheen registers.
+
+**KASE cliff:** the hairlines and swirls are gone and the slope reads more naturally. The 22 m blocks (5–8 px, soft edges) read as stains, not rock.
+
+**KMRY roofs:** ±25 % still does not register at 1×.
+
+Round-49 batch:
+1. **Outcrops:**
+   - 35 m blocks at 0.5× the local rock.
+   - Hard borders (under 1 px).
+   - ~3 m rim (+55 %) and shadow band (−45 %).
+   - Slope compensation +14 %.
+2. **KMRY near band:**
+   - Chroma pull toward the 30 m mean raised to 72 % (60 %).
+   - A mild 20 % luminance pull on non-green, non-field near-band ground.
+3. **SkyWorld:**
+   - Grass darkens up to 16 % with slope, with a warmer tone on sun-facing slopes.
+   - Farmsteads on every 5th rural-road point at 65 % (every 9th at 45 %), each with a small shed beside the house and barn.

@@ -405,23 +405,29 @@ public struct WorldGenerator: Sendable {
 
     func placeFarms(_ chunk: inout WorldChunk, inChunk: (SIMD2<Double>) -> Bool) {
         for r in ruralRoads() {
-            for (i, p) in r.points.enumerated() where i % 9 == 4 && inChunk(p) && !terrain.isAirport(p.x, p.y, margin: 300) {
+            // Every 5th road point at 65 % (was every 9th at 45 %): SkyWorld's farmland read empty (art round 48).
+            for (i, p) in r.points.enumerated() where i % 5 == 2 && inChunk(p) && !terrain.isAirport(p.x, p.y, margin: 300) {
                 var rng = Xoshiro256(seed: Hash.combine(terrain.seed, UInt64(i), 0xFA2))
-                guard rng.unit() < 0.45, settlementDensity(p.x, p.y) < 0.32 else { continue }
+                guard rng.unit() < 0.65, settlementDensity(p.x, p.y) < 0.32 else { continue }
                 let a = r.points[max(0, i - 1)], b = r.points[min(r.points.count - 1, i + 1)]
                 let heading = atan2(b.y - a.y, b.x - a.x)
                 let side: Double = rng.unit() < 0.5 ? 1 : -1
                 let n = SIMD2(-sin(heading), cos(heading)) * side
                 let house = p + n * rng.range(28, 40)
                 let barn = house + SIMD2(cos(heading), sin(heading)) * rng.range(22, 30) + n * 8
-                for (pos, kind) in [(house, BuildingKind.house), (barn, BuildingKind.barn)] {
+                // A small shed behind the house, so each farmstead reads as a cluster (art round 48).
+                let shed = house - SIMD2(cos(heading), sin(heading)) * rng.range(14, 20) + n * rng.range(6, 12)
+                for (pos, kind, isShed) in [(house, BuildingKind.house, false), (barn, BuildingKind.barn, false), (shed, BuildingKind.barn, true)] {
                     guard !terrain.isWater(pos.x, pos.y), roadDistance(pos.x, pos.y) > 12 else { continue }
+                    let half: SIMD2<Double> = isShed ? SIMD2(3.5, 5) : (kind == .barn ? SIMD2(9, 14) : SIMD2(5.5, 7))
+                    let wallColour: LinearRGB = isShed ? srgb(118, 104, 84)
+                        : (kind == .barn ? srgb(132, 46, 36) : palette.walls[Int(rng.next() % UInt64(palette.walls.count))])
                     chunk.buildings.append(Building(
-                        center: pos, halfSize: kind == .barn ? SIMD2(9, 14) : SIMD2(5.5, 7), heading: heading,
-                        baseHeight: terrain.height(pos.x, pos.y), wallHeight: kind == .barn ? 6 : 5.6,
+                        center: pos, halfSize: half, heading: heading,
+                        baseHeight: terrain.height(pos.x, pos.y), wallHeight: isShed ? 3.2 : (kind == .barn ? 6 : 5.6),
                         roof: .gabled, roofPitch: kind == .barn ? 0.75 : 0.6, kind: kind,
-                        wallColour: kind == .barn ? srgb(132, 46, 36) : palette.walls[Int(rng.next() % UInt64(palette.walls.count))],
-                        roofColour: kind == .barn ? srgb(82, 80, 78) : palette.roofs[0], variant: UInt32(i)))
+                        wallColour: wallColour,
+                        roofColour: kind == .barn ? srgb(82, 80, 78) : palette.roofs[0], variant: UInt32(i) &+ (isShed ? 0x5ED : 0)))
                 }
             }
         }

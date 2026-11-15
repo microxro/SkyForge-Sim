@@ -1104,7 +1104,7 @@ public enum WorldShaders {
                 lifted = mix(lifted, lm * (aL * k / meanL), saturate((k - 1.1) / 0.6));
                 // Near band: most of the chroma from the 30 m mean, so grey-blue and white photo blotches take the
                 // ground's own hue at their luminance (round 35: KBFI near ground mottled blue-grey and white).
-                lifted = mix(lifted, lm * (aL * k / meanL), 0.6 * nb);
+                lifted = mix(lifted, lm * (aL * k / meanL), 0.72 * nb);   // 0.72 (was 0.6): KMRY's yellow/blue/grey near-band blotches (round 48)
                 // Near band, green ground: luminance 45 % of the way to the 30 m mean, so the soft 1.6 m photo's
                 // 5–20 m blotches give way to the grass material's own texture (rounds 34–38: every patch octave
                 // read as more photo mottle; the debug views showed the patches were present at full strength).
@@ -1114,6 +1114,8 @@ public enum WorldShaders {
                 gm = max(gm, 0.8 * smoothstep(0.08, 0.25, (lm.r - lm.b) / max(hiM, 1e-3)) * smoothstep(0.03, 0.08, meanL));
                 float lL = max(dot(lifted, float3(0.2126, 0.7152, 0.0722)), 1e-4);
                 lifted *= mix(1.0, meanL / lL, 0.45 * nb * gm);
+                // Mild luminance pull on all other near-band ground too (round 48: KMRY's suburban lawn blotches).
+                { float lL2 = max(dot(lifted, float3(0.2126, 0.7152, 0.0722)), 1e-4); lifted *= mix(1.0, meanL / lL2, 0.20 * nb * (1.0 - gm)); }
                 albedo = mix(albedo, lifted, ltW);
             }
             float alT = dot(albedo, float3(0.2126, 0.7152, 0.0722));
@@ -1377,6 +1379,13 @@ public enum WorldShaders {
         if (groundMat > 0.0 && !imageryWater) n = normalize(n + float3(-groundTilt, 0.0));
         // Photo terrain enters at 0.985 so the slope tone bands reach moderate slopes; its relief still starts
         // at 0.97 through `steep` (round 32: the bands' wider gate sat inside a 0.97 gate and never applied).
+        // SkyWorld hills: grass thins and darkens with slope, and sun-facing slopes take a slightly warmer tone, so the
+        // rolling ground reads by slope as well as by shading (round 48: SkyWorld unchanged for twelve rounds).
+        if (m == 7.0 && in.material == 7.0) {
+            float sl = smoothstep(0.995, 0.88, n.z);
+            float facing = saturate(dot(normalize(n.xy + 1e-5), normalize(toSun.xy + 1e-5))) * sl;
+            albedo *= (1.0 - 0.16 * sl) * mix(float3(1.0), float3(1.06, 1.02, 0.94), facing);
+        }
         if (m == 7.0 && ((in.material == 7.0 && n.z < 0.9) || (in.material == 8.0 && n.z < 0.985))) {
             // Steep ground: fall-line gullies, rock tone variation, scrub and scree (as SFPreview), each
             // octave faded by pixel footprint so big slopes keep detail far away. On the photo terrain too
@@ -1477,14 +1486,14 @@ public enum WorldShaders {
                     // 3:1 along the contour drew thin wavy hairlines, read as wood grain). ~25 % of jittered 22 m cells
                     // (contour axis stretched only 1.5:1) are rock at 0.6× the local mean; a lit upper rim and a
                     // shadow band below, each at least ~2 px thick, give each block volume. Faded below ~3 px per cell.
-                    float oe = max(0.5, sfp * 0.8);                 // border softness in metres, ~1 px (round 48: 1.5 px read as soft patches)
+                    float oe = max(0.3, sfp * 0.6);                 // hard border, under 1 px (round 48: soft-edged blocks read as stains)
                     // Cells in world metres (round 48: in fall-line coordinates, whose axes turn with the normal from
                     // pixel to pixel, curved slopes warped the cells into swirling contour rings; the same warp drew the
                     // earlier hairlines). Only the rim / shadow offset follows the fall line.
-                    float bw2 = max(3.0, sfp * 2.5);                // rim / shadow band width, ≥ ~2 px
-                    float oIn = outcropCells(w, 22.0, 0.25, oe);
-                    float oUp = outcropCells(w - fall * bw2, 22.0, 0.25, oe);   // uphill (fall points downhill)
-                    float oFade = smoothstep(2.0, 3.5, 22.0 / max(sfp, 1e-3) / 3.0);
+                    float bw2 = max(3.0, sfp * 2.0);                // rim / shadow band ~3 m, ≥ ~2 px
+                    float oIn = outcropCells(w, 35.0, 0.25, oe);   // 35 m blocks (round 48: 22 m were 5–8 px)
+                    float oUp = outcropCells(w - fall * bw2, 35.0, 0.25, oe);   // uphill (fall points downhill)
+                    float oFade = smoothstep(2.0, 3.5, 35.0 / max(sfp, 1e-3) / 3.0);
                     float outcrop = oIn * oFade;
                     float shadowLine = saturate(oUp - oIn) * oFade;      // band just below a block
                     float litEdge = saturate(oIn - oUp) * oFade;         // a block's upper rim
@@ -1492,10 +1501,10 @@ public enum WorldShaders {
                     // takes in the forest round the pale KASE cliff, the blocks were far darker than 0.6× and the cliff
                     // cells lost up to 14 output levels).
                     float rkL = dot(rock, float3(0.2126, 0.7152, 0.0722));
-                    float3 rockC = mix(float3(rkL), rock, 0.35) * 0.60 * float3(1.02, 1.0, 0.96);
-                    rock *= 1.0 + 0.12 * oFade;                    // keeps the slope's mean with the darker blocks and shadow bands
+                    float3 rockC = mix(float3(rkL), rock, 0.35) * 0.50 * float3(1.02, 1.0, 0.96);
+                    rock *= 1.0 + 0.14 * oFade;                    // keeps the slope's mean with the darker blocks and shadow bands
                     rock = mix(rock, rockC * (1.0 + 0.2 * g2), outcrop);
-                    rock *= (1.0 - 0.35 * shadowLine) * (1.0 + 0.45 * litEdge);
+                    rock *= (1.0 - 0.45 * shadowLine) * (1.0 + 0.55 * litEdge);
                     albedo = mix(albedo, rock, stretchW);
                 }
             }
