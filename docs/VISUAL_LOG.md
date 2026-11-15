@@ -1180,3 +1180,11 @@ NZQN, KMRY and KBFI are back within 0.5 of round 44. LSZS high (−1.8), KASE hi
 Fixed before review:
 - **Outcrops:** threshold 0.92 (~13 %), rock at 65 %, a +6 % slope compensation, and shadow lines at −30 %.
 - **Crown octave:** re-centred; ridged value noise averages +0.29.
+
+Round-46b frames (0281a79, run 43692325823) before review — the outcrop change barely moved luminance (LSZS high 61.8, KASE high 91.7, KASE final 82.8):
+- **Where:** a region map puts LSZS high's loss at the left lake shore (−12 output luminance in 160×90 cells) and along the shore below the town (−3 to −5). This is the coarse layer outside the near imagery.
+- **Cause:** the "isotropic" 20 m mean took the footprint's long axis (tens of metres at grazing angles) and averaged in the lake and shaded forest.
+
+Fixed before review:
+- **Footprint:** geometric mean (area-equivalent) instead of the long axis.
+- **Luminance guard:** the mean stays within −15 % / +18 % of the photo's own luminance at the pixel.

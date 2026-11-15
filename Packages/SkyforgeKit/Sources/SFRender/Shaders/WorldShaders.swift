@@ -1152,7 +1152,10 @@ public enum WorldShaders {
                 if (magW > 0.01) {
                     // Isotropic ~20 m mean (round 45: an anisotropic mean kept the sideways smear): both footprint axes
                     // set to the same length along their own directions.
-                    float L = max(20.0, max(length(dwx), length(dwy)));
+                    // Area-equivalent footprint (geometric mean), not the long axis: at grazing angles the long axis
+                    // reached tens of metres and the mean took in the dark lake and shaded forest beside the shore
+                    // (round 46: LSZS high's left shore −12 in output luminance against round 44).
+                    float L = max(20.0, 2.0 * sqrt(length(dwx) * length(dwy)));
                     float2 ix = dwx / max(length(dwx), 1e-4) * L, iy = dwy / max(length(dwy), 1e-4) * L;
                     float2 auv; bool aIn; float a0, a1;
                     float3 m20 = photoAlbedo(photoColour(u, imgNear, imgMid, imgFar, imgDetail, photoW, ix, iy, auv, aIn, a0, a1));
@@ -1166,6 +1169,14 @@ public enum WorldShaders {
                             float lifted = toeT2 * pow(max(mL, 1e-4) / toeT2, mix(0.65, 0.5, farT2));
                             m20 *= 1.0 + (lifted / max(mL, 1e-4) - 1.0) * toeW2;
                         }
+                    }
+                    // Luminance guard: the mean stays within −15 % / +18 % of the photo's own luminance here, so a
+                    // neighbouring lake or shadow can never pull a whole patch dark (the smear's own swing is larger).
+                    {
+                        float pL = max(dot(albedo, float3(0.2126, 0.7152, 0.0722)), 1e-4);
+                        float gL = max(dot(m20, float3(0.2126, 0.7152, 0.0722)), 1e-4);
+                        m20 *= clamp(pL / gL, 0.85, 1.18);
+                        mL = dot(m20, float3(0.2126, 0.7152, 0.0722));
                     }
                     float canopy = smoothstep(0.0, 0.03, m20.g - max(m20.r, m20.b)) * smoothstep(0.16, 0.06, mL);
                     // Features 2–4 px across at this range (~6–12 m), faded at 1.5 px per feature rather than 2.5.
