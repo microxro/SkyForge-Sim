@@ -1607,3 +1607,9 @@ High frames, round 55 → round 56:
 
 1. Mid-layer forest placement accepts dark (<0.075), non-blue photo on slopes over ~7°.
 2. Scrub class: sparse 2–4.5 m bushes on steep (>14°), warm tan or olive photo where the forest score is near zero (NZQN tussock, KASE sage). It uses its own hash, so forest trees are unchanged.
+
+### Round 58 frames (CI run 43752698370, `2a7193a`), not sent for review
+
+- Pixel-identical to round 57b except NZQN (+4k trees).
+- **Cause:** both new rules used linear thresholds, but tree placement samples the mosaics as sRGB bytes ÷ 255. The ~0.04-linear shaded forest is ~0.22 in sRGB, and tan tussock is ~0.4–0.6.
+- **Fix (58b):** dark-forest rule at l < 0.30 sRGB; scrub at l 0.25–0.62.

@@ -699,10 +699,11 @@ public struct RealWorldRegion: FlightWorld {
                 var canopy = max(lc.forest, ss(0.30, 0.15, l) * ss(-0.02, 0.01, c.y - 0.9 * c.x) * ss(0.015, 0.04, c.y - c.z) * (1 - lc.water))
                 // Shaded forest on far slopes (mid layer, ultra): ~0.04 photo whose colour margins vanish in the dark, so
                 // stands appeared only where the photo was lighter (round-57 review, LSZS high). Dark, not blue, on a slope.
-                if detail.maxTrees > 200_000, nearMosaic.sample(px, py) == nil, l < 0.075, c.y >= 0.95 * c.z, lc.water < 0.2 {
+                // (sRGB samples: ~0.04 linear forest is ~0.22 here.)
+                if detail.maxTrees > 200_000, nearMosaic.sample(px, py) == nil, l < 0.30, c.y >= 0.95 * c.z, lc.water < 0.2 {
                     let hx = height(px + 10, py) - height(px - 10, py), hy = height(px, py + 10) - height(px, py - 10)
                     let slope = Float((hx * hx + hy * hy).squareRoot() / 20)
-                    canopy = max(canopy, 0.75 * ss(0.12, 0.25, slope) * ss(0.075, 0.05, l))
+                    canopy = max(canopy, 0.75 * ss(0.12, 0.25, slope) * ss(0.30, 0.24, l))
                 }
                 // Scrub: warm tan or olive photo (tussock, sage, matagouri) on steep ground, where the forest score is
                 // near zero, takes sparse low bushes (round-56 review: NZQN's hills had 41k trees and stayed smeared
@@ -711,7 +712,7 @@ public struct RealWorldRegion: FlightWorld {
                 if detail.maxTrees > 200_000, canopy < 0.2, g.water < 0.1 {   // ultra only: scrub must not take the lower tiers' tree budget
                     let hx = height(px + 10, py) - height(px - 10, py), hy = height(px, py + 10) - height(px, py - 10)
                     let slope = (hx * hx + hy * hy).squareRoot() / 20
-                    let warm = c.x >= 0.82 * c.y && c.z < 0.85 * c.y && l > 0.08 && l < 0.32
+                    let warm = c.x >= 0.82 * c.y && c.z < 0.85 * c.y && l > 0.25 && l < 0.62   // sRGB: tan tussock ~0.4–0.6
                     let hs = Hash.unit(Hash.int(Int((x / cell).rounded()), Int((y / cell).rounded()), seed: 0x5C2B))
                     scrub = warm && slope > 0.25 && hs < 0.22 * Double(ss(0.25, 0.45, Float(slope)))
                 }
