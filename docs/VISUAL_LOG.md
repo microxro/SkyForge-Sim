@@ -1420,3 +1420,19 @@ The desaturated ambient cut KMRY's blue near-band fraction from 6.1 % to 4.5 %, 
 - Soft blue patches remain.
 - The rest of the blue is the additive in-scatter over dark shadows.
 - Fix: on photo ground, in-scatter keeps 60 % of its chroma within about 1.5 km, returning to full by 4 km so distant haze stays blue.
+
+## Round 51 review (r51d frames)
+
+**Finals 7.63, high frames 6.70, cockpit 7.25: no change.** This is the third flat round in a row.
+
+- **KMRY and KBFI near bands:** slightly less blue, but they read the same.
+  - The remaining blotches are 30–120 m colour cells.
+  - At about 1 m per pixel the synthesised lawn does not read as lawn.
+- **KASE slabs:** a mild regression. They read as smooth grey lozenges (puddles, stickers), and the approach has stalled for four rounds.
+- **SkyWorld barns:** checked. The barn region did shift slightly, so the colour reaches the screen; the change was small.
+
+Round-52 batch:
+1. **Near band:** chroma from a ~400 m mean (65 % weight, half as much on green ground), so suburban ground reads as one coherent colour. Detail comes only from the procedural octaves and 3D objects.
+2. **KASE:** slabs dropped. The round-46 world-space rock octaves stay.
+3. **High frames:** extra haze beyond 5 km (up to +14 % by 14 km), with a cooler, less desaturated horizon colour.
+4. **SkyWorld:** yards and tracks brighter.

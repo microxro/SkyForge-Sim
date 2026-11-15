@@ -1,4 +1,4 @@
-LAST_UPDATE: 2026-11-15T12:50:00Z
+LAST_UPDATE: 2026-11-15T14:00:00Z
 
 # SKYFORGE state
 
@@ -34,6 +34,7 @@ LAST_UPDATE: 2026-11-15T12:50:00Z
     | 48 | 7.58 | 7.25 |
     | 49 | 7.63 | 7.25 |
     | 50 | 7.63 | 7.25 |
+    | 51 | 7.63 | 7.25 |
 
     Best scene: SkyWorld 8.0 (round 49, farmsteads in the fields); KASE final 7.75. Rounds 27 and 28 were regression checks only.
   - What landed:
@@ -46,7 +47,7 @@ LAST_UPDATE: 2026-11-15T12:50:00Z
     - Water gated by slope.
     - Structural: a mid z12 height mosaic (`b051139`; z12 tiles in all packs through `tools/fetch_mid_heights.py`). Slopes 3–12 km out had been z10 blobs at about 156 m per sample.
   - High-frame average: 6.70 at round 46 (6.65 at round 45; 6.38 at round 26). The KASE high mid-ring smear is accepted at 7.0: it is the z14 photo (6.8 m per texel) magnified ~3×, which only sharper imagery would fix.
-  - Next: round-51 frames. Structural change after two rounds under +0.2: KMRY lawns replaced by a synthesised lawn (30 m mean hue, ±12 % luminance) under the procedural grass material. Also raised KASE slabs (1.9× rim, 0.4× shadow), an NZQN gravel shore band and lighter near-shore water, and more weathered barns. Frame budgets are recorded, not enforced (ADR-0021).
+  - Next: round-52 frames (three flat rounds). Near-band colour flattened within class from a ~400 m mean; KASE slabs dropped for the round-46 rock octaves; stronger cool, low-contrast haze beyond 5 km for the high frames; brighter farmyards and tracks. Then LSZS foreground clearings. Frame budgets are recorded, not enforced (ADR-0021).
 Visual transformation (2026-11-10, PR #5, ADR-0021) is in progress; the Bold Mode summary below is the earlier baseline.
 - Landed (CI-compiled): new SF-1 aircraft model with per-pixel livery, glass and clear coat; OSM-sourced 3D buildings with facade/roof shading (bundled `buildings.sfb`, ODbL); four shadow cascades; mid-distance imagery layer; 2x supersampling and sharpening in the ultra preset; exposure scale 0.45 with near-identity photo albedo; per-airport review-frame jobs.
 - Landed 2026-11-10 (second batch): five tree species with ambient occlusion; rebuilt cockpit interior with cabin fill light; ESA WorldCover land cover grids in every pack (water at any distance); water shading (sky reflection, wind patches); tinted tower glass; fine cloud structure at ultra; magnification-aware local contrast on the ground photo; `LINZAerialProvider`.

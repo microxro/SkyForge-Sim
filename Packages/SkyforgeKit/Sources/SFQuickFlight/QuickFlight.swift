@@ -129,8 +129,8 @@ public struct QuickFlightWorld: FlightWorld {
         let steads = parcelFarmsteads(b.soup.fieldPattern, foci: foci, radius: r, roads: roads)
         let farms = steads.flatMap(\.buildings)
         for f in steads where f.yard.halfSize.x > 0 {
-            b.addGroundPatch(center: f.yard.center, halfSize: f.yard.halfSize, heading: f.heading, colour: srgb(132, 124, 108))   // gravel
-            if let t = f.track { b.addGroundPatch(center: t.center, halfSize: t.halfSize, heading: t.heading, colour: srgb(118, 104, 84)) }
+            b.addGroundPatch(center: f.yard.center, halfSize: f.yard.halfSize, heading: f.heading, colour: srgb(160, 152, 134))   // gravel, pale enough to read at final range (round 51)
+            if let t = f.track { b.addGroundPatch(center: t.center, halfSize: t.halfSize, heading: t.heading, colour: srgb(146, 132, 108)) }
         }
         for bl in farms { b.addBuilding(bl) }
         let yards = steads.map { Building(center: $0.yard.center, halfSize: $0.yard.halfSize, heading: $0.heading, baseHeight: 0, wallHeight: 0,

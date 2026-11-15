@@ -947,22 +947,6 @@ public enum WorldShaders {
     /// Cellular outcrop mask: jittered cells `cell` metres across; about `cover` of the cells are rock. Returns
     /// 1 inside a rock cell, fading to 0 over `edge` metres at its border (F2 − F1), so outcrops are compact
     /// polygons with cracks between neighbours rather than continuous bands.
-    static float outcropCells(float2 p, float cell, float cover, float edge) {
-        float2 q = p / cell, i = floor(q);
-        float f1 = 1e9, f2 = 1e9; float id1 = 0.0;
-        for (int dy = -1; dy <= 1; dy++) {
-            for (int dx = -1; dx <= 1; dx++) {
-                float2 c = i + float2(dx, dy);
-                uint h = fp_hash(int(c.x), int(c.y), 0x0C7Au);
-                float2 fpnt = c + float2(fp_unit(h), fp_unit(h >> 8)) * 0.8 + 0.1;
-                float d = length(q - fpnt) * cell;
-                // fp_unit reads the low 24 bits, so a shifted hash (h >> 16) stayed under 0.004 and every cell was
-                // rock (round 48: the KASE cliff went 100 % rock and lost up to 14 levels). A remixed hash instead.
-                if (d < f1) { f2 = f1; f1 = d; id1 = fp_unit(fp_hash(int(c.x), int(c.y), 0x51D3u)); } else if (d < f2) { f2 = d; }
-            }
-        }
-        return id1 < cover ? smoothstep(0.0, edge, f2 - f1) : 0.0;
-    }
 
     /// Metres per texel of the finest imagery layer covering region point `w` (`inNear` from photoColour).
     static float photoTexel(constant WorldUniforms& u, texture2d<float> imgNear, texture2d<float> imgMid, texture2d<float> imgFar,
@@ -1129,11 +1113,12 @@ public enum WorldShaders {
                     float3 neutral = lc * float3(1.04, 1.0, 0.86) / dot(float3(1.04, 1.0, 0.86), lw);
                     lifted = mix(lifted, neutral, 0.85 * blue * nb);
                     float2 luv4; bool lin4; float lw4a, lw4b;
-                    float3 lm4 = photoAlbedo(photoColour(u, imgNear, imgMid, imgFar, imgDetail, photoW, dwx * ls * 4.0, dwy * ls * 4.0, luv4, lin4, lw4a, lw4b));
+                    // ~400 m (round 51: ~120 m left the 30–120 m colour cells; suburban ground reads as one colour).
+                    float3 lm4 = photoAlbedo(photoColour(u, imgNear, imgMid, imgFar, imgDetail, photoW, dwx * ls * 13.0, dwy * ls * 13.0, luv4, lin4, lw4a, lw4b));
                     float l4 = max(dot(lm4, lw), 1e-3);
                     lm4 = mix(lm4, l4 * float3(1.04, 1.0, 0.86) / dot(float3(1.04, 1.0, 0.86), lw),
                               0.85 * smoothstep(0.0, 0.025, lm4.b - max(lm4.r, lm4.g)));   // nor a blue cast from the wide mean
-                    lifted = mix(lifted, lm4 * (lc / l4), 0.5 * nb * (1.0 - 0.5 * gm));
+                    lifted = mix(lifted, lm4 * (lc / l4), 0.65 * nb * (1.0 - 0.5 * gm));
                 }
                 albedo = mix(albedo, lifted, ltW);
             }
@@ -1540,45 +1525,9 @@ public enum WorldShaders {
                     rock *= 1.0 + 0.30 * g0 + 0.25 * g1 + 0.15 * g2;
                     float sc = smoothstep(0.15, 0.45, groundNoise(w + 517.0, 60.0)) * saturate(1.0 - sfp * 2.5 / 60.0);
                     rock = mix(rock, rock * float3(0.68, 0.82, 0.70), 0.6 * max(sc, 0.5 * scrub));
-                    // Outcrops and ledges with crisp edges and their own shadow line below (round-44 review: the cliff
-                    // still read soft). Rock at ~55 % of the local mean's luminance, greyed; the threshold edge
-                    // widens with the footprint so it never aliases.
-                    // Outcrops as compact cellular blocks 15–30 m across (round 47: thresholded ridged noise stretched
-                    // 3:1 along the contour drew thin wavy hairlines, read as wood grain). ~25 % of jittered 22 m cells
-                    // (contour axis stretched only 1.5:1) are rock at 0.6× the local mean; a lit upper rim and a
-                    // shadow band below, each at least ~2 px thick, give each block volume. Faded below ~3 px per cell.
-                    float oe = max(0.3, sfp * 0.6);                 // hard border, under 1 px (round 48: soft-edged blocks read as stains)
-                    // Cells in world metres (round 48: in fall-line coordinates, whose axes turn with the normal from
-                    // pixel to pixel, curved slopes warped the cells into swirling contour rings; the same warp drew the
-                    // earlier hairlines). Only the rim / shadow offset follows the fall line.
-                    float bw2 = max(3.0, sfp * 2.5);                // rim / shadow band ~3 m, ≥ 2.5 px (round 49: thin)
-                    // Outlines warped ±7 m at ~14 m so the blocks are ragged rock, not the Worley cells' straight-edged
-                    // polygons (round 50: crisp grey quadrilaterals read as concrete pads).
-                    float2 wq = w + 7.0 * float2(groundNoise(w + 3.1, 14.0), groundNoise(w - 8.7, 14.0));
-                    float2 wu = w - fall * bw2;
-                    wu += 7.0 * float2(groundNoise(wu + 3.1, 14.0), groundNoise(wu - 8.7, 14.0));
-                    float oIn = outcropCells(wq, 35.0, 0.25, oe);  // 35 m blocks (round 48: 22 m were 5–8 px)
-                    float oUp = outcropCells(wu, 35.0, 0.25, oe);  // uphill (fall points downhill)
-                    float oFade = smoothstep(2.0, 3.5, 35.0 / max(sfp, 1e-3) / 3.0);
-                    float outcrop = oIn * oFade;
-                    float shadowLine = saturate(oUp - oIn) * oFade;      // band just below a block
-                    float litEdge = saturate(oIn - oUp) * oFade;         // a block's upper rim
-                    // Block colour from the local rock's own luminance (round 48: from the photo's 150 m mean, which
-                    // takes in the forest round the pale KASE cliff, the blocks were far darker than 0.6× and the cliff
-                    // cells lost up to 14 output levels).
-                    float rkL = dot(rock, float3(0.2126, 0.7152, 0.0722));
-                    // Cool grey at 0.72× so the blocks part from the warm soil by hue, an upper rim 1.6× the
-                    // surrounding slope and a −55 % shadow band (round 49: 0.5× warm blocks with a rim relative to
-                    // the dark block still read as soft stains against the photo's own dark patches).
-                    float3 rockC = mix(float3(rkL), rock, 0.25) * 0.72 * float3(0.95, 0.99, 1.05);
-                    float3 slopeC = rock;
-                    rock *= 1.0 + 0.10 * oFade;                    // keeps the slope's mean with the blocks and shadow bands
-                    rock = mix(rock, rockC * (1.0 + 0.25 * g1 + 0.25 * g2), outcrop);   // fractured faces, not a flat fill
-                    // Raised slabs: a 1.9× sun-side rim and a 0.4× down-slope shadow, ±15 % from slab to slab (round 50:
-                    // flat grey patches laid on the slope, no rim or shadow visible at 1×).
-                    rock *= 1.0 + 0.15 * groundNoise(w + 77.0, 30.0) * outcrop;
-                    rock = mix(rock, slopeC * 1.9, litEdge);
-                    rock *= 1.0 - 0.6 * shadowLine;
+                    // No discrete outcrop blocks: over rounds 44–51 thresholded noise read as hairlines, Worley cells
+                    // as concrete pads, warped cells as grey lozenges (round-51 review: drop them; the world-space rock
+                    // octaves above read most naturally).
                     albedo = mix(albedo, rock, stretchW);
                 }
             }
@@ -1894,9 +1843,12 @@ public enum WorldShaders {
             // forest slope 3–6 km out read as a near-black mass (round 38, LSZS high: the probe found it
             // physically dark, ~0.05 albedo under a cloud shadow, with no in-scattered light lifting it).
             // 30 % from the first metre (round 39 frames) turned every airport milky and cyan.
-            float hz = 0.18 * smoothstep(800.0, 6000.0, dist) * saturate(dot(T, float3(0.2126, 0.7152, 0.0722)));
-            float3 hzc = u.skyHorizon.rgb * 0.9;
-            hzc = mix(float3(dot(hzc, float3(0.2126, 0.7152, 0.0722))), hzc, 0.5);
+            // Plus up to 14 % more by 14 km toward a cooler, less greyed horizon colour, so the high frames' planes
+            // separate in depth and the magnified mid-ring photo softens (round-51 review).
+            float hz = (0.18 * smoothstep(800.0, 6000.0, dist) + 0.14 * smoothstep(5000.0, 14000.0, dist))
+                     * saturate(dot(T, float3(0.2126, 0.7152, 0.0722)));
+            float3 hzc = u.skyHorizon.rgb * 0.92;
+            hzc = mix(float3(dot(hzc, float3(0.2126, 0.7152, 0.0722))), hzc, mix(0.5, 0.7, smoothstep(5000.0, 14000.0, dist)));
             col = mix(col, hzc, hz);
         }
         return float4(col * u.sunColour.w, 1.0);    // linear HDR (× exposure); tone-mapped in post
