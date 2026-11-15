@@ -409,7 +409,30 @@ public struct SceneBuilder {
                 soup.addQuad(w(xb, -hy, h + 3), w(xb, hy, h + 3), w(xb, hy, h), w(xb, -hy, h), colour: srgb(80, 96, 110), material: .glass)
             }
         }
+        if b.kind == .church {
+            // A square west tower with a pyramid spire, so a church reads as one from the air.
+            let t = min(hy * 0.6, 3.8), cx0 = -hx - t + 0.3, th = h * 2.3, apex = th + t * 3.2
+            let tc = [(cx0 - t, -t), (cx0 + t, -t), (cx0 + t, t), (cx0 - t, t)]
+            for k in 0..<4 {
+                let (ax, ay) = tc[k], (bx, by) = tc[(k + 1) % 4]
+                soup.addQuad(w(ax, ay, base), w(bx, by, base), w(bx, by, th), w(ax, ay, th), colour: b.wallColour * 0.96)
+                soup.addFlat(w(ax, ay, th), w(bx, by, th), w(cx0, 0, apex), colour: b.roofColour * (k % 2 == 0 ? 1.0 : 0.92))
+            }
+        }
         stats["buildings", default: 0] += 1
+    }
+
+    /// A flat ground patch draped on the terrain in ~10 m pieces (a farmyard's gravel, a farm track).
+    public mutating func addGroundPatch(center: SIMD2<Double>, halfSize: SIMD2<Double>, heading: Double, colour: SIMD3<Float>) {
+        let c = cos(heading), s = sin(heading)
+        let nu = max(1, Int((2 * halfSize.x / 10).rounded(.up))), nv = max(1, Int((2 * halfSize.y / 10).rounded(.up)))
+        func w(_ i: Int, _ j: Int) -> SIMD3<Double> {
+            let lx = -halfSize.x + 2 * halfSize.x * Double(i) / Double(nu), ly = -halfSize.y + 2 * halfSize.y * Double(j) / Double(nv)
+            let x = center.x + c * lx - s * ly, y = center.y + s * lx + c * ly
+            return SIMD3(x, y, terrain.height(x, y) + 0.25)
+        }
+        for j in 0..<nv { for i in 0..<nu { soup.addQuad(w(i, j), w(i + 1, j), w(i + 1, j + 1), w(i, j + 1), colour: colour, material: .road) } }
+        stats["groundPatches", default: 0] += 1
     }
 
     public mutating func addParkingLot(_ lot: ParkingLot) {

@@ -1138,3 +1138,397 @@ Round-45 frames (d15e96f, run 43661627056) before review:
 - **High frames:** 1–3 points darker in mean luminance (LSZS high 99.7 → 96.6).
 - **KASE high:** the right-side foreground reads crisper and less melted.
 - **LSZS and KBFI high:** gain slight texture.
+
+## Bold round 45: PR #8 d15e96f (run 43661627056, ultra tier)
+Same reviewer and scale.
+
+**Final camera:** KMRY 7.5, KASE 7.5 (7.75), KBFI 7.5, LSZS 7.5, NZQN 7.5, SkyWorld 7.75. **Average 7.54** (7.58). A regression.
+
+**High frames:** 6.65 (6.70); LSZS high 6.25 (6.5). **Cockpit:** 6.75.
+
+**What went wrong:**
+- **Magnified-photo detail:** the KASE high smear survived. The 20 m mean was sampled anisotropically along the same axis, 25 % of the photo's deviation was kept, and the 10/25 m octaves were faded at this range.
+- **Darkening:** the LSZS high right slope went back to near black. The 20 m mean skipped the photo's dark-ground toe lift.
+- **Rock ledges:** thresholded isotropic noise drew swirling contour rings on the KASE final cliff.
+- **Field boundary lines:** barely visible.
+
+Round-46 batch:
+1. **Magnified photo:**
+   - An isotropic 20 m mean with the same toe lift.
+   - Zero-mean 6/12 m octaves faded at 1.5 px per feature, clamped symmetrically (0.55–1.45).
+   - 10 % of the photo's deviation kept, up to 90 % blend.
+2. **Ledges:**
+   - Ridged noise stretched 3:1 along the contour, broken by a 40 m mask into short outcrops.
+   - Faded where an ~8 m band is under 4–8 px on screen.
+3. **Cockpit:**
+   - An upholstered door insert with a piped border, and a moulded crease under the sill.
+   - A recessed inside door handle at the armrest front.
+   - Carpet darker toward the firewall, with rubber heel mats.
+
+Round-46 frames (ffcf2d1, run 43691350679) before review — lower-half mean luminance (round 44 / 45 / 46):
+- KASE high 92.8 / 88.9 / 91.9
+- LSZS high 63.7 / 57.7 / 61.9
+- NZQN high 79.9 / 77.7 / 80.2
+- KMRY high 89.9 / 88.9 / 90.0
+- KBFI high 111.9 / 109.6 / 111.8
+- KASE final 83.6 / 82.3 / 82.5
+
+NZQN, KMRY and KBFI are back within 0.5 of round 44. LSZS high (−1.8), KASE high (−0.9) and the KASE final (−1.1) are still darker.
+
+**Cause:** the ledge outcrops. A 0.78 threshold on ridged noise covers ~35 % of the masked slope, at 55 % luminance.
+
+Fixed before review:
+- **Outcrops:** threshold 0.92 (~13 %), rock at 65 %, a +6 % slope compensation, and shadow lines at −30 %.
+- **Crown octave:** re-centred; ridged value noise averages +0.29.
+
+Round-46b frames (0281a79, run 43692325823) before review — the outcrop change barely moved luminance (LSZS high 61.8, KASE high 91.7, KASE final 82.8):
+- **Where:** a region map puts LSZS high's loss at the left lake shore (−12 output luminance in 160×90 cells) and along the shore below the town (−3 to −5). This is the coarse layer outside the near imagery.
+- **Cause:** the "isotropic" 20 m mean took the footprint's long axis (tens of metres at grazing angles) and averaged in the lake and shaded forest.
+
+Fixed before review:
+- **Footprint:** geometric mean (area-equivalent) instead of the long axis.
+- **Luminance guard:** the mean stays within −15 % / +18 % of the photo's own luminance at the pixel.
+
+Round-46c frames (a4e5302, run 43693339251) before review — lower-half mean luminance (round 44 → 46c):
+- KASE high 92.8 → 92.3
+- NZQN high 79.9 → 80.1
+- LSZS high 63.7 → 62.6
+- KMRY high 89.9 → 89.9
+- KBFI high 111.9 → 111.8
+- KASE final 83.6 → 82.8
+- KASE close 80.7 → 80.1
+
+The LSZS left shore is still −7 to −9 locally, but the slope is no longer near-black. The KASE cliff shows no rings. Sent for review as round 46.
+
+## Bold round 46: PR #9 a4e5302 (run 43693339251, ultra tier)
+Same reviewer and scale.
+
+**Final camera:** KMRY 7.5, KASE 7.75, KBFI 7.5, LSZS 7.5, NZQN 7.5, SkyWorld 7.75. **Average 7.58** (round 45's regression undone).
+
+**High frames:** 6.70. **Cockpit:** 6.75.
+
+**Not visible at review distance:**
+- **KASE high smear:** no real change; the 6/12 m octaves are under 3 px there.
+- **Cliff outcrops:** too faint at ~13 %.
+- **Cockpit door and floor work:** outside the cockpit camera's view.
+
+**LSZS high:** back to its round-44 look.
+
+**Decision:** the KASE high mid-ring smear is accepted at 7.0. Four procedural rounds did not move it. The cause is the 6.8 m-per-texel z14 photo magnified ~3×, and only sharper imagery in that ring would fix it (a z15/z16 band; not taken now).
+
+Round-47 batch:
+1. **Cliff outcrops:**
+   - ~25 % coverage (threshold 0.85) at 0.6× the local mean.
+   - A lit upper rim (+45 %) and a shadow line below (−35 %).
+   - They survive to ~3 px; slope compensation +12 %.
+2. **Cockpit, where the camera looks:**
+   - Mounting screws at each gauge's corners.
+   - An engraved placard under each gauge.
+   - Vinyl grain on the glareshield top (36×12 grid, ±20 %).
+3. **KMRY flat roofs from the photo:**
+   - Each roof its own grey (±15 %).
+   - A soft knee above 0.28 luminance.
+
+## Bold round 47: PR #9 1c63400 (run 43694637402, ultra tier)
+Same reviewer and scale.
+
+**Final camera:** KMRY 7.5, KASE 7.75, KBFI 7.5, LSZS 7.5, NZQN 7.5, SkyWorld 7.75. **Average 7.58**.
+
+**High frames:** 6.70. **Cockpit:** 7.0 (6.75).
+
+**What registered:**
+- **Cockpit:** the placards and gauge screws land; the panel reads as a manufactured part. The glareshield grain read as soft blotches (minor).
+- **KMRY flat-roof greys:** visible only side by side.
+- **KASE cliff outcrops:** now visible, but as thin wavy contour hairlines (wood grain), not rock.
+
+Round-48 batch:
+1. **Outcrops as cellular blocks:**
+   - ~25 % of jittered 22 m cells, with the contour axis stretched only 1.5:1.
+   - A soft border from F2 − F1, so neighbouring blocks show cracks.
+   - Lit rim and shadow bands at least ~2 px thick.
+2. **Glareshield:** ±6 % grain on a ~1 cm grid, and a lengthwise sheen band along the crown.
+3. **KMRY flat roofs from the photo:** ±25 % grey per roof.
+
+Round-48 frames (beadb0b, run 43696082021) before review:
+- **Cliff hairlines:** gone. The cellular blocks read as soft dark patches, and KASE final and close are 1.7–1.8 darker in lower-half luminance.
+- **Glareshield:** smooth vinyl with a crown sheen; the blotches are gone.
+
+Fixed before review:
+- **Block edges:** border ~1 px (was 1.5 px).
+- **Slope compensation:** +17 % (was +12 %).
+
+Round-48b frames (21f6619, run 43697075735) before review:
+- **Still darker:** KASE final is still 1.8 darker and KASE close 1.9 darker in lower-half luminance.
+- **Where:** a region map puts the loss in the cliff cells (up to −14).
+- **Cause:** the block colour came from the photo's 150 m mean, which takes in the dark forest round the pale cliff, not from the local rock.
+
+Fixed before review:
+- **Block colour:** 0.6× the local rock's own luminance.
+- **Slope compensation:** back to +12 %.
+
+Round-48c frames (4bd9240, run 43698505387) before review:
+- **Still darker:** KASE final 80.9 (82.9) and close 78.1 (80.2); the cliff cells are still at −10 to −12.
+- **Cause:** a bug in `outcropCells`. `fp_unit` reads the low 24 bits, so `fp_unit(h >> 16)` stayed under 0.004 and every cell passed the 25 % cover test. The cliff was 100 % rock.
+
+Fixed before review: the per-cell choice now uses its own `fp_hash` seed.
+
+Round-48d frames (31a446e, run 43699719058) before review:
+- **Luminance:** back within 0.2 of round 47 everywhere (KASE final 82.8, close 80.1).
+- **Swirls:** the cliff shows swirling contour rings, stronger than before.
+- **Cause:** the cells and the rock octaves g0/g1/g2 were sampled in fall-line coordinates. Their axes turn with the normal from pixel to pixel, so curved slopes warp the pattern into swirls. The same warp drew the round-45 rings and round-47 hairlines.
+
+Fixed before review:
+- **Cells and octaves:** in world metres.
+- **Rim / shadow offset:** only this still follows the fall line.
+
+Round-48e frames (94cbf4a, run 43700909816) before review:
+- **Swirls:** gone from the KASE cliff.
+- **Outcrops:** faint polygonal blocks now show.
+- **Luminance:** KASE final 82.0 (82.9) and close 79.3 (80.2); everything else within 0.2 of round 47. Sent for review as round 48.
+
+## Bold round 48: PR #9 94cbf4a (run 43700909816, ultra tier)
+Same reviewer and scale.
+
+**Final camera:** KMRY 7.5, KASE 7.75, KBFI 7.5, LSZS 7.5, NZQN 7.5, SkyWorld 7.75. **Average 7.58**.
+
+**High frames:** 6.70. **Cockpit:** 7.25 (7.0); the glareshield sheen registers.
+
+**KASE cliff:** the hairlines and swirls are gone and the slope reads more naturally. The 22 m blocks (5–8 px, soft edges) read as stains, not rock.
+
+**KMRY roofs:** ±25 % still does not register at 1×.
+
+Round-49 batch:
+1. **Outcrops:**
+   - 35 m blocks at 0.5× the local rock.
+   - Hard borders (under 1 px).
+   - ~3 m rim (+55 %) and shadow band (−45 %).
+   - Slope compensation +14 %.
+2. **KMRY near band:**
+   - Chroma pull toward the 30 m mean raised to 72 % (60 %).
+   - A mild 20 % luminance pull on non-green, non-field near-band ground.
+3. **SkyWorld:**
+   - Grass darkens up to 16 % with slope, with a warmer tone on sun-facing slopes.
+   - Farmsteads on every 5th rural-road point at 65 % (every 9th at 45 %), each with a small shed beside the house and barn.
+
+### Round 49 frames (CI run 43702269615, before review)
+
+All jobs green. Lower-half luminance against round 48e is within 0.4 everywhere.
+
+**SkyWorld:** the frame is unchanged apart from 107 pixels on the horizon.
+- The final camera looks across flat parcels, so the slope tone has nothing to act on.
+- Farms are placed only along rural roads, and no rural road crosses those fields.
+
+**KMRY near band:** changed by 0.05 levels on average. The stronger pull barely moves it.
+
+Round-49b batch, added before review:
+1. **SkyWorld farmsteads in the fields:** about one farmed parcel in six gets a house, barn and shed in a corner.
+   - Laid out on the parcel axes.
+   - Clear of hedgerows, roads, water and the runway approach.
+   - Trees inside a farm footprint are dropped.
+   - A test checks that each building sits inside a farmed parcel and off the approach.
+2. **NZQN shallow shelf:** the water mask is averaged over rings 20 m and 40 m out (near layer only).
+   - The shallows now reach 30–60 m from shore, instead of following the mask's one-texel rise.
+3. **Cockpit:** an eyeball air vent above the two small gauges, with a chrome bezel, a ball nozzle and louvre slots.
+
+## Round 49 review (r49b frames)
+
+**Final camera:** KMRY 7.5, KASE 7.75, KBFI 7.5, LSZS 7.5, NZQN 7.5, SkyWorld 8.0 (7.75). **Average 7.63**, the first final at 8.
+
+**High frames:** 6.70. **Cockpit:** 7.25.
+
+- **SkyWorld farmsteads:** visible and give the patchwork scale. The barns are flat saturated red boxes with no yard, trees or track, and one group sits right under the aircraft.
+- **KASE cliff blocks:** still read as soft dark stains.
+- **KMRY lake shelf:** not visible.
+- **Cockpit vent:** visible but tiny.
+- **KMRY near band:** no change. Pulls toward the mean are exhausted; the reviewer asks for a structural material replacement.
+
+Round-50 batch:
+1. **Farmsteads:**
+   - Weathered barn red, with grey or dark-green metal roofs.
+   - A gravel yard, two or three trees and a track to the nearest hedge.
+   - None within 300 m of the approach centreline.
+2. **KASE outcrops:**
+   - Cool-grey rock.
+   - Rims +60 %.
+   - Shadow bands at least 2 px wide.
+3. **NZQN shelf:** rings at 40 m and 90 m, and a stronger turquoise tint.
+4. **Cockpit:** the vent 1.5× larger, plus a second vent on the right.
+
+### Round 50 frames (CI run 43705389095, before review)
+
+All jobs green. Lower-half luminance against round 49b is within 0.6 everywhere.
+
+- **SkyWorld:** both foreground farmsteads had disappeared.
+  - The full-size yard had to clear the hedges, and the final-path exclusion covered 140 m either side.
+  - Fix: the yard now shrinks to fit (or is dropped) instead of rejecting the farm, and the exclusion is 40 m either side of the centreline.
+  - A probe shows a farmstead 300 m ahead of the aircraft, 107 m right of the path.
+- **KASE cliff:** the cool-grey blocks with bright rims read as flat concrete quadrilaterals.
+  - Fix: outlines are warped ±7 m at about 14 m, so blocks are ragged.
+  - Faces vary ±25 % at 40 m and 12 m.
+  - Block colour keeps a quarter of the local rock's hue.
+
+## Round 50 review (r50b frames)
+
+**Finals 7.63, high frames 6.70, cockpit 7.25: no change.**
+
+- **SkyWorld farmstead:** reads as a farm now, and nothing sits under the tail. The barn walls are still fairly saturated, and the track doesn't show at this distance.
+- **KASE outcrops:** discrete grey slabs that read as rock, but flat. No rim or shadow is visible at 1×.
+- **NZQN shelf:** still invisible at the final range.
+
+Round 49 gained +0.05 and round 50 nothing: two rounds under +0.2, so this round makes a structural change.
+
+Round-51 batch:
+1. **Structural: KMRY lawn replacement.**
+   - On grass (and 30 % of dry grass), the near-band photo pixel is replaced, at 75 % weight, by a synthesised lawn.
+   - Hue: the 30 m mean's, a third of the way to a lawn green.
+   - Luminance: the pixel's own, held within ±12 % of the mean.
+   - The procedural grass octaves carry the texture. Pavement, roofs and soil keep the photo.
+2. **KASE slabs:** a 1.9× sun-side rim, a 0.4× down-slope shadow, and ±15 % variation between slabs.
+3. **NZQN shore:**
+   - A pale gravel band 15–25 m wide on flat land beside the near-layer water.
+   - Near-shore water about 20 % lighter.
+4. **Farmsteads:** more weathered barn walls, linear (0.26, 0.11, 0.09).
+
+### Round 51 frames (CI run 43715660257, before review)
+
+All jobs green. Lower-half luminance against round 50b is within 0.6 everywhere.
+
+- **KMRY near band:** the lawn replacement moved only 0.16 levels.
+  - The ground between buildings is pale grey with orange, sky-blue and green blotches 20–60 m across.
+  - Those blotches are wider than the 30 m mean and classify as pavement, so neither the mean pulls nor the lawn replacement reach them.
+  - Fix:
+    - Blue-dominant near-band ground becomes a warm grey at its own luminance (the ~120 m mean too).
+    - Half the near-band chroma comes from a ~120 m mean (a quarter on green ground).
+    - A fixed chroma cap was rejected: linear grass sits near 0.7 chroma and would have gone grey.
+- **KASE slabs:** bright top rims now show at 2×.
+
+### Round 51b frames (CI run 43716986870, before review)
+
+The chroma fix moved KMRY's near band by 0.07 levels (near-band saturation 0.258 → 0.251).
+
+**Root cause, from debug view 1 (albedo):** the near-band albedo is already muted grey-green with mild orange.
+- The final frame's sky-blue and orange blotches are lighting, not photo colour.
+- The blue patches are soft tree and building shadows lit only by the blue sky ambient.
+- The orange is warm sun on dry grass.
+- Rounds 48–51 changed albedo, which is why none of them moved this band.
+
+**Fix:** on photo ground the shadow-filling sky light keeps 55 % of its chroma, as an aerial camera's white balance renders it. SkyWorld's procedural terrain is unchanged.
+
+### Round 51c frames (CI run 43718168874, before review)
+
+The desaturated ambient cut KMRY's blue near-band fraction from 6.1 % to 4.5 %, and KBFI's from 7.4 % to 5.0 %. Luminance moved by 0.3 levels or less.
+- Soft blue patches remain.
+- The rest of the blue is the additive in-scatter over dark shadows.
+- Fix: on photo ground, in-scatter keeps 60 % of its chroma within about 1.5 km, returning to full by 4 km so distant haze stays blue.
+
+## Round 51 review (r51d frames)
+
+**Finals 7.63, high frames 6.70, cockpit 7.25: no change.** This is the third flat round in a row.
+
+- **KMRY and KBFI near bands:** slightly less blue, but they read the same.
+  - The remaining blotches are 30–120 m colour cells.
+  - At about 1 m per pixel the synthesised lawn does not read as lawn.
+- **KASE slabs:** a mild regression. They read as smooth grey lozenges (puddles, stickers), and the approach has stalled for four rounds.
+- **SkyWorld barns:** checked. The barn region did shift slightly, so the colour reaches the screen; the change was small.
+
+Round-52 batch:
+1. **Near band:** chroma from a ~400 m mean (65 % weight, half as much on green ground), so suburban ground reads as one coherent colour. Detail comes only from the procedural octaves and 3D objects.
+2. **KASE:** slabs dropped. The round-46 world-space rock octaves stay.
+3. **High frames:** extra haze beyond 5 km (up to +14 % by 14 km), with a cooler, less desaturated horizon colour.
+4. **SkyWorld:** yards and tracks brighter.
+5. **Forest clearings (LSZS foreground):**
+   - `FieldPattern.clearing` marks about 22 % of 220 m cells with a 45–85 m meadow with a ragged edge. The world shader mirrors it operation for operation as `clearingMask`.
+   - The shader paints meadow over the photo canopy there, and the real-world tree placement leaves the clearing open apart from about 6 % lone trees.
+   - A test checks that clearings cover 2–15 % of the ground with soft edges.
+
+### Round 52 frames (CI run 43721363610, before review)
+
+All jobs green.
+
+- **KASE cliff:** without the slabs, the cliff shows natural rock streaks.
+- **KASE high:** the far ridges are cooler and separate in depth. The distant ground band is 5.8 levels brighter; other frames are within 2.
+- **LSZS clearings:** none visible in the final frame, although a probe on the real LSZS region showed them working.
+  - Clearings cover 5 % of the foreground, and only 171 of 46,159 trees stand in them.
+  - At the camera's ~10° view, 15 m crowns hide about 85 m of ground behind them, so 45–85 m meadows disappear.
+  - Fix: clearings are now 90–160 m across, in about 30 % of 420 m cells, with a ±20 m ragged edge.
+
+### Round 52b frames (CI run 43722783527, before review)
+
+- **LSZS clearings:** a 90–160 m clearing now shows in the LSZS foreground, but as a dark hole. LSZS final and close lost 2.2 and 4.3 levels.
+  - Cause: the near-band tone compression pulled the meadow toward the dark forest's 30 m photo mean.
+  - Fix: clearings are exempt from that pass, and the meadow is a sunlit alpine green, linear (0.13, 0.18, 0.065).
+- **KASE close:** a pale meadow clearing reads acceptably at lower left.
+
+## Round 52 review (r52c frames)
+
+**Final camera:** KMRY 7.5, KASE 7.75, KBFI 7.5, LSZS 7.75 (7.5), NZQN 7.5, SkyWorld 8.0. **Average 7.67** (7.63). High frames 6.70; cockpit 7.25. KASE close fell from 7.5 to 7.25.
+
+- **LSZS clearing:** works and reads as alpine valley farmland. The meadow is a flat, dark, uniform green.
+- **KASE close clearing:** trees were removed, but the ground under them is the smeared forest photo. Some roadside trees went too.
+- **KMRY near band:** no visible change. The remaining blotches are luminance cells, not chroma.
+- **High-frame haze:** too subtle to see.
+
+Round-53 batch:
+1. **Clearing ground:**
+   - Clearings apply wherever the ~100 m photo mean reads as forest, not only on canopy pixels, and stay off roads.
+   - The grass is procedural: linear (0.15, 0.20, 0.07), ±10 % patches at about 30 m, and a 15 % darker forest-edge band.
+2. **Near band:** ground luminance is held within ±8 % of a mean that blends the 30 m and 400 m means 40/60 (80 % weight on green ground, 50 % elsewhere).
+3. **NZQN shore:** a gravel band 35 m wide at about 0.35 albedo, on slopes down to n.z 0.8.
+4. **SkyWorld village:**
+   - About 650 m right of the centreline near the threshold, so about 15° right of centre in the final frame.
+   - Church: given a square west tower and pyramid spire (it used to be meshed as a plain box).
+   - About 12 gabled houses with gable ends to a 300 m lane, plus garden trees.
+   - It avoids existing buildings, and farmsteads, hedgerow trees and forest trees inside it are dropped.
+   - A test keeps every village building more than 300 m off the runway axis.
+
+### Round 53 frames (CI run 43726184614, before review)
+
+All jobs green.
+
+- **SkyWorld:** the frame is pixel-identical to round 52.
+  - The village, 650 m right of the threshold, sat inside the forest on the right of the frame.
+  - Fix: moved to 900 m before the threshold and 340 m right, open ground about 1.1 km ahead of the final start. The houses run outward from the church, spanning about 316–530 m from the axis.
+- **KASE close:** the clearing now reads as grassy meadow rather than smeared photo.
+- **Near band:** KBFI final is +2.2 levels and KMRY final +0.8 from the luminance hold. KMRY's colour blotches are still visible.
+
+### Round 53b frames (CI run 43727861429, `34d4dfb`, sent for review)
+
+All jobs green.
+
+- **SkyWorld final:** the village is now in view at the forest edge right of the path (x ≈ 830–930, y ≈ 340–395): the church tower and about eight white houses with red roofs. It is small at this range; 678 pixels differ from round 52.
+- Round 53 was sent to the art director with the four changes: clearing grass, the near-band luminance hold, the NZQN gravel shore and the SkyWorld village.
+
+## Round 53 review (r53b): finals 7.67 (flat), high frames 6.70, cockpit 7.25
+
+- KASE close is back to 7.5: the clearing reads as a grassy meadow.
+- SkyWorld stays at 8.0. The village reads as a hamlet at 3×, but at 1× it is ~100×25 px.
+- LSZS final has a new lime-yellow wedge below the tail (x 640–700, y 510–570). The rest of the meadow is a flat dark green.
+- The KMRY and KBFI near band is unchanged on screen. The NZQN gravel band is not visible at final distance.
+
+### Diagnosis
+
+- **KMRY debug view 1 (albedo):** the 50–150 m yellow, orange and blue-grey blotches are present in the final ground albedo, so lighting is not the cause. Two passes after the near-band holds put them back:
+  - The crop field-contrast pass classed the warm yard blotches as fields and pushed each one's 30 m mean up to 1.5× away from its 150 m surroundings.
+  - The lawn replacement took its hue from the 30 m mean, which is the blotch's own colour.
+- **LSZS wedge:** the clearing meadow was at ~0.18 albedo luminance against ~0.10 for the surrounding pasture, about 1.8× in output. Where the 100 m forest gate crossed open ground at the clearing edge, it drew an angular bright patch.
+
+### Round 54 batch (structural round: two rounds under +0.2)
+
+1. **Canopy relief (structural):** photo forest from 300 m out to ~10 km takes lit crown hemispheres on jittered ~10 m and ~28 m grids. They tilt the normal, so the sun lights one side and shades the other, with gaps between crowns 28 % darker. The relief fades with the pixel footprint. The aim is to replace the high frames' smooth magnified forest smear.
+2. **Suburb score:** the mean of 13 road-mask taps out to ~130 m. It turns off the crop field-contrast pass, takes the lawn hue from the already-held albedo instead of the 30 m mean, and raises the 400 m chroma pull to 90 % and the ±8 % luminance hold to 90 % on suburban ground.
+3. **Meadow:** ~0.12 luminance and less saturated, about 25 % above the pasture. The luminance hold no longer pulls pasture toward a forest-dominated 400 m mean.
+4. **SkyWorld village:**
+   - It moves to 1,450 m before the threshold and 190 m right, about 550 m ahead of the final start.
+   - It grows to two streets (a main street running outward and a cross street along the approach), ~28 houses, a church at the crossroads and three barns.
+   - The test now keeps village buildings more than 150 m off the axis.
+   - `inside()` now bounds its early-out by the footprint size; a fixed 60 m cut ignored most of a 150 m lane.
+
+### Round 54 frames (CI run 43734044812, `9004f61`), all green
+
+- **SkyWorld final:** the village now reads at 1× in the right foreground: the church at the crossroads, two streets of houses with red roofs, and barns.
+- **KMRY final:** the orange and yellow yard blotches are gone. The near band is an even pale grey-green under the 3D trees.
+- **LSZS final:** the wedge is dimmer (output luminance 0.046 linear) but the pasture around it went darker (0.052 → 0.033). The pasture photo is dark enough that the 0.10 canopy class takes it for forest, so the canopy gap darkening landed on it. The whole frame is −1 level.
+- **LSZS high:** the canopy relief shows on the sunlit forest at lower left, but the large slope on the right lies in cloud shadow, where normal tilt changes nothing.
+- **Fix (`round 54b`):**
+  - Canopy relief now starts at 900–1,600 m and needs photo luminance below ~0.06, so the final frames' pasture is untouched.
+  - A sun-independent crown dome term (tops +10 %, rims −10 %) carries the relief into cloud shadow.

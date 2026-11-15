@@ -97,6 +97,53 @@ import SFPreview
         }
         #expect(w.buildEnvironmentInstanced(detail: d).trees == inst.trees, "deterministic")
     }
+
+    /// The SkyWorld village: a church and houses beside the approach, clear of the runway strip and its approach.
+    @Test func villageStandsBesideTheApproach() {
+        let w = QuickFlightWorld()
+        let v = w.villageCluster()
+        #expect(v.buildings.contains { $0.kind == .church })
+        #expect(v.buildings.filter { $0.kind == .house }.count >= 18, "\(v.buildings.count) village buildings")
+        #expect(v.buildings.contains { $0.kind == .barn })
+        #expect(v.lanes.count == 2)
+        for b in v.buildings {
+            let q = b.center - w.runwayThreshold
+            let across = abs(q.x * w.runwayDirection.y - q.y * w.runwayDirection.x)
+            #expect(across > 150, "village building \(b.center) too close to the runway axis")
+        }
+    }
+
+    /// Farmsteads stand in farmed parcels (house, barn, shed each inside its parcel), off the runway
+    /// approach, and no instanced tree grows through one.
+    @Test func farmsteadsSitInFarmedParcels() throws {
+        let w = QuickFlightWorld()
+        var d = QuickFlightDetail.phone
+        d.objectRadius = 2_000; d.nearHalfExtent = 1_500; d.nearStep = 25; d.midHalfExtent = 3_000; d.midStep = 150; d.farHalfExtent = 6_000; d.farStep = 500
+        let inst = w.buildEnvironmentInstanced(detail: d)
+        let pattern = try #require(inst.soup.fieldPattern), grid = try #require(pattern.parcels)
+        let steads = w.parcelFarmsteads(pattern, foci: [w.runwayCentre, w.runwayThreshold - w.runwayDirection * 2_600],
+                                        radius: d.objectRadius, roads: [])
+        let farms = steads.flatMap(\.buildings)
+        #expect(steads.count >= 8 && farms.count == steads.count * 3, "\(steads.count) farmsteads")
+        #expect(steads.allSatisfy { $0.trees.count >= 1 }, "each farmstead has yard trees")
+        #expect(steads.filter { $0.track != nil }.count * 2 >= steads.count, "most farmsteads have a track")
+        for f in steads {
+            for t in f.trees { #expect(!QuickFlightWorld.inside(SIMD2(t.position.x, t.position.y), f.buildings, margin: 2)) }
+            let q = f.yard.center - w.runwayThreshold
+            let along = (q * w.runwayDirection).sum(), across = abs(q.x * w.runwayDirection.y - q.y * w.runwayDirection.x)
+            #expect(!(along > -4_500 && across < 20), "farmyard on the final path at \(f.yard.center)")
+        }
+        for b in farms {
+            let h = pattern.hedge(Float(b.center.x), Float(b.center.y))
+            #expect(grid.isOn(h.parcel) && h.distance > 8, "farm building at \(b.center) on a hedge or unfarmed parcel")
+            let q = b.center - w.runwayThreshold
+            let along = (q * w.runwayDirection).sum(), across = abs(q.x * w.runwayDirection.y - q.y * w.runwayDirection.x)
+            #expect(!(along > -1_200 && along < w.runwayLengthMetres + 400 && across < 260), "farm on the approach at \(b.center)")
+        }
+        for t in inst.trees where t.height < 9 {   // hedgerow and yard trees are 9 m and taller
+            #expect(!QuickFlightWorld.inside(SIMD2(t.position.x, t.position.y), farms, margin: 2), "tree through a farm building at \(t.position)")
+        }
+    }
 }
 
 @Suite struct SkyWorldReliefTests {

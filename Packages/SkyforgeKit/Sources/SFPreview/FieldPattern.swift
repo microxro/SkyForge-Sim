@@ -44,7 +44,7 @@ public struct FieldPattern: Sendable, Equatable {
     public static let parcelU: Float = 110, parcelV: Float = 170
     /// Half-width of a hedgerow (metres): a 2.4 m dark strip along every parcel border.
     public static let hedgeHalfWidth: Float = 1.2
-    static let angle: Float = 0.35
+    public static let angle: Float = 0.35
 
     /// Crop albedos relative to the summer grassland colour the terrain vertices carry (linear ratios of
     /// pasture, hay, wheat, ploughed soil, stubble to sRGB 124/132/70, tempered 15 %), so the factor keeps
@@ -78,6 +78,30 @@ public struct FieldPattern: Sendable, Equatable {
     }
 
     @inline(__always) static func unit(_ h: UInt32) -> Float { Float(h & 0x00FF_FFFF) / 16_777_216 }
+
+    /// Forest clearings (meadows) in region metres, 0…1: about 30 % of 420 m cells hold a 90–160 m clearing
+    /// with a ragged ±20 m edge (45–85 m ones hid behind the trees in front at the final camera's ~10° view). Mirrored operation for operation by `clearingMask` in the world shader, which
+    /// paints meadow there, while the real-world tree placement leaves the clearing open (art round 51: LSZS's
+    /// foreground canopy was one uniform mass).
+    public static func clearing(_ x: Float, _ y: Float) -> Float {
+        let cell: Float = 420
+        let ix = Int32((x / cell).rounded(.down)), iy = Int32((y / cell).rounded(.down))
+        let warp = 20 * noise(x / 60, y / 60, 0xC1EE)
+        var m: Float = 0
+        for dy in Int32(-1)...1 {
+            for dx in Int32(-1)...1 {
+                let cx = ix + dx, cy = iy + dy
+                if unit(hash(cx, cy, 0xC1EA)) >= 0.30 { continue }
+                let px = (Float(cx) + 0.2 + 0.6 * unit(hash(cx, cy, 0xC1EB))) * cell
+                let py = (Float(cy) + 0.2 + 0.6 * unit(hash(cx, cy, 0xC1EC))) * cell
+                let r = 90 + 70 * unit(hash(cx, cy, 0xC1ED))
+                let d = ((x - px) * (x - px) + (y - py) * (y - py)).squareRoot() + warp
+                let t = max(0, min(1, (d - r * 0.75) / (r * 0.25)))
+                m = max(m, 1 - t * t * (3 - 2 * t))
+            }
+        }
+        return m
+    }
 
     /// Smooth 2D value noise in [-1, 1).
     static func noise(_ x: Float, _ y: Float, _ s: UInt32) -> Float {

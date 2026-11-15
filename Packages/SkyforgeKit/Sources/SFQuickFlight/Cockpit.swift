@@ -165,6 +165,43 @@ public enum Cockpit {
         }
         gauge(-0.475, -0.295, r: 0.033, value: 0.40, ticks: 7)
         gauge(-0.475, -0.195, r: 0.033, value: 0.58, ticks: 7)
+        // Mounting screws at each gauge's corners and a small engraved placard under it (art round 46: the panel face
+        // is what the cockpit camera sees, and it read as a plain dark sheet between the instruments).
+        func fittings(_ y: Double, _ z: Double, r: Double) {
+            for (sy, sz) in [(-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)] {
+                let c = P(y + sy * r * 1.05, z + sz * r * 1.05, 0.003)
+                disc(c, pn, 0.0042, sides: 8, SIMD3<Float>(0.20, 0.20, 0.21), .metal)
+                quad(c + pn * 0.0005 + pr * 0.0035 - pu * 0.0006, c + pn * 0.0005 + pr * 0.0035 + pu * 0.0006,
+                     c + pn * 0.0005 - pr * 0.0035 + pu * 0.0006, c + pn * 0.0005 - pr * 0.0035 - pu * 0.0006, SIMD3<Float>(0.04, 0.04, 0.045))   // slot
+            }
+            let pz = z + r * 1.42, hw = r * 0.55, hh = 0.0055
+            quad(P(y - hw, pz - hh, 0.002), P(y + hw, pz - hh, 0.002), P(y + hw, pz + hh, 0.002), P(y - hw, pz + hh, 0.002), SIMD3<Float>(0.17, 0.17, 0.165))
+            for k in 0..<4 {                                                  // engraved lettering as short dark strokes
+                let x0 = y - hw * 0.7 + Double(k) * hw * 0.38
+                quad(P(x0, pz - 0.0022, 0.0025), P(x0 + hw * 0.24, pz - 0.0022, 0.0025), P(x0 + hw * 0.24, pz + 0.0022, 0.0025), P(x0, pz + 0.0022, 0.0025),
+                     SIMD3<Float>(0.03, 0.03, 0.03))
+            }
+        }
+        for z in rows { for y in [-0.035, 0.075, 0.185] { fittings(y, z, r: 0.043) } }
+        fittings(-0.475, -0.295, r: 0.033); fittings(-0.475, -0.195, r: 0.033)
+        // Eyeball air vent above the two small gauges: a dark housing with a chrome bezel and a ball nozzle
+        // turned a little toward the pilot, with a slotted face (art round 48: vents asked for on the panel).
+        do {
+            let c = P(-0.475, -0.368, 0.002)
+            // 1.4× (round 49: read correctly but too small to register).
+            ring(c, pn, 0.0225, 0.0295, sides: 28, chrome, .metal)
+            disc(c + pn * 0.0005, pn, 0.0225, sides: 28, SIMD3<Float>(0.012, 0.012, 0.013))
+            let aim = unit(pn + pr * 0.25 - pu * 0.15)
+            tube(c, c + aim * 0.015, 0.0175, 0.0155, sides: 16, SIMD3<Float>(0.06, 0.06, 0.065))
+            let face = c + aim * 0.016
+            disc(face, aim, 0.0155, sides: 16, SIMD3<Float>(0.02, 0.02, 0.022))
+            let (a1, a2) = perp(aim)
+            for k in -3...3 {                                                 // louvre slots
+                let o = a2 * (Double(k) * 0.0038), hl = 0.0115 * (1 - Double(k * k) / 14)
+                quad(face + aim * 0.0004 + o - a1 * hl - a2 * 0.0008, face + aim * 0.0004 + o + a1 * hl - a2 * 0.0008,
+                     face + aim * 0.0004 + o + a1 * hl + a2 * 0.0008, face + aim * 0.0004 + o - a1 * hl + a2 * 0.0008, SIMD3<Float>(0.13, 0.13, 0.135))
+            }
+        }
         // Avionics stack: four units with a lit display, a row of keys and two knobs.
         for k in 0..<4 {
             let z0 = -0.385 + Double(k) * 0.055
@@ -218,7 +255,17 @@ public enum Cockpit {
         // Glare shield (anti-glare cap) with a raised lip and the rear edge.
         let gsBackL = panel(-w, panelTop), gsBackR = panel(w, panelTop)
         let gsFrontL = V(1.48, -w, panelTop - 0.03), gsFrontR = V(1.48, w, panelTop - 0.03)
-        shaded(gsBackL - V(0.03, 0, 0.012), gsBackR - V(0.03, 0, 0.012), gsFrontR, gsFrontL, shield * 2.4, nu: 14, nv: 6, ao: 0.45, grain: 0.10, seed: 4)
+        // Vinyl grain: a finer grid with stronger per-vertex variation (art round 46: the top read as one flat sheet).
+// Round 47: ±20 % on a 3 cm grid read as soft blotches; ±6 % on a ~1 cm grid, plus a lengthwise sheen band
+        // along the crown so the top reads as curved vinyl.
+        shaded(gsBackL - V(0.03, 0, 0.012), gsBackR - V(0.03, 0, 0.012), gsFrontR, gsFrontL, shield * 2.4, nu: 96, nv: 24, ao: 0.45, grain: 0.06, seed: 4)
+        do {
+            let b0 = gsBackL - V(0.03, 0, 0.012), f0 = gsFrontL, b1 = gsBackR - V(0.03, 0, 0.012), f1 = gsFrontR
+            func along(_ t: Double, _ l: V, _ r: V, _ y: Double) -> V { let p = l * (1 - t) + r * t; return V(p.x, y, p.z - 0.0015) }
+            let ta = 0.38, tb = 0.62
+            shaded(along(ta, b0, f0, -w + 0.02), along(ta, b1, f1, w - 0.02), along(tb, b1, f1, w - 0.02), along(tb, b0, f0, -w + 0.02),
+                   shield * 2.95, nu: 24, nv: 2, ao: 0.6, grain: 0.04, seed: 31)
+        }
         // Stitched seam along the glare shield's rear edge (a fine lighter line), as on a padded cover.
         for i in 0..<36 {
             let y0 = -w + 0.03 + Double(i) * (2 * w - 0.06) / 36
@@ -251,6 +298,19 @@ public enum Cockpit {
             // Door pocket and handle.
             box(V(-0.35, side > 0 ? y - 0.04 : y, 0.18), V(0.35, side > 0 ? y : y + 0.04, 0.34), SIMD3<Float>(0.07, 0.065, 0.06))
             tube(V(-0.30, y - side * 0.03, -0.30), V(-0.12, y - side * 0.03, -0.30), 0.011, 0.011, sides: 6, chrome, .metal)
+            // Upholstered insert between the armrest and the pocket: lighter fabric with a darker piped border, so the
+            // door reads as a trimmed panel rather than one flat sheet (art round 44: the side panels were untextured).
+            let yi = y - side * 0.004
+            shaded(V(0.80, yi, -0.08), V(-0.95, yi, -0.08), V(-0.95, yi, 0.15), V(0.80, yi, 0.15), door * 1.35, nu: 14, nv: 4, ao: 0.25, grain: 0.12, seed: side > 0 ? 21 : 22)
+            for (pa, pb) in [(V(0.80, yi - side * 0.003, -0.08), V(-0.95, yi - side * 0.003, -0.08)), (V(0.80, yi - side * 0.003, 0.15), V(-0.95, yi - side * 0.003, 0.15)),
+                             (V(0.80, yi - side * 0.003, -0.08), V(0.80, yi - side * 0.003, 0.15))] {
+                tube(pa, pb, 0.006, 0.006, sides: 4, door * 0.55)
+            }
+            // A moulded crease under the window sill catches the cabin light.
+            tube(V(panelX - 0.02, y - side * 0.006, -0.26), V(-1.05, y - side * 0.006, -0.26), 0.008, 0.008, sides: 6, door * 1.6)
+            // Inside door handle at the front of the armrest: a dark recessed cup and a chrome lever.
+            box(V(0.58, side > 0 ? y - 0.012 : y, -0.20), V(0.74, side > 0 ? y : y + 0.012, -0.12), SIMD3<Float>(0.02, 0.02, 0.022))
+            tube(V(0.60, y - side * 0.022, -0.16), V(0.72, y - side * 0.03, -0.155), 0.010, 0.008, sides: 8, chrome, .metal)
             // Windscreen pillar and door post.
             // Moulded plastic pillar covers in a mid grey with smooth normals (round 26: flat black bars).
             tube(V(1.46, side * (w - 0.01), panelTop - 0.03), V(0.78, side * (w - 0.02), -1.02), 0.024, 0.022, sides: 10, trim * 1.5)
@@ -284,7 +344,14 @@ public enum Cockpit {
             tube(V(0.785, y - 0.17, -1.018), V(0.785, y + 0.17, -1.018), 0.004, 0.004, sides: 6, chrome, .metal)
         }
         // Floor carpet, a seat-rail step, and rudder pedals with toe plates.
-        shaded(V(1.02, -w, floorZ), V(1.02, w, floorZ), V(-1.1, w, floorZ), V(-1.1, -w, floorZ), carpet * 1.4, nu: 8, nv: 8, ao: 0.4, grain: 0.15, seed: 11)
+        // Carpet darker toward the firewall, in the footwell's shadow (art round 44: an even floor read flat), with a
+        // rubber heel mat under each set of pedals.
+        shaded(V(1.02, -w, floorZ), V(1.02, w, floorZ), V(0.45, w, floorZ), V(0.45, -w, floorZ), carpet * 0.95, nu: 8, nv: 4, ao: 0.45, grain: 0.18, seed: 11)
+        shaded(V(0.45, -w, floorZ), V(0.45, w, floorZ), V(-1.1, w, floorZ), V(-1.1, -w, floorZ), carpet * 1.45, nu: 8, nv: 8, ao: 0.4, grain: 0.15, seed: 12)
+        for y in [eye.y, -eye.y] {
+            shaded(V(0.86, y - 0.16, floorZ - 0.004), V(0.86, y + 0.16, floorZ - 0.004), V(0.55, y + 0.16, floorZ - 0.004), V(0.55, y - 0.16, floorZ - 0.004),
+                   SIMD3<Float>(0.030, 0.030, 0.032), nu: 6, nv: 4, ao: 0.2, grain: 0.25, seed: y > 0 ? 13 : 14)
+        }
         for y in [eye.y, -eye.y] {
             for dy in [-0.09, 0.09] {
                 box(V(0.90, y + dy - 0.045, 0.34), V(0.96, y + dy + 0.045, 0.50), SIMD3<Float>(0.06, 0.06, 0.065))
