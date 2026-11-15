@@ -1436,3 +1436,7 @@ Round-52 batch:
 2. **KASE:** slabs dropped. The round-46 world-space rock octaves stay.
 3. **High frames:** extra haze beyond 5 km (up to +14 % by 14 km), with a cooler, less desaturated horizon colour.
 4. **SkyWorld:** yards and tracks brighter.
+5. **Forest clearings (LSZS foreground):**
+   - `FieldPattern.clearing` marks about 22 % of 220 m cells with a 45–85 m meadow with a ragged edge. The world shader mirrors it operation for operation as `clearingMask`.
+   - The shader paints meadow over the photo canopy there, and the real-world tree placement leaves the clearing open apart from about 6 % lone trees.
+   - A test checks that clearings cover 2–15 % of the ground with soft edges.

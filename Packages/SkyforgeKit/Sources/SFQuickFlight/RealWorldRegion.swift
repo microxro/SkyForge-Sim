@@ -672,6 +672,8 @@ public struct RealWorldRegion: FlightWorld {
                 let canopy = max(lc.forest, ss(0.30, 0.15, l) * ss(-0.02, 0.01, c.y - 0.9 * c.x) * ss(0.015, 0.04, c.y - c.z) * (1 - lc.water))
                 if Hash.unit(rng.next()) > Double(canopy) * 0.9 || g.water > 0.3 { continue }
                 if nearRunway(px, py) || inBuilding(px, py) { continue }
+                // Forest clearings (meadows) stay open but for the odd lone tree; the shader paints them as meadow.
+                if FieldPattern.clearing(Float(px), Float(py)) > 0.4 && Hash.unit(rng.next()) > 0.06 { continue }
                 let sA = standNoise.fbm(px / 320, py / 320, octaves: 2), sB = standNoise.fbm(px / 210 + 17.3, py / 210 - 9.1, octaves: 2)
                 let coniferShare = 0.06 + 0.88 * Double(ss(-0.05, 0.05, Float(sA)))   // crisp stand edges (round 19: blended into one mass; round 25: sharper)
                 let h = 9 + 10 * (0.5 * Hash.unit(rng.next()) + 0.5 * Double(ss(-0.4, 0.4, Float(sB))))   // half per stand

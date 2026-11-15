@@ -306,6 +306,26 @@ public enum WorldShaders {
         float v = (a + (b - a) * tx) + ((c + (d - c) * tx) - (a + (b - a) * tx)) * ty;
         return v * 2.0 - 1.0;
     }
+    // Forest clearings: operation-for-operation mirror of SFPreview.FieldPattern.clearing.
+    static float clearingMask(float2 p) {
+        float cell = 220.0;
+        int ix = int(floor(p.x / cell)), iy = int(floor(p.y / cell));
+        float warp = 12.0 * fp_noise(p.x / 40.0, p.y / 40.0, 0xC1EEu);
+        float m = 0.0;
+        for (int dy = -1; dy <= 1; dy++) {
+            for (int dx = -1; dx <= 1; dx++) {
+                int cx = ix + dx, cy = iy + dy;
+                if (fp_unit(fp_hash(cx, cy, 0xC1EAu)) >= 0.22) continue;
+                float px = (float(cx) + 0.2 + 0.6 * fp_unit(fp_hash(cx, cy, 0xC1EBu))) * cell;
+                float py = (float(cy) + 0.2 + 0.6 * fp_unit(fp_hash(cx, cy, 0xC1ECu))) * cell;
+                float r = 45.0 + 40.0 * fp_unit(fp_hash(cx, cy, 0xC1EDu));
+                float d = length(p - float2(px, py)) + warp;
+                float t = saturate((d - r * 0.75) / (r * 0.25));
+                m = max(m, 1.0 - t * t * (3.0 - 2.0 * t));
+            }
+        }
+        return m;
+    }
     constant float3 fpSummer[8] = { float3(0.74, 0.90, 0.80), float3(1.50, 1.25, 1.90), float3(2.40, 1.75, 3.30),
         float3(0.95, 0.60, 0.95), float3(3.00, 2.00, 3.90), float3(0.55, 0.70, 0.66), float3(1.32, 0.96, 1.30),
         float3(3.05, 2.40, 1.50) };   // as FieldPattern.summer
@@ -1049,6 +1069,16 @@ public enum WorldShaders {
             // Floor 0.09 with a slight green lean: the forest floor between the crowns gets sky light (round 30:
             // LSZS valley floor still dark).
             if (imgForest > 0.0 && al < 0.09) albedo = mix(albedo, albedo * (0.09 / max(al, 0.004)) * float3(0.96, 1.04, 0.96), imgForest);   // 0.07 (0.05): near-black LSZS canopy under the 0.45 exposure (round 22)
+            // Clearings in the canopy: meadow instead of the photo's forest, where the tree placement also leaves the
+            // ground open (FieldPattern.clearing; art round 51: LSZS's foreground canopy was uniform).
+            if (imgForest > 0.0) {
+                float cm = clearingMask(photoW) * imgForest;
+                if (cm > 0.0) {
+                    float3 meadow = float3(0.085, 0.12, 0.045) * (0.88 + 0.24 * saturate(0.5 + 0.5 * groundNoise(photoW + 5.0, 9.0)));
+                    albedo = mix(albedo, meadow, cm);
+                    imgForest *= 1.0 - cm;
+                }
+            }
             // Water: the near layer's mask (photo colour checked against land cover) inside it, the land
             // cover's water fraction carried by the outer layers beyond, blended across the near layer's edge.
             float wm = inNear ? mix(outerWater, waterMask.sample(imgSampler, nuv, level(0.0)).r, nearWeight) : outerWater;
