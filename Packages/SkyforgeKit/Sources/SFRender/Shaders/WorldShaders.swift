@@ -225,8 +225,8 @@ public enum WorldShaders {
     constexpr sampler shadowCmp(filter::linear, address::clamp_to_edge, compare_func::less_equal);
 
     /// PCF (hardware comparison, (2r+1)² taps) in one cascade; 1 = lit.
-    static float shadowTaps(depth2d_array<float> sm, float2 uv, float z, uint layer, int r) {
-        float2 ts = 1.0 / float2(sm.get_width(), sm.get_height());
+    static float shadowTaps(depth2d_array<float> sm, float2 uv, float z, uint layer, int r, float spacing = 1.0) {
+        float2 ts = spacing / float2(sm.get_width(), sm.get_height());
         float lit = 0.0;
         for (int y = -r; y <= r; y++) for (int x = -r; x <= r; x++)
             lit += sm.sample_compare(shadowCmp, uv + float2(x, y) * ts, layer, z);
@@ -252,7 +252,9 @@ public enum WorldShaders {
             float2 uv = lp.xy * float2(0.5, -0.5) + 0.5;
             if (all(uv > 0.0) && all(uv < 1.0)) {
                 float bias = texel * (0.8 + min(16.0, tanT * 1.4)) / range;   // low-sun acne (art review)
-                vis = shadowTaps(sm, uv, lp.z - bias, uint(c), c == 3 ? min(r, 1) : r);
+                // Near cascade taps 1.6 texels apart (round-59 review: tree and building shadows on KMRY's near band
+                // had hard, blotchy edges; a wider kernel at the same tap count).
+                vis = shadowTaps(sm, uv, lp.z - bias, uint(c), c == 3 ? min(r, 1) : r, c == 1 ? 1.6 : 1.0);
             }
         }
         if (u.cascadeSplits.w > 0.5) {
@@ -1457,7 +1459,13 @@ public enum WorldShaders {
                 if (farB2 * blueF2 > 0.0) {
                     float3 lw3 = float3(0.2126, 0.7152, 0.0722);
                     float lb = dot(albedo, lw3);
-                    albedo = mix(albedo, lb * float3(1.02, 1.0, 0.80) / dot(float3(1.02, 1.0, 0.80), lw3), 0.9 * farB2 * blueF2);
+                    // Tussock (round-59 review: the neutralised slope read as a dark, flat smear ~25–30 % darker than the
+                    // sunlit tan hills above; the blue photo there is shaded ground). Lifted 35 %, tan to olive by a
+                    // 40 m noise, ±15 % at 6/14 m, all luminance-neutral about the lift.
+                    float tn = 0.6 * groundNoise(photoW + 17.0, 6.0) + 0.4 * groundNoise(photoW - 59.0, 14.0);
+                    float3 hue = mix(float3(0.95, 1.0, 0.72), float3(1.08, 1.0, 0.78), 0.5 + 0.5 * groundNoise(photoW + 233.0, 40.0));
+                    float3 tus = lb * 1.35 * (1.0 + 0.15 * tn) * hue / dot(hue, lw3);
+                    albedo = mix(albedo, tus, 0.9 * farB2 * blueF2);
                 }
             }
             if (saturate((wm - 0.35) / 0.25) > 0.5) {

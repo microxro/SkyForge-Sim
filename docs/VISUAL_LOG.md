@@ -1639,3 +1639,12 @@ Tree counts: LSZS 650k (capped), KASE 650k (capped), NZQN 116k (+70k scrub), KMR
 - **Round 59c result:** NZQN high slope purple fraction 0.55 → 0.43 (vs r58c), b down ~2 levels; KASE/LSZS within 0.4 levels (no orange rock). Debug view 1 still b > g in 70 % of slope pixels.
 - **Round 59d:** the magnified-photo pass (90 % toward the raw photo's 20 m mean) and the per-channel mid-ring ratio restore the cast after the neutral, so the neutral runs again after the detail passes.
 - **Round 59d result:** fixed. NZQN high slope purple fraction 0.55 → 0.003; mean (54.7, 57.2, 59.8) → (58.4, 57.3, 49.6), olive-brown; debug view 1 albedo b > g in 0 % of pixels (was 70 %). Every other frame within 0.8 levels mean; SkyWorld identical. Sent to the reviewer as round 59.
+
+## Round 59 review (r59d): high frames 7.30 (+0.05; NZQN high 7.0), finals 7.75, cockpit 7.25
+
+- **NZQN high:** purple gone; the slope is now a dark, flat brown-olive smear ~25–30 % darker than the tan hills above, still the most wrong patch.
+- **Round 60:**
+  - Neutralised blue/purple land lifted 35 % with tussock: tan to olive by a 40 m noise, ±15 % at 6/14 m.
+  - Scrub placement also accepts grey-to-purple photo (b 0.85–1.2·g, r ≥ 0.8·g, l 0.18–0.45 sRGB) on steep ground.
+  - SSAO floor 0.7 and near-cascade PCF taps 1.6 texels apart (KMRY/KBFI near-band lighting blotches).
+  - Pitched photo roofs 55 % toward a roofing palette (dark iron, charcoal, terracotta, red iron, pale sheet, slate green).

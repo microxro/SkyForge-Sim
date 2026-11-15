@@ -713,6 +713,9 @@ public struct RealWorldRegion: FlightWorld {
                     let hx = height(px + 10, py) - height(px - 10, py), hy = height(px, py + 10) - height(px, py - 10)
                     let slope = (hx * hx + hy * hy).squareRoot() / 20
                     let warm = c.x >= 0.82 * c.y && c.z < 0.85 * c.y && l > 0.25 && l < 0.62   // sRGB: tan tussock ~0.4–0.6
+                        // Shaded tussock photographs grey to purple (round-59 review, NZQN high's left slope; the shader
+                        // neutralises it to tan, so it takes scrub too).
+                        || (c.z >= 0.85 * c.y && c.z <= 1.2 * c.y && c.x >= 0.8 * c.y && l > 0.18 && l < 0.45)
                     let hs = Hash.unit(Hash.int(Int((x / cell).rounded()), Int((y / cell).rounded()), seed: 0x5C2B))
                     scrub = warm && slope > 0.25 && hs < 0.35 * Double(ss(0.25, 0.45, Float(slope)))
                 }
