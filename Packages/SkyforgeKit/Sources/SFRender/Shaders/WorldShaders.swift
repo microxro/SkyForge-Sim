@@ -1448,6 +1448,18 @@ public enum WorldShaders {
                     albedo *= 1.0 + 0.10 * rows * crop;
                 }
             }
+            {
+                // The blue/purple neutral again after the detail passes (round 59d: debug view 1 still showed NZQN
+                // high's slope b > g in 70 % of pixels; the magnified-photo pass mixes 90 % toward the raw photo's
+                // 20 m mean and the mid-ring ratio is per channel, so both restored the cast).
+                float farB2 = (1.0 - saturate((wm - 0.2) / 0.2)) * (1.0 - rwCover);
+                float blueF2 = smoothstep(0.0, 0.06, (albedo.b - max(albedo.r * 0.85, albedo.g)) / max(albedo.b, 1e-3));
+                if (farB2 * blueF2 > 0.0) {
+                    float3 lw3 = float3(0.2126, 0.7152, 0.0722);
+                    float lb = dot(albedo, lw3);
+                    albedo = mix(albedo, lb * float3(1.02, 1.0, 0.80) / dot(float3(1.02, 1.0, 0.80), lw3), 0.9 * farB2 * blueF2);
+                }
+            }
             if (saturate((wm - 0.35) / 0.25) > 0.5) {
                 imageryWater = true; albedo *= 0.7; shoreWm = wm;
                 // Shallow fringe: the mask's mean over two rings 20 and 40 m out, so the shallows reach 30–60 m

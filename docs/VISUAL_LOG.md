@@ -1636,3 +1636,5 @@ Tree counts: LSZS 650k (capped), KASE 650k (capped), NZQN 116k (+70k scrub), KMR
 - **Round 59b:** the blue/purple neutral applies at any distance on land, and both tests use `b − max(0.85·r, g)`. NZQN high debug views 1/2/4 added to find the cause if it persists.
 - **Round 59b result:** NZQN high unchanged (purple fraction 0.45 → 0.446). Debug views 2 and 4 show the slope fully sunlit and lit mostly by direct sun, so the cause is not ambient. Debug view 1 shows the final albedo at ~(63, 66, 68) sRGB, a blue excess of ~0.003 linear, which the absolute 0.03 ramp scaled to ~3 % strength.
 - **Round 59c:** both blue tests are relative to the blue channel, `(b − max(0.85·r, g)) / b` over 0–0.06, with a 90 % pull beyond the near band.
+- **Round 59c result:** NZQN high slope purple fraction 0.55 → 0.43 (vs r58c), b down ~2 levels; KASE/LSZS within 0.4 levels (no orange rock). Debug view 1 still b > g in 70 % of slope pixels.
+- **Round 59d:** the magnified-photo pass (90 % toward the raw photo's 20 m mean) and the per-channel mid-ring ratio restore the cast after the neutral, so the neutral runs again after the detail passes.
