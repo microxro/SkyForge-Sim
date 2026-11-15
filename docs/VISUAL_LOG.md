@@ -1000,3 +1000,96 @@ Round-40 batch:
 2. **Crown outline and size:** bulge ±35 % and lobes ±20 %. Whole-tree size is now 0.72–1.28× from a second hash, and tree cell culling bounds widened to match.
 3. **Per-tree tone:** brightness ±18 %, with a warm shift on about a third of trees.
 4. **Valley haze on SkyWorld** as well as the real terrain.
+
+## Bold round 40: a8f8287 (run 43632167796, ultra tier; merged with PR #6)
+Same reviewer and scale.
+
+**Final camera:** KMRY 7.5 (7.25), KASE 7.5 (7.75), KBFI 7.25, LSZS 7.5, NZQN 7.5, SkyWorld 7.75. **Average 7.50**.
+
+**High frames:** 6.65. **Cockpit:** 6.75. KMRY close 7.5 (7.25).
+
+**Landed:** KMRY trees now differ clearly in size, outline and tone, and the suburb reads as mixed planting.
+
+**Regression:** KASE final. The crop rows aliased into a fine 2–4 px diagonal hatch that read as a screen-door weave. No parcel grid was visible.
+
+Round-41 batch:
+1. **Crop rows:** shown only where the row spacing spans 8–14 or more pixels along the long footprint axis.
+2. **Field patchwork:** each parcel has its own tone (±12 %) and a straw-to-green lean, with a 1–2 m darker margin.
+3. **Wet shore:** land just outside the water mask is darker and cooler.
+4. **Near-lake shallow tint:** strength raised from 0.6 to 0.8.
+
+Round-41 frames (47c7956, run 43649602100) before review:
+- **Crop-row hatch:** gone beyond the near band.
+- **Parcel margins:** they drew straight dark lines across KASE's foreground that ignore the photo's own field edges, and the band darkened from 83.2 to 78.6.
+- **Fix before review:** soft ~120 m tone patches (±12 %) and a ~160 m straw-to-green hue lean (luminance-neutral), with no parcel edges or margins. The rows keep their parcels, faded by pixel spacing.
+
+## Bold round 41: PR #7 273690d (run 43650626794, ultra tier)
+Same reviewer and scale.
+
+**Final camera:** KMRY 7.5, KASE 7.75 (7.5), KBFI 7.25, LSZS 7.5, NZQN 7.5, SkyWorld 7.75. **Average 7.54**.
+
+**High frames:** 6.65. **Cockpit:** 6.75.
+
+**Landed:** the KASE crop-row hatch is gone.
+
+**Did not show:**
+- **Patchwork:** ±12 % noise patches were lost in the photo's own variation.
+- **NZQN shore band and shallow tint:** both are under a pixel at the final camera's distance.
+
+Round-42 batch:
+1. **Field patchwork from the photo's own fields:**
+   - A phase from the 30 m mean colour (near constant inside a field, changing across its edge) drives the patches.
+   - ±22 % tone and a hay-to-irrigated hue lean, luminance-neutral.
+2. **Mid-ring detail:** luminance octaves at about 60 m and 30 m (±16 %) from 0.8 to 15 km, faded by the footprint, for the high views.
+3. **KBFI roofs:**
+   - Rooftop plant density raised to 1 box per 250 m², up to 14.
+   - Rows of low dark-glass skylights along the long axis of flat roofs over 900 m².
+
+Round-42 frames (d0fa0f4, run 43651812034) before review:
+- **Contour rings:** the sine phase of the mean colour drew rings over KASE's fields and slopes wherever the mean varied. This is a regression.
+- **Mid-ring detail:** absent from the high frames (≤ 41k pixels changed). The long-axis footprint faded it out at grazing angles.
+- **KBFI rooftop plant and skylights:** visible.
+
+Fixed before review:
+- **Field contrast:** each field's 30 m mean against the ~150 m mean around it, with that ratio pushed 80 % further (clamped to 0.75–1.35 per channel). Fields separate along the photo's own boundaries, with no bands.
+- **Mid-ring fade:** now uses the geometric-mean footprint.
+
+## Bold round 42: PR #7 1d4bc07 (run 43652804502, ultra tier)
+Same reviewer and scale.
+
+**Final camera:** KMRY 7.5, KASE 7.75, KBFI 7.5 (7.25), LSZS 7.5, NZQN 7.5, SkyWorld 7.75. **Average 7.58**.
+
+**High frames:** 6.65. **Close:** KBFI 7.25 (7.0). **Cockpit:** 6.75.
+
+**Landed:**
+- **KBFI rooftop plant and skylights:** the blocks read as real buildings.
+- **KASE field contrast:** partial. The lower half's contrast rose from 31.7 to 34.4, with no grid or rings, but it still reads as one smeared field.
+
+**Did not show:** the mid-ring 30/60 m octaves are sub-pixel at the high camera's distances.
+
+Round-43 batch:
+1. **KASE field push:** the exponent goes from 0.8 to 1.4 where the 30 m / 150 m ratio is large (clamp 0.65–1.5). Boundaries sharpen while field interiors stay calm.
+2. **Mid ring (high frames):**
+   - Coarse 120 m and 240 m luminance octaves.
+   - Field contrast from the photo's 150 m / 600 m mean ratio, pushed 60 % further (0.75–1.33).
+3. **KBFI rooftop units:** a mix of mid-grey, white, pale tan and dark ducts.
+
+## Bold round 43: PR #7 2a513dd (ultra tier)
+Same reviewer and scale.
+
+**Final camera:** KMRY 7.5, KASE 7.75, KBFI 7.5, LSZS 7.5, NZQN 7.5, SkyWorld 7.75. **Average 7.58** (unchanged).
+
+**High frames:** 6.70 (6.65); KASE high 7.0, its first rise above 6.75. **Cockpit:** 6.75.
+
+**Main limit named:** on steep slopes the 10 m photo stretches down the fall line into streaks (KASE high right side, NZQN left hillside, LSZS slopes).
+
+Round-44 batch:
+1. **Steep-slope replacement (structural, after rounds 42–43 under +0.2):** where the photo's stretch 1/n.z passes ~1.6×, blend to procedural rock, scree and scrub, fully past ~2.6×.
+   - Tinted from the photo's 150 m mean; 30 % of the photo's own luminance kept for exposure.
+   - Fall-line octaves at 150, 40 and 12 m (footprint-faded) plus 60 m scrub patches.
+
+Round-44 frames (d34d1f4, run 43655398099) before review:
+- **Slope replacement did not fire:** at most 120 pixels changed per frame. The 1/n.z gate of 1.6–2.6× needs slopes past 51°; the smoothed DEM's slopes sit at 25–40°.
+
+Fixed before review:
+- **Gate:** the blend now runs from n.z 0.92 to 0.75, at most 80 %, keeping 45 % of the photo's luminance (clamped 0.7–1.4) so forest stands stay.

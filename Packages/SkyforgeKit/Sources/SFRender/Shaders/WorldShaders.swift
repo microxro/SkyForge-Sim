@@ -1122,6 +1122,28 @@ public enum WorldShaders {
                 albedo *= 1.0 + (f - 1.0) * groundMat;
                 groundTilt = tilt * groundMat;
             }
+            {
+                // Mid-ring detail: luminance octaves at ~60 m and ~30 m from 0.8 to 15 km, faded by the footprint, so
+                // the soft photo of the high views gains structure (round 41: high frames level for five rounds).
+                float fpMid = 2.0 * sqrt(length(dwx) * length(dwy));   // geometric mean: the long axis faded it out at grazing angles (round 42)
+                float midW = smoothstep(800.0, 2000.0, dist) * (1.0 - smoothstep(9000.0, 15000.0, dist)) * (1.0 - saturate((wm - 0.2) / 0.2)) * (1.0 - rwCover);
+                float md = 0.6 * groundNoise(photoW + 911.0, 60.0) * saturate(1.0 - fpMid * 3.0 / 60.0)
+                         + 0.4 * groundNoise(photoW - 517.0, 30.0) * saturate(1.0 - fpMid * 3.0 / 30.0)
+                         // Coarse octaves that survive at the high camera's distances (round 42: 30/60 m are sub-pixel there).
+                         + 0.8 * groundNoise(photoW + 233.0, 120.0) * saturate(1.0 - fpMid * 3.0 / 120.0)
+                         + 0.6 * groundNoise(photoW - 71.0, 240.0) * saturate(1.0 - fpMid * 3.0 / 240.0);
+                albedo *= 1.0 + 0.12 * md * midW;
+                if (midW > 0.01) {
+                    // Field contrast in the mid ring: the photo's ~150 m mean against its ~600 m mean, the ratio pushed
+                    // 60 % further, so the high views' farmland and slopes separate into parcels and stands.
+                    float lsA = max(1.0, 150.0 / max(length(dwx) + length(dwy), 1e-3)), lsB = lsA * 4.0;
+                    float2 muv; bool mIn; float m0, m1;
+                    float3 mA = photoAlbedo(photoColour(u, imgNear, imgMid, imgFar, imgDetail, photoW, dwx * lsA, dwy * lsA, muv, mIn, m0, m1));
+                    float3 mB = photoAlbedo(photoColour(u, imgNear, imgMid, imgFar, imgDetail, photoW, dwx * lsB, dwy * lsB, muv, mIn, m0, m1));
+                    float3 mr = clamp(mA / max(mB, float3(1e-3)), float3(0.6), float3(1.6));
+                    albedo *= mix(float3(1.0), clamp(pow(mr, float3(0.6)), float3(0.75), float3(1.33)), midW);
+                }
+            }
             if (ltMean.x >= 0.0) {
                 // Crop rows on cultivated ground within ~1 km: the photo's fields smear into directional streaks at
                 // the final camera's grazing angle (round 39, KASE). Rows 3–6 m apart in ~150 m parcels on axes
@@ -1135,15 +1157,40 @@ public enum WorldShaders {
                 if (crop > 0.01) {
                     float2 pr = float2(0.94 * photoW.x + 0.34 * photoW.y, -0.34 * photoW.x + 0.94 * photoW.y);
                     uint ph = fp_hash(int(floor(pr.x / 150.0)), int(floor(pr.y / 170.0)), 0x5EEDu);
+                    // Field patchwork: soft ~120 m patches of tone (±12 %) and a straw-to-green lean, so the ground
+                    // reads as fields (round 40: rows alone read as a weave). Not per parcel with margins: straight
+                    // parcel edges and dark margins cut across the photo's own field boundaries as a grid
+                    // (round-41 frames).
+                    // Field contrast from the photo's own fields: each field's ~30 m mean against the ~150 m mean
+                    // around it, that difference pushed 80 % further (tone and hue), so neighbouring fields separate
+                    // along the photo's real boundaries. Round 41: ±12 % noise patches were lost in the photo; a
+                    // sine phase of the mean colour drew contour rings (round-42 frames).
+                    float lsF = max(1.0, 150.0 / max(length(dwx) + length(dwy), 1e-3));
+                    float2 fuv; bool fin; float fw0, fw1;
+                    float3 lm150 = photoAlbedo(photoColour(u, imgNear, imgMid, imgFar, imgDetail, photoW, dwx * lsF, dwy * lsF, fuv, fin, fw0, fw1));
+                    float3 fr = clamp(ltMean / max(lm150, float3(1e-3)), float3(0.6), float3(1.6));
+                    // Stronger where the field-to-surroundings difference is large (real boundaries sharpen,
+                    // interiors stay calm): exponent 0.8 → 1.4, clamp 0.65–1.5 (round 42: still one smeared field).
+                    float fg = saturate(length(log(fr)) * 5.0);
+                    float3 amp = clamp(pow(fr, float3(0.8 + 0.6 * fg)), float3(0.65), float3(1.5));
+                    float fpM = max(length(dwx), length(dwy));
+                    albedo *= mix(float3(1.0), amp, crop);
+                    // Rows only where they span 8+ pixels along the long footprint axis (round 40: a 2–4 px hatch
+                    // aliased into a screen-door weave over the KASE fields).
                     float ang = fp_unit(ph) * 3.14159265;
                     float2 rd = float2(cos(ang), sin(ang));
                     float spacing = 3.0 + 3.0 * fp_unit(ph >> 8);
-                    float fpR = length(float2(dot(dwx, rd), dot(dwy, rd)));
-                    float rows = cos(dot(photoW, rd) / spacing * 6.2831853) * saturate(1.0 - fpR * 4.0 / spacing);
+                    float rows = cos(dot(photoW, rd) / spacing * 6.2831853) * smoothstep(8.0, 14.0, spacing / max(fpM, 1e-3));
                     albedo *= 1.0 + 0.10 * rows * crop;
                 }
             }
             if (saturate((wm - 0.35) / 0.25) > 0.5) { imageryWater = true; albedo *= 0.7; shoreWm = wm; }
+            else {
+                // Wet shore: land just outside the water mask's edge darker and a little cooler (round 40, NZQN:
+                // the lake met the land with no wet line).
+                float wet = smoothstep(0.08, 0.30, wm);
+                albedo *= mix(float3(1.0), float3(0.70, 0.74, 0.78), wet);
+            }
             m = imageryWater ? 1.0 : 7.0;
         }
         float2 fieldW = in.rel.xy + u.cameraLocal.xy;
@@ -1296,6 +1343,26 @@ public enum WorldShaders {
                 float pa = mix(0.30, 0.40, smoothstep(1000.0, 3000.0, dist));
                 albedo = mix(albedo, albedo * float3(0.70, 0.80, 0.74), scrub * pa / 0.3);
                 albedo *= 1.0 + pa * scree;
+                // Round 44: on steep slopes the 10 m photo smears into streaks (round-43 review: KASE high right
+                // side, NZQN hillside, LSZS slopes). Blend to procedural rock, scree and scrub tinted from the
+                // photo's 150 m mean; 45 % of the photo's own luminance stays so exposure and forest stands are
+                // kept. A 1/n.z stretch gate of 1.6–2.6× (slopes past 51°) moved under 120 pixels per frame: the
+                // smoothed DEM's slopes sit at 25–40°, so the blend runs from n.z 0.92 to 0.75, at most 80 %.
+                float stretchW = 0.8 * smoothstep(0.92, 0.75, n.z) * (1.0 - roadNear);
+                if (stretchW > 0.01) {
+                    float lsS = max(1.0, 150.0 / max(length(dwx) + length(dwy), 1e-3));
+                    float2 suv; bool sIn; float s0w, s1w;
+                    float3 sm = photoAlbedo(photoColour(u, imgNear, imgMid, imgFar, imgDetail, photoW, dwx * lsS, dwy * lsS, suv, sIn, s0w, s1w));
+                    float smL = max(dot(sm, float3(0.2126, 0.7152, 0.0722)), 1e-4);
+                    float3 rock = sm * clamp(pow(max(dot(albedo, float3(0.2126, 0.7152, 0.0722)), 1e-4) / smL, 0.45), 0.7, 1.4);
+                    float g0 = groundNoise(float2(fl.x * 0.2, fl.y) - 29.0, 150.0) * saturate(1.0 - sfp * 2.5 / 150.0);
+                    float g1 = groundNoise(float2(fl.x * 0.25, fl.y) + 13.0, 40.0) * saturate(1.0 - sfp * 2.5 / 40.0);
+                    float g2 = groundNoise(float2(fl.x * 0.5, fl.y) - 7.0, 12.0) * saturate(1.0 - sfp * 2.5 / 12.0);
+                    rock *= 1.0 + 0.30 * g0 + 0.25 * g1 + 0.15 * g2;
+                    float sc = smoothstep(0.15, 0.45, groundNoise(w + 517.0, 60.0)) * saturate(1.0 - sfp * 2.5 / 60.0);
+                    rock = mix(rock, rock * float3(0.68, 0.82, 0.70), 0.6 * max(sc, 0.5 * scrub));
+                    albedo = mix(albedo, rock, stretchW);
+                }
             }
             if (in.material == 7.0 && dot(albedo, float3(0.3, 0.6, 0.1)) < 0.3) {
                 float patch = groundNoise(w + 71.0, 32.0) * saturate(1.0 - sfp * 2.5 / 32.0);
@@ -1388,7 +1455,7 @@ public enum WorldShaders {
                 // Shallows: a lighter green-turquoise body across the shore band (the mask's 0.6–0.9 rise), so
                 // a lake edge reads as depth rather than a navy cut-out (art round 11, NZQN).
                 float shallow = 1.0 - smoothstep(0.6, 0.97, shoreWm);   // wider band (round 12: read only at mid-distance)
-                body = mix(body, float3(0.05, 0.11, 0.10) * (ambient * 0.8 + u.sunColour.rgb * max(0.0, toSun.z) * 0.35), shallow * 0.6);
+                body = mix(body, float3(0.05, 0.11, 0.10) * (ambient * 0.8 + u.sunColour.rgb * max(0.0, toSun.z) * 0.35), shallow * 0.8);   // 0.6 (round 40: shore still abrupt)
                 // Broad sheen toward the sun from many small wave facets (the 900/60 lobes are single glints).
                 refl += u.sunColour.rgb * pow(max(0.0, dot(r, toSun)), 12.0) * 0.12 * vis;
             }
