@@ -1638,3 +1638,4 @@ Tree counts: LSZS 650k (capped), KASE 650k (capped), NZQN 116k (+70k scrub), KMR
 - **Round 59c:** both blue tests are relative to the blue channel, `(b − max(0.85·r, g)) / b` over 0–0.06, with a 90 % pull beyond the near band.
 - **Round 59c result:** NZQN high slope purple fraction 0.55 → 0.43 (vs r58c), b down ~2 levels; KASE/LSZS within 0.4 levels (no orange rock). Debug view 1 still b > g in 70 % of slope pixels.
 - **Round 59d:** the magnified-photo pass (90 % toward the raw photo's 20 m mean) and the per-channel mid-ring ratio restore the cast after the neutral, so the neutral runs again after the detail passes.
+- **Round 59d result:** fixed. NZQN high slope purple fraction 0.55 → 0.003; mean (54.7, 57.2, 59.8) → (58.4, 57.3, 49.6), olive-brown; debug view 1 albedo b > g in 0 % of pixels (was 70 %). Every other frame within 0.8 levels mean; SkyWorld identical. Sent to the reviewer as round 59.
