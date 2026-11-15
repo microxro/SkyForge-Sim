@@ -72,7 +72,7 @@ public struct RealWorldDetail: Sendable, Equatable {
     /// at this tier (review frames, photo mode, fast desktop GPUs).
     public static let ultra: RealWorldDetail = {
         var d = RealWorldDetail(nearHalf: 3_200, nearStep: 8, midHalf: 12_000, midStep: 32, farHalf: 40_000, farStep: 160,
-                                imageryNearSize: 4_096, imageryFarSize: 2_048, treeRadius: 4_200, maxTrees: 260_000,
+                                imageryNearSize: 4_096, imageryFarSize: 2_048, treeRadius: 6_500, maxTrees: 650_000,
                                 imageryDetailHalf: 800, imageryDetailSize: 4_096)
         d.imageryMidSize = 4_096; d.buildingRadius = 9_500; d.buildingFullRadius = 6_500
         return d
@@ -642,7 +642,12 @@ public struct RealWorldRegion: FlightWorld {
             guard let list = footprints[SIMD2(Int((x / 40).rounded(.down)), Int((y / 40).rounded(.down)))] else { return false }
             return list.contains { OSMGeometry.contains($0, SIMD2(x, y)) }
         }
-        let near = ground.near
+        let nearMosaic = ground.near, midMosaic = midImagery
+        // Beyond the near square the mid layer (~7 m/px at ultra) still classifies forest stands, so 3D trees reach the
+        // slopes the high views look at (round 55: the LSZS high slope 3–5 km out was smooth magnified photo).
+        struct PhotoLookup { let a: ImageryMosaic; let b: ImageryMosaic?
+            func sample(_ x: Double, _ y: Double) -> SIMD3<Float>? { a.sample(x, y) ?? b?.sample(x, y) } }
+        let near = PhotoLookup(a: nearMosaic, b: midMosaic)
         // Stands: low-frequency noise (~300 m) sets the conifer share, brightness and height of a patch of
         // forest, so a valley is darker conifer stands beside lighter broadleaf ones instead of one uniform
         // texture from the camera to the far slope (art round 18, LSZS).

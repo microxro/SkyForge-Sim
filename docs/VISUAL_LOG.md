@@ -1558,3 +1558,14 @@ All jobs green.
 1. **Suburb mask:** OSM building footprints are rasterised into the road mask as discs of their size.
 2. **Meadow:** ±18 % patches at 25 m and 60 m, and a darker (−22 %), narrower forest-edge band.
 3. **Canopy relief:** crown clusters at 18 m and 55 m, gap darkening 38 %, dome shading ×1.5, kept to a 40 m footprint.
+
+## Round 55 review (r55): finals 7.75 (flat), high frames 6.70, cockpit 7.25
+
+- No change moved a score; every frame changed by under 0.6 levels.
+- **Diagnosis, KMRY:** debug view 1 (albedo) shows even grey-green ground on the campus (x 640–1280, y 540–720). What remains in the final frame is lighting (tree shadows and ambient), not albedo, so the near-band holds stop here.
+- **Diagnosis, high frames:** the LSZS high camera is 6 km before the threshold. The smeared slope is 3–5 km before it, outside the ultra tree disc (4.2 km), and beyond the near imagery square (3.2 km), where tree placement found no photo at all.
+
+### Round 56 (structural)
+
+- Ultra trees reach 6.5 km (cap 650,000).
+- Beyond the near square, tree placement samples the mid imagery layer (~6.8 m/px at ultra), so forest stands on the high views' slopes get 3D trees.

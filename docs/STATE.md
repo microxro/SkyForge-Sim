@@ -1,4 +1,4 @@
-LAST_UPDATE: 2026-11-15T18:40:00Z
+LAST_UPDATE: 2026-11-15T19:00:00Z
 
 # SKYFORGE state
 
@@ -38,6 +38,7 @@ LAST_UPDATE: 2026-11-15T18:40:00Z
     | 52 | 7.67 | 7.25 |
     | 53 | 7.67 | 7.25 |
     | 54 | 7.75 | 7.25 |
+    | 55 | 7.75 | 7.25 |
 
     Best scene: SkyWorld 8.25 (round 54, village beside the approach); LSZS final 8.0 (round 54, even clearing meadow); KASE final 7.75. Rounds 27 and 28 were regression checks only.
   - What landed:
@@ -52,7 +53,9 @@ LAST_UPDATE: 2026-11-15T18:40:00Z
   - High-frame average: 6.70 at round 46 (6.65 at round 45; 6.38 at round 26). The KASE high mid-ring smear is accepted at 7.0: it is the z14 photo (6.8 m per texel) magnified ~3×, which only sharper imagery would fix.
   - Round 53 (7.67, flat; high frames 6.70; KASE close back to 7.5): clearing grass fixed KASE close, the village read well at 3× but was ~100×25 px at 1×, the LSZS meadow gained a lime wedge, and the KMRY near band did not move.
   - Round 54 (7.75; LSZS 8.0, SkyWorld 8.25; high frames 6.70, cockpit 7.25): the even meadow and the village landed. Canopy relief at 10/28 m and the KMRY campus blotches did not show on screen.
-  - Next: round-55 frames. Building footprints now count in the road-density suburb mask (KMRY's campus has few streets). The meadow gets ±18 % grazing patches at 25/60 m and a narrower, darker edge band. Canopy relief moves to 18/55 m crown clusters with stronger gaps and domes. Then NZQN town roofs and heights.
+  - Round 55 (7.75, flat; high frames 6.70): buildings in the suburb mask, meadow patches and 18/55 m canopy relief each moved the screen by under 1 level.
+    - KMRY debug view 1 (albedo) now shows even ground on the campus. The remaining blotches are lighting (tree shadows), so the near-band holds are done.
+  - Next: round-56 frames. Structural: ultra places 3D trees to 6.5 km (650k cap), and beyond the near square it classifies from the mid imagery layer. The high views' forest slopes 3–5 km out had no 3D trees, only magnified photo.
 Visual transformation (2026-11-10, PR #5, ADR-0021) is in progress; the Bold Mode summary below is the earlier baseline.
 - Landed (CI-compiled): new SF-1 aircraft model with per-pixel livery, glass and clear coat; OSM-sourced 3D buildings with facade/roof shading (bundled `buildings.sfb`, ODbL); four shadow cascades; mid-distance imagery layer; 2x supersampling and sharpening in the ultra preset; exposure scale 0.45 with near-identity photo albedo; per-airport review-frame jobs.
 - Landed 2026-11-10 (second batch): five tree species with ambient occlusion; rebuilt cockpit interior with cabin fill light; ESA WorldCover land cover grids in every pack (water at any distance); water shading (sky reflection, wind patches); tinted tower glass; fine cloud structure at ultra; magnification-aware local contrast on the ground photo; `LINZAerialProvider`.
