@@ -1188,3 +1188,14 @@ Round-46b frames (0281a79, run 43692325823) before review — the outcrop change
 Fixed before review:
 - **Footprint:** geometric mean (area-equivalent) instead of the long axis.
 - **Luminance guard:** the mean stays within −15 % / +18 % of the photo's own luminance at the pixel.
+
+Round-46c frames (a4e5302, run 43693339251) before review — lower-half mean luminance (round 44 → 46c):
+- KASE high 92.8 → 92.3
+- NZQN high 79.9 → 80.1
+- LSZS high 63.7 → 62.6
+- KMRY high 89.9 → 89.9
+- KBFI high 111.9 → 111.8
+- KASE final 83.6 → 82.8
+- KASE close 80.7 → 80.1
+
+The LSZS left shore is still −7 to −9 locally, but the slope is no longer near-black. The KASE cliff shows no rings. Sent for review as round 46.
