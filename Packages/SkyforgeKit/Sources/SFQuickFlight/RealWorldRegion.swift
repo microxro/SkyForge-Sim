@@ -72,7 +72,7 @@ public struct RealWorldDetail: Sendable, Equatable {
     /// at this tier (review frames, photo mode, fast desktop GPUs).
     public static let ultra: RealWorldDetail = {
         var d = RealWorldDetail(nearHalf: 3_200, nearStep: 8, midHalf: 12_000, midStep: 32, farHalf: 40_000, farStep: 160,
-                                imageryNearSize: 4_096, imageryFarSize: 2_048, treeRadius: 6_500, maxTrees: 650_000,
+                                imageryNearSize: 4_096, imageryFarSize: 2_048, treeRadius: 6_500, maxTrees: 1_000_000,
                                 imageryDetailHalf: 800, imageryDetailSize: 4_096)
         d.imageryMidSize = 4_096; d.buildingRadius = 9_500; d.buildingFullRadius = 6_500
         return d
@@ -714,7 +714,7 @@ public struct RealWorldRegion: FlightWorld {
                     let slope = (hx * hx + hy * hy).squareRoot() / 20
                     let warm = c.x >= 0.82 * c.y && c.z < 0.85 * c.y && l > 0.25 && l < 0.62   // sRGB: tan tussock ~0.4–0.6
                     let hs = Hash.unit(Hash.int(Int((x / cell).rounded()), Int((y / cell).rounded()), seed: 0x5C2B))
-                    scrub = warm && slope > 0.25 && hs < 0.22 * Double(ss(0.25, 0.45, Float(slope)))
+                    scrub = warm && slope > 0.25 && hs < 0.35 * Double(ss(0.25, 0.45, Float(slope)))
                 }
                 if !scrub && (Hash.unit(rng.next()) > Double(canopy) * 0.9 || g.water > 0.3) { continue }
                 // Outer 15 % of the disc: density fades with a ~400 m noisy edge, not a hard ring (round-56 review).

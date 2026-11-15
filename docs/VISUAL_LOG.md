@@ -1613,3 +1613,13 @@ High frames, round 55 → round 56:
 - Pixel-identical to round 57b except NZQN (+4k trees).
 - **Cause:** both new rules used linear thresholds, but tree placement samples the mosaics as sRGB bytes ÷ 255. The ~0.04-linear shaded forest is ~0.22 in sRGB, and tan tussock is ~0.4–0.6.
 - **Fix (58b):** dark-forest rule at l < 0.30 sRGB; scrub at l 0.25–0.62.
+
+### Round 58b frames (CI run 43754171517, `99809e1`)
+
+Tree counts: LSZS 650k (capped), KASE 650k (capped), NZQN 116k (+70k scrub), KMRY 528k, KBFI 415k.
+
+- **LSZS high:** changed by only 0.27 levels. With the new dark-forest stands it hit the 650k cap, which thins by distance to the nearest focus, so exactly the far-slope trees were dropped.
+- **NZQN high:** sparse scrub on the left hills. The purple shadowed slope at lower left stays bare: its photo is blue-shifted in shadow.
+- **Round 58c:**
+  - Ultra cap 1,000,000 (~64 MB of instances; ultra has no budget).
+  - Scrub density 0.35 (was 0.22).
