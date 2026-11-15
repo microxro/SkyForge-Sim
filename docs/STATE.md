@@ -57,10 +57,11 @@ LAST_UPDATE: 2026-11-15T19:10:00Z
   - Round 55 (7.75, flat; high frames 6.70): buildings in the suburb mask, meadow patches and 18/55 m canopy relief each moved the screen by under 1 level.
     - KMRY debug view 1 (albedo) now shows even ground on the campus. The remaining blotches are lighting (tree shadows), so the near-band holds are done.
   - Round 56 (finals 7.75; high frames 7.15, up from 6.70: KASE 7.75, LSZS 7.25, KBFI 7.25, KMRY 7.0, NZQN 6.5): 3D trees to 6.5 km at ultra hid the mid-ring smear.
-  - Next: round-57 frames.
-    - Foliage under a cumulus no longer takes the ×1.6 sky boost or the shade boost; the far stands on LSZS's cloud-shadowed slope read as sunlit lime clumps.
-    - The tree disc's outer 15 % fades on a noisy ~400 m edge.
-    - Then a scrub class for NZQN's tussock slopes and KMRY near-band lighting.
+  - Round 57 frames (not sent for review):
+    - The foliage cloud change darkened LSZS's final foreground forest by 9 levels, and the far lime clumps stayed.
+    - The ring fade's extra random draw reshuffled every ultra tree.
+    - Reverted the foliage change; the fade now uses its own hash.
+  - Next: round-57b. Trees placed from the mid layer take a 0.065 albedo floor (0.10 before); far photo forest is ~0.04, so 0.10 read as pasted lime clumps. Then a scrub class for NZQN and KMRY near-band lighting.
 Visual transformation (2026-11-10, PR #5, ADR-0021) is in progress; the Bold Mode summary below is the earlier baseline.
 - Landed (CI-compiled): new SF-1 aircraft model with per-pixel livery, glass and clear coat; OSM-sourced 3D buildings with facade/roof shading (bundled `buildings.sfb`, ODbL); four shadow cascades; mid-distance imagery layer; 2x supersampling and sharpening in the ultra preset; exposure scale 0.45 with near-identity photo albedo; per-airport review-frame jobs.
 - Landed 2026-11-10 (second batch): five tree species with ambient occlusion; rebuilt cockpit interior with cabin fill light; ESA WorldCover land cover grids in every pack (water at any distance); water shading (sky reflection, wind patches); tinted tower glass; fine cloud structure at ultra; magnification-aware local contrast on the ground photo; `LINZAerialProvider`.

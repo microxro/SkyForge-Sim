@@ -701,7 +701,8 @@ public struct RealWorldRegion: FlightWorld {
                 // Outer 15 % of the disc: density fades with a ~400 m noisy edge, not a hard ring (round-56 review).
                 if r > 3_500 {
                     let dc = (x * x + y * y).squareRoot() + 400 * standNoise.fbm(px / 700 - 41.0, py / 700 + 13.0, octaves: 2)
-                    if Hash.unit(rng.next()) > Double(ss(Float(r), Float(r * 0.85), Float(dc))) && !(((x - f1.x) * (x - f1.x) + (y - f1.y) * (y - f1.y)) <= r1 * r1) { continue }
+                    // Its own hash, so the per-tree random stream (and every tree inside the ring) stays as it was.
+                    if Hash.unit(Hash.int(Int((x / cell).rounded()), Int((y / cell).rounded()), seed: 0x7EE6)) > Double(ss(Float(r), Float(r * 0.85), Float(dc))) && !(((x - f1.x) * (x - f1.x) + (y - f1.y) * (y - f1.y)) <= r1 * r1) { continue }
                 }
                 if nearRunway(px, py) || inBuilding(px, py) { continue }
                 // Forest clearings (meadows) stay open but for the odd lone tree; the shader paints them as meadow.
@@ -715,7 +716,11 @@ public struct RealWorldRegion: FlightWorld {
                 tint.x *= Float(0.96 + 0.08 * Hash.unit(rng.next()))
                 // Foliage albedo floor (hue kept): dark Sentinel-2 forest gave near-black crowns (LSZS).
                 let tl = 0.2126 * tint.x + 0.7152 * tint.y + 0.0722 * tint.z
-                if tl < 0.10 { tint *= 0.10 / max(tl, 0.002) }   // 0.10 (0.08): LSZS forest near-black under the 0.45 exposure (round 22)   // (0.05 left dark crowns grey after the tone map)
+                // Trees placed from the mid layer (beyond the near square) stand on far photo forest at ~0.04: a 0.10 floor
+                // made them read as lime clumps pasted on a dark slope (round-56 review, LSZS high); 0.065 there.
+                let fromMid = nearMosaic.sample(px, py) == nil
+                let floorT: Float = fromMid ? 0.065 : 0.10
+                if tl < floorT { tint *= floorT / max(tl, 0.002) }   // 0.10 (0.08): LSZS forest near-black under the 0.45 exposure (round 22)   // (0.05 left dark crowns grey after the tone map)
                 // Foliage hue range in linear albedo: blue ≤ 0.55 × green, red 0.62–0.85 × green, so saturation is
                 // at least ~0.4 and survives the tone map. Shaded photo canopy carries the sky's blue (teal crowns,
                 // round 8); red up to 1.05 × green turned alpine forest khaki (round 9); a 0.25 floor could not

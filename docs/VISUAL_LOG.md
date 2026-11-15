@@ -1588,3 +1588,12 @@ High frames, round 55 → round 56:
 - **Round 57:**
   - Both foliage boosts fade out under cloud shadow.
   - Tree density fades over the outer 15 % of the disc with a ~400 m noisy edge (the final-approach disc is untouched).
+
+### Round 57 frames (CI run 43749542746, `455a792`), not sent for review
+
+- **LSZS final and close:** −9 levels. Removing the foliage boosts under cloud darkened the near forest, which lies under a cumulus, and the round-54 8.0 frame depended on it. The far lime clumps on the high slope barely changed.
+- **Every ultra frame:** shifted 2–5 levels in absolute difference. The ring fade drew an extra value from each tree's random stream, which reshuffled heights, species and tints.
+- **Fix (57b):**
+  - The foliage change is reverted.
+  - The fade uses its own hash.
+  - Trees placed from the mid layer take a 0.065 albedo floor (0.10 before). The clumps were an albedo mismatch, 0.10+ crowns on ~0.04 photo forest, not a lighting one.
