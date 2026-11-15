@@ -1464,7 +1464,10 @@ public enum WorldShaders {
                     // 40 m noise, ±15 % at 6/14 m, all luminance-neutral about the lift.
                     float tn = 0.6 * groundNoise(photoW + 17.0, 6.0) + 0.4 * groundNoise(photoW - 59.0, 14.0);
                     float3 hue = mix(float3(0.95, 1.0, 0.72), float3(1.08, 1.0, 0.78), 0.5 + 0.5 * groundNoise(photoW + 233.0, 40.0));
-                    float3 tus = lb * 1.35 * (1.0 + 0.15 * tn) * hue / dot(hue, lw3);
+                    // 1.55 (round-60 review: still read as an overcast patch below the sunlit tan hills), with dark
+                    // gully lines (ridged 35 m noise, up to −18 %).
+                    float gully = pow(1.0 - abs(groundNoise(photoW - 401.0, 35.0)), 6.0);
+                    float3 tus = lb * 1.55 * (1.0 + 0.15 * tn) * (1.0 - 0.18 * gully) * hue / dot(hue, lw3);
                     albedo = mix(albedo, tus, 0.9 * farB2 * blueF2);
                 }
             }

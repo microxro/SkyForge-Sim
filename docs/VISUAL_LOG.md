@@ -1653,3 +1653,14 @@ Tree counts: LSZS 650k (capped), KASE 650k (capped), NZQN 116k (+70k scrub), KMR
   - NZQN roofs now visibly mixed: terracotta, red and dark iron.
   - KMRY/KBFI near band moved only 0.2–0.5 levels from the AO floor and PCF.
   - SkyWorld unchanged. Sent to the reviewer.
+
+## Round 60 review (r60): high frames 7.40 (+0.10; NZQN high 7.5), finals 7.75, cockpit 7.25
+
+- **NZQN high:** the slope now reads as dry tussock with scattered scrub, still darker than the sunlit hills above. Roofs read as natural, not confetti; a few NZQN reds pop.
+- **SSAO floor and PCF:** no visible change.
+- **Most wrong patch:** KMRY final's near band (y 560–720), blotchy ochre and blue-grey ground.
+- **Round 61:**
+  - KMRY/KBFI final debug views 2 (sun visibility) and 4 (direct/ambient split), to tell tree shadows from tint.
+  - Tussock lift 1.35 → 1.55, with ridged 35 m gully lines (up to −18 %).
+  - Roof reds toned down and ~2/7 of the mix.
+  - High preset (desktop) trees to 4 km and a 180k cap (was 3 km and 75k).

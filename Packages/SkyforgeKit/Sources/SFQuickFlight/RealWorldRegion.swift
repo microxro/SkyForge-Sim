@@ -63,7 +63,7 @@ public struct RealWorldDetail: Sendable, Equatable {
     }()
     public static let desktop: RealWorldDetail = {
         var d = RealWorldDetail(nearHalf: 3_200, nearStep: 12, midHalf: 12_000, midStep: 48, farHalf: 40_000, farStep: 240,
-                                imageryNearSize: 4_096, imageryFarSize: 2_048, treeRadius: 3_000, maxTrees: 75_000,
+                                imageryNearSize: 4_096, imageryFarSize: 2_048, treeRadius: 4_000, maxTrees: 180_000,   // 4 km (round-60 review: a reduced ultra ring at high)
                                 imageryDetailHalf: 800, imageryDetailSize: 4_096)
         d.imageryMidSize = 4_096; d.buildingRadius = 9_500; d.buildingFullRadius = 5_000
         return d

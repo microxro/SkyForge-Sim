@@ -88,7 +88,7 @@ public enum BuildingMeshBuilder {
     ]
     static let roofPalette: [SIMD3<Float>] = [srgb(92, 90, 88), srgb(70, 70, 74), srgb(112, 104, 96), srgb(128, 82, 66), srgb(84, 88, 84), srgb(130, 128, 124)]
     /// Pitched-roof blend colours: dark iron, charcoal, terracotta, red iron, pale sheet, slate green.
-    static let pitchedMix: [SIMD3<Float>] = [srgb(58, 60, 64), srgb(44, 44, 46), srgb(150, 84, 62), srgb(122, 52, 44), srgb(196, 194, 186), srgb(70, 84, 74)]
+    static let pitchedMix: [SIMD3<Float>] = [srgb(58, 60, 64), srgb(44, 44, 46), srgb(140, 92, 72), srgb(116, 64, 54), srgb(196, 194, 186), srgb(70, 84, 74), srgb(96, 94, 92)]   // reds ~2/7, toned down (round-60 review: some popped)
     static let flatRoofPalette: [SIMD3<Float>] = [srgb(150, 150, 146), srgb(124, 124, 122), srgb(176, 176, 170), srgb(98, 98, 100), srgb(200, 200, 196)]
 
     public static func style(for b: OSMBuilding, area: Double) -> BuildingStyle {

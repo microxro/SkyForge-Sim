@@ -173,7 +173,7 @@ import SFInstruments
             r.setLighting(LightingSetup.physicalPreset(.midday, azimuthDegrees: 200, cameraHeightMetres: cam.position.z))
             try debugFrames("\(ident)_final", camera: WorldCamera(position: cam.position, target: cam.target),
                             aircraft: session.positionENU, attitude: body,
-                            modes: [1, 3], roi: (0, 540, 1280, 720))
+                            modes: [1, 2, 3, 4], roi: (0, 540, 1280, 720))   // 2/4: sun visibility and direct/ambient split (round-60 review: are the blotches tree shadows?)
         }
 
         // 4. Cockpit on the final (one airport is enough to review the interior).
