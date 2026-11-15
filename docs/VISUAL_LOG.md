@@ -1440,3 +1440,14 @@ Round-52 batch:
    - `FieldPattern.clearing` marks about 22 % of 220 m cells with a 45–85 m meadow with a ragged edge. The world shader mirrors it operation for operation as `clearingMask`.
    - The shader paints meadow over the photo canopy there, and the real-world tree placement leaves the clearing open apart from about 6 % lone trees.
    - A test checks that clearings cover 2–15 % of the ground with soft edges.
+
+### Round 52 frames (CI run 43721363610, before review)
+
+All jobs green.
+
+- **KASE cliff:** without the slabs, the cliff shows natural rock streaks.
+- **KASE high:** the far ridges are cooler and separate in depth. The distant ground band is 5.8 levels brighter; other frames are within 2.
+- **LSZS clearings:** none visible in the final frame, although a probe on the real LSZS region showed them working.
+  - Clearings cover 5 % of the foreground, and only 171 of 46,159 trees stand in them.
+  - At the camera's ~10° view, 15 m crowns hide about 85 m of ground behind them, so 45–85 m meadows disappear.
+  - Fix: clearings are now 90–160 m across, in about 30 % of 420 m cells, with a ±20 m ragged edge.

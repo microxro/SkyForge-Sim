@@ -308,17 +308,17 @@ public enum WorldShaders {
     }
     // Forest clearings: operation-for-operation mirror of SFPreview.FieldPattern.clearing.
     static float clearingMask(float2 p) {
-        float cell = 220.0;
+        float cell = 420.0;
         int ix = int(floor(p.x / cell)), iy = int(floor(p.y / cell));
-        float warp = 12.0 * fp_noise(p.x / 40.0, p.y / 40.0, 0xC1EEu);
+        float warp = 20.0 * fp_noise(p.x / 60.0, p.y / 60.0, 0xC1EEu);
         float m = 0.0;
         for (int dy = -1; dy <= 1; dy++) {
             for (int dx = -1; dx <= 1; dx++) {
                 int cx = ix + dx, cy = iy + dy;
-                if (fp_unit(fp_hash(cx, cy, 0xC1EAu)) >= 0.22) continue;
+                if (fp_unit(fp_hash(cx, cy, 0xC1EAu)) >= 0.30) continue;
                 float px = (float(cx) + 0.2 + 0.6 * fp_unit(fp_hash(cx, cy, 0xC1EBu))) * cell;
                 float py = (float(cy) + 0.2 + 0.6 * fp_unit(fp_hash(cx, cy, 0xC1ECu))) * cell;
-                float r = 45.0 + 40.0 * fp_unit(fp_hash(cx, cy, 0xC1EDu));
+                float r = 90.0 + 70.0 * fp_unit(fp_hash(cx, cy, 0xC1EDu));
                 float d = length(p - float2(px, py)) + warp;
                 float t = saturate((d - r * 0.75) / (r * 0.25));
                 m = max(m, 1.0 - t * t * (3.0 - 2.0 * t));
