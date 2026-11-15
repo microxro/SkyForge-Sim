@@ -409,6 +409,16 @@ public struct SceneBuilder {
                 soup.addQuad(w(xb, -hy, h + 3), w(xb, hy, h + 3), w(xb, hy, h), w(xb, -hy, h), colour: srgb(80, 96, 110), material: .glass)
             }
         }
+        if b.kind == .church {
+            // A square west tower with a pyramid spire, so a church reads as one from the air.
+            let t = min(hy * 0.6, 3.8), cx0 = -hx - t + 0.3, th = h * 2.3, apex = th + t * 3.2
+            let tc = [(cx0 - t, -t), (cx0 + t, -t), (cx0 + t, t), (cx0 - t, t)]
+            for k in 0..<4 {
+                let (ax, ay) = tc[k], (bx, by) = tc[(k + 1) % 4]
+                soup.addQuad(w(ax, ay, base), w(bx, by, base), w(bx, by, th), w(ax, ay, th), colour: b.wallColour * 0.96)
+                soup.addFlat(w(ax, ay, th), w(bx, by, th), w(cx0, 0, apex), colour: b.roofColour * (k % 2 == 0 ? 1.0 : 0.92))
+            }
+        }
         stats["buildings", default: 0] += 1
     }
 

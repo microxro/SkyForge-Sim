@@ -109,7 +109,7 @@ public struct QuickFlightWorld: FlightWorld {
             foci.map { f -> (Double, SIMD2<Double>) in let d = p - f; return ((d * d).sum().squareRoot(), f) }.min { $0.0 < $1.0 }!
         }
         let lo = SIMD2(foci.map(\.x).min()! - r, foci.map(\.y).min()! - r), hi = SIMD2(foci.map(\.x).max()! + r, foci.map(\.y).max()! + r)
-        var roads: [Road] = [], chunkTrees: [(tree: Tree, dist: Double)] = []
+        var roads: [Road] = [], chunkTrees: [(tree: Tree, dist: Double)] = [], chunkBuildings: [Building] = []
         for cy in Int((lo.y / cs).rounded(.down))...Int((hi.y / cs).rounded(.down)) {
             for cx in Int((lo.x / cs).rounded(.down))...Int((hi.x / cs).rounded(.down)) {
                 let centre = SIMD2((Double(cx) + 0.5) * cs, (Double(cy) + 0.5) * cs)
@@ -117,7 +117,7 @@ public struct QuickFlightWorld: FlightWorld {
                 let chunk = generator.generateChunk(cx: cx, cy: cy)
                 b.addRoads(chunk.roads, near: nearest(centre).focus, radius: r * 1.3)
                 roads += chunk.roads
-                for bl in chunk.buildings where nearest(bl.center).dist < r { b.addBuilding(bl) }
+                for bl in chunk.buildings where nearest(bl.center).dist < r { b.addBuilding(bl); chunkBuildings.append(bl) }
                 for lot in chunk.parkingLots { b.addParkingLot(lot) }
                 for t in chunk.trees {
                     let dist = nearest(SIMD2(t.position.x, t.position.y)).dist
@@ -126,22 +126,27 @@ public struct QuickFlightWorld: FlightWorld {
                 }
             }
         }
+        let village = villageCluster(avoid: chunkBuildings)
+        let laneFootprints = village.lanes.map { Building(center: $0.center, halfSize: $0.halfSize, heading: $0.heading, baseHeight: 0, wallHeight: 0,
+                                                          roof: .flat, roofPitch: 0, kind: .house, wallColour: .zero, roofColour: .zero, variant: 0) }
         let steads = parcelFarmsteads(b.soup.fieldPattern, foci: foci, radius: r, roads: roads)
-        let farms = steads.flatMap(\.buildings)
+            .filter { f in !f.buildings.contains { Self.inside($0.center, village.gardens + laneFootprints, margin: 30) } }
+        let farms = steads.flatMap(\.buildings) + village.buildings
+        for t in village.lanes { b.addGroundPatch(center: t.center, halfSize: t.halfSize, heading: t.heading, colour: srgb(118, 112, 102)) }
         for f in steads where f.yard.halfSize.x > 0 {
             b.addGroundPatch(center: f.yard.center, halfSize: f.yard.halfSize, heading: f.heading, colour: srgb(160, 152, 134))   // gravel, pale enough to read at final range (round 51)
             if let t = f.track { b.addGroundPatch(center: t.center, halfSize: t.halfSize, heading: t.heading, colour: srgb(146, 132, 108)) }
         }
         for bl in farms { b.addBuilding(bl) }
-        let yards = steads.map { Building(center: $0.yard.center, halfSize: $0.yard.halfSize, heading: $0.heading, baseHeight: 0, wallHeight: 0,
+        let yards = village.gardens + laneFootprints + steads.map { Building(center: $0.yard.center, halfSize: $0.yard.halfSize, heading: $0.heading, baseHeight: 0, wallHeight: 0,
                                           roof: .flat, roofPitch: 0, kind: .house, wallColour: .zero, roofColour: .zero, variant: 0) }
         for (t, dist) in chunkTrees where !Self.inside(SIMD2(t.position.x, t.position.y), yards, margin: 3) {
             if collectTrees { collected.append(t) } else { b.addTree(t, detail: dist < d.treeDetailRadius ? 2 : 1) }
         }
-        for t in steads.flatMap(\.trees) {
+        for t in steads.flatMap(\.trees) + village.trees {
             if collectTrees { collected.append(t) } else { b.addTree(t, detail: 2) }
         }
-        let hedges = hedgerowTrees(b.soup.fieldPattern, foci: foci, radius: r)
+        let hedges = hedgerowTrees(b.soup.fieldPattern, foci: foci, radius: r).filter { !Self.inside(SIMD2($0.position.x, $0.position.y), yards, margin: 2) }
         if collectTrees { collected += hedges } else { for t in hedges { b.addTree(t, detail: 1) } }
         if collectTrees && collected.count > d.maxTrees {
             // Thin only trees farther than 1 km from both foci, by a stable per-tree hash, to the cap.
@@ -281,6 +286,50 @@ public struct QuickFlightWorld: FlightWorld {
             }
         }
         return out
+    }
+
+    /// A small village beside the approach, about 650 m right of the centreline near the threshold, so the
+    /// SkyWorld final camera sees a church and a cluster of houses along a lane in the middle distance (art round
+    /// 52: farm polish stayed under one level on screen; a village is the bigger, more visible addition).
+    func villageCluster(avoid existing: [Building] = []) -> (buildings: [Building], lanes: [Patch], gardens: [Building], trees: [Tree]) {
+        let dir = runwayDirection, right = SIMD2(dir.y, -dir.x)
+        let centre = runway.threshold + dir * 400 + right * 650
+        let lane = right                                          // the lane runs away from the runway
+        let across = SIMD2(-lane.y, lane.x)
+        let heading = atan2(lane.y, lane.x)
+        var buildings: [Building] = [], gardens: [Building] = [], trees: [Tree] = []
+        let walls = [srgb(214, 204, 182), srgb(196, 182, 160), srgb(222, 214, 200), srgb(180, 160, 134), srgb(204, 196, 186)]
+        let roofs = [srgb(122, 66, 50), srgb(104, 98, 94), srgb(138, 84, 60), srgb(92, 62, 52)]
+        func put(_ p: SIMD2<Double>, _ half: SIMD2<Double>, _ hd: Double, _ kind: BuildingKind, _ wall: SIMD3<Float>, _ roof: SIMD3<Float>,
+                 _ wallH: Double, _ pitch: Double, _ v: UInt32) {
+            guard !recipe.isWater(p.x, p.y), !Self.inside(p, existing, margin: max(half.x, half.y) + 3) else { return }
+            buildings.append(Building(center: p, halfSize: half, heading: hd, baseHeight: height(p.x, p.y), wallHeight: wallH, roof: .gabled,
+                                      roofPitch: pitch, kind: kind, wallColour: wall, roofColour: roof, variant: v))
+            gardens.append(Building(center: p, halfSize: half + 4, heading: hd, baseHeight: 0, wallHeight: 0, roof: .flat, roofPitch: 0,
+                                    kind: .house, wallColour: .zero, roofColour: .zero, variant: 0))
+        }
+        // The church on the lane, its tower toward the runway.
+        put(centre + across * 18, SIMD2(11, 6), heading, .church, srgb(206, 200, 188), srgb(86, 84, 82), 8, 0.9, 0xC4)
+        // Houses both sides of the lane, gable ends to the lane, every ~24 m, a few gaps.
+        for k in -4...5 {
+            for side in [-1.0, 1.0] {
+                let h = Hash.int(k, side > 0 ? 1 : 0, seed: 0x711A)
+                if Hash.unit(h) < 0.15 || (k == 0 && side > 0) { continue }
+                let p = centre + lane * (Double(k) * 24 + 6 * (Hash.unit(h >> 8) - 0.5)) + across * side * (16 + 4 * Hash.unit(h >> 16))
+                let half = SIMD2(5.0 + 1.5 * Hash.unit(h >> 24), 4.5 + 1.0 * Hash.unit(h >> 32))
+                put(p, half, heading + .pi / 2, .house, walls[Int(h % UInt64(walls.count))], roofs[Int((h >> 4) % UInt64(roofs.count))],
+                    5.4 + 1.2 * Hash.unit(h >> 40), 0.7, UInt32(truncatingIfNeeded: h))
+                // A garden tree behind most houses.
+                if Hash.unit(h >> 44) < 0.7 {
+                    let tp = p + across * side * 14 + lane * (Hash.unit(h >> 48) - 0.5) * 8
+                    let ht = 8 + 5 * Hash.unit(h >> 52)
+                    trees.append(Tree(position: SIMD3(tp.x, tp.y, height(tp.x, tp.y)), height: ht, crownRadius: ht * 0.36, conifer: false,
+                                      colour: SIMD3<Float>(0.052, 0.078, 0.036) * Float(0.9 + 0.2 * Hash.unit(h >> 56))))
+                }
+            }
+        }
+        let lanes = [Patch(center: centre + lane * 12, halfSize: SIMD2(150, 3.0), heading: heading)]
+        return (buildings, lanes, gardens, trees)
     }
 
     /// Whether a point is within `margin` of any footprint in `buildings`.

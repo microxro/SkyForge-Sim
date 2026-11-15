@@ -98,6 +98,19 @@ import SFPreview
         #expect(w.buildEnvironmentInstanced(detail: d).trees == inst.trees, "deterministic")
     }
 
+    /// The SkyWorld village: a church and houses beside the approach, clear of the runway strip and its approach.
+    @Test func villageStandsBesideTheApproach() {
+        let w = QuickFlightWorld()
+        let v = w.villageCluster()
+        #expect(v.buildings.contains { $0.kind == .church })
+        #expect(v.buildings.filter { $0.kind == .house }.count >= 8, "\(v.buildings.count) village buildings")
+        for b in v.buildings {
+            let q = b.center - w.runwayThreshold
+            let across = abs(q.x * w.runwayDirection.y - q.y * w.runwayDirection.x)
+            #expect(across > 300, "village building \(b.center) too close to the runway axis")
+        }
+    }
+
     /// Farmsteads stand in farmed parcels (house, barn, shed each inside its parcel), off the runway
     /// approach, and no instanced tree grows through one.
     @Test func farmsteadsSitInFarmedParcels() throws {

@@ -1474,3 +1474,9 @@ Round-53 batch:
    - The grass is procedural: linear (0.15, 0.20, 0.07), ±10 % patches at about 30 m, and a 15 % darker forest-edge band.
 2. **Near band:** ground luminance is held within ±8 % of a mean that blends the 30 m and 400 m means 40/60 (80 % weight on green ground, 50 % elsewhere).
 3. **NZQN shore:** a gravel band 35 m wide at about 0.35 albedo, on slopes down to n.z 0.8.
+4. **SkyWorld village:**
+   - About 650 m right of the centreline near the threshold, so about 15° right of centre in the final frame.
+   - Church: given a square west tower and pyramid spire (it used to be meshed as a plain box).
+   - About 12 gabled houses with gable ends to a 300 m lane, plus garden trees.
+   - It avoids existing buildings, and farmsteads, hedgerow trees and forest trees inside it are dropped.
+   - A test keeps every village building more than 300 m off the runway axis.
