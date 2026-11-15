@@ -1093,3 +1093,48 @@ Round-44 frames (d34d1f4, run 43655398099) before review:
 
 Fixed before review:
 - **Gate:** the blend now runs from n.z 0.92 to 0.75, at most 80 %, keeping 45 % of the photo's luminance (clamped 0.7–1.4) so forest stands stay.
+
+Round-44 frames (2facaf2 merged as 0d5cdc5, main run 43656475843) before review:
+- **Slope blend fires:** pixels changed against round 43 — KASE final 49k, KASE close 61k, NZQN close 60k, LSZS high 27k, LSZS close 40k, NZQN high 15k, KASE high 6k. Mean luminance is unchanged.
+- **KASE final cliff:** the smear reads calmer, as rock and scree.
+- **KASE high right side:** barely changed. Those hills sit under the n.z 0.92 gate.
+- **PR run 43656365406:** failed on a runner SwiftPM cache error in the LSZS frames job before any test ran. Main's run on the same tree is green.
+
+## Bold round 44: main 0d5cdc5 (2facaf2; run 43656475843, ultra tier)
+Same reviewer and scale.
+
+**Final camera:** KMRY 7.5, KASE 7.75, KBFI 7.5, LSZS 7.5, NZQN 7.5, SkyWorld 7.75. **Average 7.58** (unchanged).
+
+**High frames:** 6.70. **Cockpit:** 6.75.
+
+**Slope blend:** a mild improvement where it fires, with no regressions. The KASE final cliff is calmer, with scree streaks down the fall line, but it has no hard rock structure.
+
+**KASE high right side:** the streaks run along the contours, not down the fall line, so they are not photo stretch. The suspects are a coarse imagery layer magnified at a grazing angle, or terracing from the 23 m heights.
+
+Round-45 batch:
+1. **Debug views of KASE high** (ROI 800,480–1120,640):
+   - View 1: albedo.
+   - View 2: shading terms, to show height terracing.
+   - New view 5: the finest imagery layer's metres per texel against pixel footprint and anisotropy.
+2. **Rock outcrops in the slope blend:**
+   - Thresholded 25 m noise gives crisp edges, widened with the footprint.
+   - Rock is greyed, at ~55 % of the local mean's luminance.
+   - A shadow line runs 5 m below each ledge.
+3. **KASE field boundaries:** a faint dark line (−16 %, ~6 m wide) where the photo's 4 m-blurred luminance changes sharply over ±3 m. It applies only within the crop class and below a 3 m footprint.
+
+Round-45 frames (b54375b, run 43660479024) before review — KASE high debug views (ROI 800,480–1120,640):
+- **View 2 (shading):** smooth, with no bands. Height terracing is ruled out. ROI means: vis 0.80, n·l 0.83.
+- **View 5:** imagery at ~6.8 m per texel (the z14 USGS mid layer, 4096 px over 28 km) under a ~2.2 m pixel footprint at 2.9× anisotropy. The photo is magnified ~3× at a grazing angle; its bilinear texels smear sideways into the contour-parallel streaks.
+- **View 1 (albedo):** the streaks are already in the albedo.
+- A z15 mid layer would need an 8192² texture; not taken.
+
+Fixed before review (structural; rounds 42–44 under +0.2):
+- **Magnified coarse photo:** where a layer of 3 m or more per texel is magnified past ~1.5×, keep its ~20 m mean colour and replace the texel detail with procedural detail.
+  - Canopy: ridged 10 m crowns in 25 m stands. Open ground: 10/25 m patches.
+  - Classed from the mean colour; 25 % of the photo's own deviation kept, up to 85 % blend.
+
+Round-45 frames (d15e96f, run 43661627056) before review:
+- **Pixels changed against round 44:** KASE high 158k, LSZS high 196k, NZQN high 123k, KBFI high 113k, KMRY high 45k; KASE final and close ~44k each. Other finals and closes are under 26k.
+- **High frames:** 1–3 points darker in mean luminance (LSZS high 99.7 → 96.6).
+- **KASE high:** the right-side foreground reads crisper and less melted.
+- **LSZS and KBFI high:** gain slight texture.
