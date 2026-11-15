@@ -1271,3 +1271,12 @@ Round-48c frames (4bd9240, run 43698505387) before review:
 - **Cause:** a bug in `outcropCells`. `fp_unit` reads the low 24 bits, so `fp_unit(h >> 16)` stayed under 0.004 and every cell passed the 25 % cover test. The cliff was 100 % rock.
 
 Fixed before review: the per-cell choice now uses its own `fp_hash` seed.
+
+Round-48d frames (31a446e, run 43699719058) before review:
+- **Luminance:** back within 0.2 of round 47 everywhere (KASE final 82.8, close 80.1).
+- **Swirls:** the cliff shows swirling contour rings, stronger than before.
+- **Cause:** the cells and the rock octaves g0/g1/g2 were sampled in fall-line coordinates. Their axes turn with the normal from pixel to pixel, so curved slopes warp the pattern into swirls. The same warp drew the round-45 rings and round-47 hairlines.
+
+Fixed before review:
+- **Cells and octaves:** in world metres.
+- **Rim / shadow offset:** only this still follows the fall line.

@@ -1462,9 +1462,11 @@ public enum WorldShaders {
                     float3 sm = photoAlbedo(photoColour(u, imgNear, imgMid, imgFar, imgDetail, photoW, dwx * lsS, dwy * lsS, suv, sIn, s0w, s1w));
                     float smL = max(dot(sm, float3(0.2126, 0.7152, 0.0722)), 1e-4);
                     float3 rock = sm * clamp(pow(max(dot(albedo, float3(0.2126, 0.7152, 0.0722)), 1e-4) / smL, 0.45), 0.7, 1.4);
-                    float g0 = groundNoise(float2(fl.x * 0.2, fl.y) - 29.0, 150.0) * saturate(1.0 - sfp * 2.5 / 150.0);
-                    float g1 = groundNoise(float2(fl.x * 0.25, fl.y) + 13.0, 40.0) * saturate(1.0 - sfp * 2.5 / 40.0);
-                    float g2 = groundNoise(float2(fl.x * 0.5, fl.y) - 7.0, 12.0) * saturate(1.0 - sfp * 2.5 / 12.0);
+                    float g0 = groundNoise(w - 29.0, 150.0) * saturate(1.0 - sfp * 2.5 / 150.0);
+                    float g1 = groundNoise(w + 13.0, 40.0) * saturate(1.0 - sfp * 2.5 / 40.0);
+                    float g2 = groundNoise(w - 7.0, 12.0) * saturate(1.0 - sfp * 2.5 / 12.0);
+                    // World-space octaves (round 48: stretched along fall-line coordinates, whose axes turn with the
+                    // normal, they drew swirling wood-grain lines on curved slopes).
                     rock *= 1.0 + 0.30 * g0 + 0.25 * g1 + 0.15 * g2;
                     float sc = smoothstep(0.15, 0.45, groundNoise(w + 517.0, 60.0)) * saturate(1.0 - sfp * 2.5 / 60.0);
                     rock = mix(rock, rock * float3(0.68, 0.82, 0.70), 0.6 * max(sc, 0.5 * scrub));
@@ -1476,10 +1478,12 @@ public enum WorldShaders {
                     // (contour axis stretched only 1.5:1) are rock at 0.6× the local mean; a lit upper rim and a
                     // shadow band below, each at least ~2 px thick, give each block volume. Faded below ~3 px per cell.
                     float oe = max(0.5, sfp * 0.8);                 // border softness in metres, ~1 px (round 48: 1.5 px read as soft patches)
-                    float2 op = float2(fl.x, fl.y / 1.5);
+                    // Cells in world metres (round 48: in fall-line coordinates, whose axes turn with the normal from
+                    // pixel to pixel, curved slopes warped the cells into swirling contour rings; the same warp drew the
+                    // earlier hairlines). Only the rim / shadow offset follows the fall line.
                     float bw2 = max(3.0, sfp * 2.5);                // rim / shadow band width, ≥ ~2 px
-                    float oIn = outcropCells(op, 22.0, 0.25, oe);
-                    float oUp = outcropCells(op - float2(bw2, 0.0), 22.0, 0.25, oe);   // uphill (fall points downhill)
+                    float oIn = outcropCells(w, 22.0, 0.25, oe);
+                    float oUp = outcropCells(w - fall * bw2, 22.0, 0.25, oe);   // uphill (fall points downhill)
                     float oFade = smoothstep(2.0, 3.5, 22.0 / max(sfp, 1e-3) / 3.0);
                     float outcrop = oIn * oFade;
                     float shadowLine = saturate(oUp - oIn) * oFade;      // band just below a block
