@@ -1522,3 +1522,13 @@ All jobs green.
    - It grows to two streets (a main street running outward and a cross street along the approach), ~28 houses, a church at the crossroads and three barns.
    - The test now keeps village buildings more than 150 m off the axis.
    - `inside()` now bounds its early-out by the footprint size; a fixed 60 m cut ignored most of a 150 m lane.
+
+### Round 54 frames (CI run 43734044812, `9004f61`), all green
+
+- **SkyWorld final:** the village now reads at 1× in the right foreground: the church at the crossroads, two streets of houses with red roofs, and barns.
+- **KMRY final:** the orange and yellow yard blotches are gone. The near band is an even pale grey-green under the 3D trees.
+- **LSZS final:** the wedge is dimmer (output luminance 0.046 linear) but the pasture around it went darker (0.052 → 0.033). The pasture photo is dark enough that the 0.10 canopy class takes it for forest, so the canopy gap darkening landed on it. The whole frame is −1 level.
+- **LSZS high:** the canopy relief shows on the sunlit forest at lower left, but the large slope on the right lies in cloud shadow, where normal tilt changes nothing.
+- **Fix (`round 54b`):**
+  - Canopy relief now starts at 900–1,600 m and needs photo luminance below ~0.06, so the final frames' pasture is untouched.
+  - A sun-independent crown dome term (tops +10 %, rims −10 %) carries the relief into cloud shadow.

@@ -1314,11 +1314,14 @@ public enum WorldShaders {
                 // magnified forest photo on the LSZS and NZQN slopes reads as a smooth smear). Crowns on a jittered
                 // ~10 m grid and stands on a ~28 m grid, each a hemisphere that tilts the normal, so the sun lights
                 // one side and shades the other, with darker gaps between crowns. Faded by the pixel footprint.
-                float canW = imgForest * smoothstep(300.0, 700.0, dist) * (1.0 - smoothstep(8000.0, 12000.0, dist))
+                // From ~1.2 km and on dark canopy only (round 54: from 300 m it darkened LSZS's dark-green pasture, which
+                // the 0.10 canopy class takes for forest, by about a third in the final frame).
+                float cpl = dot(c, float3(0.2126, 0.7152, 0.0722));
+                float canW = imgForest * smoothstep(0.075, 0.045, cpl) * smoothstep(900.0, 1600.0, dist) * (1.0 - smoothstep(8000.0, 12000.0, dist))
                            * (1.0 - saturate((wm - 0.2) / 0.2)) * (1.0 - rwCover) * (1.0 - roadNear);
                 float fpc = sqrt(length(dwx) * length(dwy));
                 if (canW > 0.01 && fpc < 20.0) {
-                    float gapSum = 0.0;
+                    float gapSum = 0.0, domeSum = 0.0;
                     for (int oct = 0; oct < 2; oct++) {
                         float S = oct == 0 ? 10.0 : 28.0;
                         float fade = saturate(1.0 - fpc * 1.5 / S) * (oct == 0 ? 1.0 : 0.6);
@@ -1340,8 +1343,11 @@ public enum WorldShaders {
                         float onC = smoothstep(-0.10, 0.05, bestH / bestR);                  // no tilt in the gaps
                         canopyTilt += clamp(bestD / hc, -1.5, 1.5) * (0.55 * fade * canW * onC);
                         gapSum += (1.0 - smoothstep(-0.05, 0.35, bestH / bestR)) * fade;
+                        // Crown dome shading without the sun (round 54: the LSZS high slope lies in cloud shadow, where the
+                        // tilt alone changed nothing): crown tops +10 %, crown rims −10 %.
+                        domeSum += (saturate(bestH / bestR) - 0.5) * 0.2 * fade * onC;
                     }
-                    albedo *= 1.0 - 0.28 * saturate(gapSum) * canW;
+                    albedo *= (1.0 - 0.28 * saturate(gapSum) * canW) * (1.0 + domeSum * canW);
                 }
             }
             {
