@@ -1280,3 +1280,8 @@ Round-48d frames (31a446e, run 43699719058) before review:
 Fixed before review:
 - **Cells and octaves:** in world metres.
 - **Rim / shadow offset:** only this still follows the fall line.
+
+Round-48e frames (94cbf4a, run 43700909816) before review:
+- **Swirls:** gone from the KASE cliff.
+- **Outcrops:** faint polygonal blocks now show.
+- **Luminance:** KASE final 82.0 (82.9) and close 79.3 (80.2); everything else within 0.2 of round 47. Sent for review as round 48.
