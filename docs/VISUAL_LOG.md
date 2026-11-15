@@ -1256,3 +1256,12 @@ Round-48 frames (beadb0b, run 43696082021) before review:
 Fixed before review:
 - **Block edges:** border ~1 px (was 1.5 px).
 - **Slope compensation:** +17 % (was +12 %).
+
+Round-48b frames (21f6619, run 43697075735) before review:
+- **Still darker:** KASE final is still 1.8 darker and KASE close 1.9 darker in lower-half luminance.
+- **Where:** a region map puts the loss in the cliff cells (up to −14).
+- **Cause:** the block colour came from the photo's 150 m mean, which takes in the dark forest round the pale cliff, not from the local rock.
+
+Fixed before review:
+- **Block colour:** 0.6× the local rock's own luminance.
+- **Slope compensation:** back to +12 %.

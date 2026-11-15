@@ -1482,8 +1482,12 @@ public enum WorldShaders {
                     float outcrop = oIn * oFade;
                     float shadowLine = saturate(oUp - oIn) * oFade;      // band just below a block
                     float litEdge = saturate(oIn - oUp) * oFade;         // a block's upper rim
-                    float3 rockC = mix(float3(smL), sm, 0.35) * 0.60 * float3(1.02, 1.0, 0.96);
-                    rock *= 1.0 + 0.17 * oFade;                    // keeps the slope's mean with the darker blocks and shadow bands (round 48: +12 % left KASE final 1.7 darker)
+                    // Block colour from the local rock's own luminance (round 48: from the photo's 150 m mean, which
+                    // takes in the forest round the pale KASE cliff, the blocks were far darker than 0.6× and the cliff
+                    // cells lost up to 14 output levels).
+                    float rkL = dot(rock, float3(0.2126, 0.7152, 0.0722));
+                    float3 rockC = mix(float3(rkL), rock, 0.35) * 0.60 * float3(1.02, 1.0, 0.96);
+                    rock *= 1.0 + 0.12 * oFade;                    // keeps the slope's mean with the darker blocks and shadow bands
                     rock = mix(rock, rockC * (1.0 + 0.2 * g2), outcrop);
                     rock *= (1.0 - 0.35 * shadowLine) * (1.0 + 0.45 * litEdge);
                     albedo = mix(albedo, rock, stretchW);
