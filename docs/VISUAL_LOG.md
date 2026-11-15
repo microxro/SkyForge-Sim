@@ -1490,3 +1490,10 @@ All jobs green.
   - Fix: moved to 900 m before the threshold and 340 m right, open ground about 1.1 km ahead of the final start. The houses run outward from the church, spanning about 316–530 m from the axis.
 - **KASE close:** the clearing now reads as grassy meadow rather than smeared photo.
 - **Near band:** KBFI final is +2.2 levels and KMRY final +0.8 from the luminance hold. KMRY's colour blotches are still visible.
+
+### Round 53b frames (CI run 43727861429, `34d4dfb`, sent for review)
+
+All jobs green.
+
+- **SkyWorld final:** the village is now in view at the forest edge right of the path (x ≈ 830–930, y ≈ 340–395): the church tower and about eight white houses with red roofs. It is small at this range; 678 pixels differ from round 52.
+- Round 53 was sent to the art director with the four changes: clearing grass, the near-band luminance hold, the NZQN gravel shore and the SkyWorld village.
