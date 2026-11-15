@@ -1087,3 +1087,9 @@ Round-44 batch:
 1. **Steep-slope replacement (structural, after rounds 42–43 under +0.2):** where the photo's stretch 1/n.z passes ~1.6×, blend to procedural rock, scree and scrub, fully past ~2.6×.
    - Tinted from the photo's 150 m mean; 30 % of the photo's own luminance kept for exposure.
    - Fall-line octaves at 150, 40 and 12 m (footprint-faded) plus 60 m scrub patches.
+
+Round-44 frames (d34d1f4, run 43655398099) before review:
+- **Slope replacement did not fire:** at most 120 pixels changed per frame. The 1/n.z gate of 1.6–2.6× needs slopes past 51°; the smoothed DEM's slopes sit at 25–40°.
+
+Fixed before review:
+- **Gate:** the blend now runs from n.z 0.92 to 0.75, at most 80 %, keeping 45 % of the photo's luminance (clamped 0.7–1.4) so forest stands stay.
