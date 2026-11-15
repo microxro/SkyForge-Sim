@@ -359,6 +359,24 @@ public struct RealWorldRegion: FlightWorld {
         let m = ground.near, x0 = m.centre.x - m.halfExtent, y1 = m.centre.y + m.halfExtent
         let px = 2 * m.halfExtent / Double(size)
         var out = [Float](repeating: 0, count: size * size)
+        // OSM building footprints too (as discs of their area), so the shader's road-density suburb score also sees
+        // built-up ground with few streets: KMRY's campus kept its yard blotches with streets alone (round 54).
+        for b in buildings where b.footprint.count >= 3 {
+            let xs = b.footprint.map(\.x), ys = b.footprint.map(\.y)
+            guard let bx0 = xs.min(), let bx1 = xs.max(), let by0 = ys.min(), let by1 = ys.max() else { continue }
+            let c = SIMD2((bx0 + bx1) / 2, (by0 + by1) / 2)
+            let rad = max(3, 0.5 * min(bx1 - bx0, by1 - by0))
+            let i0 = max(0, Int(((c.x - rad - x0) / px).rounded(.down))), i1 = min(size - 1, Int(((c.x + rad - x0) / px).rounded(.up)))
+            let j0 = max(0, Int(((y1 - c.y - rad) / px).rounded(.down))), j1 = min(size - 1, Int(((y1 - c.y + rad) / px).rounded(.up)))
+            if i0 > i1 || j0 > j1 { continue }
+            for j in j0...j1 {
+                let y = y1 - (Double(j) + 0.5) * px
+                for i in i0...i1 {
+                    let d = SIMD2(x0 + (Double(i) + 0.5) * px, y) - c
+                    if (d * d).sum() <= rad * rad { out[j * size + i] = 1 }
+                }
+            }
+        }
         for r in roads where r.points.count >= 2 {
             let inner = r.widthMetres / 2 + margin, outer = inner + fade
             for k in 0..<(r.points.count - 1) {

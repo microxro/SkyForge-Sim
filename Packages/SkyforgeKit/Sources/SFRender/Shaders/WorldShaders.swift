@@ -1114,13 +1114,14 @@ public enum WorldShaders {
                         // Procedural grass of its own: a sunlit warm green (~0.18 luminance), ±10 % grazing patches at
                         // ~30 m and finer tufts, and a 15 % darker band just inside the forest edge (round 52: a flat,
                         // dark, uniform green).
-                        float patches = groundNoise(photoW + 5.0, 30.0), tufts = groundNoise(photoW - 21.0, 7.0);
+                        // ±18 % grazing patches at ~25 m and ~60 m (round-54 review: one flat fill).
+                        float patches = 0.65 * groundNoise(photoW + 5.0, 25.0) + 0.35 * groundNoise(photoW - 77.0, 60.0), tufts = groundNoise(photoW - 21.0, 7.0);
                         // ~0.12 luminance (was 0.18) and less saturated: about 25 % above the surrounding pasture, which the
                         // round-53 LSZS final put at ~0.10; at 0.18 a clearing edge over open ground read as a lime wedge.
                         // ~0.145 luminance: the whole clearing about 25 % above its round-53 output, evenly (round 54).
-                        float3 meadow = float3(0.125, 0.160, 0.070) * (1.0 + 0.10 * patches + 0.05 * tufts);
+                        float3 meadow = float3(0.125, 0.160, 0.070) * (1.0 + 0.18 * patches + 0.05 * tufts);
                         meadow *= mix(float3(1.0), float3(1.06, 1.02, 0.86), saturate(patches) * 0.5);   // drier, sunlit patches
-                        meadow *= 1.0 - 0.15 * (1.0 - smoothstep(0.35, 0.8, cmask));                     // forest-edge shade
+                        meadow *= 1.0 - 0.22 * (1.0 - smoothstep(0.30, 0.55, cmask));                    // narrower, darker forest-edge band
                         albedo = mix(albedo, meadow, clearW);
                         imgForest *= 1.0 - clearW;
                     }
@@ -1323,11 +1324,11 @@ public enum WorldShaders {
                 float canW = imgForest * smoothstep(0.075, 0.045, cpl) * smoothstep(900.0, 1600.0, dist) * (1.0 - smoothstep(8000.0, 12000.0, dist))
                            * (1.0 - saturate((wm - 0.2) / 0.2)) * (1.0 - rwCover) * (1.0 - roadNear);
                 float fpc = sqrt(length(dwx) * length(dwy));
-                if (canW > 0.01 && fpc < 20.0) {
+                if (canW > 0.01 && fpc < 40.0) {
                     float gapSum = 0.0, domeSum = 0.0;
                     for (int oct = 0; oct < 2; oct++) {
-                        float S = oct == 0 ? 10.0 : 28.0;
-                        float fade = saturate(1.0 - fpc * 1.5 / S) * (oct == 0 ? 1.0 : 0.6);
+                        float S = oct == 0 ? 18.0 : 55.0;   // crown clusters (10 / 28 m were sub-pixel at the high camera, round 54)
+                        float fade = saturate(1.0 - fpc * 1.2 / S) * (oct == 0 ? 1.0 : 0.8);
                         if (fade <= 0.0) continue;
                         float2 q = photoW / S;
                         int2 b0 = int2(floor(q - 0.5));
@@ -1350,7 +1351,7 @@ public enum WorldShaders {
                         // tilt alone changed nothing): crown tops +10 %, crown rims −10 %.
                         domeSum += (saturate(bestH / bestR) - 0.5) * 0.2 * fade * onC;
                     }
-                    albedo *= (1.0 - 0.28 * saturate(gapSum) * canW) * (1.0 + domeSum * canW);
+                    albedo *= (1.0 - 0.38 * saturate(gapSum) * canW) * (1.0 + 1.5 * domeSum * canW);
                 }
             }
             {

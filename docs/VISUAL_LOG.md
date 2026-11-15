@@ -1544,3 +1544,17 @@ All jobs green.
   - KMRY low and medium presets are now clean, with street ribbons and no yard blotches, matching high.
   - The LSZS "pasture" stayed at 0.033. A round-54/53 luminance ratio map shows a smooth patch shaped like the clearing, with no crown texture. It is clearing meadow at partial weight: the 100 m forest score is ~0.5 there, so the ground was half photo, half meadow, and the wedge was the only spot at full weight.
   - **Fix:** a saturating forest gate (smoothstep 0.1–0.45) makes the meadow even, at ~0.145 luminance, about 25 % above round 53.
+
+## Round 54 review (r54d): finals 7.75 (+0.08), high frames 6.70, cockpit 7.25
+
+- LSZS final 8.0: the lime wedge is gone and the even sunlit meadow reads as an alpine clearing, though it has no internal variation.
+- SkyWorld 8.25: the village reads at 1×.
+- Canopy relief (10/28 m) is not visible in the high frames. KMRY near band "unchanged":
+  - A full-width crop shows the left half is clean now.
+  - The right half, a campus with large buildings and few streets, keeps its blotches. The road-density suburb score is near zero there.
+
+### Round 55 batch
+
+1. **Suburb mask:** OSM building footprints are rasterised into the road mask as discs of their size.
+2. **Meadow:** ±18 % patches at 25 m and 60 m, and a darker (−22 %), narrower forest-edge band.
+3. **Canopy relief:** crown clusters at 18 m and 55 m, gap darkening 38 %, dome shading ×1.5, kept to a 40 m footprint.
