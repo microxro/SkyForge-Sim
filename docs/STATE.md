@@ -1,4 +1,4 @@
-LAST_UPDATE: 2026-11-15T14:00:00Z
+LAST_UPDATE: 2026-11-15T14:45:00Z
 
 # SKYFORGE state
 
@@ -35,8 +35,9 @@ LAST_UPDATE: 2026-11-15T14:00:00Z
     | 49 | 7.63 | 7.25 |
     | 50 | 7.63 | 7.25 |
     | 51 | 7.63 | 7.25 |
+    | 52 | 7.67 | 7.25 |
 
-    Best scene: SkyWorld 8.0 (round 49, farmsteads in the fields); KASE final 7.75. Rounds 27 and 28 were regression checks only.
+    Best scene: SkyWorld 8.0 (round 49, farmsteads in the fields); KASE and LSZS finals 7.75 (LSZS from forest clearings, round 52). Rounds 27 and 28 were regression checks only.
   - What landed:
     - One roof colour per building.
     - NaN-safe local tone compression.
@@ -47,7 +48,7 @@ LAST_UPDATE: 2026-11-15T14:00:00Z
     - Water gated by slope.
     - Structural: a mid z12 height mosaic (`b051139`; z12 tiles in all packs through `tools/fetch_mid_heights.py`). Slopes 3–12 km out had been z10 blobs at about 156 m per sample.
   - High-frame average: 6.70 at round 46 (6.65 at round 45; 6.38 at round 26). The KASE high mid-ring smear is accepted at 7.0: it is the z14 photo (6.8 m per texel) magnified ~3×, which only sharper imagery would fix.
-  - Next: round-52 frames (three flat rounds). Near-band colour flattened within class from a ~400 m mean; KASE slabs dropped for the round-46 rock octaves; stronger cool, low-contrast haze beyond 5 km for the high frames; brighter farmyards and tracks. Then LSZS foreground clearings. Frame budgets are recorded, not enforced (ADR-0021).
+  - Next: round-53 frames. Clearings get their own procedural grass wherever the ~100 m photo mean is forest (KASE close showed smeared photo ground in one). Near-band luminance on natural ground held within ±8 % of a 30 m / 400 m blended mean (the remaining blotches are luminance cells). NZQN gravel shore band widened to ~35 m at 0.35 albedo. Then high-frame mid-ring forest and a SkyWorld village. Frame budgets are recorded, not enforced (ADR-0021).
 Visual transformation (2026-11-10, PR #5, ADR-0021) is in progress; the Bold Mode summary below is the earlier baseline.
 - Landed (CI-compiled): new SF-1 aircraft model with per-pixel livery, glass and clear coat; OSM-sourced 3D buildings with facade/roof shading (bundled `buildings.sfb`, ODbL); four shadow cascades; mid-distance imagery layer; 2x supersampling and sharpening in the ultra preset; exposure scale 0.45 with near-identity photo albedo; per-airport review-frame jobs.
 - Landed 2026-11-10 (second batch): five tree species with ambient occlusion; rebuilt cockpit interior with cabin fill light; ESA WorldCover land cover grids in every pack (water at any distance); water shading (sky reflection, wind patches); tinted tower glass; fine cloud structure at ultra; magnification-aware local contrast on the ground photo; `LINZAerialProvider`.

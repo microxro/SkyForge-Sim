@@ -1458,3 +1458,19 @@ All jobs green.
   - Cause: the near-band tone compression pulled the meadow toward the dark forest's 30 m photo mean.
   - Fix: clearings are exempt from that pass, and the meadow is a sunlit alpine green, linear (0.13, 0.18, 0.065).
 - **KASE close:** a pale meadow clearing reads acceptably at lower left.
+
+## Round 52 review (r52c frames)
+
+**Final camera:** KMRY 7.5, KASE 7.75, KBFI 7.5, LSZS 7.75 (7.5), NZQN 7.5, SkyWorld 8.0. **Average 7.67** (7.63). High frames 6.70; cockpit 7.25. KASE close fell from 7.5 to 7.25.
+
+- **LSZS clearing:** works and reads as alpine valley farmland. The meadow is a flat, dark, uniform green.
+- **KASE close clearing:** trees were removed, but the ground under them is the smeared forest photo. Some roadside trees went too.
+- **KMRY near band:** no visible change. The remaining blotches are luminance cells, not chroma.
+- **High-frame haze:** too subtle to see.
+
+Round-53 batch:
+1. **Clearing ground:**
+   - Clearings apply wherever the ~100 m photo mean reads as forest, not only on canopy pixels, and stay off roads.
+   - The grass is procedural: linear (0.15, 0.20, 0.07), ±10 % patches at about 30 m, and a 15 % darker forest-edge band.
+2. **Near band:** ground luminance is held within ±8 % of a mean that blends the 30 m and 400 m means 40/60 (80 % weight on green ground, 50 % elsewhere).
+3. **NZQN shore:** a gravel band 35 m wide at about 0.35 albedo, on slopes down to n.z 0.8.

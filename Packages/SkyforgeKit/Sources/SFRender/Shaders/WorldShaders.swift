@@ -1069,19 +1069,6 @@ public enum WorldShaders {
             // Floor 0.09 with a slight green lean: the forest floor between the crowns gets sky light (round 30:
             // LSZS valley floor still dark).
             if (imgForest > 0.0 && al < 0.09) albedo = mix(albedo, albedo * (0.09 / max(al, 0.004)) * float3(0.96, 1.04, 0.96), imgForest);   // 0.07 (0.05): near-black LSZS canopy under the 0.45 exposure (round 22)
-            // Clearings in the canopy: meadow instead of the photo's forest, where the tree placement also leaves the
-            // ground open (FieldPattern.clearing; art round 51: LSZS's foreground canopy was uniform).
-            float clearW = 0.0;
-            if (imgForest > 0.0) {
-                clearW = clearingMask(photoW) * imgForest;
-                if (clearW > 0.0) {
-                    // A sunlit alpine meadow (round 52: at 0.085/0.12/0.045, then pulled toward the dark forest's 30 m
-                    // photo mean by the tone compression below, the first clearings read as dark holes).
-                    float3 meadow = float3(0.13, 0.18, 0.065) * (0.88 + 0.24 * saturate(0.5 + 0.5 * groundNoise(photoW + 5.0, 9.0)));
-                    albedo = mix(albedo, meadow, clearW);
-                    imgForest *= 1.0 - clearW;
-                }
-            }
             // Water: the near layer's mask (photo colour checked against land cover) inside it, the land
             // cover's water fraction carried by the outer layers beyond, blended across the near layer's edge.
             float wm = inNear ? mix(outerWater, waterMask.sample(imgSampler, nuv, level(0.0)).r, nearWeight) : outerWater;
@@ -1090,6 +1077,32 @@ public enum WorldShaders {
             // water and never took the slope detail). The mesh normal of a lake surface is vertical.
             wm *= smoothstep(0.93, 0.985, n.z);
             if (inNear) roadNear = waterMask.sample(imgSampler, nuv, level(0.0)).g * nearWeight;
+            // Clearings: open meadow wherever the tree placement leaves the ground open (FieldPattern.clearing) and the
+            // ~100 m photo mean reads as forest, not only on canopy pixels (round 52: in KASE close a clearing's ground
+            // between the canopy pixels kept the smeared forest photo). Off water and photo roads.
+            float clearW = 0.0;
+            {
+                float cmask = clearingMask(photoW);
+                if (cmask > 0.0) {
+                    float fpc = length(dwx) + length(dwy);
+                    float lsc = max(1.0, 100.0 / max(fpc, 1e-3));
+                    float2 cuv; bool cin; float cw0, cw1;
+                    float3 m100 = photoAlbedo(photoColour(u, imgNear, imgMid, imgFar, imgDetail, photoW, dwx * lsc, dwy * lsc, cuv, cin, cw0, cw1));
+                    float f100 = smoothstep(0.0, 0.02, m100.g - max(m100.r, m100.b)) * smoothstep(0.14, 0.05, dot(m100, float3(0.2126, 0.7152, 0.0722)));
+                    clearW = cmask * max(imgForest, f100) * (1.0 - saturate((wm - 0.2) / 0.2)) * (1.0 - roadNear);
+                    if (clearW > 0.0) {
+                        // Procedural grass of its own: a sunlit warm green (~0.18 luminance), ±10 % grazing patches at
+                        // ~30 m and finer tufts, and a 15 % darker band just inside the forest edge (round 52: a flat,
+                        // dark, uniform green).
+                        float patches = groundNoise(photoW + 5.0, 30.0), tufts = groundNoise(photoW - 21.0, 7.0);
+                        float3 meadow = float3(0.15, 0.20, 0.07) * (1.0 + 0.10 * patches + 0.05 * tufts);
+                        meadow *= mix(float3(1.0), float3(1.06, 1.02, 0.86), saturate(patches) * 0.5);   // drier, sunlit patches
+                        meadow *= 1.0 - 0.15 * (1.0 - smoothstep(0.35, 0.8, cmask));                     // forest-edge shade
+                        albedo = mix(albedo, meadow, clearW);
+                        imgForest *= 1.0 - clearW;
+                    }
+                }
+            }
             // Shadow toe, the mirror of the shoulder: photo shadows below ~0.10 albedo are lifted (0.03 → 0.046,
             // 0.06 → 0.072) so the baked shadows under the 3D trees and buildings, which cast their own, stop
             // reading as doubled black (art round 17, KMRY; a 0.07/0.7 toe sat below most photo shadows, round 18).
@@ -1152,6 +1165,13 @@ public enum WorldShaders {
                     lm4 = mix(lm4, l4 * float3(1.04, 1.0, 0.86) / dot(float3(1.04, 1.0, 0.86), lw),
                               0.85 * smoothstep(0.0, 0.025, lm4.b - max(lm4.r, lm4.g)));   // nor a blue cast from the wide mean
                     lifted = mix(lifted, lm4 * (lc / l4), 0.65 * nb * (1.0 - 0.5 * gm));
+                    // Luminance too (round 52: the blotches left are luminance cells): natural ground held within ±8 % of a
+                    // 30 m / 400 m blended mean, 80 % on green ground, 50 % elsewhere; procedural octaves and 3D shadows
+                    // carry the brightness detail.
+                    float lcl = max(dot(lifted, lw), 1e-4);
+                    float tgt = mix(meanL, l4, 0.6);
+                    float held = clamp(lcl, tgt * 0.92, tgt * 1.08);
+                    lifted *= mix(1.0, held / lcl, nb * mix(0.5, 0.8, gm));
                 }
                 albedo = mix(albedo, lifted, ltW);
             }
@@ -1368,15 +1388,15 @@ public enum WorldShaders {
                 // Shore band: pale gravel 15–25 m wide on flat land beside the near layer's water, so the lake edge
                 // reads from 2 km (round 50: the NZQN shelf was under a pixel at the final range). Sampled only where
                 // the coarse land cover has water nearby.
-                if (inNear && outerWater > 0.02 && n.z > 0.9) {
+                if (inNear && outerWater > 0.02 && n.z > 0.8) {
                     float k = 0.5 / u.imageryNear.z, mx = 0.0;
                     for (int i = 0; i < 8; i++) {
                         float a = float(i) * 0.7853982 + 0.2;
-                        mx = max(mx, waterMask.sample(imgSampler, nuv + float2(cos(a), -sin(a)) * (k * 20.0), level(0.0)).r);
+                        mx = max(mx, waterMask.sample(imgSampler, nuv + float2(cos(a), -sin(a)) * (k * 35.0), level(0.0)).r);   // ~35 m (round 52)
                     }
-                    float beach = smoothstep(0.35, 0.7, mx) * (1.0 - wet) * nearWeight * smoothstep(0.9, 0.96, n.z);
-                    float3 gravel = float3(0.30, 0.28, 0.24) * (0.9 + 0.2 * groundNoise(photoW + 19.0, 3.0));
-                    albedo = mix(albedo, gravel, 0.6 * beach);
+                    float beach = smoothstep(0.35, 0.7, mx) * (1.0 - wet) * nearWeight * smoothstep(0.8, 0.9, n.z);
+                    float3 gravel = float3(0.37, 0.35, 0.30) * (0.9 + 0.2 * groundNoise(photoW + 19.0, 3.0));   // ~0.35 albedo
+                    albedo = mix(albedo, gravel, 0.75 * beach);
                 }
             }
             m = imageryWater ? 1.0 : 7.0;
