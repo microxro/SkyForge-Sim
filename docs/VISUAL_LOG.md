@@ -1597,3 +1597,13 @@ High frames, round 55 → round 56:
   - The foliage change is reverted.
   - The fade uses its own hash.
   - Trees placed from the mid layer take a 0.065 albedo floor (0.10 before). The clumps were an albedo mismatch, 0.10+ crowns on ~0.04 photo forest, not a lighting one.
+
+## Round 57 review (r57b): high frames 7.20 (+0.05; LSZS high 7.5), finals 7.75
+
+- The far stands at LSZS now read as shaded forest on the slope.
+- The slope between stands is still smooth dark photo: the mid-layer classifier missed ~0.04 shaded forest, whose colour margins vanish.
+
+### Round 58 batch (ultra)
+
+1. Mid-layer forest placement accepts dark (<0.075), non-blue photo on slopes over ~7°.
+2. Scrub class: sparse 2–4.5 m bushes on steep (>14°), warm tan or olive photo where the forest score is near zero (NZQN tussock, KASE sage). It uses its own hash, so forest trees are unchanged.

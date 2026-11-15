@@ -696,8 +696,26 @@ public struct RealWorldRegion: FlightWorld {
                 // rail bed turns blue (art round 8: trees on roads and lots at KBFI).
                 // (Round 9: green ≥ blue still let faintly green asphalt shadow through; now green clearly above
                 // blue and at least 0.9 × red.)
-                let canopy = max(lc.forest, ss(0.30, 0.15, l) * ss(-0.02, 0.01, c.y - 0.9 * c.x) * ss(0.015, 0.04, c.y - c.z) * (1 - lc.water))
-                if Hash.unit(rng.next()) > Double(canopy) * 0.9 || g.water > 0.3 { continue }
+                var canopy = max(lc.forest, ss(0.30, 0.15, l) * ss(-0.02, 0.01, c.y - 0.9 * c.x) * ss(0.015, 0.04, c.y - c.z) * (1 - lc.water))
+                // Shaded forest on far slopes (mid layer, ultra): ~0.04 photo whose colour margins vanish in the dark, so
+                // stands appeared only where the photo was lighter (round-57 review, LSZS high). Dark, not blue, on a slope.
+                if detail.maxTrees > 200_000, nearMosaic.sample(px, py) == nil, l < 0.075, c.y >= 0.95 * c.z, lc.water < 0.2 {
+                    let hx = height(px + 10, py) - height(px - 10, py), hy = height(px, py + 10) - height(px, py - 10)
+                    let slope = Float((hx * hx + hy * hy).squareRoot() / 20)
+                    canopy = max(canopy, 0.75 * ss(0.12, 0.25, slope) * ss(0.075, 0.05, l))
+                }
+                // Scrub: warm tan or olive photo (tussock, sage, matagouri) on steep ground, where the forest score is
+                // near zero, takes sparse low bushes (round-56 review: NZQN's hills had 41k trees and stayed smeared
+                // photo scrub). Its own hash, so the forest trees' random stream is untouched.
+                var scrub = false
+                if detail.maxTrees > 200_000, canopy < 0.2, g.water < 0.1 {   // ultra only: scrub must not take the lower tiers' tree budget
+                    let hx = height(px + 10, py) - height(px - 10, py), hy = height(px, py + 10) - height(px, py - 10)
+                    let slope = (hx * hx + hy * hy).squareRoot() / 20
+                    let warm = c.x >= 0.82 * c.y && c.z < 0.85 * c.y && l > 0.08 && l < 0.32
+                    let hs = Hash.unit(Hash.int(Int((x / cell).rounded()), Int((y / cell).rounded()), seed: 0x5C2B))
+                    scrub = warm && slope > 0.25 && hs < 0.22 * Double(ss(0.25, 0.45, Float(slope)))
+                }
+                if !scrub && (Hash.unit(rng.next()) > Double(canopy) * 0.9 || g.water > 0.3) { continue }
                 // Outer 15 % of the disc: density fades with a ~400 m noisy edge, not a hard ring (round-56 review).
                 if r > 3_500 {
                     let dc = (x * x + y * y).squareRoot() + 400 * standNoise.fbm(px / 700 - 41.0, py / 700 + 13.0, octaves: 2)
@@ -709,8 +727,9 @@ public struct RealWorldRegion: FlightWorld {
                 if FieldPattern.clearing(Float(px), Float(py)) > 0.4 && Hash.unit(rng.next()) > 0.06 { continue }
                 let sA = standNoise.fbm(px / 320, py / 320, octaves: 2), sB = standNoise.fbm(px / 210 + 17.3, py / 210 - 9.1, octaves: 2)
                 let coniferShare = 0.06 + 0.88 * Double(ss(-0.05, 0.05, Float(sA)))   // crisp stand edges (round 19: blended into one mass; round 25: sharper)
-                let h = 9 + 10 * (0.5 * Hash.unit(rng.next()) + 0.5 * Double(ss(-0.4, 0.4, Float(sB))))   // half per stand
-                let conifer = Hash.unit(rng.next()) < coniferShare
+                var h = 9 + 10 * (0.5 * Hash.unit(rng.next()) + 0.5 * Double(ss(-0.4, 0.4, Float(sB))))   // half per stand
+                var conifer = Hash.unit(rng.next()) < coniferShare
+                if scrub { h = 2 + 2.5 * Hash.unit(rng.next()); conifer = false }
                 var tint = g.albedo * 1.9 * Float(0.85 + 0.3 * Hash.unit(rng.next()))
                 // Per-tree hue: ±4 % on the red/green balance, so neighbouring crowns differ (round 11).
                 tint.x *= Float(0.96 + 0.08 * Hash.unit(rng.next()))
