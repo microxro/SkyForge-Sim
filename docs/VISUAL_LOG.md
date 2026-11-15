@@ -1664,3 +1664,13 @@ Tree counts: LSZS 650k (capped), KASE 650k (capped), NZQN 116k (+70k scrub), KMR
   - Tussock lift 1.35 → 1.55, with ridged 35 m gully lines (up to −18 %).
   - Roof reds toned down and ~2/7 of the mix.
   - High preset (desktop) trees to 4 km and a 180k cap (was 3 km and 75k).
+- **Round 61 frames (7ee211a):**
+  - GPU frame-time step green, with the high preset trees at 4 km.
+  - NZQN high slope (75.6, 73.3, 60.7) → (77.8, 75.4, 62.2).
+  - KMRY near-band diagnosis (y 560–720):
+    - Correlation of luminance with sun visibility is 0.47, and with albedo 0.45.
+    - Shadowed ground is 37 against 103 lit, and bluish (blue−red +4 against −15 lit).
+    - Debug view 1 shows the photo's baked tree shadows as dark smudges on lit ground with no 3D tree.
+  - Two causes, two fixes (round 61b):
+    - A warm sun-coloured fill of 12 % in cast shadows on photo ground.
+    - The near-band luminance hold tightened on the dark side (−8 % → −4 %).

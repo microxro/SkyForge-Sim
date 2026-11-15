@@ -1198,7 +1198,9 @@ public enum WorldShaders {
                     // Not gated by the wide mean's forest score (round 54: LSZS's dark-green pasture classes as forest at
                     // 400 m too, so the gate removed its lift and the pasture fell from 0.050 to 0.033 in output).
                     float tgt = mix(meanL, l4, 0.6);
-                    float held = clamp(lcl, tgt * 0.92, tgt * 1.08);
+                    // Darker side held at −4 % (round 61, KMRY debug view 1: the photo's baked tree shadows, 20–40 m dark smudges
+                    // with no 3D tree on them, survived the ±8 % hold).
+                    float held = clamp(lcl, tgt * 0.96, tgt * 1.08);
                     lifted *= mix(1.0, held / lcl, nb * max(mix(0.5, 0.8, gm), 0.9 * burb));
                 }
                 albedo = mix(albedo, lifted, ltW);
@@ -1732,6 +1734,9 @@ public enum WorldShaders {
         if (m == 7.0 && in.material == 8.0) {
             float ambL = dot(ambient, float3(0.2126, 0.7152, 0.0722));
             ambient = mix(float3(ambL), ambient, 0.55);
+            // Warm fill in cast shadows (round 61, KMRY final debug view 2: the ochre/blue-grey blotches are the 3D
+            // trees' shadows, ~0.36 of lit luminance and bluish; sunlit lawn and canopy bounce light into them).
+            ambient += u.sunColour.rgb * float3(1.0, 0.95, 0.82) * (0.12 * saturate(1.0 - vis) * saturate(toSun.z));
         }
         if (u.quality.y > 0.0) {
             // Cabin interior: lit by the sky and the sunlit ground through the windows, from every side, and
