@@ -189,6 +189,55 @@ import SFInstruments
         print("ultra \(ident): \(region.buildings.count) buildings, \(data.buildingMesh?.triangleCount ?? 0) building triangles, \(data.trees.count) trees, building cells drawn \(r.lastDrawnBuildingCells)/\(r.buildingCellCount)")
     }
 
+    /// The same final-approach frame at every graphics preset, each with the world detail the app pairs with it
+    /// (low: phone, medium: tablet, high: desktop; ultra: the review tier), so the presets can be compared side by side.
+    static let presets: [(name: String, settings: WorldRenderer.Settings, real: RealWorldDetail, sky: QuickFlightDetail)] = [
+        ("low", .low, .phone, .phone), ("medium", .medium, .tablet, .tablet),
+        ("high", .high, .desktop, .desktop), ("ultra", .ultra, .ultra, .desktop),
+    ]
+
+    @Test(.enabled(if: SkyRegressionTests.hasDevice, "no Metal device on this host"), arguments: [0, 1, 2, 3])
+    func presetFrameKMRY(preset: Int) async throws {
+        guard Self.wanted("KMRY") else { return }
+        let p = Self.presets[preset]
+        let region = try await RealWorldRegion.load(airport: "KMRY", detail: p.real,
+                                                    transport: Showcase.transport(for: "KMRY", fallback: nil), cache: nil)
+        let data = RealWorldRenderData(region: region, chunkQuads: 32)
+        let session = QuickFlightSession(world: region, start: .final)
+        let cam = session.chaseCamera()
+        let r = try WorldRenderer(lighting: LightingSetup.physicalPreset(.midday, azimuthDegrees: 200, cameraHeightMetres: cam.position.z))
+        r.apply(p.settings)
+        try r.setRealWorld(data)
+        try r.setAircraft(QuickFlightWorld.aircraftMesh())
+        r.clouds = .fairWeather(fieldElevation: Float(region.runwayElevation))
+        let c = session.bodyToENUColumns
+        let img = try r.render(width: Self.width, height: Self.height, camera: WorldCamera(position: cam.position, target: cam.target),
+                               aircraftPosition: session.positionENU, aircraftBodyToENU: simd_double3x3(columns: (c.0, c.1, c.2)))
+        Self.save("preset_KMRY_\(preset)_\(p.name)", img)
+        #expect(Self.contrast(img) > 60, "KMRY \(p.name) ground contrast")
+    }
+
+    @Test(.enabled(if: SkyRegressionTests.hasDevice, "no Metal device on this host"), arguments: [0, 1, 2, 3])
+    func presetFrameSkyWorld(preset: Int) throws {
+        guard Self.wanted("SKYWORLD") else { return }
+        let p = Self.presets[preset]
+        let world = QuickFlightWorld()
+        let session = QuickFlightSession(world: world, start: .final)
+        let cam = session.chaseCamera()
+        let r = try WorldRenderer(lighting: LightingSetup.physicalPreset(.midday, azimuthDegrees: 200, cameraHeightMetres: cam.position.z))
+        r.apply(p.settings)
+        let env = world.buildEnvironmentInstanced(detail: p.sky)
+        try r.setEnvironment(env.soup)
+        try r.setTrees(RealWorldRenderData.trees(env.trees))
+        try r.setAircraft(QuickFlightWorld.aircraftMesh())
+        r.clouds = .fairWeather
+        let c = session.bodyToENUColumns
+        let img = try r.render(width: Self.width, height: Self.height, camera: WorldCamera(position: cam.position, target: cam.target),
+                               aircraftPosition: session.positionENU, aircraftBodyToENU: simd_double3x3(columns: (c.0, c.1, c.2)))
+        Self.save("preset_skyworld_\(preset)_\(p.name)", img)
+        #expect(r.lastDrawnEnvironmentCells > 0)
+    }
+
     /// SkyWorld (the offline fallback) at phone detail and at the ultra render settings.
     @Test(.enabled(if: SkyRegressionTests.hasDevice, "no Metal device on this host"), arguments: [false, true])
     func skyWorldFrame(ultra: Bool) throws {
