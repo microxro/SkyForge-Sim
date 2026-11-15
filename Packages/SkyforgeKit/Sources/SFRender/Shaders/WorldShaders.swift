@@ -1184,14 +1184,14 @@ public enum WorldShaders {
                     float l4 = max(dot(lm4, lw), 1e-3);
                     lm4 = mix(lm4, l4 * float3(1.04, 1.0, 0.86) / dot(float3(1.04, 1.0, 0.86), lw),
                               0.85 * smoothstep(0.0, 0.025, lm4.b - max(lm4.r, lm4.g)));   // nor a blue cast from the wide mean
-                    // Forest score of the wide mean: pasture beside a forest is not pulled toward the forest's dark tone.
-                    float f4 = smoothstep(0.0, 0.02, lm4.g - max(lm4.r, lm4.b)) * smoothstep(0.14, 0.05, l4);
                     lifted = mix(lifted, lm4 * (lc / l4), mix(0.65 * (1.0 - 0.5 * gm), 0.9, burb) * nb);
                     // Luminance too (round 52: the blotches left are luminance cells): natural ground held within ±8 % of a
                     // 30 m / 400 m blended mean, 80 % on green ground, 50 % elsewhere; procedural octaves and 3D shadows
                     // carry the brightness detail.
                     float lcl = max(dot(lifted, lw), 1e-4);
-                    float tgt = mix(meanL, l4, 0.6 * (1.0 - f4));
+                    // Not gated by the wide mean's forest score (round 54: LSZS's dark-green pasture classes as forest at
+                    // 400 m too, so the gate removed its lift and the pasture fell from 0.050 to 0.033 in output).
+                    float tgt = mix(meanL, l4, 0.6);
                     float held = clamp(lcl, tgt * 0.92, tgt * 1.08);
                     lifted *= mix(1.0, held / lcl, nb * max(mix(0.5, 0.8, gm), 0.9 * burb));
                 }
