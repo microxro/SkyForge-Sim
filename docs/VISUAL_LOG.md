@@ -1623,3 +1623,12 @@ Tree counts: LSZS 650k (capped), KASE 650k (capped), NZQN 116k (+70k scrub), KMR
 - **Round 58c:**
   - Ultra cap 1,000,000 (~64 MB of instances; ultra has no budget).
   - Scrub density 0.35 (was 0.22).
+
+## Round 58 review (r58c): high frames 7.25 (+0.05; NZQN high 6.75), finals 7.75
+
+- **NZQN:** the scrub adds bushes on the ridge and shore.
+- **LSZS:** the dark-forest fill is not visible.
+- **Most wrong patch:** the NZQN high left slope (x 0–260, y 280–720), smeared photo with a strong purple-blue cast.
+- **Round 59:**
+  - Blue-dominant land photo beyond 0.7–1.5 km is pulled 75 % toward a warm neutral at its luminance; the near band has done this since round 51.
+  - The photo-ground in-scatter keeps 85 % chroma by 6 km (was 100 % by 4 km).

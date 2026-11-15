@@ -1201,6 +1201,18 @@ public enum WorldShaders {
                 }
                 albedo = mix(albedo, lifted, ltW);
             }
+            // Beyond the near band: blue-dominant land photo (shaded slopes photograph sky-blue/purple; round-58 review,
+            // NZQN high's left slope) toward a warm neutral at its luminance, as the near band does since round 51.
+            {
+                float farB = smoothstep(700.0, 1500.0, dist) * (1.0 - saturate((wm - 0.2) / 0.2));
+                float blueF = smoothstep(0.0, 0.03, albedo.b - max(albedo.r * 0.9, albedo.g));
+                if (farB * blueF > 0.0) {
+                    float3 lw3 = float3(0.2126, 0.7152, 0.0722);
+                    float lb = dot(albedo, lw3);
+                    float3 warm = lb * float3(1.02, 1.0, 0.80) / dot(float3(1.02, 1.0, 0.80), lw3);
+                    albedo = mix(albedo, warm, 0.75 * farB * blueF);
+                }
+            }
             float alT = dot(albedo, float3(0.2126, 0.7152, 0.0722));
             // Out to ~5 km at half strength beyond 1.2 km: dark photo forest on shaded mid-ring slopes stayed a
             // near-black mass from the high camera (round 32, LSZS high), which sky light alone did not lift.
@@ -1957,7 +1969,7 @@ public enum WorldShaders {
         // desaturated, KMRY's blue near-band fraction only fell from 6.1 % to 4.5 %).
         if (m == 7.0 && in.material == 8.0) {
             float lL = dot(L, float3(0.2126, 0.7152, 0.0722));
-            L = mix(float3(lL), L, mix(0.6, 1.0, smoothstep(1500.0, 4000.0, dist)));
+            L = mix(float3(lL), L, mix(0.6, 0.85, smoothstep(1500.0, 6000.0, dist)));   // 0.85 far (was 1.0): purple shaded slopes, round 58
         }
         col = col * T + L;
         {
