@@ -1172,7 +1172,7 @@ public enum WorldShaders {
                     float f6 = saturate(1.0 - fpG * 1.5 / 6.0), f12 = saturate(1.0 - fpG * 1.5 / 12.0);
                     float crowns = (1.0 - abs(groundNoise(photoW + 47.0, 6.0))) * 2.0 - 1.0;
                     float stands = groundNoise(photoW - 113.0, 12.0);
-                    float pc = 0.30 * (crowns - 0.0) * f6 + 0.20 * stands * f12;
+                    float pc = 0.30 * (crowns - 0.29) * f6 + 0.20 * stands * f12;   // ridged noise averages +0.29: re-centred
                     float po = 0.16 * groundNoise(photoW + 389.0, 6.0) * f6 + 0.16 * groundNoise(photoW - 271.0, 12.0) * f12;
                     // Luminance-neutral about the mean: the octaves are zero-mean and clamped symmetrically.
                     float3 procA = m20 * clamp(1.0 + mix(po, pc, canopy), 0.55, 1.45);
@@ -1448,11 +1448,14 @@ public enum WorldShaders {
                     float rnUp = 1.0 - abs(groundNoise(float2(fl.x - 4.0, fl.y * 0.33) + 301.0, 18.0));   // 4 m uphill (fall points downhill)
                     float oMask = smoothstep(0.05, 0.30, groundNoise(w - 811.0, 40.0));
                     float oFade = smoothstep(4.0, 8.0, 8.0 / max(sfp, 1e-3)) * oMask;
-                    float outcrop = smoothstep(0.78 - oe, 0.78 + oe, rn) * oFade;
-                    float shadowLine = saturate(smoothstep(0.78 - oe, 0.78 + oe, rnUp) - smoothstep(0.78 - oe, 0.78 + oe, rn)) * oFade;
-                    float3 rockC = mix(float3(smL), sm, 0.35) * 0.55 * float3(1.02, 1.0, 0.96);
+                    // Threshold 0.92 (~13 % of the masked slope; 0.78 covered ~35 % at 55 % luminance and darkened the round-46
+                    // LSZS high slope by ~1.8 and the KASE cliff by ~1.1 against round 44).
+                    float outcrop = smoothstep(0.92 - oe, 0.92 + oe, rn) * oFade;
+                    float shadowLine = saturate(smoothstep(0.92 - oe, 0.92 + oe, rnUp) - smoothstep(0.92 - oe, 0.92 + oe, rn)) * oFade;
+                    float3 rockC = mix(float3(smL), sm, 0.35) * 0.65 * float3(1.02, 1.0, 0.96);
+                    rock *= 1.0 + 0.06 * oFade;                    // keeps the slope's mean with the darker outcrops and shadow lines
                     rock = mix(rock, rockC * (1.0 + 0.2 * g2), outcrop);
-                    rock *= 1.0 - 0.45 * shadowLine;
+                    rock *= 1.0 - 0.30 * shadowLine;
                     albedo = mix(albedo, rock, stretchW);
                 }
             }

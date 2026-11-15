@@ -1164,3 +1164,19 @@ Round-46 batch:
    - An upholstered door insert with a piped border, and a moulded crease under the sill.
    - A recessed inside door handle at the armrest front.
    - Carpet darker toward the firewall, with rubber heel mats.
+
+Round-46 frames (ffcf2d1, run 43691350679) before review — lower-half mean luminance (round 44 / 45 / 46):
+- KASE high 92.8 / 88.9 / 91.9
+- LSZS high 63.7 / 57.7 / 61.9
+- NZQN high 79.9 / 77.7 / 80.2
+- KMRY high 89.9 / 88.9 / 90.0
+- KBFI high 111.9 / 109.6 / 111.8
+- KASE final 83.6 / 82.3 / 82.5
+
+NZQN, KMRY and KBFI are back within 0.5 of round 44. LSZS high (−1.8), KASE high (−0.9) and the KASE final (−1.1) are still darker.
+
+**Cause:** the ledge outcrops. A 0.78 threshold on ridged noise covers ~35 % of the masked slope, at 55 % luminance.
+
+Fixed before review:
+- **Outcrops:** threshold 0.92 (~13 %), rock at 65 %, a +6 % slope compensation, and shadow lines at −30 %.
+- **Crown octave:** re-centred; ridged value noise averages +0.29.
