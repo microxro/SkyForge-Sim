@@ -944,6 +944,24 @@ public enum WorldShaders {
         return c;
     }
 
+    /// Cellular outcrop mask: jittered cells `cell` metres across; about `cover` of the cells are rock. Returns
+    /// 1 inside a rock cell, fading to 0 over `edge` metres at its border (F2 − F1), so outcrops are compact
+    /// polygons with cracks between neighbours rather than continuous bands.
+    static float outcropCells(float2 p, float cell, float cover, float edge) {
+        float2 q = p / cell, i = floor(q);
+        float f1 = 1e9, f2 = 1e9; float id1 = 0.0;
+        for (int dy = -1; dy <= 1; dy++) {
+            for (int dx = -1; dx <= 1; dx++) {
+                float2 c = i + float2(dx, dy);
+                uint h = fp_hash(int(c.x), int(c.y), 0x0C7Au);
+                float2 fpnt = c + float2(fp_unit(h), fp_unit(h >> 8)) * 0.8 + 0.1;
+                float d = length(q - fpnt) * cell;
+                if (d < f1) { f2 = f1; f1 = d; id1 = fp_unit(h >> 16); } else if (d < f2) { f2 = d; }
+            }
+        }
+        return id1 < cover ? smoothstep(0.0, edge, f2 - f1) : 0.0;
+    }
+
     /// Metres per texel of the finest imagery layer covering region point `w` (`inNear` from photoColour).
     static float photoTexel(constant WorldUniforms& u, texture2d<float> imgNear, texture2d<float> imgMid, texture2d<float> imgFar,
                             texture2d<float> imgDetail, float2 w, bool inNear) {
@@ -1451,21 +1469,21 @@ public enum WorldShaders {
                     // Outcrops and ledges with crisp edges and their own shadow line below (round-44 review: the cliff
                     // still read soft). Rock at ~55 % of the local mean's luminance, greyed; the threshold edge
                     // widens with the footprint so it never aliases.
-                    // Round 45: thresholded isotropic noise drew swirling contour rings on the KASE cliff. Ridged noise
-                    // stretched 3:1 along the contour (fl.y), broken by a 40 m mask into short outcrops. Round 46: at
-                    // ~13 % coverage and a 4–8 px fade they were invisible; now ~25 % (threshold 0.85), surviving to
-                    // ~3 px, at 0.6× the local mean, with a lit upper edge and a shadow line below so each reads as a lump.
-                    float oe = max(0.03, sfp / 30.0);
-                    float rn = 1.0 - abs(groundNoise(float2(fl.x, fl.y * 0.33) + 301.0, 18.0));
-                    float rnUp = 1.0 - abs(groundNoise(float2(fl.x - 4.0, fl.y * 0.33) + 301.0, 18.0));   // 4 m uphill (fall points downhill)
-                    float oMask = smoothstep(0.0, 0.25, groundNoise(w - 811.0, 40.0) + 0.15);
-                    float oFade = smoothstep(2.0, 3.5, 8.0 / max(sfp, 1e-3)) * oMask;
-                    float oIn = smoothstep(0.85 - oe, 0.85 + oe, rn), oUp = smoothstep(0.85 - oe, 0.85 + oe, rnUp);
+                    // Outcrops as compact cellular blocks 15–30 m across (round 47: thresholded ridged noise stretched
+                    // 3:1 along the contour drew thin wavy hairlines, read as wood grain). ~25 % of jittered 22 m cells
+                    // (contour axis stretched only 1.5:1) are rock at 0.6× the local mean; a lit upper rim and a
+                    // shadow band below, each at least ~2 px thick, give each block volume. Faded below ~3 px per cell.
+                    float oe = max(1.0, sfp * 1.5);                 // border softness in metres (never aliases)
+                    float2 op = float2(fl.x, fl.y / 1.5);
+                    float bw2 = max(3.0, sfp * 2.5);                // rim / shadow band width, ≥ ~2 px
+                    float oIn = outcropCells(op, 22.0, 0.25, oe);
+                    float oUp = outcropCells(op - float2(bw2, 0.0), 22.0, 0.25, oe);   // uphill (fall points downhill)
+                    float oFade = smoothstep(2.0, 3.5, 22.0 / max(sfp, 1e-3) / 3.0);
                     float outcrop = oIn * oFade;
-                    float shadowLine = saturate(oUp - oIn) * oFade;      // just below an outcrop
-                    float litEdge = saturate(oIn - oUp) * oFade;         // an outcrop's upper rim
+                    float shadowLine = saturate(oUp - oIn) * oFade;      // band just below a block
+                    float litEdge = saturate(oIn - oUp) * oFade;         // a block's upper rim
                     float3 rockC = mix(float3(smL), sm, 0.35) * 0.60 * float3(1.02, 1.0, 0.96);
-                    rock *= 1.0 + 0.12 * oFade;                    // keeps the slope's mean with the darker outcrops and shadow lines
+                    rock *= 1.0 + 0.12 * oFade;                    // keeps the slope's mean with the darker blocks and shadow bands
                     rock = mix(rock, rockC * (1.0 + 0.2 * g2), outcrop);
                     rock *= (1.0 - 0.35 * shadowLine) * (1.0 + 0.45 * litEdge);
                     albedo = mix(albedo, rock, stretchW);

@@ -256,8 +256,8 @@ public enum BuildingMeshBuilder {
                 roof = c
                 if pitched == nil {
                     // Flat roofs from the photo read uniformly pale (art round 46, KMRY final near band): each roof its
-                    // own grey (±15 %) and a soft knee above 0.28 luminance, as membrane and gravel roofs weather darker.
-                    roof *= Float(0.85 + 0.30 * rnd(4))
+                    // own grey (±25 %) and a soft knee above 0.28 luminance, as membrane and gravel roofs weather darker.
+                    roof *= Float(0.75 + 0.50 * rnd(4))      // ±25 % (round 47: ±15 % only registered side by side)
                     let l = 0.2126 * roof.x + 0.7152 * roof.y + 0.0722 * roof.z
                     if l > 0.28 { roof *= (0.28 + (l - 0.28) * 0.4) / l }
                 }

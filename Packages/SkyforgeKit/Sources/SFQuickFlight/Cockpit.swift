@@ -238,7 +238,16 @@ public enum Cockpit {
         let gsBackL = panel(-w, panelTop), gsBackR = panel(w, panelTop)
         let gsFrontL = V(1.48, -w, panelTop - 0.03), gsFrontR = V(1.48, w, panelTop - 0.03)
         // Vinyl grain: a finer grid with stronger per-vertex variation (art round 46: the top read as one flat sheet).
-        shaded(gsBackL - V(0.03, 0, 0.012), gsBackR - V(0.03, 0, 0.012), gsFrontR, gsFrontL, shield * 2.4, nu: 36, nv: 12, ao: 0.45, grain: 0.20, seed: 4)
+// Round 47: ±20 % on a 3 cm grid read as soft blotches; ±6 % on a ~1 cm grid, plus a lengthwise sheen band
+        // along the crown so the top reads as curved vinyl.
+        shaded(gsBackL - V(0.03, 0, 0.012), gsBackR - V(0.03, 0, 0.012), gsFrontR, gsFrontL, shield * 2.4, nu: 96, nv: 24, ao: 0.45, grain: 0.06, seed: 4)
+        do {
+            let b0 = gsBackL - V(0.03, 0, 0.012), f0 = gsFrontL, b1 = gsBackR - V(0.03, 0, 0.012), f1 = gsFrontR
+            func along(_ t: Double, _ l: V, _ r: V, _ y: Double) -> V { let p = l * (1 - t) + r * t; return V(p.x, y, p.z - 0.0015) }
+            let ta = 0.38, tb = 0.62
+            shaded(along(ta, b0, f0, -w + 0.02), along(ta, b1, f1, w - 0.02), along(tb, b1, f1, w - 0.02), along(tb, b0, f0, -w + 0.02),
+                   shield * 2.95, nu: 24, nv: 2, ao: 0.6, grain: 0.04, seed: 31)
+        }
         // Stitched seam along the glare shield's rear edge (a fine lighter line), as on a padded cover.
         for i in 0..<36 {
             let y0 = -w + 0.03 + Double(i) * (2 * w - 0.06) / 36

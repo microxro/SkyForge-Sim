@@ -1228,3 +1228,23 @@ Round-47 batch:
 3. **KMRY flat roofs from the photo:**
    - Each roof its own grey (±15 %).
    - A soft knee above 0.28 luminance.
+
+## Bold round 47: PR #9 1c63400 (run 43694637402, ultra tier)
+Same reviewer and scale.
+
+**Final camera:** KMRY 7.5, KASE 7.75, KBFI 7.5, LSZS 7.5, NZQN 7.5, SkyWorld 7.75. **Average 7.58**.
+
+**High frames:** 6.70. **Cockpit:** 7.0 (6.75).
+
+**What registered:**
+- **Cockpit:** the placards and gauge screws land; the panel reads as a manufactured part. The glareshield grain read as soft blotches (minor).
+- **KMRY flat-roof greys:** visible only side by side.
+- **KASE cliff outcrops:** now visible, but as thin wavy contour hairlines (wood grain), not rock.
+
+Round-48 batch:
+1. **Outcrops as cellular blocks:**
+   - ~25 % of jittered 22 m cells, with the contour axis stretched only 1.5:1.
+   - A soft border from F2 − F1, so neighbouring blocks show cracks.
+   - Lit rim and shadow bands at least ~2 px thick.
+2. **Glareshield:** ±6 % grain on a ~1 cm grid, and a lengthwise sheen band along the crown.
+3. **KMRY flat roofs from the photo:** ±25 % grey per roof.
