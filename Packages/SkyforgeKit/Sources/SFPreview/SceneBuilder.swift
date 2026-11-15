@@ -412,6 +412,19 @@ public struct SceneBuilder {
         stats["buildings", default: 0] += 1
     }
 
+    /// A flat ground patch draped on the terrain in ~10 m pieces (a farmyard's gravel, a farm track).
+    public mutating func addGroundPatch(center: SIMD2<Double>, halfSize: SIMD2<Double>, heading: Double, colour: SIMD3<Float>) {
+        let c = cos(heading), s = sin(heading)
+        let nu = max(1, Int((2 * halfSize.x / 10).rounded(.up))), nv = max(1, Int((2 * halfSize.y / 10).rounded(.up)))
+        func w(_ i: Int, _ j: Int) -> SIMD3<Double> {
+            let lx = -halfSize.x + 2 * halfSize.x * Double(i) / Double(nu), ly = -halfSize.y + 2 * halfSize.y * Double(j) / Double(nv)
+            let x = center.x + c * lx - s * ly, y = center.y + s * lx + c * ly
+            return SIMD3(x, y, terrain.height(x, y) + 0.25)
+        }
+        for j in 0..<nv { for i in 0..<nu { soup.addQuad(w(i, j), w(i + 1, j), w(i + 1, j + 1), w(i, j + 1), colour: colour, material: .road) } }
+        stats["groundPatches", default: 0] += 1
+    }
+
     public mutating func addParkingLot(_ lot: ParkingLot) {
         let c = cos(lot.heading), s = sin(lot.heading)
         func w(_ lx: Double, _ ly: Double, _ z: Double) -> SIMD3<Double> {

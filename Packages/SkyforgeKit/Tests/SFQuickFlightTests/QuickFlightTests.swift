@@ -106,9 +106,18 @@ import SFPreview
         d.objectRadius = 2_000; d.nearHalfExtent = 1_500; d.nearStep = 25; d.midHalfExtent = 3_000; d.midStep = 150; d.farHalfExtent = 6_000; d.farStep = 500
         let inst = w.buildEnvironmentInstanced(detail: d)
         let pattern = try #require(inst.soup.fieldPattern), grid = try #require(pattern.parcels)
-        let farms = w.parcelFarmsteads(pattern, foci: [w.runwayCentre, w.runwayThreshold - w.runwayDirection * 2_600],
-                                       radius: d.objectRadius, roads: [])
-        #expect(farms.count >= 30 && farms.count % 3 == 0, "\(farms.count) farm buildings")
+        let steads = w.parcelFarmsteads(pattern, foci: [w.runwayCentre, w.runwayThreshold - w.runwayDirection * 2_600],
+                                        radius: d.objectRadius, roads: [])
+        let farms = steads.flatMap(\.buildings)
+        #expect(steads.count >= 8 && farms.count == steads.count * 3, "\(steads.count) farmsteads")
+        #expect(steads.allSatisfy { $0.trees.count >= 1 }, "each farmstead has yard trees")
+        #expect(steads.filter { $0.track != nil }.count * 2 >= steads.count, "most farmsteads have a track")
+        for f in steads {
+            for t in f.trees { #expect(!QuickFlightWorld.inside(SIMD2(t.position.x, t.position.y), f.buildings, margin: 2)) }
+            let q = f.yard.center - w.runwayThreshold
+            let along = (q * w.runwayDirection).sum(), across = abs(q.x * w.runwayDirection.y - q.y * w.runwayDirection.x)
+            #expect(!(along > -4_500 && across < 120), "farmyard on the final path at \(f.yard.center)")
+        }
         for b in farms {
             let h = pattern.hedge(Float(b.center.x), Float(b.center.y))
             #expect(grid.isOn(h.parcel) && h.distance > 8, "farm building at \(b.center) on a hedge or unfarmed parcel")
@@ -116,7 +125,7 @@ import SFPreview
             let along = (q * w.runwayDirection).sum(), across = abs(q.x * w.runwayDirection.y - q.y * w.runwayDirection.x)
             #expect(!(along > -1_200 && along < w.runwayLengthMetres + 400 && across < 260), "farm on the approach at \(b.center)")
         }
-        for t in inst.trees where t.height < 9 {   // hedgerow trees are 9–16 m and stand on hedges
+        for t in inst.trees where t.height < 9 {   // hedgerow and yard trees are 9 m and taller
             #expect(!QuickFlightWorld.inside(SIMD2(t.position.x, t.position.y), farms, margin: 2), "tree through a farm building at \(t.position)")
         }
     }

@@ -1301,11 +1301,11 @@ public enum WorldShaders {
                 // as a cut-out with no shelf).
                 if (inNear) {
                     float k = 0.5 / u.imageryNear.z, acc = 0.0;
-                    for (int i = 0; i < 8; i++) {
+                    for (int i = 0; i < 8; i++) {                  // rings 40 and 90 m (round 49: 20/40 m too thin at final range)
                         float a = float(i) * 0.7853982 + 0.39;
                         float2 d = float2(cos(a), -sin(a)) * k;
-                        acc += waterMask.sample(imgSampler, nuv + d * 20.0, level(0.0)).r
-                             + waterMask.sample(imgSampler, nuv + d * 40.0, level(0.0)).r;
+                        acc += waterMask.sample(imgSampler, nuv + d * 40.0, level(0.0)).r
+                             + waterMask.sample(imgSampler, nuv + d * 90.0, level(0.0)).r;
                     }
                     shoreWide = mix(1.0, saturate(acc / 16.0), nearWeight);
                 }
@@ -1506,7 +1506,7 @@ public enum WorldShaders {
                     // Cells in world metres (round 48: in fall-line coordinates, whose axes turn with the normal from
                     // pixel to pixel, curved slopes warped the cells into swirling contour rings; the same warp drew the
                     // earlier hairlines). Only the rim / shadow offset follows the fall line.
-                    float bw2 = max(3.0, sfp * 2.0);                // rim / shadow band ~3 m, ≥ ~2 px
+                    float bw2 = max(3.0, sfp * 2.5);                // rim / shadow band ~3 m, ≥ 2.5 px (round 49: thin)
                     float oIn = outcropCells(w, 35.0, 0.25, oe);   // 35 m blocks (round 48: 22 m were 5–8 px)
                     float oUp = outcropCells(w - fall * bw2, 35.0, 0.25, oe);   // uphill (fall points downhill)
                     float oFade = smoothstep(2.0, 3.5, 35.0 / max(sfp, 1e-3) / 3.0);
@@ -1517,10 +1517,15 @@ public enum WorldShaders {
                     // takes in the forest round the pale KASE cliff, the blocks were far darker than 0.6× and the cliff
                     // cells lost up to 14 output levels).
                     float rkL = dot(rock, float3(0.2126, 0.7152, 0.0722));
-                    float3 rockC = mix(float3(rkL), rock, 0.35) * 0.50 * float3(1.02, 1.0, 0.96);
-                    rock *= 1.0 + 0.14 * oFade;                    // keeps the slope's mean with the darker blocks and shadow bands
+                    // Cool grey at 0.72× so the blocks part from the warm soil by hue, an upper rim 1.6× the
+                    // surrounding slope and a −55 % shadow band (round 49: 0.5× warm blocks with a rim relative to
+                    // the dark block still read as soft stains against the photo's own dark patches).
+                    float3 rockC = float3(rkL) * 0.72 * float3(0.92, 0.98, 1.08);
+                    float3 slopeC = rock;
+                    rock *= 1.0 + 0.10 * oFade;                    // keeps the slope's mean with the blocks and shadow bands
                     rock = mix(rock, rockC * (1.0 + 0.2 * g2), outcrop);
-                    rock *= (1.0 - 0.45 * shadowLine) * (1.0 + 0.55 * litEdge);
+                    rock = mix(rock, slopeC * 1.6, litEdge);
+                    rock *= 1.0 - 0.55 * shadowLine;
                     albedo = mix(albedo, rock, stretchW);
                 }
             }
@@ -1615,8 +1620,10 @@ public enum WorldShaders {
                 // Shallows: a lighter green-turquoise body across the shore band (the mask's 0.6–0.9 rise), so
                 // a lake edge reads as depth rather than a navy cut-out (art round 11, NZQN).
                 float shallow = 1.0 - smoothstep(0.6, 0.97, shoreWm);   // wider band (round 12: read only at mid-distance)
-                float wide = 1.0 - smoothstep(0.55, 0.97, shoreWide);   // 30–60 m shelf (round 49)
-                body = mix(body, float3(0.05, 0.11, 0.10) * (ambient * 0.8 + u.sunColour.rgb * max(0.0, toSun.z) * 0.35), max(shallow * 0.8, wide * 0.5));   // 0.6 (round 40: shore still abrupt)
+                float wide = 1.0 - smoothstep(0.55, 0.97, shoreWide);   // 60–120 m shelf (round 50)
+                float3 lit = ambient * 0.8 + u.sunColour.rgb * max(0.0, toSun.z) * 0.35;
+                body = mix(body, float3(0.05, 0.11, 0.10) * lit, shallow * 0.8);   // 0.6 (round 40: shore still abrupt)
+                body = mix(body, float3(0.035, 0.14, 0.13) * lit, wide * 0.65 * (1.0 - shallow * 0.8));   // turquoise shelf
                 // Broad sheen toward the sun from many small wave facets (the 900/60 lobes are single glints).
                 refl += u.sunColour.rgb * pow(max(0.0, dot(r, toSun)), 12.0) * 0.12 * vis;
             }

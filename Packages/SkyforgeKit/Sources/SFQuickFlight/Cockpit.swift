@@ -188,17 +188,18 @@ public enum Cockpit {
         // turned a little toward the pilot, with a slotted face (art round 48: vents asked for on the panel).
         do {
             let c = P(-0.475, -0.368, 0.002)
-            ring(c, pn, 0.016, 0.021, sides: 24, chrome, .metal)
-            disc(c + pn * 0.0005, pn, 0.016, sides: 24, SIMD3<Float>(0.012, 0.012, 0.013))
+            // 1.4× (round 49: read correctly but too small to register).
+            ring(c, pn, 0.0225, 0.0295, sides: 28, chrome, .metal)
+            disc(c + pn * 0.0005, pn, 0.0225, sides: 28, SIMD3<Float>(0.012, 0.012, 0.013))
             let aim = unit(pn + pr * 0.25 - pu * 0.15)
-            tube(c, c + aim * 0.011, 0.0125, 0.011, sides: 14, SIMD3<Float>(0.06, 0.06, 0.065))
-            let face = c + aim * 0.0115
-            disc(face, aim, 0.011, sides: 14, SIMD3<Float>(0.02, 0.02, 0.022))
+            tube(c, c + aim * 0.015, 0.0175, 0.0155, sides: 16, SIMD3<Float>(0.06, 0.06, 0.065))
+            let face = c + aim * 0.016
+            disc(face, aim, 0.0155, sides: 16, SIMD3<Float>(0.02, 0.02, 0.022))
             let (a1, a2) = perp(aim)
-            for k in -2...2 {                                                 // louvre slots
-                let o = a2 * (Double(k) * 0.0036)
-                quad(face + aim * 0.0004 + o - a1 * 0.008 - a2 * 0.0007, face + aim * 0.0004 + o + a1 * 0.008 - a2 * 0.0007,
-                     face + aim * 0.0004 + o + a1 * 0.008 + a2 * 0.0007, face + aim * 0.0004 + o - a1 * 0.008 + a2 * 0.0007, SIMD3<Float>(0.10, 0.10, 0.105))
+            for k in -3...3 {                                                 // louvre slots
+                let o = a2 * (Double(k) * 0.0038), hl = 0.0115 * (1 - Double(k * k) / 14)
+                quad(face + aim * 0.0004 + o - a1 * hl - a2 * 0.0008, face + aim * 0.0004 + o + a1 * hl - a2 * 0.0008,
+                     face + aim * 0.0004 + o + a1 * hl + a2 * 0.0008, face + aim * 0.0004 + o - a1 * hl + a2 * 0.0008, SIMD3<Float>(0.13, 0.13, 0.135))
             }
         }
         // Avionics stack: four units with a lit display, a row of keys and two knobs.

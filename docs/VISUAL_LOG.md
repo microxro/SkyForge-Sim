@@ -1329,3 +1329,27 @@ Round-49b batch, added before review:
 2. **NZQN shallow shelf:** the water mask is averaged over rings 20 m and 40 m out (near layer only).
    - The shallows now reach 30–60 m from shore, instead of following the mask's one-texel rise.
 3. **Cockpit:** an eyeball air vent above the two small gauges, with a chrome bezel, a ball nozzle and louvre slots.
+
+## Round 49 review (r49b frames)
+
+**Final camera:** KMRY 7.5, KASE 7.75, KBFI 7.5, LSZS 7.5, NZQN 7.5, SkyWorld 8.0 (7.75). **Average 7.63**, the first final at 8.
+
+**High frames:** 6.70. **Cockpit:** 7.25.
+
+- **SkyWorld farmsteads:** visible and give the patchwork scale. The barns are flat saturated red boxes with no yard, trees or track, and one group sits right under the aircraft.
+- **KASE cliff blocks:** still read as soft dark stains.
+- **KMRY lake shelf:** not visible.
+- **Cockpit vent:** visible but tiny.
+- **KMRY near band:** no change. Pulls toward the mean are exhausted; the reviewer asks for a structural material replacement.
+
+Round-50 batch:
+1. **Farmsteads:**
+   - Weathered barn red, with grey or dark-green metal roofs.
+   - A gravel yard, two or three trees and a track to the nearest hedge.
+   - None within 300 m of the approach centreline.
+2. **KASE outcrops:**
+   - Cool-grey rock.
+   - Rims +60 %.
+   - Shadow bands at least 2 px wide.
+3. **NZQN shelf:** rings at 40 m and 90 m, and a stronger turquoise tint.
+4. **Cockpit:** the vent 1.5× larger, plus a second vent on the right.
