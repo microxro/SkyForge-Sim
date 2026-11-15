@@ -307,3 +307,4 @@ Method: `FrameTimeTests`, 30 frames after 3 warm-up frames; command-buffer GPU t
 - 2026-11-14T23:52:26Z gate fast on Linux x86_64: PASS (HEAD 2a513dd)
 - 2026-11-15T00:04:25Z gate fast on Linux x86_64: PASS (HEAD d34d1f4)
 - 2026-11-15T00:53:57Z gate fast on Linux x86_64: PASS (HEAD 03c7589)
+- 2026-11-15T01:08:02Z gate fast on Linux x86_64: PASS (HEAD b54375b)

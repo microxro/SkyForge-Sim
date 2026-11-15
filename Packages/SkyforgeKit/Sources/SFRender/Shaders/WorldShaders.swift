@@ -944,6 +944,22 @@ public enum WorldShaders {
         return c;
     }
 
+    /// Metres per texel of the finest imagery layer covering region point `w` (`inNear` from photoColour).
+    static float photoTexel(constant WorldUniforms& u, texture2d<float> imgNear, texture2d<float> imgMid, texture2d<float> imgFar,
+                            texture2d<float> imgDetail, float2 w, bool inNear) {
+        float t = u.imageryFar.w > 0.5 ? 2.0 * u.imageryFar.z / float(imgFar.get_width()) : 100.0;
+        if (u.imageryMid.w > 0.5) {
+            float2 q = abs(w - u.imageryMid.xy);
+            if (max(q.x, q.y) < u.imageryMid.z) t = 2.0 * u.imageryMid.z / float(imgMid.get_width());
+        }
+        if (inNear) t = 2.0 * u.imageryNear.z / float(imgNear.get_width());
+        if (u.imageryDetail.w > 0.5) {
+            float2 q = abs(w - u.imageryDetail.xy);
+            if (max(q.x, q.y) < u.imageryDetail.z) t = 2.0 * u.imageryDetail.z / float(imgDetail.get_width());
+        }
+        return t;
+    }
+
     /// Photo colour → surface albedo. With the scene exposure at a real camera's level the photo's own
     /// brightness is already right, so this is near identity (a touch of contrast, 10 % under white).
     static float3 photoAlbedo(float3 c) {
@@ -986,20 +1002,8 @@ public enum WorldShaders {
             float2 nuv; bool inNear;
             float outerWater, nearWeight;
             float3 c = photoColour(u, imgNear, imgMid, imgFar, imgDetail, photoW, dwx, dwy, nuv, inNear, outerWater, nearWeight);
-            if (u.quality.z > 4.5) {
-                // Debug view 5: metres per texel of the finest imagery layer covering this point (round-44 review:
-                // the KASE high streaks run along the contours, as a coarse layer magnified at a grazing angle would).
-                dbgTexel = u.imageryFar.w > 0.5 ? 2.0 * u.imageryFar.z / float(imgFar.get_width()) : 100.0;
-                if (u.imageryMid.w > 0.5) {
-                    float2 q = abs(photoW - u.imageryMid.xy);
-                    if (max(q.x, q.y) < u.imageryMid.z) dbgTexel = 2.0 * u.imageryMid.z / float(imgMid.get_width());
-                }
-                if (inNear) dbgTexel = 2.0 * u.imageryNear.z / float(imgNear.get_width());
-                if (u.imageryDetail.w > 0.5) {
-                    float2 q = abs(photoW - u.imageryDetail.xy);
-                    if (max(q.x, q.y) < u.imageryDetail.z) dbgTexel = 2.0 * u.imageryDetail.z / float(imgDetail.get_width());
-                }
-            }
+            // Debug view 5 and the magnified-photo detail below: metres per texel of the finest layer here.
+            dbgTexel = photoTexel(u, imgNear, imgMid, imgFar, imgDetail, photoW, inNear);
             // (No photo-tree suppression: lifting dark pixels to a local average also lifted building and
             // terrain shadows and left hard dark rims; art round 5 scored it a regression. The 3D trees
             // stand on the photo's foliage pixels instead, so the photo crown sits under its 3D tree.)
@@ -1136,6 +1140,33 @@ public enum WorldShaders {
                 dbgPatch = (0.10 * p4 + 0.08 * p12) * natural * groundMat; dbgNatural = natural;
                 albedo *= 1.0 + (f - 1.0) * groundMat;
                 groundTilt = tilt * groundMat;
+            }
+            {
+                // Magnified coarse photo (round-45 debug view 5, KASE high: the z14 mid layer at ~6.8 m per texel under a
+                // ~2.2 m pixel at 2.9× anisotropy; bilinear texels smeared sideways into contour-parallel streaks, while
+                // the shading view was smooth). Where a coarse layer (≥ 3 m) is magnified past ~1.5×, keep its ~20 m mean
+                // colour and replace the texel detail with procedural canopy or open-ground detail at 10–25 m.
+                float fpG = sqrt(length(dwx) * length(dwy));
+                float magW = smoothstep(1.4, 2.6, dbgTexel / max(fpG, 1e-3)) * smoothstep(2.5, 4.0, dbgTexel)
+                           * (1.0 - saturate((wm - 0.2) / 0.2)) * (1.0 - rwCover) * (1.0 - roadNear);
+                if (magW > 0.01) {
+                    float ls20 = max(1.0, 20.0 / max(length(dwx) + length(dwy), 1e-3));
+                    float2 auv; bool aIn; float a0, a1;
+                    float3 m20 = photoAlbedo(photoColour(u, imgNear, imgMid, imgFar, imgDetail, photoW, dwx * ls20, dwy * ls20, auv, aIn, a0, a1));
+                    float mL = dot(m20, float3(0.2126, 0.7152, 0.0722));
+                    float canopy = smoothstep(0.0, 0.03, m20.g - max(m20.r, m20.b)) * smoothstep(0.16, 0.06, mL);
+                    float f10 = saturate(1.0 - fpG * 2.5 / 10.0), f25 = saturate(1.0 - fpG * 2.5 / 25.0);
+                    // Canopy: crown clumps (ridged 10 m noise) with gaps in 25 m stands; open ground: soft 10/25 m patches.
+                    float crowns = (1.0 - abs(groundNoise(photoW + 47.0, 10.0))) * 2.0 - 1.0;
+                    float stands = groundNoise(photoW - 113.0, 25.0);
+                    float pc = 0.28 * crowns * f10 + 0.18 * stands * f25;
+                    float po = 0.14 * groundNoise(photoW + 389.0, 10.0) * f10 + 0.16 * groundNoise(photoW - 271.0, 25.0) * f25;
+                    float3 procA = m20 * (1.0 + mix(po, pc, canopy));
+                    // Keep 25 % of the photo's own deviation from its mean so real tracks and edges stay.
+                    float3 dev = clamp(albedo / max(m20, float3(1e-3)), float3(0.5), float3(2.0));
+                    procA *= pow(dev, float3(0.25));
+                    albedo = mix(albedo, procA, 0.85 * magW);
+                }
             }
             {
                 // Mid-ring detail: luminance octaves at ~60 m and ~30 m from 0.8 to 15 km, faded by the footprint, so

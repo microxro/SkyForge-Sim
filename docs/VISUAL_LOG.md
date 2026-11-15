@@ -1121,3 +1121,14 @@ Round-45 batch:
    - Rock is greyed, at ~55 % of the local mean's luminance.
    - A shadow line runs 5 m below each ledge.
 3. **KASE field boundaries:** a faint dark line (−16 %, ~6 m wide) where the photo's 4 m-blurred luminance changes sharply over ±3 m. It applies only within the crop class and below a 3 m footprint.
+
+Round-45 frames (b54375b, run 43660479024) before review — KASE high debug views (ROI 800,480–1120,640):
+- **View 2 (shading):** smooth, with no bands. Height terracing is ruled out. ROI means: vis 0.80, n·l 0.83.
+- **View 5:** imagery at ~6.8 m per texel (the z14 USGS mid layer, 4096 px over 28 km) under a ~2.2 m pixel footprint at 2.9× anisotropy. The photo is magnified ~3× at a grazing angle; its bilinear texels smear sideways into the contour-parallel streaks.
+- **View 1 (albedo):** the streaks are already in the albedo.
+- A z15 mid layer would need an 8192² texture; not taken.
+
+Fixed before review (structural; rounds 42–44 under +0.2):
+- **Magnified coarse photo:** where a layer of 3 m or more per texel is magnified past ~1.5×, keep its ~20 m mean colour and replace the texel detail with procedural detail.
+  - Canopy: ridged 10 m crowns in 25 m stands. Open ground: 10/25 m patches.
+  - Classed from the mean colour; 25 % of the photo's own deviation kept, up to 85 % blend.
