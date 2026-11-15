@@ -1413,3 +1413,10 @@ The chroma fix moved KMRY's near band by 0.07 levels (near-band saturation 0.258
 - Rounds 48–51 changed albedo, which is why none of them moved this band.
 
 **Fix:** on photo ground the shadow-filling sky light keeps 55 % of its chroma, as an aerial camera's white balance renders it. SkyWorld's procedural terrain is unchanged.
+
+### Round 51c frames (CI run 43718168874, before review)
+
+The desaturated ambient cut KMRY's blue near-band fraction from 6.1 % to 4.5 %, and KBFI's from 7.4 % to 5.0 %. Luminance moved by 0.3 levels or less.
+- Soft blue patches remain.
+- The rest of the blue is the additive in-scatter over dark shadows.
+- Fix: on photo ground, in-scatter keeps 60 % of its chroma within about 1.5 km, returning to full by 4 km so distant haze stays blue.

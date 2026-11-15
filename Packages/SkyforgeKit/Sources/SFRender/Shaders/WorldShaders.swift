@@ -1880,6 +1880,13 @@ public enum WorldShaders {
         }
         float3 L, T;
         aerial(u, ins, tr, dir, dist, L, T);
+        // Photo ground near the camera: the in-scattered light at 60 % of its chroma within ~1.5 km (full blue haze
+        // again by 4 km). Added on top of dark shadows it tinted them sky-blue (round 51: with the ambient alone
+        // desaturated, KMRY's blue near-band fraction only fell from 6.1 % to 4.5 %).
+        if (m == 7.0 && in.material == 8.0) {
+            float lL = dot(L, float3(0.2126, 0.7152, 0.0722));
+            L = mix(float3(lL), L, mix(0.6, 1.0, smoothstep(1500.0, 4000.0, dist)));
+        }
         col = col * T + L;
         {
             // Valley haze (real terrain and SkyWorld, round 39): toward a desaturated horizon sky colour, none within ~800 m and up
