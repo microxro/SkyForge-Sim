@@ -248,11 +248,15 @@ public struct RealWorldRegion: FlightWorld {
             if !list.isEmpty { osm = OSMData(buildings: list, roads: osm?.roads ?? []) }
         }
         if bundledBuildings, osm?.roads.isEmpty != false, let packed = Showcase.roadData(for: ident) {
-            // Bundled streets: every class near the field, through roads only farther out.
+            // Bundled streets: every class near the field and under the final approach's foreground (1.5 km around a
+            // point 1.5 km before the threshold, the start view), through roads only farther out. Without the second
+            // disc the phone and tablet tiers (1.5 / 2.1 km) dropped KMRY's residential streets in the final view,
+            // and with them the street ribbons and the shader's road-density suburb score (preset frames, round 54).
             let full = detail.buildingFullRadius * 0.6, far = detail.buildingRadius
             let list = (try? RoadPack.parse(packed, origin: origin) { cls, c in
                 let d = (c * c).sum().squareRoot()
-                if d < full { return true }
+                let a = c - detailCentre
+                if d < full || (a * a).sum() < 1_500 * 1_500 { return true }
                 switch cls {
                 case .service, .track, .residential, .livingStreet, .unclassified: return false
                 default: return d < far

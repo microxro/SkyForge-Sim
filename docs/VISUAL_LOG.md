@@ -1532,3 +1532,10 @@ All jobs green.
 - **Fix (`round 54b`):**
   - Canopy relief now starts at 900–1,600 m and needs photo luminance below ~0.06, so the final frames' pasture is untouched.
   - A sun-independent crown dome term (tops +10 %, rims −10 %) carries the relief into cloud shadow.
+
+### Preset comparison frames (CI run 43737094439, `47bd7df`)
+
+- KMRY and SkyWorld finals at low (phone detail), medium (tablet), high (desktop) and ultra.
+- High and ultra show a clean KMRY near band. Low and medium still show the orange and yellow yard blotches.
+- **Cause:** the bundled street pack keeps residential streets only within `buildingFullRadius × 0.6` of the field: 1.5 km at phone, 2.1 km at tablet. The final view's suburbs are 2–2.5 km out, so those tiers had no residential street ribbons and a road-density suburb score of 0.
+- **Fix:** every street class is also kept within 1.5 km of the start view's foreground (1.5 km before the threshold), the same point the sharp imagery layer is centred on.
