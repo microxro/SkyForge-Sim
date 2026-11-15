@@ -1,4 +1,4 @@
-LAST_UPDATE: 2026-11-15T19:00:00Z
+LAST_UPDATE: 2026-11-15T19:10:00Z
 
 # SKYFORGE state
 
@@ -39,6 +39,7 @@ LAST_UPDATE: 2026-11-15T19:00:00Z
     | 53 | 7.67 | 7.25 |
     | 54 | 7.75 | 7.25 |
     | 55 | 7.75 | 7.25 |
+    | 56 | 7.75 | 7.25 |
 
     Best scene: SkyWorld 8.25 (round 54, village beside the approach); LSZS final 8.0 (round 54, even clearing meadow); KASE final 7.75. Rounds 27 and 28 were regression checks only.
   - What landed:
@@ -50,12 +51,16 @@ LAST_UPDATE: 2026-11-15T19:00:00Z
     - Cockpit rework.
     - Water gated by slope.
     - Structural: a mid z12 height mosaic (`b051139`; z12 tiles in all packs through `tools/fetch_mid_heights.py`). Slopes 3–12 km out had been z10 blobs at about 156 m per sample.
-  - High-frame average: 6.70 at round 46 (6.65 at round 45; 6.38 at round 26). The KASE high mid-ring smear is accepted at 7.0: it is the z14 photo (6.8 m per texel) magnified ~3×, which only sharper imagery would fix.
+  - High-frame average: 7.15 at round 56 (3D trees to 6.5 km at ultra; KASE high 7.75); 6.70 at round 46 (6.65 at round 45; 6.38 at round 26). The KASE high mid-ring smear is accepted at 7.0: it is the z14 photo (6.8 m per texel) magnified ~3×, which only sharper imagery would fix.
   - Round 53 (7.67, flat; high frames 6.70; KASE close back to 7.5): clearing grass fixed KASE close, the village read well at 3× but was ~100×25 px at 1×, the LSZS meadow gained a lime wedge, and the KMRY near band did not move.
   - Round 54 (7.75; LSZS 8.0, SkyWorld 8.25; high frames 6.70, cockpit 7.25): the even meadow and the village landed. Canopy relief at 10/28 m and the KMRY campus blotches did not show on screen.
   - Round 55 (7.75, flat; high frames 6.70): buildings in the suburb mask, meadow patches and 18/55 m canopy relief each moved the screen by under 1 level.
     - KMRY debug view 1 (albedo) now shows even ground on the campus. The remaining blotches are lighting (tree shadows), so the near-band holds are done.
-  - Next: round-56 frames. Structural: ultra places 3D trees to 6.5 km (650k cap), and beyond the near square it classifies from the mid imagery layer. The high views' forest slopes 3–5 km out had no 3D trees, only magnified photo.
+  - Round 56 (finals 7.75; high frames 7.15, up from 6.70: KASE 7.75, LSZS 7.25, KBFI 7.25, KMRY 7.0, NZQN 6.5): 3D trees to 6.5 km at ultra hid the mid-ring smear.
+  - Next: round-57 frames.
+    - Foliage under a cumulus no longer takes the ×1.6 sky boost or the shade boost; the far stands on LSZS's cloud-shadowed slope read as sunlit lime clumps.
+    - The tree disc's outer 15 % fades on a noisy ~400 m edge.
+    - Then a scrub class for NZQN's tussock slopes and KMRY near-band lighting.
 Visual transformation (2026-11-10, PR #5, ADR-0021) is in progress; the Bold Mode summary below is the earlier baseline.
 - Landed (CI-compiled): new SF-1 aircraft model with per-pixel livery, glass and clear coat; OSM-sourced 3D buildings with facade/roof shading (bundled `buildings.sfb`, ODbL); four shadow cascades; mid-distance imagery layer; 2x supersampling and sharpening in the ultra preset; exposure scale 0.45 with near-identity photo albedo; per-airport review-frame jobs.
 - Landed 2026-11-10 (second batch): five tree species with ambient occlusion; rebuilt cockpit interior with cabin fill light; ESA WorldCover land cover grids in every pack (water at any distance); water shading (sky reflection, wind patches); tinted tower glass; fine cloud structure at ultra; magnification-aware local contrast on the ground photo; `LINZAerialProvider`.

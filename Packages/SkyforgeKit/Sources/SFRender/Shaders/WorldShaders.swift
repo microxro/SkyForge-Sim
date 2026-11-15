@@ -1782,7 +1782,11 @@ public enum WorldShaders {
             float under = saturate(-n.z);
             // ×1.6: under the 0.45 exposure scale, shaded crowns on LSZS's north-facing forest went near-black
             // (art round 23); the sky light inside a real conifer stand is dim but not absent.
-            float3 foliageAmb = mix(ambient, u.ambientGround.rgb, 0.25 + 0.25 * under) * (0.85 - 0.25 * under) * 1.6;
+            // Under a cumulus the ambient already carries the cloud's sunlit fill, so neither the ×1.6 nor the shade
+            // boost below applies there (round-56 review: the new far stands on LSZS's cloud-shadowed slope rendered as
+            // sunlit lime clumps on dark ground, ~2.2× the light the terrain under them took).
+            float cloudW = saturate(cloudShade / 0.65);
+            float3 foliageAmb = mix(ambient, u.ambientGround.rgb, 0.25 + 0.25 * under) * (0.85 - 0.25 * under) * mix(1.6, 1.0, cloudW);
             // Leaf clumps: tone breaks up the crown at close range; the crown's own sky visibility (vertex
             // shade) darkens its inside and underside, so a tree reads as a mass of lobes, not one blob.
             float2 lw = in.rel.xy + u.cameraPos.xy;
@@ -1793,7 +1797,7 @@ public enum WorldShaders {
             float occ = mix(0.5, 1.0, saturate(in.field));   // 0.5 (0.35): see foliageAmb
             // Crowns in shadow get 40 % more sky light: a shaded forested valley wall read as a near-black mass
             // from the high camera (rounds 31–34, LSZS high), which terrain-only lifts did not reach.
-            float fShade = 1.0 + 0.40 * (1.0 - saturate(vis * 2.0));
+            float fShade = 1.0 + 0.40 * (1.0 - saturate(vis * 2.0)) * (1.0 - cloudW);
             col = albedo * tone * (u.sunColour.rgb * (wrap + back) * mix(1.0, occ, 0.5) * vis + foliageAmb * occ * fShade);
         } else if (m == 10.0 || m == 11.0 || m == 12.0) {    // SF-1 airframe: painted skin, glazing, bright metal
             float3 L = in.local;

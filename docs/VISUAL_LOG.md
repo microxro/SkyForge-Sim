@@ -1569,3 +1569,22 @@ All jobs green.
 
 - Ultra trees reach 6.5 km (cap 650,000).
 - Beyond the near square, tree placement samples the mid imagery layer (~6.8 m/px at ultra), so forest stands on the high views' slopes get 3D trees.
+
+## Round 56 review (r56): high frames 7.15 (+0.45), finals 7.75, cockpit 7.25
+
+High frames, round 55 → round 56:
+
+| Scene | r55 | r56 | Note |
+|---|---|---|---|
+| KASE | 7.0 | 7.75 | "Like a commercial sim at this altitude" |
+| LSZS | 6.5 | 7.25 | |
+| KBFI | 6.75 | 7.25 | |
+| KMRY | 6.75 | 7.0 | |
+| NZQN | 6.5 | 6.5 | 41k trees; tussock slopes have no forest class |
+
+- **Remaining:**
+  - Far stands in cloud shadow on the LSZS high slope read as sunlit lime clumps. Foliage multiplies ambient by 1.6 and adds +40 % in shadow, and under a cumulus that ambient already carries the cloud's sunlit fill, so crowns took ~2.2× the light of the ground under them.
+  - Abrupt edges at the ring.
+- **Round 57:**
+  - Both foliage boosts fade out under cloud shadow.
+  - Tree density fades over the outer 15 % of the disc with a ~400 m noisy edge (the final-approach disc is untouched).

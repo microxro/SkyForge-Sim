@@ -698,6 +698,11 @@ public struct RealWorldRegion: FlightWorld {
                 // blue and at least 0.9 × red.)
                 let canopy = max(lc.forest, ss(0.30, 0.15, l) * ss(-0.02, 0.01, c.y - 0.9 * c.x) * ss(0.015, 0.04, c.y - c.z) * (1 - lc.water))
                 if Hash.unit(rng.next()) > Double(canopy) * 0.9 || g.water > 0.3 { continue }
+                // Outer 15 % of the disc: density fades with a ~400 m noisy edge, not a hard ring (round-56 review).
+                if r > 3_500 {
+                    let dc = (x * x + y * y).squareRoot() + 400 * standNoise.fbm(px / 700 - 41.0, py / 700 + 13.0, octaves: 2)
+                    if Hash.unit(rng.next()) > Double(ss(Float(r), Float(r * 0.85), Float(dc))) && !(((x - f1.x) * (x - f1.x) + (y - f1.y) * (y - f1.y)) <= r1 * r1) { continue }
+                }
                 if nearRunway(px, py) || inBuilding(px, py) { continue }
                 // Forest clearings (meadows) stay open but for the odd lone tree; the shader paints them as meadow.
                 if FieldPattern.clearing(Float(px), Float(py)) > 0.4 && Hash.unit(rng.next()) > 0.06 { continue }
