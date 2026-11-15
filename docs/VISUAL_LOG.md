@@ -1099,3 +1099,25 @@ Round-44 frames (2facaf2 merged as 0d5cdc5, main run 43656475843) before review:
 - **KASE final cliff:** the smear reads calmer, as rock and scree.
 - **KASE high right side:** barely changed. Those hills sit under the n.z 0.92 gate.
 - **PR run 43656365406:** failed on a runner SwiftPM cache error in the LSZS frames job before any test ran. Main's run on the same tree is green.
+
+## Bold round 44: main 0d5cdc5 (2facaf2; run 43656475843, ultra tier)
+Same reviewer and scale.
+
+**Final camera:** KMRY 7.5, KASE 7.75, KBFI 7.5, LSZS 7.5, NZQN 7.5, SkyWorld 7.75. **Average 7.58** (unchanged).
+
+**High frames:** 6.70. **Cockpit:** 6.75.
+
+**Slope blend:** a mild improvement where it fires, with no regressions. The KASE final cliff is calmer, with scree streaks down the fall line, but it has no hard rock structure.
+
+**KASE high right side:** the streaks run along the contours, not down the fall line, so they are not photo stretch. The suspects are a coarse imagery layer magnified at a grazing angle, or terracing from the 23 m heights.
+
+Round-45 batch:
+1. **Debug views of KASE high** (ROI 800,480–1120,640):
+   - View 1: albedo.
+   - View 2: shading terms, to show height terracing.
+   - New view 5: the finest imagery layer's metres per texel against pixel footprint and anisotropy.
+2. **Rock outcrops in the slope blend:**
+   - Thresholded 25 m noise gives crisp edges, widened with the footprint.
+   - Rock is greyed, at ~55 % of the local mean's luminance.
+   - A shadow line runs 5 m below each ledge.
+3. **KASE field boundaries:** a faint dark line (−16 %, ~6 m wide) where the photo's 4 m-blurred luminance changes sharply over ±3 m. It applies only within the crop class and below a 3 m footprint.

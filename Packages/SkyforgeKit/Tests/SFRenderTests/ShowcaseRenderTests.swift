@@ -159,6 +159,11 @@ import SFInstruments
         if ident == "LSZS" {
             try debugFrames("LSZS_high", camera: high.chase(distance: 24, height: 6), aircraft: high.position, attitude: high.bodyToENU, modes: [1, 2, 4], roi: (700, 430, 1280, 720))
         }
+        if ident == "KASE" {
+            // Round-44 review: the high frame's right-side streaks run along the contours. View 2 (shading terms)
+            // tells height terracing apart; view 5 (imagery metres per texel against pixel footprint) a coarse layer.
+            try debugFrames("KASE_high", camera: high.chase(distance: 24, height: 6), aircraft: high.position, attitude: high.bodyToENU, modes: [1, 2, 5], roi: (800, 480, 1120, 640))
+        }
         if ident == "KMRY" || ident == "KBFI" {
             r.setLighting(LightingSetup.physicalPreset(.midday, azimuthDegrees: 200, cameraHeightMetres: cam.position.z))
             try debugFrames("\(ident)_final", camera: WorldCamera(position: cam.position, target: cam.target),

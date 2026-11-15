@@ -977,6 +977,7 @@ public enum WorldShaders {
         float groundMat = 0.0;                               // weight of the near-ground detail materials
         float2 groundTilt = float2(0.0);                     // their normal tilt (applied after the normal is final)
         float dbgPatch = 0.0, dbgNatural = 0.0;              // near-ground patch term and its class weight (debug view 3)
+        float dbgTexel = 0.0;                                // finest imagery layer's metres per texel here (debug view 5)
         float3 ltMean = float3(-1.0);                        // the photo's ~30 m mean colour (near ground; -1 = none)
         float roadNear = 0.0;                                // road proximity from the near mask's second channel
         float2 photoW = in.rel.xy + u.cameraLocal.xy;      // region metres (imagery lookup)
@@ -985,6 +986,20 @@ public enum WorldShaders {
             float2 nuv; bool inNear;
             float outerWater, nearWeight;
             float3 c = photoColour(u, imgNear, imgMid, imgFar, imgDetail, photoW, dwx, dwy, nuv, inNear, outerWater, nearWeight);
+            if (u.quality.z > 4.5) {
+                // Debug view 5: metres per texel of the finest imagery layer covering this point (round-44 review:
+                // the KASE high streaks run along the contours, as a coarse layer magnified at a grazing angle would).
+                dbgTexel = u.imageryFar.w > 0.5 ? 2.0 * u.imageryFar.z / float(imgFar.get_width()) : 100.0;
+                if (u.imageryMid.w > 0.5) {
+                    float2 q = abs(photoW - u.imageryMid.xy);
+                    if (max(q.x, q.y) < u.imageryMid.z) dbgTexel = 2.0 * u.imageryMid.z / float(imgMid.get_width());
+                }
+                if (inNear) dbgTexel = 2.0 * u.imageryNear.z / float(imgNear.get_width());
+                if (u.imageryDetail.w > 0.5) {
+                    float2 q = abs(photoW - u.imageryDetail.xy);
+                    if (max(q.x, q.y) < u.imageryDetail.z) dbgTexel = 2.0 * u.imageryDetail.z / float(imgDetail.get_width());
+                }
+            }
             // (No photo-tree suppression: lifting dark pixels to a local average also lifted building and
             // terrain shadows and left hard dark rims; art round 5 scored it a regression. The 3D trees
             // stand on the photo's foliage pixels instead, so the photo crown sits under its 3D tree.)
@@ -1175,6 +1190,22 @@ public enum WorldShaders {
                     float3 amp = clamp(pow(fr, float3(0.8 + 0.6 * fg)), float3(0.65), float3(1.5));
                     float fpM = max(length(dwx), length(dwy));
                     albedo *= mix(float3(1.0), amp, crop);
+                    if (inNear && fpM < 3.0) {
+                        // Field boundaries (round-44 review, KASE): a faint dark line, ~6 m wide, where the photo's
+                        // ~4 m-blurred luminance changes sharply over ±3 m, so neighbouring fields read as parcels.
+                        float knE = 1.0 / (2.0 * max(u.imageryNear.z, 1.0));
+                        float lsE = max(1.0, 4.0 / max(length(dwx) + length(dwy), 1e-3));
+                        float2 gxE = float2(dwx.x, -dwx.y) * knE * lsE, gyE = float2(dwy.x, -dwy.y) * knE * lsE;
+                        float o = 3.0 * knE;
+                        float3 lw3 = float3(0.2126, 0.7152, 0.0722);
+                        float ex = dot(imgNear.sample(imgSampler, nuv + float2(o, 0.0), gradient2d(gxE, gyE)).rgb, lw3)
+                                 - dot(imgNear.sample(imgSampler, nuv - float2(o, 0.0), gradient2d(gxE, gyE)).rgb, lw3);
+                        float ey = dot(imgNear.sample(imgSampler, nuv + float2(0.0, o), gradient2d(gxE, gyE)).rgb, lw3)
+                                 - dot(imgNear.sample(imgSampler, nuv - float2(0.0, o), gradient2d(gxE, gyE)).rgb, lw3);
+                        float eRel = length(float2(ex, ey)) / max(dot(ltMean, lw3), 0.02);
+                        float edge = smoothstep(0.35, 0.8, eRel) * saturate(1.0 - fpM / 3.0);
+                        albedo *= 1.0 - 0.16 * edge * crop;
+                    }
                     // Rows only where they span 8+ pixels along the long footprint axis (round 40: a 2–4 px hatch
                     // aliased into a screen-door weave over the KASE fields).
                     float ang = fp_unit(ph) * 3.14159265;
@@ -1361,6 +1392,18 @@ public enum WorldShaders {
                     rock *= 1.0 + 0.30 * g0 + 0.25 * g1 + 0.15 * g2;
                     float sc = smoothstep(0.15, 0.45, groundNoise(w + 517.0, 60.0)) * saturate(1.0 - sfp * 2.5 / 60.0);
                     rock = mix(rock, rock * float3(0.68, 0.82, 0.70), 0.6 * max(sc, 0.5 * scrub));
+                    // Outcrops and ledges with crisp edges and their own shadow line below (round-44 review: the cliff
+                    // still read soft). Rock at ~55 % of the local mean's luminance, greyed; the threshold edge
+                    // widens with the footprint so it never aliases.
+                    float oe = max(0.03, sfp / 25.0);
+                    float on = groundNoise(float2(fl.x * 0.7, fl.y) + 301.0, 25.0);
+                    float onUp = groundNoise(float2((fl.x - 5.0) * 0.7, fl.y) + 301.0, 25.0);   // 5 m uphill (fall points downhill)
+                    float oFade = saturate(1.0 - sfp * 2.5 / 25.0);
+                    float outcrop = smoothstep(0.30 - oe, 0.30 + oe, on) * oFade;
+                    float shadowLine = saturate(smoothstep(0.30 - oe, 0.30 + oe, onUp) - smoothstep(0.30 - oe, 0.30 + oe, on)) * oFade;
+                    float3 rockC = mix(float3(smL), sm, 0.35) * 0.55 * float3(1.02, 1.0, 0.96);
+                    rock = mix(rock, rockC * (1.0 + 0.2 * g2), outcrop);
+                    rock *= 1.0 - 0.45 * shadowLine;
                     albedo = mix(albedo, rock, stretchW);
                 }
             }
@@ -1639,6 +1682,12 @@ public enum WorldShaders {
                 float aL = dot(ambient, float3(0.2126, 0.7152, 0.0722));
                 d = float3(dL, aL, 0.0) / max(dL + aL, 1e-4);
                 d.b = saturate((dL + aL) / max(dot(u.sunColour.rgb, float3(0.2126, 0.7152, 0.0722)), 1e-4));   // irradiance / full sun
+            }
+            else if (mode == 5) {
+                // Imagery resolution against screen footprint: r = layer metres per texel / 20, g = pixel footprint
+                // (geometric mean) / 20 m, b = footprint anisotropy (long / short axis) / 16.
+                float fa = length(dwx), fb = length(dwy);
+                d = float3(dbgTexel / 20.0, sqrt(fa * fb) / 20.0, max(fa, fb) / max(min(fa, fb), 1e-4) / 16.0);
             }
             return float4(acesInverse(pow(saturate(d), float3(2.2))), 1.0);
         }
