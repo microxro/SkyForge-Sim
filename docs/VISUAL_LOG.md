@@ -1388,3 +1388,16 @@ Round-51 batch:
    - A pale gravel band 15–25 m wide on flat land beside the near-layer water.
    - Near-shore water about 20 % lighter.
 4. **Farmsteads:** more weathered barn walls, linear (0.26, 0.11, 0.09).
+
+### Round 51 frames (CI run 43715660257, before review)
+
+All jobs green. Lower-half luminance against round 50b is within 0.6 everywhere.
+
+- **KMRY near band:** the lawn replacement moved only 0.16 levels.
+  - The ground between buildings is pale grey with orange, sky-blue and green blotches 20–60 m across.
+  - Those blotches are wider than the 30 m mean and classify as pavement, so neither the mean pulls nor the lawn replacement reach them.
+  - Fix:
+    - Blue-dominant near-band ground becomes a warm grey at its own luminance (the ~120 m mean too).
+    - Half the near-band chroma comes from a ~120 m mean (a quarter on green ground).
+    - A fixed chroma cap was rejected: linear grass sits near 0.7 chroma and would have gone grey.
+- **KASE slabs:** bright top rims now show at 2×.

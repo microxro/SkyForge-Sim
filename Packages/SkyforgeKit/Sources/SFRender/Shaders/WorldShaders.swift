@@ -1117,6 +1117,24 @@ public enum WorldShaders {
                 lifted *= mix(1.0, meanL / lL, 0.45 * nb * gm);
                 // Mild luminance pull on all other near-band ground too (round 48: KMRY's suburban lawn blotches).
                 { float lL2 = max(dot(lifted, float3(0.2126, 0.7152, 0.0722)), 1e-4); lifted *= mix(1.0, meanL / lL2, 0.20 * nb * (1.0 - gm)); }
+                // Near band: no blue ground and a chroma cap. The US photo's orange, sky-blue and green blotches are
+                // 20–60 m across, wider than the 30 m mean, so pulls toward that mean kept them (round 51, KMRY final:
+                // the lawn replacement moved 0.16 levels; the blotches classify as pavement). Blue-dominant ground
+                // becomes a warm grey at its luminance, and half the chroma comes from a ~120 m mean (a fixed cap
+                // would grey linear grass, whose chroma is ~0.7), a quarter on green ground.
+                if (nb > 0.0) {
+                    float3 lw = float3(0.2126, 0.7152, 0.0722);
+                    float lc = max(dot(lifted, lw), 1e-4);
+                    float blue = smoothstep(0.0, 0.025, lifted.b - max(lifted.r, lifted.g));
+                    float3 neutral = lc * float3(1.04, 1.0, 0.86) / dot(float3(1.04, 1.0, 0.86), lw);
+                    lifted = mix(lifted, neutral, 0.85 * blue * nb);
+                    float2 luv4; bool lin4; float lw4a, lw4b;
+                    float3 lm4 = photoAlbedo(photoColour(u, imgNear, imgMid, imgFar, imgDetail, photoW, dwx * ls * 4.0, dwy * ls * 4.0, luv4, lin4, lw4a, lw4b));
+                    float l4 = max(dot(lm4, lw), 1e-3);
+                    lm4 = mix(lm4, l4 * float3(1.04, 1.0, 0.86) / dot(float3(1.04, 1.0, 0.86), lw),
+                              0.85 * smoothstep(0.0, 0.025, lm4.b - max(lm4.r, lm4.g)));   // nor a blue cast from the wide mean
+                    lifted = mix(lifted, lm4 * (lc / l4), 0.5 * nb * (1.0 - 0.5 * gm));
+                }
                 albedo = mix(albedo, lifted, ltW);
             }
             float alT = dot(albedo, float3(0.2126, 0.7152, 0.0722));
