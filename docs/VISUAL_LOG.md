@@ -1248,3 +1248,11 @@ Round-48 batch:
    - Lit rim and shadow bands at least ~2 px thick.
 2. **Glareshield:** ±6 % grain on a ~1 cm grid, and a lengthwise sheen band along the crown.
 3. **KMRY flat roofs from the photo:** ±25 % grey per roof.
+
+Round-48 frames (beadb0b, run 43696082021) before review:
+- **Cliff hairlines:** gone. The cellular blocks read as soft dark patches, and KASE final and close are 1.7–1.8 darker in lower-half luminance.
+- **Glareshield:** smooth vinyl with a crown sheen; the blotches are gone.
+
+Fixed before review:
+- **Block edges:** border ~1 px (was 1.5 px).
+- **Slope compensation:** +17 % (was +12 %).

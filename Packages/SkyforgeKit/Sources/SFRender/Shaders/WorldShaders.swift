@@ -1473,7 +1473,7 @@ public enum WorldShaders {
                     // 3:1 along the contour drew thin wavy hairlines, read as wood grain). ~25 % of jittered 22 m cells
                     // (contour axis stretched only 1.5:1) are rock at 0.6× the local mean; a lit upper rim and a
                     // shadow band below, each at least ~2 px thick, give each block volume. Faded below ~3 px per cell.
-                    float oe = max(1.0, sfp * 1.5);                 // border softness in metres (never aliases)
+                    float oe = max(0.5, sfp * 0.8);                 // border softness in metres, ~1 px (round 48: 1.5 px read as soft patches)
                     float2 op = float2(fl.x, fl.y / 1.5);
                     float bw2 = max(3.0, sfp * 2.5);                // rim / shadow band width, ≥ ~2 px
                     float oIn = outcropCells(op, 22.0, 0.25, oe);
@@ -1483,7 +1483,7 @@ public enum WorldShaders {
                     float shadowLine = saturate(oUp - oIn) * oFade;      // band just below a block
                     float litEdge = saturate(oIn - oUp) * oFade;         // a block's upper rim
                     float3 rockC = mix(float3(smL), sm, 0.35) * 0.60 * float3(1.02, 1.0, 0.96);
-                    rock *= 1.0 + 0.12 * oFade;                    // keeps the slope's mean with the darker blocks and shadow bands
+                    rock *= 1.0 + 0.17 * oFade;                    // keeps the slope's mean with the darker blocks and shadow bands (round 48: +12 % left KASE final 1.7 darker)
                     rock = mix(rock, rockC * (1.0 + 0.2 * g2), outcrop);
                     rock *= (1.0 - 0.35 * shadowLine) * (1.0 + 0.45 * litEdge);
                     albedo = mix(albedo, rock, stretchW);
