@@ -1107,7 +1107,9 @@ public enum WorldShaders {
                     float2 cuv; bool cin; float cw0, cw1;
                     float3 m100 = photoAlbedo(photoColour(u, imgNear, imgMid, imgFar, imgDetail, photoW, dwx * lsc, dwy * lsc, cuv, cin, cw0, cw1));
                     float f100 = smoothstep(0.0, 0.02, m100.g - max(m100.r, m100.b)) * smoothstep(0.14, 0.05, dot(m100, float3(0.2126, 0.7152, 0.0722)));
-                    clearW = cmask * max(imgForest, f100) * (1.0 - saturate((wm - 0.2) / 0.2)) * (1.0 - roadNear);
+                    // Saturating forest gate: a partial 100 m forest score left most of a clearing half photo, half meadow,
+                    // with a bright wedge only where the score reached 1 (round 54 ratio map, LSZS final).
+                    clearW = cmask * smoothstep(0.1, 0.45, max(imgForest, f100)) * (1.0 - saturate((wm - 0.2) / 0.2)) * (1.0 - roadNear);
                     if (clearW > 0.0) {
                         // Procedural grass of its own: a sunlit warm green (~0.18 luminance), ±10 % grazing patches at
                         // ~30 m and finer tufts, and a 15 % darker band just inside the forest edge (round 52: a flat,
@@ -1115,7 +1117,8 @@ public enum WorldShaders {
                         float patches = groundNoise(photoW + 5.0, 30.0), tufts = groundNoise(photoW - 21.0, 7.0);
                         // ~0.12 luminance (was 0.18) and less saturated: about 25 % above the surrounding pasture, which the
                         // round-53 LSZS final put at ~0.10; at 0.18 a clearing edge over open ground read as a lime wedge.
-                        float3 meadow = float3(0.105, 0.135, 0.062) * (1.0 + 0.10 * patches + 0.05 * tufts);
+                        // ~0.145 luminance: the whole clearing about 25 % above its round-53 output, evenly (round 54).
+                        float3 meadow = float3(0.125, 0.160, 0.070) * (1.0 + 0.10 * patches + 0.05 * tufts);
                         meadow *= mix(float3(1.0), float3(1.06, 1.02, 0.86), saturate(patches) * 0.5);   // drier, sunlit patches
                         meadow *= 1.0 - 0.15 * (1.0 - smoothstep(0.35, 0.8, cmask));                     // forest-edge shade
                         albedo = mix(albedo, meadow, clearW);
