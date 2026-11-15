@@ -1366,3 +1366,25 @@ All jobs green. Lower-half luminance against round 49b is within 0.6 everywhere.
   - Fix: outlines are warped ±7 m at about 14 m, so blocks are ragged.
   - Faces vary ±25 % at 40 m and 12 m.
   - Block colour keeps a quarter of the local rock's hue.
+
+## Round 50 review (r50b frames)
+
+**Finals 7.63, high frames 6.70, cockpit 7.25: no change.**
+
+- **SkyWorld farmstead:** reads as a farm now, and nothing sits under the tail. The barn walls are still fairly saturated, and the track doesn't show at this distance.
+- **KASE outcrops:** discrete grey slabs that read as rock, but flat. No rim or shadow is visible at 1×.
+- **NZQN shelf:** still invisible at the final range.
+
+Round 49 gained +0.05 and round 50 nothing: two rounds under +0.2, so this round makes a structural change.
+
+Round-51 batch:
+1. **Structural: KMRY lawn replacement.**
+   - On grass (and 30 % of dry grass), the near-band photo pixel is replaced, at 75 % weight, by a synthesised lawn.
+   - Hue: the 30 m mean's, a third of the way to a lawn green.
+   - Luminance: the pixel's own, held within ±12 % of the mean.
+   - The procedural grass octaves carry the texture. Pavement, roofs and soil keep the photo.
+2. **KASE slabs:** a 1.9× sun-side rim, a 0.4× down-slope shadow, and ±15 % variation between slabs.
+3. **NZQN shore:**
+   - A pale gravel band 15–25 m wide on flat land beside the near-layer water.
+   - Near-shore water about 20 % lighter.
+4. **Farmsteads:** more weathered barn walls, linear (0.26, 0.11, 0.09).

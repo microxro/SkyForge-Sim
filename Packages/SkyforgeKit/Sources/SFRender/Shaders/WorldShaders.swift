@@ -1161,6 +1161,20 @@ public enum WorldShaders {
                 float p12 = (smoothstep(-0.45, 0.45, groundNoise(gw - 41.0, 12.0)) * 2.0 - 1.0) * saturate(1.0 - fpw / 9.0);
                 f *= 1.0 + (0.10 * p4 + 0.08 * p12) * natural;
                 dbgPatch = (0.10 * p4 + 0.08 * p12) * natural * groundMat; dbgNatural = natural;
+                // Lawn replacement: on grass (and a little on dry grass) the photo pixel gives way to a synthesised
+                // lawn whose hue is the ~30 m mean's, a third of the way to a lawn green, at the pixel's luminance held
+                // within ±12 % of the mean. The material octaves above then carry all the texture. Pulls toward the
+                // mean had run out (round 49: the 1.6 m US photo's yellow, blue and grey lawn blotches at KMRY moved
+                // 0.05 levels); pavement, roofs and soil keep their photo structure.
+                if (ltMean.x >= 0.0) {
+                    float lawnW = groundMat * saturate(k.grass + 0.3 * k.dry) * 0.75;
+                    if (lawnW > 0.0) {
+                        float3 lumW3 = float3(0.2126, 0.7152, 0.0722);
+                        float mL = max(dot(ltMean, lumW3), 1e-3), pL = max(dot(albedo, lumW3), 1e-4);
+                        float3 hue = mix(ltMean / mL, float3(0.80, 1.10, 0.62), 0.35 * k.grass / max(k.grass + k.dry, 1e-3));
+                        albedo = mix(albedo, hue * (mL * clamp(pL / mL, 0.88, 1.12)), lawnW);
+                    }
+                }
                 albedo *= 1.0 + (f - 1.0) * groundMat;
                 groundTilt = tilt * groundMat;
             }
@@ -1315,6 +1329,19 @@ public enum WorldShaders {
                 // the lake met the land with no wet line).
                 float wet = smoothstep(0.08, 0.30, wm);
                 albedo *= mix(float3(1.0), float3(0.70, 0.74, 0.78), wet);
+                // Shore band: pale gravel 15–25 m wide on flat land beside the near layer's water, so the lake edge
+                // reads from 2 km (round 50: the NZQN shelf was under a pixel at the final range). Sampled only where
+                // the coarse land cover has water nearby.
+                if (inNear && outerWater > 0.02 && n.z > 0.9) {
+                    float k = 0.5 / u.imageryNear.z, mx = 0.0;
+                    for (int i = 0; i < 8; i++) {
+                        float a = float(i) * 0.7853982 + 0.2;
+                        mx = max(mx, waterMask.sample(imgSampler, nuv + float2(cos(a), -sin(a)) * (k * 20.0), level(0.0)).r);
+                    }
+                    float beach = smoothstep(0.35, 0.7, mx) * (1.0 - wet) * nearWeight * smoothstep(0.9, 0.96, n.z);
+                    float3 gravel = float3(0.30, 0.28, 0.24) * (0.9 + 0.2 * groundNoise(photoW + 19.0, 3.0));
+                    albedo = mix(albedo, gravel, 0.6 * beach);
+                }
             }
             m = imageryWater ? 1.0 : 7.0;
         }
@@ -1529,8 +1556,11 @@ public enum WorldShaders {
                     float3 slopeC = rock;
                     rock *= 1.0 + 0.10 * oFade;                    // keeps the slope's mean with the blocks and shadow bands
                     rock = mix(rock, rockC * (1.0 + 0.25 * g1 + 0.25 * g2), outcrop);   // fractured faces, not a flat fill
-                    rock = mix(rock, slopeC * 1.6, litEdge);
-                    rock *= 1.0 - 0.55 * shadowLine;
+                    // Raised slabs: a 1.9× sun-side rim and a 0.4× down-slope shadow, ±15 % from slab to slab (round 50:
+                    // flat grey patches laid on the slope, no rim or shadow visible at 1×).
+                    rock *= 1.0 + 0.15 * groundNoise(w + 77.0, 30.0) * outcrop;
+                    rock = mix(rock, slopeC * 1.9, litEdge);
+                    rock *= 1.0 - 0.6 * shadowLine;
                     albedo = mix(albedo, rock, stretchW);
                 }
             }
@@ -1629,6 +1659,7 @@ public enum WorldShaders {
                 float3 lit = ambient * 0.8 + u.sunColour.rgb * max(0.0, toSun.z) * 0.35;
                 body = mix(body, float3(0.05, 0.11, 0.10) * lit, shallow * 0.8);   // 0.6 (round 40: shore still abrupt)
                 body = mix(body, float3(0.035, 0.14, 0.13) * lit, wide * 0.65 * (1.0 - shallow * 0.8));   // turquoise shelf
+                body *= 1.0 + 0.2 * max(shallow, wide);            // near-shore water ~20 % lighter (round 50)
                 // Broad sheen toward the sun from many small wave facets (the 900/60 lobes are single glints).
                 refl += u.sunColour.rgb * pow(max(0.0, dot(r, toSun)), 12.0) * 0.12 * vis;
             }

@@ -237,7 +237,7 @@ public struct QuickFlightWorld: FlightWorld {
                     let roofC = houseRoofs[Int((h >> 12) % UInt64(houseRoofs.count))]
                     // Weathered barn red and grey or dark-green metal roofs (round 49: saturated red boxes).
                     let tone = Float(0.88 + 0.24 * Hash.unit(Hash.int(Int(key.x), Int(key.y), seed: 0xBA42)))
-                    let barnWall = SIMD3<Float>(0.30, 0.088, 0.068) * tone
+                    let barnWall = SIMD3<Float>(0.26, 0.11, 0.09) * tone   // more weathered (round 50: still saturated)
                     let barnRoof = h & 8 == 0 ? srgb(98, 100, 102) : srgb(62, 78, 66)
                     var buildings: [Building] = []
                     for (p, half, kind, isShed) in parts {
