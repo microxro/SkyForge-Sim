@@ -1199,3 +1199,32 @@ Round-46c frames (a4e5302, run 43693339251) before review — lower-half mean lu
 - KASE close 80.7 → 80.1
 
 The LSZS left shore is still −7 to −9 locally, but the slope is no longer near-black. The KASE cliff shows no rings. Sent for review as round 46.
+
+## Bold round 46: PR #9 a4e5302 (run 43693339251, ultra tier)
+Same reviewer and scale.
+
+**Final camera:** KMRY 7.5, KASE 7.75, KBFI 7.5, LSZS 7.5, NZQN 7.5, SkyWorld 7.75. **Average 7.58** (round 45's regression undone).
+
+**High frames:** 6.70. **Cockpit:** 6.75.
+
+**Not visible at review distance:**
+- **KASE high smear:** no real change; the 6/12 m octaves are under 3 px there.
+- **Cliff outcrops:** too faint at ~13 %.
+- **Cockpit door and floor work:** outside the cockpit camera's view.
+
+**LSZS high:** back to its round-44 look.
+
+**Decision:** the KASE high mid-ring smear is accepted at 7.0. Four procedural rounds did not move it. The cause is the 6.8 m-per-texel z14 photo magnified ~3×, and only sharper imagery in that ring would fix it (a z15/z16 band; not taken now).
+
+Round-47 batch:
+1. **Cliff outcrops:**
+   - ~25 % coverage (threshold 0.85) at 0.6× the local mean.
+   - A lit upper rim (+45 %) and a shadow line below (−35 %).
+   - They survive to ~3 px; slope compensation +12 %.
+2. **Cockpit, where the camera looks:**
+   - Mounting screws at each gauge's corners.
+   - An engraved placard under each gauge.
+   - Vinyl grain on the glareshield top (36×12 grid, ±20 %).
+3. **KMRY flat roofs from the photo:**
+   - Each roof its own grey (±15 %).
+   - A soft knee above 0.28 luminance.

@@ -1452,21 +1452,22 @@ public enum WorldShaders {
                     // still read soft). Rock at ~55 % of the local mean's luminance, greyed; the threshold edge
                     // widens with the footprint so it never aliases.
                     // Round 45: thresholded isotropic noise drew swirling contour rings on the KASE cliff. Ridged noise
-                    // stretched 3:1 along the contour (fl.y), broken by a 40 m mask into short outcrops, faded where a
-                    // ~8 m ledge band is under ~4–8 px on screen.
+                    // stretched 3:1 along the contour (fl.y), broken by a 40 m mask into short outcrops. Round 46: at
+                    // ~13 % coverage and a 4–8 px fade they were invisible; now ~25 % (threshold 0.85), surviving to
+                    // ~3 px, at 0.6× the local mean, with a lit upper edge and a shadow line below so each reads as a lump.
                     float oe = max(0.03, sfp / 30.0);
                     float rn = 1.0 - abs(groundNoise(float2(fl.x, fl.y * 0.33) + 301.0, 18.0));
                     float rnUp = 1.0 - abs(groundNoise(float2(fl.x - 4.0, fl.y * 0.33) + 301.0, 18.0));   // 4 m uphill (fall points downhill)
-                    float oMask = smoothstep(0.05, 0.30, groundNoise(w - 811.0, 40.0));
-                    float oFade = smoothstep(4.0, 8.0, 8.0 / max(sfp, 1e-3)) * oMask;
-                    // Threshold 0.92 (~13 % of the masked slope; 0.78 covered ~35 % at 55 % luminance and darkened the round-46
-                    // LSZS high slope by ~1.8 and the KASE cliff by ~1.1 against round 44).
-                    float outcrop = smoothstep(0.92 - oe, 0.92 + oe, rn) * oFade;
-                    float shadowLine = saturate(smoothstep(0.92 - oe, 0.92 + oe, rnUp) - smoothstep(0.92 - oe, 0.92 + oe, rn)) * oFade;
-                    float3 rockC = mix(float3(smL), sm, 0.35) * 0.65 * float3(1.02, 1.0, 0.96);
-                    rock *= 1.0 + 0.06 * oFade;                    // keeps the slope's mean with the darker outcrops and shadow lines
+                    float oMask = smoothstep(0.0, 0.25, groundNoise(w - 811.0, 40.0) + 0.15);
+                    float oFade = smoothstep(2.0, 3.5, 8.0 / max(sfp, 1e-3)) * oMask;
+                    float oIn = smoothstep(0.85 - oe, 0.85 + oe, rn), oUp = smoothstep(0.85 - oe, 0.85 + oe, rnUp);
+                    float outcrop = oIn * oFade;
+                    float shadowLine = saturate(oUp - oIn) * oFade;      // just below an outcrop
+                    float litEdge = saturate(oIn - oUp) * oFade;         // an outcrop's upper rim
+                    float3 rockC = mix(float3(smL), sm, 0.35) * 0.60 * float3(1.02, 1.0, 0.96);
+                    rock *= 1.0 + 0.12 * oFade;                    // keeps the slope's mean with the darker outcrops and shadow lines
                     rock = mix(rock, rockC * (1.0 + 0.2 * g2), outcrop);
-                    rock *= 1.0 - 0.30 * shadowLine;
+                    rock *= (1.0 - 0.35 * shadowLine) * (1.0 + 0.45 * litEdge);
                     albedo = mix(albedo, rock, stretchW);
                 }
             }
