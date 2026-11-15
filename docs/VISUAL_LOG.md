@@ -1093,3 +1093,9 @@ Round-44 frames (d34d1f4, run 43655398099) before review:
 
 Fixed before review:
 - **Gate:** the blend now runs from n.z 0.92 to 0.75, at most 80 %, keeping 45 % of the photo's luminance (clamped 0.7–1.4) so forest stands stay.
+
+Round-44 frames (2facaf2 merged as 0d5cdc5, main run 43656475843) before review:
+- **Slope blend fires:** pixels changed against round 43 — KASE final 49k, KASE close 61k, NZQN close 60k, LSZS high 27k, LSZS close 40k, NZQN high 15k, KASE high 6k. Mean luminance is unchanged.
+- **KASE final cliff:** the smear reads calmer, as rock and scree.
+- **KASE high right side:** barely changed. Those hills sit under the n.z 0.92 gate.
+- **PR run 43656365406:** failed on a runner SwiftPM cache error in the LSZS frames job before any test ran. Main's run on the same tree is green.
