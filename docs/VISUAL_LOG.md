@@ -1480,3 +1480,13 @@ Round-53 batch:
    - About 12 gabled houses with gable ends to a 300 m lane, plus garden trees.
    - It avoids existing buildings, and farmsteads, hedgerow trees and forest trees inside it are dropped.
    - A test keeps every village building more than 300 m off the runway axis.
+
+### Round 53 frames (CI run 43726184614, before review)
+
+All jobs green.
+
+- **SkyWorld:** the frame is pixel-identical to round 52.
+  - The village, 650 m right of the threshold, sat inside the forest on the right of the frame.
+  - Fix: moved to 900 m before the threshold and 340 m right, open ground about 1.1 km ahead of the final start. The houses run outward from the church, spanning about 316–530 m from the axis.
+- **KASE close:** the clearing now reads as grassy meadow rather than smeared photo.
+- **Near band:** KBFI final is +2.2 levels and KMRY final +0.8 from the luminance hold. KMRY's colour blotches are still visible.

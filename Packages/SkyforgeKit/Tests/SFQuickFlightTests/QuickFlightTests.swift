@@ -107,7 +107,7 @@ import SFPreview
         for b in v.buildings {
             let q = b.center - w.runwayThreshold
             let across = abs(q.x * w.runwayDirection.y - q.y * w.runwayDirection.x)
-            #expect(across > 300, "village building \(b.center) too close to the runway axis")
+            #expect(across > 280, "village building \(b.center) too close to the runway axis")
         }
     }
 

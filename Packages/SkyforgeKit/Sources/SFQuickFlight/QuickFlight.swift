@@ -288,12 +288,14 @@ public struct QuickFlightWorld: FlightWorld {
         return out
     }
 
-    /// A small village beside the approach, about 650 m right of the centreline near the threshold, so the
+    /// A small village beside the approach, about 340 m right of the centreline 900 m before the threshold, so the
     /// SkyWorld final camera sees a church and a cluster of houses along a lane in the middle distance (art round
     /// 52: farm polish stayed under one level on screen; a village is the bigger, more visible addition).
     func villageCluster(avoid existing: [Building] = []) -> (buildings: [Building], lanes: [Patch], gardens: [Building], trees: [Tree]) {
         let dir = runwayDirection, right = SIMD2(dir.y, -dir.x)
-        let centre = runway.threshold + dir * 400 + right * 650
+        // ~1.1 km ahead of the final start (2 km out), 340 m right: open ground in the frame's right middle distance
+        // (round 53: 650 m right of the threshold sat inside the forest and never showed).
+        let centre = runway.threshold - dir * 900 + right * 340
         let lane = right                                          // the lane runs away from the runway
         let across = SIMD2(-lane.y, lane.x)
         let heading = atan2(lane.y, lane.x)
@@ -311,7 +313,7 @@ public struct QuickFlightWorld: FlightWorld {
         // The church on the lane, its tower toward the runway.
         put(centre + across * 18, SIMD2(11, 6), heading, .church, srgb(206, 200, 188), srgb(86, 84, 82), 8, 0.9, 0xC4)
         // Houses both sides of the lane, gable ends to the lane, every ~24 m, a few gaps.
-        for k in -4...5 {
+        for k in -1...8 {                                         // outward from the church, away from the runway
             for side in [-1.0, 1.0] {
                 let h = Hash.int(k, side > 0 ? 1 : 0, seed: 0x711A)
                 if Hash.unit(h) < 0.15 || (k == 0 && side > 0) { continue }
@@ -328,7 +330,7 @@ public struct QuickFlightWorld: FlightWorld {
                 }
             }
         }
-        let lanes = [Patch(center: centre + lane * 12, halfSize: SIMD2(150, 3.0), heading: heading)]
+        let lanes = [Patch(center: centre + lane * 84, halfSize: SIMD2(140, 3.0), heading: heading)]
         return (buildings, lanes, gardens, trees)
     }
 
