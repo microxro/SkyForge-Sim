@@ -1071,12 +1071,15 @@ public enum WorldShaders {
             if (imgForest > 0.0 && al < 0.09) albedo = mix(albedo, albedo * (0.09 / max(al, 0.004)) * float3(0.96, 1.04, 0.96), imgForest);   // 0.07 (0.05): near-black LSZS canopy under the 0.45 exposure (round 22)
             // Clearings in the canopy: meadow instead of the photo's forest, where the tree placement also leaves the
             // ground open (FieldPattern.clearing; art round 51: LSZS's foreground canopy was uniform).
+            float clearW = 0.0;
             if (imgForest > 0.0) {
-                float cm = clearingMask(photoW) * imgForest;
-                if (cm > 0.0) {
-                    float3 meadow = float3(0.085, 0.12, 0.045) * (0.88 + 0.24 * saturate(0.5 + 0.5 * groundNoise(photoW + 5.0, 9.0)));
-                    albedo = mix(albedo, meadow, cm);
-                    imgForest *= 1.0 - cm;
+                clearW = clearingMask(photoW) * imgForest;
+                if (clearW > 0.0) {
+                    // A sunlit alpine meadow (round 52: at 0.085/0.12/0.045, then pulled toward the dark forest's 30 m
+                    // photo mean by the tone compression below, the first clearings read as dark holes).
+                    float3 meadow = float3(0.13, 0.18, 0.065) * (0.88 + 0.24 * saturate(0.5 + 0.5 * groundNoise(photoW + 5.0, 9.0)));
+                    albedo = mix(albedo, meadow, clearW);
+                    imgForest *= 1.0 - clearW;
                 }
             }
             // Water: the near layer's mask (photo colour checked against land cover) inside it, the land
@@ -1094,7 +1097,7 @@ public enum WorldShaders {
             // Local tone compression: each pixel held within ±40 % of the photo's ~30 m mean, so baked shadows,
             // dark car parks and bright roofs in the photo do not read as black or white blotches next to the
             // 3D scene's own lighting (art round 23: KMRY, KBFI). Near ground only; not on water or the runway.
-            float ltW = (1.0 - smoothstep(900.0, 1800.0, dist)) * (1.0 - saturate((wm - 0.2) / 0.2)) * (1.0 - rwCover);
+            float ltW = (1.0 - smoothstep(900.0, 1800.0, dist)) * (1.0 - saturate((wm - 0.2) / 0.2)) * (1.0 - rwCover) * (1.0 - clearW);
             if (ltW > 0.0) {
                 float fp0 = length(dwx) + length(dwy);
                 float ls = max(1.0, 30.0 / max(fp0, 1e-3));

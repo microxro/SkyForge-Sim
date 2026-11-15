@@ -1451,3 +1451,10 @@ All jobs green.
   - Clearings cover 5 % of the foreground, and only 171 of 46,159 trees stand in them.
   - At the camera's ~10° view, 15 m crowns hide about 85 m of ground behind them, so 45–85 m meadows disappear.
   - Fix: clearings are now 90–160 m across, in about 30 % of 420 m cells, with a ±20 m ragged edge.
+
+### Round 52b frames (CI run 43722783527, before review)
+
+- **LSZS clearings:** a 90–160 m clearing now shows in the LSZS foreground, but as a dark hole. LSZS final and close lost 2.2 and 4.3 levels.
+  - Cause: the near-band tone compression pulled the meadow toward the dark forest's 30 m photo mean.
+  - Fix: clearings are exempt from that pass, and the meadow is a sunlit alpine green, linear (0.13, 0.18, 0.065).
+- **KASE close:** a pale meadow clearing reads acceptably at lower left.
