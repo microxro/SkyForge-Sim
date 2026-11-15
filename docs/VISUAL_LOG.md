@@ -1648,3 +1648,8 @@ Tree counts: LSZS 650k (capped), KASE 650k (capped), NZQN 116k (+70k scrub), KMR
   - Scrub placement also accepts grey-to-purple photo (b 0.85–1.2·g, r ≥ 0.8·g, l 0.18–0.45 sRGB) on steep ground.
   - SSAO floor 0.7 and near-cascade PCF taps 1.6 texels apart (KMRY/KBFI near-band lighting blotches).
   - Pitched photo roofs 55 % toward a roofing palette (dark iron, charcoal, terracotta, red iron, pale sheet, slate green).
+- **Round 60 frames (d88bf8d):**
+  - NZQN high slope (x 0–300, y 300–720) went (69.8, 67.8, 58.5) → (75.6, 73.3, 60.7). NZQN has 200k trees.
+  - NZQN roofs now visibly mixed: terracotta, red and dark iron.
+  - KMRY/KBFI near band moved only 0.2–0.5 levels from the AO floor and PCF.
+  - SkyWorld unchanged. Sent to the reviewer.
