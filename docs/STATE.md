@@ -1,4 +1,4 @@
-LAST_UPDATE: 2026-11-15T14:45:00Z
+LAST_UPDATE: 2026-11-15T16:40:00Z
 
 # SKYFORGE state
 
@@ -36,6 +36,7 @@ LAST_UPDATE: 2026-11-15T14:45:00Z
     | 50 | 7.63 | 7.25 |
     | 51 | 7.63 | 7.25 |
     | 52 | 7.67 | 7.25 |
+    | 53 | 7.67 | 7.25 |
 
     Best scene: SkyWorld 8.0 (round 49, farmsteads in the fields); KASE and LSZS finals 7.75 (LSZS from forest clearings, round 52). Rounds 27 and 28 were regression checks only.
   - What landed:
@@ -48,7 +49,8 @@ LAST_UPDATE: 2026-11-15T14:45:00Z
     - Water gated by slope.
     - Structural: a mid z12 height mosaic (`b051139`; z12 tiles in all packs through `tools/fetch_mid_heights.py`). Slopes 3–12 km out had been z10 blobs at about 156 m per sample.
   - High-frame average: 6.70 at round 46 (6.65 at round 45; 6.38 at round 26). The KASE high mid-ring smear is accepted at 7.0: it is the z14 photo (6.8 m per texel) magnified ~3×, which only sharper imagery would fix.
-  - Next: round-53 frames. Clearings get their own procedural grass wherever the ~100 m photo mean is forest (KASE close showed smeared photo ground in one). Near-band luminance on natural ground held within ±8 % of a 30 m / 400 m blended mean (the remaining blotches are luminance cells). NZQN gravel shore band widened to ~35 m at 0.35 albedo. Then high-frame mid-ring forest and a SkyWorld village. Frame budgets are recorded, not enforced (ADR-0021).
+  - Round 53 (7.67, flat; high frames 6.70; KASE close back to 7.5): clearing grass fixed KASE close, the village read well at 3× but was ~100×25 px at 1×, the LSZS meadow gained a lime wedge, and the KMRY near band did not move.
+  - Next: round-54 frames. This is the structural round after two under +0.2. Changes: canopy relief on mid-ring photo forest (lit crown hemispheres at ~10 m and ~28 m tilting the normal). A suburb score from OSM road density now gates the crop field-contrast pass and drives the lawn hue and the near-band holds; round-53 debug view 1 showed those two passes re-adding KMRY's blotches. The meadow is at ~0.12 luminance, the luminance hold is forest-aware, and the SkyWorld village is twice the size and 190 m off the path. Frame budgets are recorded, not enforced (ADR-0021).
 Visual transformation (2026-11-10, PR #5, ADR-0021) is in progress; the Bold Mode summary below is the earlier baseline.
 - Landed (CI-compiled): new SF-1 aircraft model with per-pixel livery, glass and clear coat; OSM-sourced 3D buildings with facade/roof shading (bundled `buildings.sfb`, ODbL); four shadow cascades; mid-distance imagery layer; 2x supersampling and sharpening in the ultra preset; exposure scale 0.45 with near-identity photo albedo; per-airport review-frame jobs.
 - Landed 2026-11-10 (second batch): five tree species with ambient occlusion; rebuilt cockpit interior with cabin fill light; ESA WorldCover land cover grids in every pack (water at any distance); water shading (sky reflection, wind patches); tinted tower glass; fine cloud structure at ultra; magnification-aware local contrast on the ground photo; `LINZAerialProvider`.

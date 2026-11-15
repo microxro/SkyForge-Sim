@@ -288,57 +288,78 @@ public struct QuickFlightWorld: FlightWorld {
         return out
     }
 
-    /// A small village beside the approach, about 340 m right of the centreline 900 m before the threshold, so the
-    /// SkyWorld final camera sees a church and a cluster of houses along a lane in the middle distance (art round
-    /// 52: farm polish stayed under one level on screen; a village is the bigger, more visible addition).
+    /// A village beside the approach, about 190 m right of the centreline 1,450 m before the threshold, so the
+    /// SkyWorld final camera sees a church, two streets of houses and a few barns in the right foreground (art round
+    /// 53: at 1.1 km ahead and 340 m out the hamlet was ~100×25 px and read only as "some buildings").
     func villageCluster(avoid existing: [Building] = []) -> (buildings: [Building], lanes: [Patch], gardens: [Building], trees: [Tree]) {
         let dir = runwayDirection, right = SIMD2(dir.y, -dir.x)
-        // ~1.1 km ahead of the final start (2 km out), 340 m right: open ground in the frame's right middle distance
-        // (round 53: 650 m right of the threshold sat inside the forest and never showed).
-        let centre = runway.threshold - dir * 900 + right * 340
-        let lane = right                                          // the lane runs away from the runway
+        // ~550 m ahead of the final start (2 km out), 190 m right.
+        let centre = runway.threshold - dir * 1_450 + right * 190
+        let lane = right                                          // the main street runs away from the runway
         let across = SIMD2(-lane.y, lane.x)
-        let heading = atan2(lane.y, lane.x)
+        let heading = atan2(lane.y, lane.x), headingD = atan2(dir.y, dir.x)
         var buildings: [Building] = [], gardens: [Building] = [], trees: [Tree] = []
         let walls = [srgb(214, 204, 182), srgb(196, 182, 160), srgb(222, 214, 200), srgb(180, 160, 134), srgb(204, 196, 186)]
         let roofs = [srgb(122, 66, 50), srgb(104, 98, 94), srgb(138, 84, 60), srgb(92, 62, 52)]
         func put(_ p: SIMD2<Double>, _ half: SIMD2<Double>, _ hd: Double, _ kind: BuildingKind, _ wall: SIMD3<Float>, _ roof: SIMD3<Float>,
                  _ wallH: Double, _ pitch: Double, _ v: UInt32) {
-            guard !recipe.isWater(p.x, p.y), !Self.inside(p, existing, margin: max(half.x, half.y) + 3) else { return }
+            guard !recipe.isWater(p.x, p.y), !Self.inside(p, existing, margin: max(half.x, half.y) + 3),
+                  !Self.inside(p, buildings, margin: max(half.x, half.y) + 2) else { return }
             buildings.append(Building(center: p, halfSize: half, heading: hd, baseHeight: height(p.x, p.y), wallHeight: wallH, roof: .gabled,
                                       roofPitch: pitch, kind: kind, wallColour: wall, roofColour: roof, variant: v))
             gardens.append(Building(center: p, halfSize: half + 4, heading: hd, baseHeight: 0, wallHeight: 0, roof: .flat, roofPitch: 0,
                                     kind: .house, wallColour: .zero, roofColour: .zero, variant: 0))
         }
-        // The church on the lane, its tower toward the runway.
-        put(centre + across * 18, SIMD2(11, 6), heading, .church, srgb(206, 200, 188), srgb(86, 84, 82), 8, 0.9, 0xC4)
-        // Houses both sides of the lane, gable ends to the lane, every ~24 m, a few gaps.
-        for k in -1...8 {                                         // outward from the church, away from the runway
-            for side in [-1.0, 1.0] {
-                let h = Hash.int(k, side > 0 ? 1 : 0, seed: 0x711A)
-                if Hash.unit(h) < 0.15 || (k == 0 && side > 0) { continue }
-                let p = centre + lane * (Double(k) * 24 + 6 * (Hash.unit(h >> 8) - 0.5)) + across * side * (16 + 4 * Hash.unit(h >> 16))
-                let half = SIMD2(5.0 + 1.5 * Hash.unit(h >> 24), 4.5 + 1.0 * Hash.unit(h >> 32))
-                put(p, half, heading + .pi / 2, .house, walls[Int(h % UInt64(walls.count))], roofs[Int((h >> 4) % UInt64(roofs.count))],
-                    5.4 + 1.2 * Hash.unit(h >> 40), 0.7, UInt32(truncatingIfNeeded: h))
-                // A garden tree behind most houses.
-                if Hash.unit(h >> 44) < 0.7 {
-                    let tp = p + across * side * 14 + lane * (Hash.unit(h >> 48) - 0.5) * 8
-                    let ht = 8 + 5 * Hash.unit(h >> 52)
-                    trees.append(Tree(position: SIMD3(tp.x, tp.y, height(tp.x, tp.y)), height: ht, crownRadius: ht * 0.36, conifer: false,
-                                      colour: SIMD3<Float>(0.052, 0.078, 0.036) * Float(0.9 + 0.2 * Hash.unit(h >> 56))))
-                }
+        func house(_ p: SIMD2<Double>, _ hd: Double, _ out: SIMD2<Double>, _ h: UInt64) {
+            let half = SIMD2(5.0 + 1.5 * Hash.unit(h >> 24), 4.5 + 1.0 * Hash.unit(h >> 32))
+            put(p, half, hd, .house, walls[Int(h % UInt64(walls.count))], roofs[Int((h >> 4) % UInt64(roofs.count))],
+                5.4 + 1.2 * Hash.unit(h >> 40), 0.7, UInt32(truncatingIfNeeded: h))
+            // A garden tree behind most houses.
+            if Hash.unit(h >> 44) < 0.7 {
+                let tp = p + out * 14 + SIMD2(-out.y, out.x) * (Hash.unit(h >> 48) - 0.5) * 8
+                let ht = 8 + 5 * Hash.unit(h >> 52)
+                trees.append(Tree(position: SIMD3(tp.x, tp.y, height(tp.x, tp.y)), height: ht, crownRadius: ht * 0.36, conifer: false,
+                                  colour: SIMD3<Float>(0.052, 0.078, 0.036) * Float(0.9 + 0.2 * Hash.unit(h >> 56))))
             }
         }
-        let lanes = [Patch(center: centre + lane * 84, halfSize: SIMD2(140, 3.0), heading: heading)]
+        // The church at the crossroads, its tower toward the runway.
+        put(centre + across * 18 + lane * 20, SIMD2(11, 6), heading, .church, srgb(206, 200, 188), srgb(86, 84, 82), 8, 0.9, 0xC4)
+        // Main street: houses both sides, gable ends to the street, every ~24 m, a few gaps.
+        for k in 0...10 {
+            for side in [-1.0, 1.0] {
+                let h = Hash.int(k, side > 0 ? 1 : 0, seed: 0x711A)
+                if Hash.unit(h) < 0.15 { continue }
+                let p = centre + lane * (Double(k) * 24 + 6 * (Hash.unit(h >> 8) - 0.5)) + across * side * (16 + 4 * Hash.unit(h >> 16))
+                house(p, heading + .pi / 2, across * side, h)
+            }
+        }
+        // Cross street along the approach through the crossroads.
+        for k in -5...5 where k != 0 {
+            for side in [-1.0, 1.0] {
+                let h = Hash.int(k, side > 0 ? 3 : 2, seed: 0x711B)
+                if Hash.unit(h) < 0.2 { continue }
+                let p = centre + dir * (Double(k) * 24 + 6 * (Hash.unit(h >> 8) - 0.5)) + lane * side * (16 + 4 * Hash.unit(h >> 16))
+                house(p, headingD + .pi / 2, lane * side, h)
+            }
+        }
+        // Barns at the outer end of the main street.
+        for k in 0..<3 {
+            let h = Hash.int(k, 7, seed: 0x711C)
+            let p = centre + lane * (275 + 30 * Double(k)) + across * (k % 2 == 0 ? 22.0 : -24.0)
+            let tone = Float(0.85 + 0.3 * Hash.unit(h))
+            put(p, SIMD2(12, 7), heading, .barn, SIMD3<Float>(0.26, 0.11, 0.09) * tone, k == 1 ? srgb(80, 92, 74) : srgb(96, 94, 92),
+                6.5, 0.6, UInt32(truncatingIfNeeded: h))
+        }
+        let lanes = [Patch(center: centre + lane * 140, halfSize: SIMD2(150, 3.0), heading: heading),
+                     Patch(center: centre, halfSize: SIMD2(135, 3.0), heading: headingD)]
         return (buildings, lanes, gardens, trees)
     }
 
     /// Whether a point is within `margin` of any footprint in `buildings`.
     static func inside(_ p: SIMD2<Double>, _ buildings: [Building], margin: Double) -> Bool {
         buildings.contains { b in
-            let d = p - b.center
-            if abs(d.x) > 60 || abs(d.y) > 60 { return false }
+            let d = p - b.center, lim = b.halfSize.x + b.halfSize.y + margin   // covers any heading (a fixed 60 m cut missed long lanes)
+            if abs(d.x) > lim || abs(d.y) > lim { return false }
             let c = cos(b.heading), s = sin(b.heading)
             return abs(c * d.x + s * d.y) < b.halfSize.x + margin && abs(-s * d.x + c * d.y) < b.halfSize.y + margin
         }

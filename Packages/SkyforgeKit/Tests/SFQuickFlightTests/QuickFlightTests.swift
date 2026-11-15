@@ -103,11 +103,13 @@ import SFPreview
         let w = QuickFlightWorld()
         let v = w.villageCluster()
         #expect(v.buildings.contains { $0.kind == .church })
-        #expect(v.buildings.filter { $0.kind == .house }.count >= 8, "\(v.buildings.count) village buildings")
+        #expect(v.buildings.filter { $0.kind == .house }.count >= 18, "\(v.buildings.count) village buildings")
+        #expect(v.buildings.contains { $0.kind == .barn })
+        #expect(v.lanes.count == 2)
         for b in v.buildings {
             let q = b.center - w.runwayThreshold
             let across = abs(q.x * w.runwayDirection.y - q.y * w.runwayDirection.x)
-            #expect(across > 280, "village building \(b.center) too close to the runway axis")
+            #expect(across > 150, "village building \(b.center) too close to the runway axis")
         }
     }
 

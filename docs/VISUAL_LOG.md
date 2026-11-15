@@ -1497,3 +1497,28 @@ All jobs green.
 
 - **SkyWorld final:** the village is now in view at the forest edge right of the path (x ≈ 830–930, y ≈ 340–395): the church tower and about eight white houses with red roofs. It is small at this range; 678 pixels differ from round 52.
 - Round 53 was sent to the art director with the four changes: clearing grass, the near-band luminance hold, the NZQN gravel shore and the SkyWorld village.
+
+## Round 53 review (r53b): finals 7.67 (flat), high frames 6.70, cockpit 7.25
+
+- KASE close is back to 7.5: the clearing reads as a grassy meadow.
+- SkyWorld stays at 8.0. The village reads as a hamlet at 3×, but at 1× it is ~100×25 px.
+- LSZS final has a new lime-yellow wedge below the tail (x 640–700, y 510–570). The rest of the meadow is a flat dark green.
+- The KMRY and KBFI near band is unchanged on screen. The NZQN gravel band is not visible at final distance.
+
+### Diagnosis
+
+- **KMRY debug view 1 (albedo):** the 50–150 m yellow, orange and blue-grey blotches are present in the final ground albedo, so lighting is not the cause. Two passes after the near-band holds put them back:
+  - The crop field-contrast pass classed the warm yard blotches as fields and pushed each one's 30 m mean up to 1.5× away from its 150 m surroundings.
+  - The lawn replacement took its hue from the 30 m mean, which is the blotch's own colour.
+- **LSZS wedge:** the clearing meadow was at ~0.18 albedo luminance against ~0.10 for the surrounding pasture, about 1.8× in output. Where the 100 m forest gate crossed open ground at the clearing edge, it drew an angular bright patch.
+
+### Round 54 batch (structural round: two rounds under +0.2)
+
+1. **Canopy relief (structural):** photo forest from 300 m out to ~10 km takes lit crown hemispheres on jittered ~10 m and ~28 m grids. They tilt the normal, so the sun lights one side and shades the other, with gaps between crowns 28 % darker. The relief fades with the pixel footprint. The aim is to replace the high frames' smooth magnified forest smear.
+2. **Suburb score:** the mean of 13 road-mask taps out to ~130 m. It turns off the crop field-contrast pass, takes the lawn hue from the already-held albedo instead of the 30 m mean, and raises the 400 m chroma pull to 90 % and the ±8 % luminance hold to 90 % on suburban ground.
+3. **Meadow:** ~0.12 luminance and less saturated, about 25 % above the pasture. The luminance hold no longer pulls pasture toward a forest-dominated 400 m mean.
+4. **SkyWorld village:**
+   - It moves to 1,450 m before the threshold and 190 m right, about 550 m ahead of the final start.
+   - It grows to two streets (a main street running outward and a cross street along the approach), ~28 houses, a church at the crossroads and three barns.
+   - The test now keeps village buildings more than 150 m off the axis.
+   - `inside()` now bounds its early-out by the footprint size; a fixed 60 m cut ignored most of a 150 m lane.
