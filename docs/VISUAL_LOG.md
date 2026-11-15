@@ -1132,3 +1132,9 @@ Fixed before review (structural; rounds 42–44 under +0.2):
 - **Magnified coarse photo:** where a layer of 3 m or more per texel is magnified past ~1.5×, keep its ~20 m mean colour and replace the texel detail with procedural detail.
   - Canopy: ridged 10 m crowns in 25 m stands. Open ground: 10/25 m patches.
   - Classed from the mean colour; 25 % of the photo's own deviation kept, up to 85 % blend.
+
+Round-45 frames (d15e96f, run 43661627056) before review:
+- **Pixels changed against round 44:** KASE high 158k, LSZS high 196k, NZQN high 123k, KBFI high 113k, KMRY high 45k; KASE final and close ~44k each. Other finals and closes are under 26k.
+- **High frames:** 1–3 points darker in mean luminance (LSZS high 99.7 → 96.6).
+- **KASE high:** the right-side foreground reads crisper and less melted.
+- **LSZS and KBFI high:** gain slight texture.
