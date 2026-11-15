@@ -956,7 +956,9 @@ public enum WorldShaders {
                 uint h = fp_hash(int(c.x), int(c.y), 0x0C7Au);
                 float2 fpnt = c + float2(fp_unit(h), fp_unit(h >> 8)) * 0.8 + 0.1;
                 float d = length(q - fpnt) * cell;
-                if (d < f1) { f2 = f1; f1 = d; id1 = fp_unit(h >> 16); } else if (d < f2) { f2 = d; }
+                // fp_unit reads the low 24 bits, so a shifted hash (h >> 16) stayed under 0.004 and every cell was
+                // rock (round 48: the KASE cliff went 100 % rock and lost up to 14 levels). A remixed hash instead.
+                if (d < f1) { f2 = f1; f1 = d; id1 = fp_unit(fp_hash(int(c.x), int(c.y), 0x51D3u)); } else if (d < f2) { f2 = d; }
             }
         }
         return id1 < cover ? smoothstep(0.0, edge, f2 - f1) : 0.0;

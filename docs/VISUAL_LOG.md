@@ -1265,3 +1265,9 @@ Round-48b frames (21f6619, run 43697075735) before review:
 Fixed before review:
 - **Block colour:** 0.6× the local rock's own luminance.
 - **Slope compensation:** back to +12 %.
+
+Round-48c frames (4bd9240, run 43698505387) before review:
+- **Still darker:** KASE final 80.9 (82.9) and close 78.1 (80.2); the cliff cells are still at −10 to −12.
+- **Cause:** a bug in `outcropCells`. `fp_unit` reads the low 24 bits, so `fp_unit(h >> 16)` stayed under 0.004 and every cell passed the 25 % cover test. The cliff was 100 % rock.
+
+Fixed before review: the per-cell choice now uses its own `fp_hash` seed.
