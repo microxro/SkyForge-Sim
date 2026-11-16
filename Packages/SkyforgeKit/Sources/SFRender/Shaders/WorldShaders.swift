@@ -1286,7 +1286,9 @@ public enum WorldShaders {
                         float mL = max(dot(ltMean, lumW3), 1e-3), pL = max(dot(albedo, lumW3), 1e-4);
                         // Hue from the already-held albedo, not the 30 m mean (round 53: the mean is the blotch's own colour).
                         float3 hue = mix(albedo / pL, float3(0.80, 1.10, 0.62), (0.35 + 0.25 * burb) * k.grass / max(k.grass + k.dry, 1e-3));
-                        albedo = mix(albedo, hue * (mL * clamp(pL / mL, 0.88, 1.12)), lawnW);
+                        // Luminance: the held albedo's own, bounded at ±35 % of the 30 m mean (round 62b, KBFI debug view 1: a
+                        // ±12 % bound pulled the ~400 m-held lawn back to the 30 m mean, whose 40–80 m cloudy mottle returned at 75 %).
+                        albedo = mix(albedo, hue * clamp(pL, mL * 0.65, mL * 1.35), lawnW);
                     }
                 }
                 albedo *= 1.0 + (f - 1.0) * groundMat;

@@ -1697,3 +1697,8 @@ Tree counts: LSZS 650k (capped), KASE 650k (capped), NZQN 116k (+70k scrub), KMR
 - **Round 62b:**
   - Green ground takes up to 0.85 of the 400 m hue.
   - The near-band block (hue, hold, stripes) reaches ~1.5 km on green ground.
+- **Round 62b result:**
+  - KBFI lawns unchanged again: hue spread 6.23 → 6.18, luminance spread 31.3.
+  - KBFI debug views 1 and 3 show the mottle in the albedo on lawn-material ground.
+  - The lawn replacement (75 %) bounds luminance to ±12 % of the 30 m mean, which pulls the 400 m-held value back to the mottled 30 m mean.
+- **Round 62c:** the bound widened to ±35 %, so the held luminance survives.
