@@ -1690,3 +1690,10 @@ Tree counts: LSZS 650k (capped), KASE 650k (capped), NZQN 116k (+70k scrub), KMR
   - 9 m mowing stripes (±3.5 %), one direction per ~200 m block, faded by pixel footprint.
   - Ultra building radius 9.5 → 12 km, full detail 6.5 → 9 km (KMRY high's town at 2–6 km).
   - High-preset frames to go to the reviewer.
+- **Round 62 frames (a42678d):**
+  - Ultra buildings: KMRY 24,882 → 43,350; KBFI → 131,548. GPU frame time and the soak both green.
+  - KBFI lawn green-pixel luminance spread barely moved (32.1 → 31.3); frames within 1.4 levels.
+  - The KBFI mottle is mostly hue (green against grey-green). Green ground took only 0.33 of the 400 m hue, and the near band ends at 1 km.
+- **Round 62b:**
+  - Green ground takes up to 0.85 of the 400 m hue.
+  - The near-band block (hue, hold, stripes) reaches ~1.5 km on green ground.

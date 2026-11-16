@@ -1178,7 +1178,7 @@ public enum WorldShaders {
                 // the lawn replacement moved 0.16 levels; the blotches classify as pavement). Blue-dominant ground
                 // becomes a warm grey at its luminance, and half the chroma comes from a ~120 m mean (a fixed cap
                 // would grey linear grass, whose chroma is ~0.7), a quarter on green ground.
-                if (nb > 0.0) {
+                if (max(nb, gm * (1.0 - smoothstep(900.0, 1600.0, dist))) > 0.0) {   // green ground to ~1.5 km (round 62)
                     float3 lw = float3(0.2126, 0.7152, 0.0722);
                     float lc = max(dot(lifted, lw), 1e-4);
                     float blue = smoothstep(0.0, 0.06, (lifted.b - max(lifted.r * 0.85, lifted.g)) / max(lifted.b, 1e-3));   // purple too (round 59); relative (59c)
@@ -1190,7 +1190,10 @@ public enum WorldShaders {
                     float l4 = max(dot(lm4, lw), 1e-3);
                     lm4 = mix(lm4, l4 * float3(1.04, 1.0, 0.86) / dot(float3(1.04, 1.0, 0.86), lw),
                               0.85 * smoothstep(0.0, 0.025, lm4.b - max(lm4.r, lm4.g)));   // nor a blue cast from the wide mean
-                    lifted = mix(lifted, lm4 * (lc / l4), mix(0.65 * (1.0 - 0.5 * gm), 0.9, burb) * nb);
+                    // Green ground: hue mostly from the ~400 m mean, out to ~1.5 km (round 62, KBFI final: the lawn mottle is green
+                    // against grey-green 40–80 m patches, a chroma mottle; green took only 0.33 of the wide hue, and nb ends at 1 km).
+                    float nbG = max(nb, gm * (1.0 - smoothstep(900.0, 1600.0, dist)));
+                    lifted = mix(lifted, lm4 * (lc / l4), mix(0.65 * (1.0 - 0.5 * gm), 0.9, max(burb, 0.85 * gm)) * nbG);
                     // Luminance too (round 52: the blotches left are luminance cells): natural ground held within ±8 % of a
                     // 30 m / 400 m blended mean, 80 % on green ground, 50 % elsewhere; procedural octaves and 3D shadows
                     // carry the brightness detail.
@@ -1203,7 +1206,7 @@ public enum WorldShaders {
                     // Darker side held at −4 % (round 61, KMRY debug view 1: the photo's baked tree shadows, 20–40 m dark smudges
                     // with no 3D tree on them, survived the ±8 % hold).
                     float held = clamp(lcl, tgt * mix(0.96, 0.95, gm), tgt * mix(1.08, 1.05, gm));
-                    lifted *= mix(1.0, held / lcl, nb * max(mix(0.5, 0.92, gm), 0.9 * burb));
+                    lifted *= mix(1.0, held / lcl, nbG * max(mix(0.5, 0.92, gm), 0.9 * burb));
                     // Mowing stripes on lawns: 9 m bands, ±3.5 %, one direction per ~200 m block, faded as the pixel
                     // footprint nears the band width (no moiré).
                     float2 blk = floor(photoW / 200.0) * 200.0;
