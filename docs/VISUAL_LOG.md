@@ -1674,3 +1674,9 @@ Tree counts: LSZS 650k (capped), KASE 650k (capped), NZQN 116k (+70k scrub), KMR
   - Two causes, two fixes (round 61b):
     - A warm sun-coloured fill of 12 % in cast shadows on photo ground.
     - The near-band luminance hold tightened on the dark side (−8 % → −4 %).
+- **Round 61b result:**
+  - KMRY shadow/lit luminance 0.36 → 0.42; shadow blue−red +4.1 → 0.0.
+  - KBFI shadow/lit 0.37 → 0.41; shadow blue−red +4.5 → +1.8.
+  - Frame diffs 0.5–0.8 levels.
+  - The photo's baked smudges on KMRY's left third are still faintly visible.
+  - Sent to the reviewer as round 61.
