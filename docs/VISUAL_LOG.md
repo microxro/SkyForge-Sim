@@ -1702,3 +1702,8 @@ Tree counts: LSZS 650k (capped), KASE 650k (capped), NZQN 116k (+70k scrub), KMR
   - KBFI debug views 1 and 3 show the mottle in the albedo on lawn-material ground.
   - The lawn replacement (75 %) bounds luminance to ±12 % of the 30 m mean, which pulls the 400 m-held value back to the mottled 30 m mean.
 - **Round 62c:** the bound widened to ±35 %, so the held luminance survives.
+- **Round 62c result:**
+  - KBFI lawn pixels (debug view 3 lawn mask): albedo spread 20.1 → 19.2, large-scale spread 19.5 → 19.0.
+  - The final-frame spread is dominated by the perspective and haze gradient, so it is not a clean metric.
+  - Other frames within 0.5 levels.
+  - Sent to the reviewer as round 62 for a visual verdict instead of a fourth blind change.
