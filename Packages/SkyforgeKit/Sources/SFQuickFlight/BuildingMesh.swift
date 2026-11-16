@@ -87,6 +87,8 @@ public enum BuildingMeshBuilder {
         srgb(86, 98, 110), srgb(104, 112, 116), srgb(70, 84, 96), srgb(122, 120, 112), srgb(92, 104, 100), srgb(140, 144, 148), srgb(78, 80, 86),
     ]
     static let roofPalette: [SIMD3<Float>] = [srgb(92, 90, 88), srgb(70, 70, 74), srgb(112, 104, 96), srgb(128, 82, 66), srgb(84, 88, 84), srgb(130, 128, 124)]
+    /// Pitched-roof blend colours: dark iron, charcoal, terracotta, red iron, pale sheet, slate green.
+    static let pitchedMix: [SIMD3<Float>] = [srgb(58, 60, 64), srgb(44, 44, 46), srgb(140, 92, 72), srgb(116, 64, 54), srgb(196, 194, 186), srgb(70, 84, 74), srgb(96, 94, 92)]   // reds ~2/7, toned down (round-60 review: some popped)
     static let flatRoofPalette: [SIMD3<Float>] = [srgb(150, 150, 146), srgb(124, 124, 122), srgb(176, 176, 170), srgb(98, 98, 100), srgb(200, 200, 196)]
 
     public static func style(for b: OSMBuilding, area: Double) -> BuildingStyle {
@@ -260,6 +262,12 @@ public enum BuildingMeshBuilder {
                     roof *= Float(0.75 + 0.50 * rnd(4))      // ±25 % (round 47: ±15 % only registered side by side)
                     let l = 0.2126 * roof.x + 0.7152 * roof.y + 0.0722 * roof.z
                     if l > 0.28 { roof *= (0.28 + (l - 0.28) * 0.4) / l }
+                } else {
+                    // Pitched roofs half from a roofing palette (round-59 review: NZQN's lakeside town, its largest
+                    // surface, read as one beige-grey; real towns mix dark iron, terracotta and pale sheet). Luminance
+                    // keeps a share of the photo's so a roof still sits in its neighbourhood.
+                    let p = pitchedMix[Int((h0 >> 24) % UInt64(pitchedMix.count))] * Float(0.9 + 0.2 * rnd(5))
+                    roof = roof * 0.45 + p * 0.55
                 }
             } else {
                 let pal = pitched != nil ? roofPalette : flatRoofPalette

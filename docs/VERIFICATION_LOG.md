@@ -340,3 +340,31 @@ Method: `FrameTimeTests`, 30 frames after 3 warm-up frames; command-buffer GPU t
 - 2026-11-15T16:10:47Z gate fast on Linux x86_64: PASS (HEAD ba28ba4)
 - 2026-11-15T16:28:42Z gate fast on Linux x86_64: PASS (HEAD 9004f61)
 - 2026-11-15T16:43:23Z gate fast on Linux x86_64: PASS (HEAD 9a22f33)
+- 2026-11-15T17:44:02Z gate fast on Linux x86_64: PASS (HEAD aeac1b0)
+- 2026-11-15T17:50:13Z gate fast on Linux x86_64: PASS (HEAD 8d3001e)
+- 2026-11-15T18:09:09Z gate fast on Linux x86_64: PASS (HEAD a7f1e7c)
+- 2026-11-15T18:23:35Z gate fast on Linux x86_64: PASS (HEAD 97f61ed)
+- 2026-11-15T18:40:22Z gate fast on Linux x86_64: PASS (HEAD caaf4f8)
+- 2026-11-15T18:55:51Z gate fast on Linux x86_64: PASS (HEAD 8759be6)
+- 2026-11-15T19:11:47Z gate fast on Linux x86_64: PASS (HEAD 455a792)
+- 2026-11-15T19:25:51Z gate fast on Linux x86_64: PASS (HEAD 61cf6fc)
+- 2026-11-15T19:29:06Z gate fast on Linux x86_64: PASS (HEAD 61cf6fc)
+- 2026-11-15T19:45:00Z gate fast on Linux x86_64: PASS (HEAD 2a7193a)
+- 2026-11-15T19:58:28Z gate fast on Linux x86_64: PASS (HEAD 99809e1)
+- 2026-11-15T20:19:29Z gate fast on Linux x86_64: PASS (HEAD bbb141e)
+- 2026-11-15T20:35:44Z gate fast on Linux x86_64: PASS (HEAD 4236bff)
+2026-11-15T20:35:44Z compaction; last commit 4236bff
+2026-11-15T20:46:04Z compaction; last commit 4236bff
+2026-11-15T20:46:06Z compaction; last commit 4236bff
+2026-11-15T20:46:08Z compaction; last commit 4236bff
+2026-11-15T20:46:09Z compaction; last commit 4236bff
+2026-11-15T22:39:01Z compaction; last commit 4236bff
+- 2026-11-15T22:45:46Z gate fast on Linux x86_64: PASS (HEAD 4236bff)
+- 2026-11-15T22:59:09Z gate fast on Linux x86_64: PASS (HEAD 5e258a4)
+- 2026-11-15T23:12:37Z gate fast on Linux x86_64: PASS (HEAD ca54495)
+- 2026-11-15T23:27:06Z gate fast on Linux x86_64: PASS (HEAD 53fda16)
+- 2026-11-15T23:43:11Z gate fast on Linux x86_64: PASS (HEAD 85dc89b)
+- 2026-11-15T23:55:35Z gate fast on Linux x86_64: PASS (HEAD 7ee211a)
+- 2026-11-16T00:08:53Z gate fast on Linux x86_64: PASS (HEAD 87d7bd4)
+- 2026-11-16T00:28:39Z gate fast on Linux x86_64: PASS (HEAD a42678d)
+- 2026-11-16T00:46:39Z gate fast on Linux x86_64: PASS (HEAD b98c62e)

@@ -1532,3 +1532,178 @@ All jobs green.
 - **Fix (`round 54b`):**
   - Canopy relief now starts at 900–1,600 m and needs photo luminance below ~0.06, so the final frames' pasture is untouched.
   - A sun-independent crown dome term (tops +10 %, rims −10 %) carries the relief into cloud shadow.
+
+### Preset comparison frames (CI run 43737094439, `47bd7df`)
+
+- KMRY and SkyWorld finals at low (phone detail), medium (tablet), high (desktop) and ultra.
+- High and ultra show a clean KMRY near band. Low and medium still show the orange and yellow yard blotches.
+- **Cause:** the bundled street pack keeps residential streets only within `buildingFullRadius × 0.6` of the field: 1.5 km at phone, 2.1 km at tablet. The final view's suburbs are 2–2.5 km out, so those tiers had no residential street ribbons and a road-density suburb score of 0.
+- **Fix:** every street class is also kept within 1.5 km of the start view's foreground (1.5 km before the threshold), the same point the sharp imagery layer is centred on.
+- **Round 54b check:** LSZS pasture stayed at 0.033, so canopy relief was not the cause. The forest-aware luminance target had also classed the dark pasture's 400 m mean as forest, which removed round 53's lift. That gate is reverted. The round-54b ultra frames are otherwise as intended.
+- **Round 54c (`a7f1e7c`):**
+  - KMRY low and medium presets are now clean, with street ribbons and no yard blotches, matching high.
+  - The LSZS "pasture" stayed at 0.033. A round-54/53 luminance ratio map shows a smooth patch shaped like the clearing, with no crown texture. It is clearing meadow at partial weight: the 100 m forest score is ~0.5 there, so the ground was half photo, half meadow, and the wedge was the only spot at full weight.
+  - **Fix:** a saturating forest gate (smoothstep 0.1–0.45) makes the meadow even, at ~0.145 luminance, about 25 % above round 53.
+
+## Round 54 review (r54d): finals 7.75 (+0.08), high frames 6.70, cockpit 7.25
+
+- LSZS final 8.0: the lime wedge is gone and the even sunlit meadow reads as an alpine clearing, though it has no internal variation.
+- SkyWorld 8.25: the village reads at 1×.
+- Canopy relief (10/28 m) is not visible in the high frames. KMRY near band "unchanged":
+  - A full-width crop shows the left half is clean now.
+  - The right half, a campus with large buildings and few streets, keeps its blotches. The road-density suburb score is near zero there.
+
+### Round 55 batch
+
+1. **Suburb mask:** OSM building footprints are rasterised into the road mask as discs of their size.
+2. **Meadow:** ±18 % patches at 25 m and 60 m, and a darker (−22 %), narrower forest-edge band.
+3. **Canopy relief:** crown clusters at 18 m and 55 m, gap darkening 38 %, dome shading ×1.5, kept to a 40 m footprint.
+
+## Round 55 review (r55): finals 7.75 (flat), high frames 6.70, cockpit 7.25
+
+- No change moved a score; every frame changed by under 0.6 levels.
+- **Diagnosis, KMRY:** debug view 1 (albedo) shows even grey-green ground on the campus (x 640–1280, y 540–720). What remains in the final frame is lighting (tree shadows and ambient), not albedo, so the near-band holds stop here.
+- **Diagnosis, high frames:** the LSZS high camera is 6 km before the threshold. The smeared slope is 3–5 km before it, outside the ultra tree disc (4.2 km), and beyond the near imagery square (3.2 km), where tree placement found no photo at all.
+
+### Round 56 (structural)
+
+- Ultra trees reach 6.5 km (cap 650,000).
+- Beyond the near square, tree placement samples the mid imagery layer (~6.8 m/px at ultra), so forest stands on the high views' slopes get 3D trees.
+
+## Round 56 review (r56): high frames 7.15 (+0.45), finals 7.75, cockpit 7.25
+
+High frames, round 55 → round 56:
+
+| Scene | r55 | r56 | Note |
+|---|---|---|---|
+| KASE | 7.0 | 7.75 | "Like a commercial sim at this altitude" |
+| LSZS | 6.5 | 7.25 | |
+| KBFI | 6.75 | 7.25 | |
+| KMRY | 6.75 | 7.0 | |
+| NZQN | 6.5 | 6.5 | 41k trees; tussock slopes have no forest class |
+
+- **Remaining:**
+  - Far stands in cloud shadow on the LSZS high slope read as sunlit lime clumps. Foliage multiplies ambient by 1.6 and adds +40 % in shadow, and under a cumulus that ambient already carries the cloud's sunlit fill, so crowns took ~2.2× the light of the ground under them.
+  - Abrupt edges at the ring.
+- **Round 57:**
+  - Both foliage boosts fade out under cloud shadow.
+  - Tree density fades over the outer 15 % of the disc with a ~400 m noisy edge (the final-approach disc is untouched).
+
+### Round 57 frames (CI run 43749542746, `455a792`), not sent for review
+
+- **LSZS final and close:** −9 levels. Removing the foliage boosts under cloud darkened the near forest, which lies under a cumulus, and the round-54 8.0 frame depended on it. The far lime clumps on the high slope barely changed.
+- **Every ultra frame:** shifted 2–5 levels in absolute difference. The ring fade drew an extra value from each tree's random stream, which reshuffled heights, species and tints.
+- **Fix (57b):**
+  - The foliage change is reverted.
+  - The fade uses its own hash.
+  - Trees placed from the mid layer take a 0.065 albedo floor (0.10 before). The clumps were an albedo mismatch, 0.10+ crowns on ~0.04 photo forest, not a lighting one.
+
+## Round 57 review (r57b): high frames 7.20 (+0.05; LSZS high 7.5), finals 7.75
+
+- The far stands at LSZS now read as shaded forest on the slope.
+- The slope between stands is still smooth dark photo: the mid-layer classifier missed ~0.04 shaded forest, whose colour margins vanish.
+
+### Round 58 batch (ultra)
+
+1. Mid-layer forest placement accepts dark (<0.075), non-blue photo on slopes over ~7°.
+2. Scrub class: sparse 2–4.5 m bushes on steep (>14°), warm tan or olive photo where the forest score is near zero (NZQN tussock, KASE sage). It uses its own hash, so forest trees are unchanged.
+
+### Round 58 frames (CI run 43752698370, `2a7193a`), not sent for review
+
+- Pixel-identical to round 57b except NZQN (+4k trees).
+- **Cause:** both new rules used linear thresholds, but tree placement samples the mosaics as sRGB bytes ÷ 255. The ~0.04-linear shaded forest is ~0.22 in sRGB, and tan tussock is ~0.4–0.6.
+- **Fix (58b):** dark-forest rule at l < 0.30 sRGB; scrub at l 0.25–0.62.
+
+### Round 58b frames (CI run 43754171517, `99809e1`)
+
+Tree counts: LSZS 650k (capped), KASE 650k (capped), NZQN 116k (+70k scrub), KMRY 528k, KBFI 415k.
+
+- **LSZS high:** changed by only 0.27 levels. With the new dark-forest stands it hit the 650k cap, which thins by distance to the nearest focus, so exactly the far-slope trees were dropped.
+- **NZQN high:** sparse scrub on the left hills. The purple shadowed slope at lower left stays bare: its photo is blue-shifted in shadow.
+- **Round 58c:**
+  - Ultra cap 1,000,000 (~64 MB of instances; ultra has no budget).
+  - Scrub density 0.35 (was 0.22).
+
+## Round 58 review (r58c): high frames 7.25 (+0.05; NZQN high 6.75), finals 7.75
+
+- **NZQN:** the scrub adds bushes on the ridge and shore.
+- **LSZS:** the dark-forest fill is not visible.
+- **Most wrong patch:** the NZQN high left slope (x 0–260, y 280–720), smeared photo with a strong purple-blue cast.
+- **Round 59:**
+  - Blue-dominant land photo beyond 0.7–1.5 km is pulled 75 % toward a warm neutral at its luminance; the near band has done this since round 51.
+  - The photo-ground in-scatter keeps 85 % chroma by 6 km (was 100 % by 4 km).
+- **Round 59 result:** NZQN high unchanged. The purple slope is ~400 m out (inside the 0.7 km start) and has r ≈ b > g, so the `b > 0.9·r` test never fired.
+- **Round 59b:** the blue/purple neutral applies at any distance on land, and both tests use `b − max(0.85·r, g)`. NZQN high debug views 1/2/4 added to find the cause if it persists.
+- **Round 59b result:** NZQN high unchanged (purple fraction 0.45 → 0.446). Debug views 2 and 4 show the slope fully sunlit and lit mostly by direct sun, so the cause is not ambient. Debug view 1 shows the final albedo at ~(63, 66, 68) sRGB, a blue excess of ~0.003 linear, which the absolute 0.03 ramp scaled to ~3 % strength.
+- **Round 59c:** both blue tests are relative to the blue channel, `(b − max(0.85·r, g)) / b` over 0–0.06, with a 90 % pull beyond the near band.
+- **Round 59c result:** NZQN high slope purple fraction 0.55 → 0.43 (vs r58c), b down ~2 levels; KASE/LSZS within 0.4 levels (no orange rock). Debug view 1 still b > g in 70 % of slope pixels.
+- **Round 59d:** the magnified-photo pass (90 % toward the raw photo's 20 m mean) and the per-channel mid-ring ratio restore the cast after the neutral, so the neutral runs again after the detail passes.
+- **Round 59d result:** fixed. NZQN high slope purple fraction 0.55 → 0.003; mean (54.7, 57.2, 59.8) → (58.4, 57.3, 49.6), olive-brown; debug view 1 albedo b > g in 0 % of pixels (was 70 %). Every other frame within 0.8 levels mean; SkyWorld identical. Sent to the reviewer as round 59.
+
+## Round 59 review (r59d): high frames 7.30 (+0.05; NZQN high 7.0), finals 7.75, cockpit 7.25
+
+- **NZQN high:** purple gone; the slope is now a dark, flat brown-olive smear ~25–30 % darker than the tan hills above, still the most wrong patch.
+- **Round 60:**
+  - Neutralised blue/purple land lifted 35 % with tussock: tan to olive by a 40 m noise, ±15 % at 6/14 m.
+  - Scrub placement also accepts grey-to-purple photo (b 0.85–1.2·g, r ≥ 0.8·g, l 0.18–0.45 sRGB) on steep ground.
+  - SSAO floor 0.7 and near-cascade PCF taps 1.6 texels apart (KMRY/KBFI near-band lighting blotches).
+  - Pitched photo roofs 55 % toward a roofing palette (dark iron, charcoal, terracotta, red iron, pale sheet, slate green).
+- **Round 60 frames (d88bf8d):**
+  - NZQN high slope (x 0–300, y 300–720) went (69.8, 67.8, 58.5) → (75.6, 73.3, 60.7). NZQN has 200k trees.
+  - NZQN roofs now visibly mixed: terracotta, red and dark iron.
+  - KMRY/KBFI near band moved only 0.2–0.5 levels from the AO floor and PCF.
+  - SkyWorld unchanged. Sent to the reviewer.
+
+## Round 60 review (r60): high frames 7.40 (+0.10; NZQN high 7.5), finals 7.75, cockpit 7.25
+
+- **NZQN high:** the slope now reads as dry tussock with scattered scrub, still darker than the sunlit hills above. Roofs read as natural, not confetti; a few NZQN reds pop.
+- **SSAO floor and PCF:** no visible change.
+- **Most wrong patch:** KMRY final's near band (y 560–720), blotchy ochre and blue-grey ground.
+- **Round 61:**
+  - KMRY/KBFI final debug views 2 (sun visibility) and 4 (direct/ambient split), to tell tree shadows from tint.
+  - Tussock lift 1.35 → 1.55, with ridged 35 m gully lines (up to −18 %).
+  - Roof reds toned down and ~2/7 of the mix.
+  - High preset (desktop) trees to 4 km and a 180k cap (was 3 km and 75k).
+- **Round 61 frames (7ee211a):**
+  - GPU frame-time step green, with the high preset trees at 4 km.
+  - NZQN high slope (75.6, 73.3, 60.7) → (77.8, 75.4, 62.2).
+  - KMRY near-band diagnosis (y 560–720):
+    - Correlation of luminance with sun visibility is 0.47, and with albedo 0.45.
+    - Shadowed ground is 37 against 103 lit, and bluish (blue−red +4 against −15 lit).
+    - Debug view 1 shows the photo's baked tree shadows as dark smudges on lit ground with no 3D tree.
+  - Two causes, two fixes (round 61b):
+    - A warm sun-coloured fill of 12 % in cast shadows on photo ground.
+    - The near-band luminance hold tightened on the dark side (−8 % → −4 %).
+- **Round 61b result:**
+  - KMRY shadow/lit luminance 0.36 → 0.42; shadow blue−red +4.1 → 0.0.
+  - KBFI shadow/lit 0.37 → 0.41; shadow blue−red +4.5 → +1.8.
+  - Frame diffs 0.5–0.8 levels.
+  - The photo's baked smudges on KMRY's left third are still faintly visible.
+  - Sent to the reviewer as round 61.
+
+## Round 61 review (r61b): finals 7.79 (+0.04; KMRY final 7.75), high frames 7.40, cockpit 7.25
+
+- **KMRY near band:** acceptable at last. Shadows neutral and warm, and the campus reads as one dry-grass surface. Leave the left-third photo smudges.
+- **Most wrong patch:** KBFI final's lawns (x 200–1100, y 500–720), a 40–80 m cloudy mottle with no grass structure.
+- **Round 62:**
+  - Green ground leans on the 400 m mean (60 → 85 %), held within ±5 % at up to 92 %.
+  - 9 m mowing stripes (±3.5 %), one direction per ~200 m block, faded by pixel footprint.
+  - Ultra building radius 9.5 → 12 km, full detail 6.5 → 9 km (KMRY high's town at 2–6 km).
+  - High-preset frames to go to the reviewer.
+- **Round 62 frames (a42678d):**
+  - Ultra buildings: KMRY 24,882 → 43,350; KBFI → 131,548. GPU frame time and the soak both green.
+  - KBFI lawn green-pixel luminance spread barely moved (32.1 → 31.3); frames within 1.4 levels.
+  - The KBFI mottle is mostly hue (green against grey-green). Green ground took only 0.33 of the 400 m hue, and the near band ends at 1 km.
+- **Round 62b:**
+  - Green ground takes up to 0.85 of the 400 m hue.
+  - The near-band block (hue, hold, stripes) reaches ~1.5 km on green ground.
+- **Round 62b result:**
+  - KBFI lawns unchanged again: hue spread 6.23 → 6.18, luminance spread 31.3.
+  - KBFI debug views 1 and 3 show the mottle in the albedo on lawn-material ground.
+  - The lawn replacement (75 %) bounds luminance to ±12 % of the 30 m mean, which pulls the 400 m-held value back to the mottled 30 m mean.
+- **Round 62c:** the bound widened to ±35 %, so the held luminance survives.
+- **Round 62c result:**
+  - KBFI lawn pixels (debug view 3 lawn mask): albedo spread 20.1 → 19.2, large-scale spread 19.5 → 19.0.
+  - The final-frame spread is dominated by the perspective and haze gradient, so it is not a clean metric.
+  - Other frames within 0.5 levels.
+  - Sent to the reviewer as round 62 for a visual verdict instead of a fourth blind change.

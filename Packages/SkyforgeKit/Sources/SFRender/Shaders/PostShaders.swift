@@ -143,7 +143,9 @@ public enum PostShaders {
             float2 t = 1.0 / float2(ao.get_width(), ao.get_height());
             float a = 0.25 * (ao.sample(fx, in.uv + t * float2(-0.75, -0.25)).r + ao.sample(fx, in.uv + t * float2(0.75, 0.25)).r
                             + ao.sample(fx, in.uv + t * float2(-0.25, 0.75)).r + ao.sample(fx, in.uv + t * float2(0.25, -0.75)).r);
-            c *= mix(1.0, a, aoStrength.x);
+            // Floor 0.7 (round-59 review: KMRY's and KBFI's near band read blotchy around trees and buildings;
+            // debug view 1 showed even albedo there, so the darkening was lighting).
+            c *= mix(1.0, max(a, 0.7), aoStrength.x);
         }
         if (bp.p.z > 0.0) {
             float3 b = bloom.sample(fx, in.uv).rgb * bp.p.w;    // p.w = 1 / number of summed levels

@@ -164,11 +164,16 @@ import SFInstruments
             // tells height terracing apart; view 5 (imagery metres per texel against pixel footprint) a coarse layer.
             try debugFrames("KASE_high", camera: high.chase(distance: 24, height: 6), aircraft: high.position, attitude: high.bodyToENU, modes: [1, 2, 5], roi: (800, 480, 1120, 640))
         }
+        if ident == "NZQN" {
+            // Round-58 review: the shaded left slope renders purple-blue. View 1 (albedo) against view 2 (shading terms)
+            // says whether the cast is in the photo or in the sky light.
+            try debugFrames("NZQN_high", camera: high.chase(distance: 24, height: 6), aircraft: high.position, attitude: high.bodyToENU, modes: [1, 2, 4], roi: (0, 260, 400, 720))
+        }
         if ident == "KMRY" || ident == "KBFI" {
             r.setLighting(LightingSetup.physicalPreset(.midday, azimuthDegrees: 200, cameraHeightMetres: cam.position.z))
             try debugFrames("\(ident)_final", camera: WorldCamera(position: cam.position, target: cam.target),
                             aircraft: session.positionENU, attitude: body,
-                            modes: [1, 3], roi: (0, 540, 1280, 720))
+                            modes: [1, 2, 3, 4], roi: (0, 540, 1280, 720))   // 2/4: sun visibility and direct/ambient split (round-60 review: are the blotches tree shadows?)
         }
 
         // 4. Cockpit on the final (one airport is enough to review the interior).

@@ -63,7 +63,7 @@ public struct RealWorldDetail: Sendable, Equatable {
     }()
     public static let desktop: RealWorldDetail = {
         var d = RealWorldDetail(nearHalf: 3_200, nearStep: 12, midHalf: 12_000, midStep: 48, farHalf: 40_000, farStep: 240,
-                                imageryNearSize: 4_096, imageryFarSize: 2_048, treeRadius: 3_000, maxTrees: 75_000,
+                                imageryNearSize: 4_096, imageryFarSize: 2_048, treeRadius: 4_000, maxTrees: 180_000,   // 4 km (round-60 review: a reduced ultra ring at high)
                                 imageryDetailHalf: 800, imageryDetailSize: 4_096)
         d.imageryMidSize = 4_096; d.buildingRadius = 9_500; d.buildingFullRadius = 5_000
         return d
@@ -72,9 +72,9 @@ public struct RealWorldDetail: Sendable, Equatable {
     /// at this tier (review frames, photo mode, fast desktop GPUs).
     public static let ultra: RealWorldDetail = {
         var d = RealWorldDetail(nearHalf: 3_200, nearStep: 8, midHalf: 12_000, midStep: 32, farHalf: 40_000, farStep: 160,
-                                imageryNearSize: 4_096, imageryFarSize: 2_048, treeRadius: 4_200, maxTrees: 260_000,
+                                imageryNearSize: 4_096, imageryFarSize: 2_048, treeRadius: 6_500, maxTrees: 1_000_000,
                                 imageryDetailHalf: 800, imageryDetailSize: 4_096)
-        d.imageryMidSize = 4_096; d.buildingRadius = 9_500; d.buildingFullRadius = 6_500
+        d.imageryMidSize = 4_096; d.buildingRadius = 12_000; d.buildingFullRadius = 9_000   // round-61 review: KMRY high town 2–6 km sparse
         return d
     }()
 }
@@ -248,11 +248,15 @@ public struct RealWorldRegion: FlightWorld {
             if !list.isEmpty { osm = OSMData(buildings: list, roads: osm?.roads ?? []) }
         }
         if bundledBuildings, osm?.roads.isEmpty != false, let packed = Showcase.roadData(for: ident) {
-            // Bundled streets: every class near the field, through roads only farther out.
+            // Bundled streets: every class near the field and under the final approach's foreground (1.5 km around a
+            // point 1.5 km before the threshold, the start view), through roads only farther out. Without the second
+            // disc the phone and tablet tiers (1.5 / 2.1 km) dropped KMRY's residential streets in the final view,
+            // and with them the street ribbons and the shader's road-density suburb score (preset frames, round 54).
             let full = detail.buildingFullRadius * 0.6, far = detail.buildingRadius
             let list = (try? RoadPack.parse(packed, origin: origin) { cls, c in
                 let d = (c * c).sum().squareRoot()
-                if d < full { return true }
+                let a = c - detailCentre
+                if d < full || (a * a).sum() < 1_500 * 1_500 { return true }
                 switch cls {
                 case .service, .track, .residential, .livingStreet, .unclassified: return false
                 default: return d < far
@@ -355,6 +359,24 @@ public struct RealWorldRegion: FlightWorld {
         let m = ground.near, x0 = m.centre.x - m.halfExtent, y1 = m.centre.y + m.halfExtent
         let px = 2 * m.halfExtent / Double(size)
         var out = [Float](repeating: 0, count: size * size)
+        // OSM building footprints too (as discs of their area), so the shader's road-density suburb score also sees
+        // built-up ground with few streets: KMRY's campus kept its yard blotches with streets alone (round 54).
+        for b in buildings where b.footprint.count >= 3 {
+            let xs = b.footprint.map(\.x), ys = b.footprint.map(\.y)
+            guard let bx0 = xs.min(), let bx1 = xs.max(), let by0 = ys.min(), let by1 = ys.max() else { continue }
+            let c = SIMD2((bx0 + bx1) / 2, (by0 + by1) / 2)
+            let rad = max(3, 0.5 * min(bx1 - bx0, by1 - by0))
+            let i0 = max(0, Int(((c.x - rad - x0) / px).rounded(.down))), i1 = min(size - 1, Int(((c.x + rad - x0) / px).rounded(.up)))
+            let j0 = max(0, Int(((y1 - c.y - rad) / px).rounded(.down))), j1 = min(size - 1, Int(((y1 - c.y + rad) / px).rounded(.up)))
+            if i0 > i1 || j0 > j1 { continue }
+            for j in j0...j1 {
+                let y = y1 - (Double(j) + 0.5) * px
+                for i in i0...i1 {
+                    let d = SIMD2(x0 + (Double(i) + 0.5) * px, y) - c
+                    if (d * d).sum() <= rad * rad { out[j * size + i] = 1 }
+                }
+            }
+        }
         for r in roads where r.points.count >= 2 {
             let inner = r.widthMetres / 2 + margin, outer = inner + fade
             for k in 0..<(r.points.count - 1) {
@@ -620,7 +642,12 @@ public struct RealWorldRegion: FlightWorld {
             guard let list = footprints[SIMD2(Int((x / 40).rounded(.down)), Int((y / 40).rounded(.down)))] else { return false }
             return list.contains { OSMGeometry.contains($0, SIMD2(x, y)) }
         }
-        let near = ground.near
+        let nearMosaic = ground.near, midMosaic = midImagery
+        // Beyond the near square the mid layer (~7 m/px at ultra) still classifies forest stands, so 3D trees reach the
+        // slopes the high views look at (round 55: the LSZS high slope 3–5 km out was smooth magnified photo).
+        struct PhotoLookup { let a: ImageryMosaic; let b: ImageryMosaic?
+            func sample(_ x: Double, _ y: Double) -> SIMD3<Float>? { a.sample(x, y) ?? b?.sample(x, y) } }
+        let near = PhotoLookup(a: nearMosaic, b: midMosaic)
         // Stands: low-frequency noise (~300 m) sets the conifer share, brightness and height of a patch of
         // forest, so a valley is darker conifer stands beside lighter broadleaf ones instead of one uniform
         // texture from the camera to the far slope (art round 18, LSZS).
@@ -669,21 +696,54 @@ public struct RealWorldRegion: FlightWorld {
                 // rail bed turns blue (art round 8: trees on roads and lots at KBFI).
                 // (Round 9: green ≥ blue still let faintly green asphalt shadow through; now green clearly above
                 // blue and at least 0.9 × red.)
-                let canopy = max(lc.forest, ss(0.30, 0.15, l) * ss(-0.02, 0.01, c.y - 0.9 * c.x) * ss(0.015, 0.04, c.y - c.z) * (1 - lc.water))
-                if Hash.unit(rng.next()) > Double(canopy) * 0.9 || g.water > 0.3 { continue }
+                var canopy = max(lc.forest, ss(0.30, 0.15, l) * ss(-0.02, 0.01, c.y - 0.9 * c.x) * ss(0.015, 0.04, c.y - c.z) * (1 - lc.water))
+                // Shaded forest on far slopes (mid layer, ultra): ~0.04 photo whose colour margins vanish in the dark, so
+                // stands appeared only where the photo was lighter (round-57 review, LSZS high). Dark, not blue, on a slope.
+                // (sRGB samples: ~0.04 linear forest is ~0.22 here.)
+                if detail.maxTrees > 200_000, nearMosaic.sample(px, py) == nil, l < 0.30, c.y >= 0.95 * c.z, lc.water < 0.2 {
+                    let hx = height(px + 10, py) - height(px - 10, py), hy = height(px, py + 10) - height(px, py - 10)
+                    let slope = Float((hx * hx + hy * hy).squareRoot() / 20)
+                    canopy = max(canopy, 0.75 * ss(0.12, 0.25, slope) * ss(0.30, 0.24, l))
+                }
+                // Scrub: warm tan or olive photo (tussock, sage, matagouri) on steep ground, where the forest score is
+                // near zero, takes sparse low bushes (round-56 review: NZQN's hills had 41k trees and stayed smeared
+                // photo scrub). Its own hash, so the forest trees' random stream is untouched.
+                var scrub = false
+                if detail.maxTrees > 200_000, canopy < 0.2, g.water < 0.1 {   // ultra only: scrub must not take the lower tiers' tree budget
+                    let hx = height(px + 10, py) - height(px - 10, py), hy = height(px, py + 10) - height(px, py - 10)
+                    let slope = (hx * hx + hy * hy).squareRoot() / 20
+                    let warm = c.x >= 0.82 * c.y && c.z < 0.85 * c.y && l > 0.25 && l < 0.62   // sRGB: tan tussock ~0.4–0.6
+                        // Shaded tussock photographs grey to purple (round-59 review, NZQN high's left slope; the shader
+                        // neutralises it to tan, so it takes scrub too).
+                        || (c.z >= 0.85 * c.y && c.z <= 1.2 * c.y && c.x >= 0.8 * c.y && l > 0.18 && l < 0.45)
+                    let hs = Hash.unit(Hash.int(Int((x / cell).rounded()), Int((y / cell).rounded()), seed: 0x5C2B))
+                    scrub = warm && slope > 0.25 && hs < 0.35 * Double(ss(0.25, 0.45, Float(slope)))
+                }
+                if !scrub && (Hash.unit(rng.next()) > Double(canopy) * 0.9 || g.water > 0.3) { continue }
+                // Outer 15 % of the disc: density fades with a ~400 m noisy edge, not a hard ring (round-56 review).
+                if r > 3_500 {
+                    let dc = (x * x + y * y).squareRoot() + 400 * standNoise.fbm(px / 700 - 41.0, py / 700 + 13.0, octaves: 2)
+                    // Its own hash, so the per-tree random stream (and every tree inside the ring) stays as it was.
+                    if Hash.unit(Hash.int(Int((x / cell).rounded()), Int((y / cell).rounded()), seed: 0x7EE6)) > Double(ss(Float(r), Float(r * 0.85), Float(dc))) && !(((x - f1.x) * (x - f1.x) + (y - f1.y) * (y - f1.y)) <= r1 * r1) { continue }
+                }
                 if nearRunway(px, py) || inBuilding(px, py) { continue }
                 // Forest clearings (meadows) stay open but for the odd lone tree; the shader paints them as meadow.
                 if FieldPattern.clearing(Float(px), Float(py)) > 0.4 && Hash.unit(rng.next()) > 0.06 { continue }
                 let sA = standNoise.fbm(px / 320, py / 320, octaves: 2), sB = standNoise.fbm(px / 210 + 17.3, py / 210 - 9.1, octaves: 2)
                 let coniferShare = 0.06 + 0.88 * Double(ss(-0.05, 0.05, Float(sA)))   // crisp stand edges (round 19: blended into one mass; round 25: sharper)
-                let h = 9 + 10 * (0.5 * Hash.unit(rng.next()) + 0.5 * Double(ss(-0.4, 0.4, Float(sB))))   // half per stand
-                let conifer = Hash.unit(rng.next()) < coniferShare
+                var h = 9 + 10 * (0.5 * Hash.unit(rng.next()) + 0.5 * Double(ss(-0.4, 0.4, Float(sB))))   // half per stand
+                var conifer = Hash.unit(rng.next()) < coniferShare
+                if scrub { h = 2 + 2.5 * Hash.unit(rng.next()); conifer = false }
                 var tint = g.albedo * 1.9 * Float(0.85 + 0.3 * Hash.unit(rng.next()))
                 // Per-tree hue: ±4 % on the red/green balance, so neighbouring crowns differ (round 11).
                 tint.x *= Float(0.96 + 0.08 * Hash.unit(rng.next()))
                 // Foliage albedo floor (hue kept): dark Sentinel-2 forest gave near-black crowns (LSZS).
                 let tl = 0.2126 * tint.x + 0.7152 * tint.y + 0.0722 * tint.z
-                if tl < 0.10 { tint *= 0.10 / max(tl, 0.002) }   // 0.10 (0.08): LSZS forest near-black under the 0.45 exposure (round 22)   // (0.05 left dark crowns grey after the tone map)
+                // Trees placed from the mid layer (beyond the near square) stand on far photo forest at ~0.04: a 0.10 floor
+                // made them read as lime clumps pasted on a dark slope (round-56 review, LSZS high); 0.065 there.
+                let fromMid = nearMosaic.sample(px, py) == nil
+                let floorT: Float = fromMid ? 0.065 : 0.10
+                if tl < floorT { tint *= floorT / max(tl, 0.002) }   // 0.10 (0.08): LSZS forest near-black under the 0.45 exposure (round 22)   // (0.05 left dark crowns grey after the tone map)
                 // Foliage hue range in linear albedo: blue ≤ 0.55 × green, red 0.62–0.85 × green, so saturation is
                 // at least ~0.4 and survives the tone map. Shaded photo canopy carries the sky's blue (teal crowns,
                 // round 8); red up to 1.05 × green turned alpine forest khaki (round 9); a 0.25 floor could not

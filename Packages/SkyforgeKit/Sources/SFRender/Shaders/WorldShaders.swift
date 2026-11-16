@@ -225,8 +225,8 @@ public enum WorldShaders {
     constexpr sampler shadowCmp(filter::linear, address::clamp_to_edge, compare_func::less_equal);
 
     /// PCF (hardware comparison, (2r+1)² taps) in one cascade; 1 = lit.
-    static float shadowTaps(depth2d_array<float> sm, float2 uv, float z, uint layer, int r) {
-        float2 ts = 1.0 / float2(sm.get_width(), sm.get_height());
+    static float shadowTaps(depth2d_array<float> sm, float2 uv, float z, uint layer, int r, float spacing = 1.0) {
+        float2 ts = spacing / float2(sm.get_width(), sm.get_height());
         float lit = 0.0;
         for (int y = -r; y <= r; y++) for (int x = -r; x <= r; x++)
             lit += sm.sample_compare(shadowCmp, uv + float2(x, y) * ts, layer, z);
@@ -252,7 +252,9 @@ public enum WorldShaders {
             float2 uv = lp.xy * float2(0.5, -0.5) + 0.5;
             if (all(uv > 0.0) && all(uv < 1.0)) {
                 float bias = texel * (0.8 + min(16.0, tanT * 1.4)) / range;   // low-sun acne (art review)
-                vis = shadowTaps(sm, uv, lp.z - bias, uint(c), c == 3 ? min(r, 1) : r);
+                // Near cascade taps 1.6 texels apart (round-59 review: tree and building shadows on KMRY's near band
+                // had hard, blotchy edges; a wider kernel at the same tap count).
+                vis = shadowTaps(sm, uv, lp.z - bias, uint(c), c == 3 ? min(r, 1) : r, c == 1 ? 1.6 : 1.0);
             }
         }
         if (u.cascadeSplits.w > 0.5) {
@@ -1107,17 +1109,21 @@ public enum WorldShaders {
                     float2 cuv; bool cin; float cw0, cw1;
                     float3 m100 = photoAlbedo(photoColour(u, imgNear, imgMid, imgFar, imgDetail, photoW, dwx * lsc, dwy * lsc, cuv, cin, cw0, cw1));
                     float f100 = smoothstep(0.0, 0.02, m100.g - max(m100.r, m100.b)) * smoothstep(0.14, 0.05, dot(m100, float3(0.2126, 0.7152, 0.0722)));
-                    clearW = cmask * max(imgForest, f100) * (1.0 - saturate((wm - 0.2) / 0.2)) * (1.0 - roadNear);
+                    // Saturating forest gate: a partial 100 m forest score left most of a clearing half photo, half meadow,
+                    // with a bright wedge only where the score reached 1 (round 54 ratio map, LSZS final).
+                    clearW = cmask * smoothstep(0.1, 0.45, max(imgForest, f100)) * (1.0 - saturate((wm - 0.2) / 0.2)) * (1.0 - roadNear);
                     if (clearW > 0.0) {
                         // Procedural grass of its own: a sunlit warm green (~0.18 luminance), ±10 % grazing patches at
                         // ~30 m and finer tufts, and a 15 % darker band just inside the forest edge (round 52: a flat,
                         // dark, uniform green).
-                        float patches = groundNoise(photoW + 5.0, 30.0), tufts = groundNoise(photoW - 21.0, 7.0);
+                        // ±18 % grazing patches at ~25 m and ~60 m (round-54 review: one flat fill).
+                        float patches = 0.65 * groundNoise(photoW + 5.0, 25.0) + 0.35 * groundNoise(photoW - 77.0, 60.0), tufts = groundNoise(photoW - 21.0, 7.0);
                         // ~0.12 luminance (was 0.18) and less saturated: about 25 % above the surrounding pasture, which the
                         // round-53 LSZS final put at ~0.10; at 0.18 a clearing edge over open ground read as a lime wedge.
-                        float3 meadow = float3(0.105, 0.135, 0.062) * (1.0 + 0.10 * patches + 0.05 * tufts);
+                        // ~0.145 luminance: the whole clearing about 25 % above its round-53 output, evenly (round 54).
+                        float3 meadow = float3(0.125, 0.160, 0.070) * (1.0 + 0.18 * patches + 0.05 * tufts);
                         meadow *= mix(float3(1.0), float3(1.06, 1.02, 0.86), saturate(patches) * 0.5);   // drier, sunlit patches
-                        meadow *= 1.0 - 0.15 * (1.0 - smoothstep(0.35, 0.8, cmask));                     // forest-edge shade
+                        meadow *= 1.0 - 0.22 * (1.0 - smoothstep(0.30, 0.55, cmask));                    // narrower, darker forest-edge band
                         albedo = mix(albedo, meadow, clearW);
                         imgForest *= 1.0 - clearW;
                     }
@@ -1172,10 +1178,10 @@ public enum WorldShaders {
                 // the lawn replacement moved 0.16 levels; the blotches classify as pavement). Blue-dominant ground
                 // becomes a warm grey at its luminance, and half the chroma comes from a ~120 m mean (a fixed cap
                 // would grey linear grass, whose chroma is ~0.7), a quarter on green ground.
-                if (nb > 0.0) {
+                if (max(nb, gm * (1.0 - smoothstep(900.0, 1600.0, dist))) > 0.0) {   // green ground to ~1.5 km (round 62)
                     float3 lw = float3(0.2126, 0.7152, 0.0722);
                     float lc = max(dot(lifted, lw), 1e-4);
-                    float blue = smoothstep(0.0, 0.025, lifted.b - max(lifted.r, lifted.g));
+                    float blue = smoothstep(0.0, 0.06, (lifted.b - max(lifted.r * 0.85, lifted.g)) / max(lifted.b, 1e-3));   // purple too (round 59); relative (59c)
                     float3 neutral = lc * float3(1.04, 1.0, 0.86) / dot(float3(1.04, 1.0, 0.86), lw);
                     lifted = mix(lifted, neutral, 0.85 * blue * nb);
                     float2 luv4; bool lin4; float lw4a, lw4b;
@@ -1184,18 +1190,47 @@ public enum WorldShaders {
                     float l4 = max(dot(lm4, lw), 1e-3);
                     lm4 = mix(lm4, l4 * float3(1.04, 1.0, 0.86) / dot(float3(1.04, 1.0, 0.86), lw),
                               0.85 * smoothstep(0.0, 0.025, lm4.b - max(lm4.r, lm4.g)));   // nor a blue cast from the wide mean
-                    // Forest score of the wide mean: pasture beside a forest is not pulled toward the forest's dark tone.
-                    float f4 = smoothstep(0.0, 0.02, lm4.g - max(lm4.r, lm4.b)) * smoothstep(0.14, 0.05, l4);
-                    lifted = mix(lifted, lm4 * (lc / l4), mix(0.65 * (1.0 - 0.5 * gm), 0.9, burb) * nb);
+                    // Green ground: hue mostly from the ~400 m mean, out to ~1.5 km (round 62, KBFI final: the lawn mottle is green
+                    // against grey-green 40–80 m patches, a chroma mottle; green took only 0.33 of the wide hue, and nb ends at 1 km).
+                    float nbG = max(nb, gm * (1.0 - smoothstep(900.0, 1600.0, dist)));
+                    lifted = mix(lifted, lm4 * (lc / l4), mix(0.65 * (1.0 - 0.5 * gm), 0.9, max(burb, 0.85 * gm)) * nbG);
                     // Luminance too (round 52: the blotches left are luminance cells): natural ground held within ±8 % of a
                     // 30 m / 400 m blended mean, 80 % on green ground, 50 % elsewhere; procedural octaves and 3D shadows
                     // carry the brightness detail.
                     float lcl = max(dot(lifted, lw), 1e-4);
-                    float tgt = mix(meanL, l4, 0.6 * (1.0 - f4));
-                    float held = clamp(lcl, tgt * 0.92, tgt * 1.08);
-                    lifted *= mix(1.0, held / lcl, nb * max(mix(0.5, 0.8, gm), 0.9 * burb));
+                    // Not gated by the wide mean's forest score (round 54: LSZS's dark-green pasture classes as forest at
+                    // 400 m too, so the gate removed its lift and the pasture fell from 0.050 to 0.033 in output).
+                    // Green ground leans on the ~400 m mean (round-61 review, KBFI: 40–80 m cloudy lawn mottle, wider than the
+                    // 30 m window) and is held within ±5 % at up to 92 %.
+                    float tgt = mix(meanL, l4, mix(0.6, 0.85, gm));
+                    // Darker side held at −4 % (round 61, KMRY debug view 1: the photo's baked tree shadows, 20–40 m dark smudges
+                    // with no 3D tree on them, survived the ±8 % hold).
+                    float held = clamp(lcl, tgt * mix(0.96, 0.95, gm), tgt * mix(1.08, 1.05, gm));
+                    lifted *= mix(1.0, held / lcl, nbG * max(mix(0.5, 0.92, gm), 0.9 * burb));
+                    // Mowing stripes on lawns: 9 m bands, ±3.5 %, one direction per ~200 m block, faded as the pixel
+                    // footprint nears the band width (no moiré).
+                    float2 blk = floor(photoW / 200.0) * 200.0;
+                    float ang = 3.14159 * (0.5 + 0.5 * groundNoise(blk + 71.0, 50.0));
+                    float st = sin(dot(photoW, float2(cos(ang), sin(ang))) * (6.28318 / 9.0));
+                    float stF = saturate(1.0 - (length(dwx) + length(dwy)) / 4.5);
+                    lifted *= 1.0 + 0.035 * st * gm * nb * stF;
                 }
                 albedo = mix(albedo, lifted, ltW);
+            }
+            // Beyond the near band: blue-dominant land photo (shaded slopes photograph sky-blue/purple; round-58 review,
+            // NZQN high's left slope) toward a warm neutral at its luminance, as the near band does since round 51.
+            {
+                // At any distance, and purple too (round 59: NZQN high's slope is ~400 m out and red ≈ blue > green).
+                float farB = (1.0 - saturate((wm - 0.2) / 0.2)) * (1.0 - rwCover);
+                // Relative to blue (round 59c: the slope's albedo is ~(63, 66, 68) sRGB, an excess of ~0.003 linear, so an
+                // absolute 0.03 ramp gave ~3 % strength; the grade then spread it into purple patches).
+                float blueF = smoothstep(0.0, 0.06, (albedo.b - max(albedo.r * 0.85, albedo.g)) / max(albedo.b, 1e-3));
+                if (farB * blueF > 0.0) {
+                    float3 lw3 = float3(0.2126, 0.7152, 0.0722);
+                    float lb = dot(albedo, lw3);
+                    float3 warm = lb * float3(1.02, 1.0, 0.80) / dot(float3(1.02, 1.0, 0.80), lw3);
+                    albedo = mix(albedo, warm, 0.9 * farB * blueF);
+                }
             }
             float alT = dot(albedo, float3(0.2126, 0.7152, 0.0722));
             // Out to ~5 km at half strength beyond 1.2 km: dark photo forest on shaded mid-ring slopes stayed a
@@ -1251,7 +1286,9 @@ public enum WorldShaders {
                         float mL = max(dot(ltMean, lumW3), 1e-3), pL = max(dot(albedo, lumW3), 1e-4);
                         // Hue from the already-held albedo, not the 30 m mean (round 53: the mean is the blotch's own colour).
                         float3 hue = mix(albedo / pL, float3(0.80, 1.10, 0.62), (0.35 + 0.25 * burb) * k.grass / max(k.grass + k.dry, 1e-3));
-                        albedo = mix(albedo, hue * (mL * clamp(pL / mL, 0.88, 1.12)), lawnW);
+                        // Luminance: the held albedo's own, bounded at ±35 % of the 30 m mean (round 62b, KBFI debug view 1: a
+                        // ±12 % bound pulled the ~400 m-held lawn back to the 30 m mean, whose 40–80 m cloudy mottle returned at 75 %).
+                        albedo = mix(albedo, hue * clamp(pL, mL * 0.65, mL * 1.35), lawnW);
                     }
                 }
                 albedo *= 1.0 + (f - 1.0) * groundMat;
@@ -1320,11 +1357,11 @@ public enum WorldShaders {
                 float canW = imgForest * smoothstep(0.075, 0.045, cpl) * smoothstep(900.0, 1600.0, dist) * (1.0 - smoothstep(8000.0, 12000.0, dist))
                            * (1.0 - saturate((wm - 0.2) / 0.2)) * (1.0 - rwCover) * (1.0 - roadNear);
                 float fpc = sqrt(length(dwx) * length(dwy));
-                if (canW > 0.01 && fpc < 20.0) {
+                if (canW > 0.01 && fpc < 40.0) {
                     float gapSum = 0.0, domeSum = 0.0;
                     for (int oct = 0; oct < 2; oct++) {
-                        float S = oct == 0 ? 10.0 : 28.0;
-                        float fade = saturate(1.0 - fpc * 1.5 / S) * (oct == 0 ? 1.0 : 0.6);
+                        float S = oct == 0 ? 18.0 : 55.0;   // crown clusters (10 / 28 m were sub-pixel at the high camera, round 54)
+                        float fade = saturate(1.0 - fpc * 1.2 / S) * (oct == 0 ? 1.0 : 0.8);
                         if (fade <= 0.0) continue;
                         float2 q = photoW / S;
                         int2 b0 = int2(floor(q - 0.5));
@@ -1347,7 +1384,7 @@ public enum WorldShaders {
                         // tilt alone changed nothing): crown tops +10 %, crown rims −10 %.
                         domeSum += (saturate(bestH / bestR) - 0.5) * 0.2 * fade * onC;
                     }
-                    albedo *= (1.0 - 0.28 * saturate(gapSum) * canW) * (1.0 + domeSum * canW);
+                    albedo *= (1.0 - 0.38 * saturate(gapSum) * canW) * (1.0 + 1.5 * domeSum * canW);
                 }
             }
             {
@@ -1427,6 +1464,27 @@ public enum WorldShaders {
                     float spacing = 3.0 + 3.0 * fp_unit(ph >> 8);
                     float rows = cos(dot(photoW, rd) / spacing * 6.2831853) * smoothstep(8.0, 14.0, spacing / max(fpM, 1e-3));
                     albedo *= 1.0 + 0.10 * rows * crop;
+                }
+            }
+            {
+                // The blue/purple neutral again after the detail passes (round 59d: debug view 1 still showed NZQN
+                // high's slope b > g in 70 % of pixels; the magnified-photo pass mixes 90 % toward the raw photo's
+                // 20 m mean and the mid-ring ratio is per channel, so both restored the cast).
+                float farB2 = (1.0 - saturate((wm - 0.2) / 0.2)) * (1.0 - rwCover);
+                float blueF2 = smoothstep(0.0, 0.06, (albedo.b - max(albedo.r * 0.85, albedo.g)) / max(albedo.b, 1e-3));
+                if (farB2 * blueF2 > 0.0) {
+                    float3 lw3 = float3(0.2126, 0.7152, 0.0722);
+                    float lb = dot(albedo, lw3);
+                    // Tussock (round-59 review: the neutralised slope read as a dark, flat smear ~25–30 % darker than the
+                    // sunlit tan hills above; the blue photo there is shaded ground). Lifted 35 %, tan to olive by a
+                    // 40 m noise, ±15 % at 6/14 m, all luminance-neutral about the lift.
+                    float tn = 0.6 * groundNoise(photoW + 17.0, 6.0) + 0.4 * groundNoise(photoW - 59.0, 14.0);
+                    float3 hue = mix(float3(0.95, 1.0, 0.72), float3(1.08, 1.0, 0.78), 0.5 + 0.5 * groundNoise(photoW + 233.0, 40.0));
+                    // 1.55 (round-60 review: still read as an overcast patch below the sunlit tan hills), with dark
+                    // gully lines (ridged 35 m noise, up to −18 %).
+                    float gully = pow(1.0 - abs(groundNoise(photoW - 401.0, 35.0)), 6.0);
+                    float3 tus = lb * 1.55 * (1.0 + 0.15 * tn) * (1.0 - 0.18 * gully) * hue / dot(hue, lw3);
+                    albedo = mix(albedo, tus, 0.9 * farB2 * blueF2);
                 }
             }
             if (saturate((wm - 0.35) / 0.25) > 0.5) {
@@ -1690,6 +1748,9 @@ public enum WorldShaders {
         if (m == 7.0 && in.material == 8.0) {
             float ambL = dot(ambient, float3(0.2126, 0.7152, 0.0722));
             ambient = mix(float3(ambL), ambient, 0.55);
+            // Warm fill in cast shadows (round 61, KMRY final debug view 2: the ochre/blue-grey blotches are the 3D
+            // trees' shadows, ~0.36 of lit luminance and bluish; sunlit lawn and canopy bounce light into them).
+            ambient += u.sunColour.rgb * float3(1.0, 0.95, 0.82) * (0.12 * saturate(1.0 - vis) * saturate(toSun.z));
         }
         if (u.quality.y > 0.0) {
             // Cabin interior: lit by the sky and the sunlit ground through the windows, from every side, and
@@ -1953,7 +2014,7 @@ public enum WorldShaders {
         // desaturated, KMRY's blue near-band fraction only fell from 6.1 % to 4.5 %).
         if (m == 7.0 && in.material == 8.0) {
             float lL = dot(L, float3(0.2126, 0.7152, 0.0722));
-            L = mix(float3(lL), L, mix(0.6, 1.0, smoothstep(1500.0, 4000.0, dist)));
+            L = mix(float3(lL), L, mix(0.6, 0.85, smoothstep(1500.0, 6000.0, dist)));   // 0.85 far (was 1.0): purple shaded slopes, round 58
         }
         col = col * T + L;
         {
