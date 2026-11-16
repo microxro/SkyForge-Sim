@@ -44,8 +44,9 @@ LAST_UPDATE: 2026-11-15T20:30:00Z
     | 58 | 7.75 | 7.25 |
     | 59 | 7.75 | 7.25 |
     | 60 | 7.75 | 7.25 |
+    | 61 | 7.79 | 7.25 |
 
-    Best scene: SkyWorld 8.25 (round 54, village beside the approach); LSZS final 8.0 (round 54, even clearing meadow); KASE final 7.75. Rounds 27 and 28 were regression checks only.
+    KMRY final 7.75 at round 61 (near-band shadows warm-filled). Best scene: SkyWorld 8.25 (round 54, village beside the approach); LSZS final 8.0 (round 54, even clearing meadow); KASE final 7.75. Rounds 27 and 28 were regression checks only.
   - What landed:
     - One roof colour per building.
     - NaN-safe local tone compression.

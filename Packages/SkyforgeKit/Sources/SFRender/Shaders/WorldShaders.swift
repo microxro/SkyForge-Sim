@@ -1197,11 +1197,20 @@ public enum WorldShaders {
                     float lcl = max(dot(lifted, lw), 1e-4);
                     // Not gated by the wide mean's forest score (round 54: LSZS's dark-green pasture classes as forest at
                     // 400 m too, so the gate removed its lift and the pasture fell from 0.050 to 0.033 in output).
-                    float tgt = mix(meanL, l4, 0.6);
+                    // Green ground leans on the ~400 m mean (round-61 review, KBFI: 40–80 m cloudy lawn mottle, wider than the
+                    // 30 m window) and is held within ±5 % at up to 92 %.
+                    float tgt = mix(meanL, l4, mix(0.6, 0.85, gm));
                     // Darker side held at −4 % (round 61, KMRY debug view 1: the photo's baked tree shadows, 20–40 m dark smudges
                     // with no 3D tree on them, survived the ±8 % hold).
-                    float held = clamp(lcl, tgt * 0.96, tgt * 1.08);
-                    lifted *= mix(1.0, held / lcl, nb * max(mix(0.5, 0.8, gm), 0.9 * burb));
+                    float held = clamp(lcl, tgt * mix(0.96, 0.95, gm), tgt * mix(1.08, 1.05, gm));
+                    lifted *= mix(1.0, held / lcl, nb * max(mix(0.5, 0.92, gm), 0.9 * burb));
+                    // Mowing stripes on lawns: 9 m bands, ±3.5 %, one direction per ~200 m block, faded as the pixel
+                    // footprint nears the band width (no moiré).
+                    float2 blk = floor(photoW / 200.0) * 200.0;
+                    float ang = 3.14159 * (0.5 + 0.5 * groundNoise(blk + 71.0, 50.0));
+                    float st = sin(dot(photoW, float2(cos(ang), sin(ang))) * (6.28318 / 9.0));
+                    float stF = saturate(1.0 - (length(dwx) + length(dwy)) / 4.5);
+                    lifted *= 1.0 + 0.035 * st * gm * nb * stF;
                 }
                 albedo = mix(albedo, lifted, ltW);
             }

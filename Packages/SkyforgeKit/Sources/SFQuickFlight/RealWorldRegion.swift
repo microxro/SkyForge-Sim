@@ -74,7 +74,7 @@ public struct RealWorldDetail: Sendable, Equatable {
         var d = RealWorldDetail(nearHalf: 3_200, nearStep: 8, midHalf: 12_000, midStep: 32, farHalf: 40_000, farStep: 160,
                                 imageryNearSize: 4_096, imageryFarSize: 2_048, treeRadius: 6_500, maxTrees: 1_000_000,
                                 imageryDetailHalf: 800, imageryDetailSize: 4_096)
-        d.imageryMidSize = 4_096; d.buildingRadius = 9_500; d.buildingFullRadius = 6_500
+        d.imageryMidSize = 4_096; d.buildingRadius = 12_000; d.buildingFullRadius = 9_000   // round-61 review: KMRY high town 2–6 km sparse
         return d
     }()
 }

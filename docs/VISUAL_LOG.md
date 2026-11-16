@@ -1680,3 +1680,13 @@ Tree counts: LSZS 650k (capped), KASE 650k (capped), NZQN 116k (+70k scrub), KMR
   - Frame diffs 0.5–0.8 levels.
   - The photo's baked smudges on KMRY's left third are still faintly visible.
   - Sent to the reviewer as round 61.
+
+## Round 61 review (r61b): finals 7.79 (+0.04; KMRY final 7.75), high frames 7.40, cockpit 7.25
+
+- **KMRY near band:** acceptable at last. Shadows neutral and warm, and the campus reads as one dry-grass surface. Leave the left-third photo smudges.
+- **Most wrong patch:** KBFI final's lawns (x 200–1100, y 500–720), a 40–80 m cloudy mottle with no grass structure.
+- **Round 62:**
+  - Green ground leans on the 400 m mean (60 → 85 %), held within ±5 % at up to 92 %.
+  - 9 m mowing stripes (±3.5 %), one direction per ~200 m block, faded by pixel footprint.
+  - Ultra building radius 9.5 → 12 km, full detail 6.5 → 9 km (KMRY high's town at 2–6 km).
+  - High-preset frames to go to the reviewer.
