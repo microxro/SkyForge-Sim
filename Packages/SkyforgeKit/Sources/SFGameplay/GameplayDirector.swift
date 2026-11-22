@@ -46,16 +46,22 @@ public struct GameplayDirector: Sendable {
         if let m = mission { runtime = MissionRuntime(mission: m, frame: frame, aircraftID: aircraft.id) }
     }
 
-    /// Fly-by-wire limiter for the flight model's control path; nil for aircraft with direct controls.
+    /// Control path for the flight model: the fly-by-wire limiter where fitted, and automatic gear for
+    /// retractable aircraft (down on the ground or below 1.35x approach speed, up otherwise). Nil when neither applies.
     public static func makeControlFilter(for aircraft: PlaneSpec) -> ControlFilter? {
-        guard aircraft.flyByWire else { return nil }
-        let law = FlightControlLaw(limits: aircraft.limits, config: aircraft.config)
+        let retractable = aircraft.config.retractableGear
+        guard aircraft.flyByWire || retractable else { return nil }
+        let law = aircraft.flyByWire ? FlightControlLaw(limits: aircraft.limits, config: aircraft.config) : nil
         let config = aircraft.config
+        let gearSpeed = aircraft.approachSpeed * 1.35
         return { input, state, out in
+            var u = input.sanitized
+            if retractable { u.gear = (out.weightOnWheels || out.trueAirspeed < gearSpeed) ? 1 : 0 }
+            guard let law else { return u }
             let rho = ISA.state(geometricAltitude: state.altitude).density
             let q = 0.5 * rho * out.trueAirspeed * out.trueAirspeed
             let nz = EnvelopeMath.loadFactor(state: state, outputs: out, config: config)
-            return law.apply(input.sanitized, qbar: q, nz: nz)
+            return law.apply(u, qbar: q, nz: nz)
         }
     }
 
