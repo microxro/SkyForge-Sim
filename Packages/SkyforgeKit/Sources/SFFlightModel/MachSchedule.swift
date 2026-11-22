@@ -37,6 +37,13 @@ public struct MachSchedule: Sendable, Codable, Equatable {
                      waveDrag: l(a.waveDrag, b.waveDrag), pitchStability: l(a.pitchStability, b.pitchStability),
                      controlPower: l(a.controlPower, b.controlPower))
     }
+
+    /// Evaluate with the multipliers floored so the flight model never divides by (or flips the sign of) a lift slope.
+    func safeEvaluate(_ m: Double) -> Point {
+        var p = evaluate(m)
+        p.liftSlope = max(p.liftSlope, 0.1); p.clMax = max(p.clMax, 0.1)
+        return p
+    }
 }
 
 /// Post-stall behaviour. Defaults are neutral; light aircraft get a wing drop and mild autorotation,

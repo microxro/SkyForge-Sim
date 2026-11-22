@@ -158,7 +158,7 @@ public struct FlightModel: Sendable {
 
         // Aerodynamics
         if speed > 0.5 {
-            let mp = c.mach.evaluate(out.mach)
+            let mp = c.mach.safeEvaluate(out.mach)
             let alpha = atan2(va.z, va.x)
             let beta = asin(clamp(va.y / speed, -1, 1))
             let qbar = 0.5 * atm.density * speed * speed
@@ -387,6 +387,8 @@ public struct FlightModel: Sendable {
         public var converged: Bool
     }
 
+    /// Note: retractable-gear aircraft trim with the gear UP (`inputs.gear == 0`) unless `gear:` is given, while
+    /// `ControlInputs.gear` defaults to 1, so callers must carry the trim result's gear into their inputs.
     /// Wings-level, straight and level trim at a true airspeed and altitude (Newton iteration on
     /// alpha, elevator and throttle so that u-dot, w-dot and q-dot vanish).
     public func trimLevel(trueAirspeed v: Double, altitude: Double, flaps: Double = 0,

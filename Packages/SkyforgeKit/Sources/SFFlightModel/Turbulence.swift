@@ -49,9 +49,9 @@ public struct DrydenTurbulence: Sendable {
     /// Advances one step and returns the NED gust (m/s). `headingRad` aligns the longitudinal gust with the
     /// aircraft's ground track.
     public mutating func step(dt: Double, heightAGL: Double, airspeed: Double, headingRad: Double) -> SIMD3<Double> {
-        guard severity != .none else { return .zero }
+        guard severity != .none, dt.isFinite, dt > 0 else { return .zero }
         let sc = Self.scales(heightAGL: heightAGL, severity: severity, wind20: wind20)
-        let va = max(airspeed, 5)
+        let va = airspeed.isFinite ? max(airspeed, 5) : 5
         func advance(_ x: Double, _ length: Double, _ sigma: Double) -> Double {
             let a = exp(-va * dt / max(length, 1))
             return a * x + sigma * (1 - a * a).squareRoot() * gauss()

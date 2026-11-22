@@ -112,4 +112,20 @@ import SFAtmosphere
         }
         #expect(stopDistance(friction: 0.4) > stopDistance(friction: 1.0))
     }
+
+    @Test func turbulenceRejectsBadTimeSteps() {
+        var t = DrydenTurbulence(seed: 3, severity: .light)
+        #expect(t.step(dt: -0.01, heightAGL: 100, airspeed: 50, headingRad: 0) == .zero)
+        #expect(t.step(dt: .nan, heightAGL: 100, airspeed: 50, headingRad: 0) == .zero)
+    }
+
+    @Test func degenerateConfigsStayFinite() {
+        var cfg = AircraftConfig.sf2Cruiser
+        cfg.propulsion?.staticThrustPerWatt = 0
+        cfg.mach = MachSchedule(points: [.init(mach: 0, liftSlope: 0), .init(mach: 2, liftSlope: -1)])
+        let m = FlightModel(config: cfg)
+        var s = AircraftState(positionNED: SIMD3(0, 0, -1_500), velocityBody: SIMD3(60, 0, 3), attitude: .identity, bodyRates: .zero)
+        for _ in 0..<600 { s = m.step(s, inputs: ControlInputs(throttle: 1), environment: FlightEnvironment()) }
+        #expect(s.isFinite)
+    }
 }

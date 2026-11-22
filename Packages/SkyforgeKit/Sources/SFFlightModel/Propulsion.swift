@@ -70,7 +70,7 @@ public struct PropulsionConfig: Sendable, Codable, Equatable {
             ratio = min(ratio, 1)
             let power = powerPerEngine * throttle * ratio
             guard power > 0 else { return (0, 0) }
-            let v0 = propEfficiency / staticThrustPerWatt
+            let v0 = propEfficiency / max(staticThrustPerWatt, 1e-6)
             let vx = max(0, axialSpeed)
             return (propEfficiency * power / (vx * vx + v0 * v0).squareRoot(), power)
         case .turbojet:
