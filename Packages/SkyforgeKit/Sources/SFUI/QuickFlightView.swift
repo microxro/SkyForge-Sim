@@ -15,6 +15,9 @@ import SFContent
 import SFImagery
 import SFAtmosphere
 import SFWeather
+import SFFlightModel
+import SFGameplay
+import SFGameplayUI
 
 /// Where Quick Flight takes place.
 public enum QuickFlightLocation: Hashable, Sendable {
@@ -65,6 +68,19 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
 
     private(set) var world: any FlightWorld = QuickFlightWorld()
     private(set) var session: QuickFlightSession
+    /// Aircraft, AI, weapons and mission logic that run on top of the flight session.
+    private(set) var director: GameplayDirector
+    @Published var gameplayHUD: GameplayHUD?
+    @Published var missionResult: MissionResult?
+    @Published var unlockMessage: String?
+    let spec: AircraftSpec
+    let mission: MissionDefinition?
+    private let controlFilter: ControlFilter?
+    private var resultSaved = false
+    /// Weapon controls set by the on-screen buttons (cannon is held, launch and cycle are one-shot).
+    var fireHeld = false
+    private var launchRequested = false
+    private var cycleRequested = false
     var touch = InputMapper.DeviceState()
     private var renderer: WorldRenderer?
     private var depth: MTLTexture?
@@ -73,12 +89,46 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
     private let start: QuickFlightStart
     let location: QuickFlightLocation
 
-    init(start: QuickFlightStart, location: QuickFlightLocation) {
+    init(start: QuickFlightStart, location: QuickFlightLocation, aircraft: AircraftSpec, mission: MissionDefinition?) {
         self.start = start
         self.location = location
-        session = QuickFlightSession(world: world, start: start)
+        spec = aircraft
+        self.mission = mission
+        controlFilter = GameplayDirector.makeControlFilter(for: aircraft)
+        let provisional = QuickFlightWorld()
+        world = provisional
+        let built = Self.makeFlight(world: provisional, start: start, spec: aircraft, mission: mission, filter: controlFilter)
+        session = built.session
+        director = built.director
         super.init()
     }
+
+    /// A flight session and director for a world: the aircraft, its wind and (for missions) the airborne start.
+    private static func makeFlight(world: any FlightWorld, start: QuickFlightStart, spec: AircraftSpec,
+                                   mission: MissionDefinition?, filter: ControlFilter?) -> (session: QuickFlightSession, director: GameplayDirector) {
+        let frame = RunwayFrame(world: world)
+        let wind = mission?.wind.windNED(runwayHeading: frame.heading) ?? .zero
+        var s = QuickFlightSession(world: world, start: start, aircraft: spec.config, approachSpeed: spec.approachSpeed,
+                                   approachFlaps: spec.approachFlaps, wind: wind)
+        if let m = mission {
+            let (state, inputs) = GameplaySession.makeInitialState(spawn: m.spawn, aircraft: spec, frame: frame, wind: wind,
+                                                                   terrain: FlightWorldTerrain(world))
+            s.place(state: state, inputs: inputs)
+        }
+        s.inputFilter = filter
+        return (s, GameplayDirector(aircraft: spec, frame: frame, mission: mission))
+    }
+
+    private func resetFlight(_ start: QuickFlightStart) {
+        let built = Self.makeFlight(world: world, start: start, spec: spec, mission: mission, filter: controlFilter)
+        session = built.session
+        director = built.director
+        gameplayHUD = nil; missionResult = nil; unlockMessage = nil; resultSaved = false
+        fireHeld = false
+    }
+
+    func launchMissile() { launchRequested = true }
+    func cycleTarget() { cycleRequested = true }
 
     func attach(_ view: MTKView) {
         guard let device = view.device ?? MTLCreateSystemDefaultDevice() else { status = .failed("No Metal device."); return }
@@ -157,7 +207,7 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
                         self.photoCrowns = data.photoCrowns
                         self.tileTransport = transport
                         self.tileCache = cache
-                        self.session = QuickFlightSession(world: region, start: start)
+                        self.resetFlight(start)
                         self.attribution = region.attribution + (weather.map { ["Weather: \($0.raw) (aviationweather.gov)"] } ?? [])
                         self.renderer?.clouds = weather?.layer ?? .fairWeather(fieldElevation: Float(region.runwayElevation))
                         self.status = .ready
@@ -190,7 +240,7 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
     }
 
     func restart(_ s: QuickFlightStart) {
-        session = QuickFlightSession(world: world, start: s)
+        resetFlight(mission == nil ? s : start)
         crashed = false
     }
 
@@ -206,6 +256,7 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
         device.analog.merge(touch.analog) { a, b in abs(a) > abs(b) ? a : b }
         device.pressed.formUnion(touch.pressed)
         session.update(realDt: dt, device: device)
+        stepGameplay(dt: dt)
         let tex = drawable.texture
         if depth == nil || depth!.width != tex.width || depth!.height != tex.height {
             depth = try? r.makeDepth(width: tex.width, height: tex.height)
@@ -232,8 +283,40 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
         cmd.present(drawable)
         cmd.commit()
         hudCounter += 1
-        if hudCounter % 2 == 0 { hud = session.data; crashed = session.crashed }
+        if hudCounter % 2 == 0 {
+            hud = session.data; crashed = session.crashed
+            if mission != nil || !spec.armament.isEmpty { gameplayHUD = director.hud(mach: machNumber, time: session.time) }
+        }
         if hudCounter % 60 == 0 { refreshDetail() }
+    }
+
+    private var machNumber: Double {
+        EnvelopeMath.mach(trueAirspeed: session.lastOutputs.trueAirspeed, altitudeMSL: session.state.altitude)
+    }
+
+    /// Runs AI, weapons, the envelope monitor and the mission against the flight, once per frame.
+    private func stepGameplay(dt: Double) {
+        guard !director.isFinished else { return }
+        let snapshot = FlightSnapshot(time: session.time, state: session.state, outputs: session.lastOutputs,
+                                      flaps: session.inputs.flaps, heightAGL: session.heightAboveGround,
+                                      crashed: session.crashed, crashReason: session.crashed ? "Crashed into the ground" : nil)
+        director.advance(dt: dt, snapshot: snapshot,
+                         weaponInput: WeaponInput(fireGun: fireHeld, launchMissile: launchRequested, cycleTarget: cycleRequested))
+        launchRequested = false; cycleRequested = false
+        if director.monitor.structuralFailure && !session.crashed { session.markCrashed() }
+        if let result = director.runtime?.result, !resultSaved { saveResult(result) }
+    }
+
+    /// Records a finished mission in the pilot's progress file and reports anything it unlocked.
+    private func saveResult(_ result: MissionResult) {
+        resultSaved = true
+        missionResult = result
+        let store = ProgressStore(url: ProgressStore.defaultURL)
+        var progress = store.load()
+        let unlocked = progress.record(result)
+        do { try store.save(progress) } catch { attribution.append("Could not save mission progress: \(error.localizedDescription)") }
+        let names = unlocked.aircraft.map(\.name) + unlocked.missions.map(\.title)
+        if result.success && !names.isEmpty { unlockMessage = "Unlocked: " + names.joined(separator: ", ") }
     }
 
     /// Re-centres the sharp imagery layer ahead of the aircraft once it has drifted 40 % of its half extent:
@@ -284,8 +367,10 @@ public struct QuickFlightView: View {
     @StateObject private var controller: QuickFlightController
     @Environment(\.dismiss) private var dismiss
 
-    public init(start: QuickFlightStart = .runway, location: QuickFlightLocation = .skyWorld) {
-        _controller = StateObject(wrappedValue: QuickFlightController(start: start, location: location))
+    public init(start: QuickFlightStart = .runway, location: QuickFlightLocation = .skyWorld,
+                aircraft: AircraftSpec = AircraftCatalog.sf1Trainer, mission: MissionDefinition? = nil) {
+        _controller = StateObject(wrappedValue: QuickFlightController(start: start, location: location,
+                                                                      aircraft: aircraft, mission: mission))
     }
 
     public var body: some View {
@@ -309,7 +394,17 @@ public struct QuickFlightView: View {
                     }
                 }
                 .padding()
+                if let hud = controller.gameplayHUD {
+                    HStack(alignment: .top) {
+                        MissionHUDView(hud: hud).frame(maxWidth: 380)
+                        Spacer()
+                    }
+                    .padding(.horizontal)
+                }
                 Spacer()
+                if let hud = controller.gameplayHUD, !controller.spec.armament.isEmpty, hud.status == .inProgress || hud.status == nil {
+                    WeaponButtons(controller: controller, hasMissiles: controller.spec.armament.contains(.heatMissile))
+                }
                 if !controller.attribution.isEmpty {
                     Text(controller.attribution.joined(separator: " · "))
                         .font(.caption2).padding(6).background(.black.opacity(0.45)).foregroundStyle(.white)
@@ -327,7 +422,10 @@ public struct QuickFlightView: View {
             case .failed(let msg): Text(msg).padding().background(.red.opacity(0.8), in: RoundedRectangle(cornerRadius: 12))
             case .ready: EmptyView()
             }
-            if controller.crashed {
+            if let result = controller.missionResult {
+                MissionResultCard(result: result, unlock: controller.unlockMessage,
+                                  retry: { controller.restart(.runway) }, close: { dismiss() })
+            } else if controller.crashed {
                 VStack(spacing: 12) {
                     Text("Crashed").font(.title.bold())
                     Button("Restart on the runway") { controller.restart(.runway) }.buttonStyle(.borderedProminent)

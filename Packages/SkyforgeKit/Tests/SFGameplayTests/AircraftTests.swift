@@ -67,7 +67,13 @@ import SFFlightModel
         #expect(m.warnings == [.overG] && m.overstressSeconds > 0 && !m.structuralFailure)
         m.update(nz: 1, trueAirspeed: 100, mach: 1.0, flaps: 0, stalled: false, onGround: false, heightAGL: 100, sinkRate: 60, dt: 0.1)
         #expect(m.warnings == [.overMach, .terrain])
+        // One spike does not break the airframe; neither does a hard landing on the gear.
         m.update(nz: 14, trueAirspeed: 100, mach: 0.3, flaps: 0, stalled: false, onGround: false, heightAGL: 3_000, sinkRate: 0, dt: 0.1)
+        m.update(nz: 1, trueAirspeed: 100, mach: 0.3, flaps: 0, stalled: false, onGround: false, heightAGL: 3_000, sinkRate: 0, dt: 0.1)
+        for _ in 0..<10 { m.update(nz: 20, trueAirspeed: 60, mach: 0.2, flaps: 1, stalled: false, onGround: true, heightAGL: 2, sinkRate: 0, dt: 0.1) }
+        #expect(!m.structuralFailure)
+        // Held past the limit in the air, it fails.
+        for _ in 0..<3 { m.update(nz: 14, trueAirspeed: 100, mach: 0.3, flaps: 0, stalled: false, onGround: false, heightAGL: 3_000, sinkRate: 0, dt: 0.1) }
         #expect(m.structuralFailure)
     }
 }

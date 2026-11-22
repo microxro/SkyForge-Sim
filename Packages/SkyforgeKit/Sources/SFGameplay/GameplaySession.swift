@@ -72,7 +72,8 @@ public struct GameplaySession: Sendable {
     /// Inputs that hold the spawn trim (throttle and elevator) until the pilot's first input.
     public var spawnTrim: ControlInputs { trimmedInputs }
 
-    static func makeInitialState(spawn: MissionSpawn, aircraft: AircraftSpec, frame: RunwayFrame, wind: SIMD3<Double>,
+    /// The aircraft state and control inputs for a mission spawn (or the runway start when `onRunway`).
+    public static func makeInitialState(spawn: MissionSpawn, aircraft: AircraftSpec, frame: RunwayFrame, wind: SIMD3<Double>,
                                  terrain: any TerrainHeightProvider) -> (AircraftState, ControlInputs) {
         let heading = frame.heading + spawn.headingOffset
         if spawn.onRunway {
@@ -127,7 +128,7 @@ public struct GameplaySession: Sendable {
 
     /// Advances real time `realDt` in fixed 120 Hz steps (at most 8 per call).
     public mutating func update(realDt: Double, controls: PilotControls) {
-        guard !isFinished else { return }
+        guard !isFinished, realDt.isFinite, realDt > 0 else { return }
         accumulator = min(accumulator + realDt, 8 * Self.dt)
         while accumulator >= Self.dt, !isFinished {
             step(controls)

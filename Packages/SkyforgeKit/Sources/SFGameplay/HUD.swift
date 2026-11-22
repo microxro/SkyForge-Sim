@@ -42,6 +42,7 @@ public struct GameplayHUD: Sendable, Equatable {
     public var cannonRounds: Int
     public var missiles: Int
     public var status: MissionStatus?
+    public var kills: Int = 0
 
     public var timeText: String {
         let s = Int(max(0, elapsed))
@@ -49,8 +50,9 @@ public struct GameplayHUD: Sendable, Equatable {
     }
 }
 
-public extension GameplaySession {
-    var hud: GameplayHUD {
+public extension GameplayDirector {
+    /// HUD values for the current moment. `mach` and `time` come from the flight.
+    func hud(mach: Double, time: Double) -> GameplayHUD {
         var lock: String?
         switch weapons.lock {
         case .none: lock = nil
@@ -66,6 +68,10 @@ public extension GameplaySession {
             warnings: monitor.warnings.sorted(),
             loadFactor: loadFactor, mach: mach, lockText: lock,
             cannonRounds: weapons.cannonRounds, missiles: weapons.missilesRemaining,
-            status: runtime?.status)
+            status: runtime?.status, kills: kills)
     }
+}
+
+public extension GameplaySession {
+    var hud: GameplayHUD { director.hud(mach: mach, time: time) }
 }

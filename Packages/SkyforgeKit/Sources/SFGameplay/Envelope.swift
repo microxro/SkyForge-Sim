@@ -68,8 +68,8 @@ public enum EnvelopeWarning: String, Sendable, Codable, CaseIterable, Comparable
     public static func < (a: EnvelopeWarning, b: EnvelopeWarning) -> Bool { a.rawValue < b.rawValue }
 }
 
-/// Raises warnings and tracks overstress. An airframe fails when it goes past 150 % of a g limit or
-/// 125 % of never-exceed speed.
+/// Raises warnings and tracks overstress. An airframe fails when it stays past 150 % of a g limit (in the
+/// air) or 125 % of never-exceed speed for a quarter of a second.
 public struct EnvelopeMonitor: Sendable {
     public let limits: EnvelopeLimits
     public private(set) var warnings: Set<EnvelopeWarning> = []
@@ -79,6 +79,10 @@ public struct EnvelopeMonitor: Sendable {
     /// Seconds spent beyond the g or speed limits (feeds the mission score).
     public private(set) var overstressSeconds = 0.0
     public private(set) var structuralFailure = false
+    /// How long the airframe has been past the failure threshold (s). A hard but legal touchdown spikes
+    /// the gear load for a few steps, so failure needs `failureHold` seconds and g is ignored on the ground.
+    private var failureTime = 0.0
+    public static let failureHold = 0.25
 
     public init(limits: EnvelopeLimits) { self.limits = limits }
 
@@ -98,6 +102,8 @@ public struct EnvelopeMonitor: Sendable {
         if w.contains(.overG) || w.contains(.negativeG) || w.contains(.overspeed) || w.contains(.overMach) {
             overstressSeconds += dt
         }
-        if nz > limits.nzMax * 1.5 || nz < limits.nzMin * 1.5 || v > limits.vne * 1.25 { structuralFailure = true }
+        let overG = !onGround && (nz > limits.nzMax * 1.5 || nz < limits.nzMin * 1.5)
+        if overG || v > limits.vne * 1.25 { failureTime += dt } else { failureTime = 0 }
+        if failureTime >= Self.failureHold { structuralFailure = true }
     }
 }

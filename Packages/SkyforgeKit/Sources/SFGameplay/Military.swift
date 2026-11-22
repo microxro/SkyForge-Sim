@@ -39,7 +39,8 @@ public struct AITarget: Sendable, Codable, Equatable, Identifiable {
         self.speed = speed; self.behavior = behavior; self.health = health; self.radius = radius
     }
 
-    public var destroyed: Bool { health <= 0 }
+    /// A NaN health counts as destroyed, so corrupt data cannot make an invulnerable target.
+    public var destroyed: Bool { !(health > 0) }
     public var altitude: Double { -position.z }
 
     public var velocity: SIMD3<Double> {
@@ -70,7 +71,7 @@ public struct AITarget: Sendable, Codable, Equatable, Identifiable {
             heading = Self.wrap(heading + turnRate * dt)
         case .route(let points, let loop):
             if !points.isEmpty {
-                let wp = points[min(routeIndex, points.count - 1)]
+                let wp = points[max(0, min(routeIndex, points.count - 1))]
                 let d = wp - position
                 let horizontal = (d.x * d.x + d.y * d.y).squareRoot()
                 if horizontal < 400 {
@@ -151,7 +152,8 @@ struct Missile: Sendable, Equatable {
     var age = 0.0
 }
 
-/// Cannon, missiles and seeker for one aircraft.
+/// Cannon, missiles and seeker for one aircraft. Rounds and missiles hit any aircraft, friendly or
+/// not; the mission fails when a friendly or neutral aircraft is destroyed.
 public struct WeaponSystem: Sendable {
     public private(set) var cannonRounds: Int
     public private(set) var missilesRemaining: Int
@@ -370,7 +372,7 @@ public struct WeaponSystem: Sendable {
                 if targets[ti].destroyed { events.append(.destroyed(targetID: target.id, weapon: .heatMissile)) }
                 continue
             }
-            if m.age > Self.missileLife || length(m.velocity) < 200 && m.age > Self.missileBoostTime {
+            if m.age > Self.missileLife || (length(m.velocity) < 200 && m.age > Self.missileBoostTime) {
                 events.append(.missileMissed); continue
             }
             alive.append(m)

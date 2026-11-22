@@ -196,6 +196,36 @@ public struct MissionDefinition: Sendable, Codable, Equatable, Identifiable {
     }
 
     public var maxBasePoints: Int { objectives.reduce(0) { $0 + $1.points } }
+
+    /// Problems that would make the mission unwinnable or meaningless; empty when it is sound.
+    public var validationProblems: [String] {
+        var out: [String] = []
+        if objectives.isEmpty { out.append("no objectives") }
+        let ids = Set(targets.map(\.id))
+        if ids.count != targets.count { out.append("duplicate target ids") }
+        if Set(objectives.map(\.id)).count != objectives.count { out.append("duplicate objective ids") }
+        for o in objectives {
+            switch o.kind {
+            case .destroy(let t):
+                if t.isEmpty { out.append("\(o.id): destroy with no targets") }
+                if !Set(t).isSubset(of: ids) { out.append("\(o.id): unknown target id") }
+            case .identify(let t, let within, let hold):
+                if !ids.contains(t) { out.append("\(o.id): unknown target id") }
+                if within <= 0 || hold < 0 { out.append("\(o.id): bad identify range") }
+            case .formation(let l, _, let spacing, let tol, let hold):
+                if !ids.contains(l) { out.append("\(o.id): unknown leader id") }
+                if spacing <= 0 || tol <= 0 || hold <= 0 { out.append("\(o.id): bad formation numbers") }
+            case .lowLevelRoute(let pts, let lo, let hi):
+                if pts.isEmpty || lo >= hi { out.append("\(o.id): bad low-level route") }
+            case .land(_, let zone, let maxSink):
+                if zone <= 0 || maxSink <= 0 { out.append("\(o.id): bad landing limits") }
+            case .reachAltitude(_, let tol, let hold):
+                if tol <= 0 || hold < 0 { out.append("\(o.id): bad altitude hold") }
+            case .takeoff, .flyTo: break
+            }
+        }
+        return out
+    }
 }
 
 public enum Medal: Int, Sendable, Codable, Comparable, CaseIterable {

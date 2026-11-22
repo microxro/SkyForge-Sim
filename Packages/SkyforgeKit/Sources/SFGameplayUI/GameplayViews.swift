@@ -84,7 +84,7 @@ public struct MissionListView: View {
     private func row(_ m: MissionDefinition) -> some View {
         let unlocked = progress.isUnlocked(m)
         let aircraft = AircraftCatalog.spec(id: aircraftID)
-        let fits = aircraft.map { m.allows($0) && progress.isUnlocked($0) } ?? false
+        let fits = aircraft.map { progress.canStart(m, in: $0) } ?? false
         let record = progress.records[m.id]
         return VStack(alignment: .leading, spacing: 6) {
             HStack {

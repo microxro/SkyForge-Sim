@@ -72,6 +72,7 @@ public struct MissionRuntime: Sendable {
 
     public init(mission: MissionDefinition, frame: RunwayFrame, aircraftID: String) {
         self.mission = mission; self.frame = frame; self.aircraftID = aircraftID
+        if let problem = mission.validationProblems.first { status = .failed("Invalid mission: \(problem)") }
     }
 
     public var currentObjective: MissionObjective? {
@@ -241,7 +242,7 @@ public struct MissionRuntime: Sendable {
             progress = max(0, min(1, hold / max(0.1, holdTime)))
             if hold >= holdTime {
                 let avg = errorSamples > 0 ? errorSum / Double(errorSamples) : 0
-                return .completed(quality: 1 - 0.4 * min(1, avg / (2 * tolerance)))
+                return .completed(quality: 1 - 0.4 * min(1, avg / max(1e-6, 2 * tolerance)))
             }
             return .running
         }
