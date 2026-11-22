@@ -11,7 +11,7 @@ Nothing here can be done from the repository. In order:
 7. Take screenshots (iPhone, iPad, Mac) on real hardware or simulators.
 8. Replace the app icon if you want different artwork: `App/Assets.xcassets/AppIcon.appiconset`.
 9. Verify on a real iPhone, iPad and Mac: frame rate, thermals, memory (see `docs/MAC_DAY.md`). This repo's CI has not run on-device.
-10. For CI archives: create a GitHub Environment named `release` (required reviewers, main only), put the secrets listed in `.github/workflows/release-archive.yml` (an App Store Connect API key and a distribution certificate), then run the workflow manually. Upload to TestFlight, test, then submit for review.
+10. For CI builds on TestFlight (no Mac needed): follow `docs/TESTFLIGHT.md`. It covers the bundle ID variable, the App Store Connect API key, the distribution certificate, the `release` environment and secrets, and the manual "Release archive" run with TestFlight upload. Test in TestFlight, then submit for review.
 11. Re-check the privacy manifest reason codes against Apple's current required-reason API list.
 
 Note on privacy reason codes: no first-party source calls UserDefaults, file timestamp or disk-space APIs directly (grepped 2026-11-22). The manifest declares CA92.1, C617.1 and E174.1 defensively because Apple frameworks and SwiftPM resources may use them. Trim the manifest if Xcode's privacy report on the archive shows they are unused.

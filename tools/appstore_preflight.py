@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Static App Store readiness checks that run on Linux. Exit 1 on failure."""
-import plistlib, struct, sys, pathlib
+import os, plistlib, re, struct, sys, pathlib
 
 root = pathlib.Path(__file__).resolve().parent.parent
 errors = []
@@ -56,9 +56,16 @@ if not (root / 'Packages/SkyforgeKit/Sources/SFUI/AcknowledgementsView.swift').e
     errors.append('in-app acknowledgements view missing (ODbL/CC BY attribution)')
 
 if release:
-    proj = (root / 'SKYFORGE.xcodeproj/project.pbxproj').read_text()
-    if 'org.skyforge.SKYFORGE' in proj or 'PRODUCT_BUNDLE_IDENTIFIER = org.skyforge' in proj:
-        errors.append('bundle ID is still the org.skyforge placeholder (docs/appstore/OWNER_TODO.md step 2)')
+    # CI passes the registered bundle ID as the APP_BUNDLE_ID repository variable (docs/TESTFLIGHT.md),
+    # which overrides the project's PRODUCT_BUNDLE_IDENTIFIER. Without it, the project itself must be changed.
+    override = os.environ.get('APP_BUNDLE_ID', '').strip()
+    if override:
+        if not re.fullmatch(r'[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+', override) or override.startswith('org.skyforge'):
+            errors.append(f'APP_BUNDLE_ID {override!r} must be a reverse-DNS ID you own, not the org.skyforge placeholder')
+    else:
+        proj = (root / 'SKYFORGE.xcodeproj/project.pbxproj').read_text()
+        if 'org.skyforge.SKYFORGE' in proj or 'PRODUCT_BUNDLE_IDENTIFIER = org.skyforge' in proj:
+            errors.append('bundle ID is still the org.skyforge placeholder: set the APP_BUNDLE_ID variable or docs/appstore/OWNER_TODO.md step 2')
 
 for e in errors:
     print('FAIL', e)
