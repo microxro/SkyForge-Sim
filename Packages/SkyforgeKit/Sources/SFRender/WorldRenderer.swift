@@ -207,6 +207,12 @@ public final class WorldRenderer {
     public var shadowFilter = 1
     /// Animation time (s) for water and other moving surfaces.
     public var time: Double = 0
+    /// Round 5 ocean: wind (m/s, direction the wind blows toward in radians), quality tier and live wake sources
+    /// (aircraft on the water; at most `oceanTier.maxWakes` are drawn).
+    public var oceanWindSpeed: Float = 8
+    public var oceanWindDirection: Float = 0
+    public var oceanTier: OceanTier = .high
+    public var oceanWakes: [OceanWake] = []
     /// Weather presentation (precipitation overlay, lightning, fog). `.clear` (the default) changes nothing: no overlay
     /// pass and zero extra fog.
     public var weatherEffects: WeatherEffects = .clear
@@ -358,7 +364,7 @@ public final class WorldRenderer {
         self.lighting = lighting
         sky = try PhysicalSkyRenderer(device: device, colorFormat: .rgba16Float)
         let lib: MTLLibrary
-        do { lib = try device.makeLibrary(source: CloudShaders.common + "\n" + MacroColourShaders.source + "\n" + WorldShaders.source, options: nil) }
+        do { lib = try device.makeLibrary(source: CloudShaders.common + "\n" + MacroColourShaders.source + "\n" + OceanShaders.source + "\n" + WorldShaders.source, options: nil) }
         catch { throw RendererError.shaderCompile(String(describing: error)) }
         worldLibrary = lib
         guard let v = lib.makeFunction(name: "world_vertex"), let f = lib.makeFunction(name: "world_fragment") else {
@@ -1173,6 +1179,16 @@ public final class WorldRenderer {
         enc.setFragmentTexture(airportTex ?? dummy2D, index: 9)      // dummy2D reads 0 in r: no airport
         enc.setFragmentTexture((macroColourDecoupling ? macroTexture() : nil) ?? zeroMacro, index: 10)     // alpha 0 (zeroMacro): no macro colour, pass skipped
         enc.setFragmentTexture((suburbParcels ? suburbTexture() : nil) ?? dummy2D, index: 11)   // dummy2D reads 0 in r: parcel weight 0
+        // Round 5 ocean: parameters at fragment buffer 6, wake array (always bound; zeros when none) at 7.
+        var oceanP = OceanParams()
+        oceanP.time = Float(time.truncatingRemainder(dividingBy: 10_000))
+        oceanP.windSpeed = oceanWindSpeed; oceanP.windDirection = oceanWindDirection; oceanP.tier = oceanTier
+        let wakeUsed = Array(oceanWakes.prefix(oceanTier.maxWakes))
+        var oceanWakeData = [Float](repeating: 0, count: 64)   // 8 wakes x 8 floats = 256 bytes
+        for (i, w) in wakeUsed.enumerated() { oceanWakeData.replaceSubrange(i * 8..<(i * 8 + 8), with: w.packed) }
+        var oceanParamData = oceanP.packed(wakeCount: wakeUsed.count)
+        enc.setFragmentBytes(&oceanParamData, length: OceanParams.byteSize, index: 6)
+        enc.setFragmentBytes(&oceanWakeData, length: oceanWakeData.count * MemoryLayout<Float>.stride, index: 7)
         let upHint = SIMD3<Float>(Float(c.up.x), Float(c.up.y), Float(c.up.z))
         let viewProj = Self.reversedZProjection(fovY: Float(fovY), aspect: Float(aspect), near: Float(c.near)) * Self.view(forward: fwd, up: upHint)
         let sunAz = Float(atan2(Double(toSun.y), Double(toSun.x)))

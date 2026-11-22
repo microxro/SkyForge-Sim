@@ -10,6 +10,7 @@ public enum OceanShaders {
     public static let source = """
     #include <metal_stdlib>
     using namespace metal;
+    constant float owAngleTable[16] = {-0.95, 0.8012, -0.8413, 0.1106, -0.2399, -0.0884, 0.2396, -0.6354, -0.3247, 0.0753, 0.8959, 0.6103, -0.6098, 0.9408, 0.6004, -0.1105};
 
     // One wake source (an aircraft or boat on the water). Packed as two float4s.
     struct OWWake {
@@ -59,10 +60,7 @@ public enum OceanShaders {
     // omega = sqrt(g k), amplitude ~ Phillips-like k^-1.2 falloff.
     constant float OW_G = 9.81;
 
-    static float owWaveAngle(int i) {
-        constexpr constant float tbl[16] = {-0.95, 0.8012, -0.8413, 0.1106, -0.2399, -0.0884, 0.2396, -0.6354, -0.3247, 0.0753, 0.8959, 0.6103, -0.6098, 0.9408, 0.6004, -0.1105};
-        return tbl[i & 15];
-    }
+    static float owWaveAngle(int i) { return owAngleTable[i & 15]; }
 
     // Returns the surface slope (dh/dx, dh/dy) and, through `height`/`crest`, the height and the Jacobian-style
     // crest measure (1 = sharp crest, 0 = trough). `footprint` is the pixel size in metres: octaves
