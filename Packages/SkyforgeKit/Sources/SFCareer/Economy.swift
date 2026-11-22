@@ -22,7 +22,7 @@ public func greatCircleDistanceM(_ a: AirportRef, _ b: AirportRef) -> Double {
 }
 
 /// Economic description of an aircraft. Ids are strings so this module never depends on SFFlightModel / SFGameplay.
-public struct AircraftSpec: Codable, Sendable, Equatable, Identifiable {
+public struct HangarAircraft: Codable, Sendable, Equatable, Identifiable {
     public var id: String
     public var name: String
     public var seats: Int
@@ -52,7 +52,7 @@ public enum Economy {
     public static let cargoRatePer100KgKm = 0.35
 
     /// Default catalog. Ids match the gameplay thread (`org.skyforge.sfc/sfa/sft1/sff1`) and flight-model thread (`sf2/sf3/sf5/sf9`).
-    public static let catalog: [AircraftSpec] = [
+    public static let catalog: [HangarAircraft] = [
         .init(id: "org.skyforge.sf1", name: "SF-1 Trainer", seats: 1, payloadKg: 150, rangeKm: 600, cruiseKts: 105, minRunwayM: 450, purchasePrice: 0, rentalPerHour: 0, fuelBurnKgPerHour: 28, unlockLevel: 1),
         .init(id: "org.skyforge.sfc", name: "SF-C Cruiser", seats: 3, payloadKg: 320, rangeKm: 1_100, cruiseKts: 130, minRunwayM: 600, purchasePrice: 45_000, rentalPerHour: 90, fuelBurnKgPerHour: 38, unlockLevel: 3),
         .init(id: "org.skyforge.sfa", name: "SF-A Aerobat", seats: 1, payloadKg: 110, rangeKm: 500, cruiseKts: 140, minRunwayM: 400, purchasePrice: 38_000, rentalPerHour: 110, fuelBurnKgPerHour: 42, unlockLevel: 5),
@@ -64,7 +64,7 @@ public enum Economy {
         .init(id: "org.skyforge.sf9", name: "SF-9 Supersonic Fighter", seats: 1, payloadKg: 450, rangeKm: 2_400, cruiseKts: 520, minRunwayM: 1_800, purchasePrice: 8_000_000, rentalPerHour: 4_500, fuelBurnKgPerHour: 2_400, unlockLevel: 48, isMilitary: true),
     ]
 
-    public static func spec(_ id: String, in catalog: [AircraftSpec] = Economy.catalog) -> AircraftSpec? {
+    public static func spec(_ id: String, in catalog: [HangarAircraft] = Economy.catalog) -> HangarAircraft? {
         catalog.first { $0.id == id }
     }
 
@@ -133,7 +133,7 @@ public enum JobBoard {
         return jobs.sorted { $0.distanceKm < $1.distanceKm }
     }
 
-    public static func canFly(_ job: Job, with a: AircraftSpec, level: Int) -> Result<Void, JobRejection> {
+    public static func canFly(_ job: Job, with a: HangarAircraft, level: Int) -> Result<Void, JobRejection> {
         if level < job.minLevel { return .failure(.levelTooLow(needed: job.minLevel)) }
         if a.seats - 1 < job.passengers && job.passengers > 0 { return .failure(.notEnoughSeats) }
         if a.payloadKg < job.cargoKg + Double(job.passengers) * 80 { return .failure(.overweight) }

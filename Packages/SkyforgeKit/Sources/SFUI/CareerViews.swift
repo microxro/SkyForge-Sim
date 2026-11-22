@@ -80,7 +80,7 @@ struct HangarView: View {
         }
     }
 
-    @ViewBuilder func trailing(for a: AircraftSpec) -> some View {
+    @ViewBuilder func trailing(for a: HangarAircraft) -> some View {
         if career.ownedAircraft.contains(a.id) {
             Label("Owned", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
         } else if career.level < a.unlockLevel {
@@ -90,7 +90,7 @@ struct HangarView: View {
         }
     }
 
-    func buy(_ a: AircraftSpec) {
+    func buy(_ a: HangarAircraft) {
         do { try career.buy(aircraftID: a.id); message = "Bought \(a.name)"; onChange() }
         catch CareerState.PurchaseError.insufficientFunds(let short) { message = "Need \(short) more credits" }
         catch { message = "Cannot buy \(a.name) right now" }

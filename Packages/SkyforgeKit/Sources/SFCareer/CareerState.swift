@@ -84,7 +84,7 @@ public struct CareerState: Codable, Sendable, Equatable {
 
     public enum PurchaseError: Error, Sendable, Equatable { case unknownAircraft, alreadyOwned, levelTooLow(needed: Int), insufficientFunds(short: Int) }
 
-    public mutating func buy(aircraftID: String, catalog: [AircraftSpec] = Economy.catalog) throws {
+    public mutating func buy(aircraftID: String, catalog: [HangarAircraft] = Economy.catalog) throws {
         guard let a = Economy.spec(aircraftID, in: catalog) else { throw PurchaseError.unknownAircraft }
         guard !ownedAircraft.contains(a.id) else { throw PurchaseError.alreadyOwned }
         guard level >= a.unlockLevel else { throw PurchaseError.levelTooLow(needed: a.unlockLevel) }
@@ -94,13 +94,13 @@ public struct CareerState: Codable, Sendable, Equatable {
     }
 
     /// Can the player take this aircraft out (owned, or rentable at their level)?
-    public func canUse(aircraftID: String, catalog: [AircraftSpec] = Economy.catalog) -> Bool {
+    public func canUse(aircraftID: String, catalog: [HangarAircraft] = Economy.catalog) -> Bool {
         guard let a = Economy.spec(aircraftID, in: catalog) else { return false }
         return ownedAircraft.contains(a.id) || level >= a.unlockLevel
     }
 
     /// Accept a job. Fails if one is already active or the aircraft cannot do it.
-    public mutating func accept(job: Job, aircraft: AircraftSpec) -> Result<Void, JobRejection> {
+    public mutating func accept(job: Job, aircraft: HangarAircraft) -> Result<Void, JobRejection> {
         if activeJob != nil { return .failure(.alreadyHaveJob) }
         if completedJobIDs.contains(job.id) { return .failure(.alreadyHaveJob) }
         switch JobBoard.canFly(job, with: aircraft, level: level) {
@@ -124,7 +124,7 @@ public enum CareerEngine {
     /// Applies one flight to the profile. Deterministic; rejects nothing (a bad report is sanitised, never trusted).
     @discardableResult
     public static func apply(_ raw: FlightReport, to state: inout CareerState,
-                             challenge: Challenge? = nil, catalog: [AircraftSpec] = Economy.catalog) -> FlightOutcome {
+                             challenge: Challenge? = nil, catalog: [HangarAircraft] = Economy.catalog) -> FlightOutcome {
         let r = raw.sanitized()
         let levelBefore = state.level
         var xp = 0, credits = 0
@@ -175,7 +175,7 @@ public enum CareerEngine {
             }
         case .mission(let id):
             score = r.rawScore
-            if CareerState.validID(id) && r.missionSuccess && !r.crashed && r.durationS >= 60 && (state.completedMissions.contains(id) || state.completedMissions.count < 1_000) {
+            if CareerState.validID(id) && r.missionSuccess && !r.crashed && r.durationS >= 15 && (state.completedMissions.contains(id) || state.completedMissions.count < 1_000) {
                 let first = state.completedMissions.insert(id).inserted
                 xp += first ? 250 : 40
                 credits += first ? 1_500 : 150
