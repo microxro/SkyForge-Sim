@@ -119,7 +119,33 @@ public enum MissionCatalog {
         ],
         parTime: 120, timeLimit: 300, areaRadius: 40_000, unlock: .mission("intercept-bogey"))
 
-    public static let all: [MissionDefinition] = [firstFlight, patternLanding, precisionLanding, wingman, intercept, gunnery, lowLevel, dogfight]
+    public static let coastalSurvey = MissionDefinition(
+        id: "coastal-survey", title: "Coastal Survey", category: .navigation,
+        briefing: "Survey the coast: climb to 2,000 ft, fly to the north headland, then turn back to the survey point to the south.",
+        difficulty: 2, recommendedAircraft: AircraftCatalog.sfCruiser.id, allowedRoles: civil,
+        spawn: MissionSpawn(along: 0, up: 600, speed: .cruise),
+        wind: MissionWind(fromRelativeDegrees: 45, knots: 8),
+        objectives: [
+            MissionObjective(id: "headland", title: "Reach the north headland", kind: .flyTo(MissionWaypoint(6_000, 2_500, 600, radius: 600)), points: 150),
+            MissionObjective(id: "survey", title: "Return to the survey point", kind: .flyTo(MissionWaypoint(1_500, -1_000, 500, radius: 500)), points: 150),
+        ],
+        parTime: 300, timeLimit: 600, areaRadius: 40_000, unlock: .mission("pattern-landing"))
+
+    public static let twinBandits = MissionDefinition(
+        id: "twin-bandits", title: "Twin Bandits", category: .military,
+        briefing: "Two drones are patrolling 4 km ahead, one evading and one orbiting. Shoot both down inside seven minutes.",
+        difficulty: 5, recommendedAircraft: AircraftCatalog.sfF1Fighter.id, allowedRoles: [.fighter],
+        spawn: MissionSpawn(along: 0, up: 3_000, speed: .fixed(220)),
+        targets: [
+            TargetSpawn(id: "bandit-a", role: .hostile, along: 4_000, right: -600, up: 3_000, speed: 160, behavior: .evade(maxTurnRate: 0.12), health: 12),
+            TargetSpawn(id: "bandit-b", role: .hostile, along: 5_000, right: 800, up: 2_500, speed: 140, behavior: .orbit(turnRate: 0.08), health: 12),
+        ],
+        objectives: [
+            MissionObjective(id: "bandits", title: "Shoot down both bandits", kind: .destroy(targetIDs: ["bandit-a", "bandit-b"]), points: 500),
+        ],
+        parTime: 240, timeLimit: 420, areaRadius: 40_000, unlock: .mission("air-combat-training"))
+
+    public static let all: [MissionDefinition] = [firstFlight, patternLanding, precisionLanding, wingman, intercept, gunnery, lowLevel, dogfight, coastalSurvey, twinBandits]
 
     public static func mission(id: String) -> MissionDefinition? { all.first { $0.id == id } }
     public static func missions(in category: MissionCategory) -> [MissionDefinition] { all.filter { $0.category == category } }
