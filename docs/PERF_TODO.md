@@ -9,7 +9,7 @@ No Swift toolchain was available when these changes were made, so nothing here w
 ## Profile on device (Instruments)
 - Metal System Trace on iPhone and iPad: frame time, draw calls, GPU overdraw at KMRY, KASE and KBFI.
 - Allocations: confirm no per-frame heap growth in the render loop and the terrain stream.
-- Time Profiler: `Inflate.codes` and `Huffman.decode` (bit-by-bit decode; a 9-bit lookup table is the next win).
+- Time Profiler: `Inflate.codes` (Huffman now uses a 9-bit lookup table; confirm the speedup on a real Terrarium tile).
 - Metal GPU capture: terrain chunk count after CDLOD selection, and shadow cascade cost.
 
 ## Owned by the airport-frames thread (not touched here)
