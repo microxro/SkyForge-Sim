@@ -12,7 +12,7 @@ extension AircraftConfig {
     /// Looks up a catalog aircraft by id.
     public static func catalogEntry(id: String) -> AircraftConfig? { catalog.first { $0.id == id } }
 
-    /// SF-2 Cruiser: ~1,500 kg retractable-gear single, 224 kW constant-speed propeller.
+    /// SF-C Cruiser (sf2Cruiser): ~1,500 kg retractable-gear single, 224 kW constant-speed propeller.
     public static let sf2Cruiser: AircraftConfig = {
         var a = AeroCoefficients()
         a.cL0 = 0.28; a.cLAlpha = 5.0; a.cLMaxClean = 1.45; a.cLMaxFlaps = 1.95
@@ -22,7 +22,7 @@ extension AircraftConfig {
         p.powerPerEngine = 224_000; p.staticThrustPerWatt = 0.022; p.propEfficiency = 0.82
         p.maxRPM = 2_500; p.propTorqueRoll = 0.1; p.pFactorArm = 0.25
         var c = AircraftConfig(
-            id: "org.skyforge.sf2", name: "SF-2 Cruiser",
+            id: "org.skyforge.sfc", name: "SF-C Cruiser",
             mass: 1_500, inertia: SIMD3(1_650, 2_600, 3_850), ixz: 0,
             wingArea: 16.8, wingSpan: 10.2, chord: 1.65,
             aero: a,
@@ -73,7 +73,7 @@ extension AircraftConfig {
             retractableGear: true)
     }()
 
-    /// SF-5 Jet: ~4,500 kg subsonic jet trainer, one 26 kN turbofan, speed brake, retractable gear.
+    /// SF-T1 Jet Trainer (sf5Jet): ~4,500 kg subsonic jet trainer, one 26 kN turbofan, speed brake, retractable gear.
     public static let sf5Jet: AircraftConfig = {
         var a = AeroCoefficients()
         a.cL0 = 0.12; a.cLAlpha = 4.3; a.cLMaxClean = 1.25; a.cLMaxFlaps = 1.85
@@ -86,7 +86,7 @@ extension AircraftConfig {
         var p = PropulsionConfig(kind: .turbojet, engineCount: 1)
         p.dryThrust = 26_000; p.idleFraction = 0.04; p.windmillDragArea = 0.12
         return AircraftConfig(
-            id: "org.skyforge.sf5", name: "SF-5 Jet",
+            id: "org.skyforge.sft1", name: "SF-T1 Jet Trainer",
             mass: 4_500, inertia: SIMD3(4_200, 13_500, 16_500), ixz: 0,
             wingArea: 18.0, wingSpan: 9.4, chord: 2.1,
             aero: a,
@@ -113,7 +113,7 @@ extension AircraftConfig {
             retractableGear: true)
     }()
 
-    /// SF-9 Fighter: ~12,000 kg supersonic fighter, one afterburning turbofan (76 kN dry, 125 kN reheat).
+    /// SF-F1 Interceptor (sf9Fighter): ~12,000 kg supersonic fighter, one afterburning turbofan (76 kN dry, 125 kN reheat).
     public static let sf9Fighter: AircraftConfig = {
         var a = AeroCoefficients()
         a.cL0 = 0.10; a.cLAlpha = 3.5; a.cLMaxClean = 1.40; a.cLMaxFlaps = 1.75
@@ -126,7 +126,7 @@ extension AircraftConfig {
         var p = PropulsionConfig(kind: .turbojet, engineCount: 1)
         p.dryThrust = 76_000; p.afterburnerThrust = 125_000; p.idleFraction = 0.04; p.windmillDragArea = 0.15
         var c = AircraftConfig(
-            id: "org.skyforge.sf9", name: "SF-9 Fighter",
+            id: "org.skyforge.sff1", name: "SF-F1 Interceptor",
             mass: 12_000, inertia: SIMD3(12_000, 70_000, 80_000), ixz: 0,
             wingArea: 28.0, wingSpan: 9.4, chord: 3.5,
             aero: a,
