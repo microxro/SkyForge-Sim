@@ -457,8 +457,6 @@ public struct QuickFlightView: View {
         }
     }
 }
-#endif
-
 private extension PerfTier {
     init(deviceTier: DeviceTier) {
         switch deviceTier {
@@ -469,3 +467,5 @@ private extension PerfTier {
         }
     }
 }
+
+#endif
