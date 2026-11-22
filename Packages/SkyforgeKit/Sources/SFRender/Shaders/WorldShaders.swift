@@ -1001,6 +1001,7 @@ public enum WorldShaders {
     constexpr sampler apNearest(filter::nearest, address::clamp_to_edge, coord::normalized);
 
     \(AirportSurfaceShaders.source)
+    \(CockpitMaterialShaders.source)
 
     fragment float4 world_fragment(WorldVarying in [[stage_in]], constant WorldUniforms& u [[buffer(1)]],
                                    texture3d<float> ins [[texture(0)]], texture3d<float> tr [[texture(1)]],
@@ -1013,6 +1014,10 @@ public enum WorldShaders {
         float dist = length(in.rel);
         float3 dir = in.rel / max(dist, 1e-3);
         float3 n = normalize(in.normal);
+        // Round 4: screen derivatives of position and the unflipped normal for the cabin metal's brushing direction.
+        // Taken here, before the first discard, in uniform control flow (u.quality.y is a uniform).
+        float3 ckDpx = float3(0.0), ckDpy = float3(0.0), ckDnx = float3(0.0), ckDny = float3(0.0);
+        if (u.quality.y > 0.0) { ckDpx = dfdx(in.rel); ckDpy = dfdy(in.rel); ckDnx = dfdx(n); ckDny = dfdy(n); }
         // Cockpit view: the camera is inside the airframe, so its inner (back) faces are skipped and
         // the cabin opens onto the world; the cowling, wings and struts still render from outside.
         if (u.cameraPos.w > 0.5 && dot(n, dir) > 0.0) discard_fragment();
@@ -1921,7 +1926,9 @@ public enum WorldShaders {
             float3 nb = float3(dot(n, u.model[0].xyz), dot(n, u.model[1].xyz), dot(n, u.model[2].xyz));
             float3 r = reflect(dir, n);
             float3 env = skyEnv(u, r);
-            if (m == 12.0) {
+            if (m == 12.0 && u.quality.y > 0.0) {
+                col = ck_cockpitMetal(u, in, n, dir, albedo, ambient, vis, cloudShade, toSun, localFp, ckDpx, ckDpy, ckDnx, ckDny);
+            } else if (m == 12.0) {
                 float F = 0.75 + 0.25 * pow(1.0 - nv, 5.0);
                 col = albedo * (env * F + u.sunColour.rgb * ggxLobe(n, v, toSun, 0.28, 0.9) * vis) + albedo * ambient * 0.12;
             } else {

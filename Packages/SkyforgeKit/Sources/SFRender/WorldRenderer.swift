@@ -293,6 +293,13 @@ public final class WorldRenderer {
     private var propDisc: (buffer: MTLBuffer, count: Int)?
     private let propPipeline: MTLRenderPipelineState
     private let propDepthState: MTLDepthStencilState
+    // Round 4 cockpit: canopy glass pipeline, dust film and scratch amount (0…1) and plate thickness (m), and the
+    // centimetre-scale contact-shadow pass. Cockpit view only; no other frame is touched.
+    private let canopyGlassPipeline: MTLRenderPipelineState
+    public var canopyDust: Float = 0.35, canopyScratches: Float = 0.45, canopyThickness: Float = 0.005
+    public var canopyGlass = true
+    private var cockpitContact: CockpitContactPass?
+    public var cockpitContactShadows = true
     private var tables: (ins: MTLTexture, tr: MTLTexture, key: SIMD4<Float>)?
     public private(set) var lighting: LightingSetup
     public let colorFormat: MTLPixelFormat
@@ -389,6 +396,21 @@ public final class WorldRenderer {
         pds.isDepthWriteEnabled = false
         guard let pdss = device.makeDepthStencilState(descriptor: pds) else { throw RendererError.commandQueue }
         propDepthState = pdss
+        // Canopy glass (Round 4): world_vertex + canopy_glass_fragment over the aircraft buffer, premultiplied blend.
+        guard let gv = lib.makeFunction(name: "world_vertex"), let gf = lib.makeFunction(name: "canopy_glass_fragment") else {
+            throw RendererError.shaderCompile("missing canopy glass functions")
+        }
+        let gd = MTLRenderPipelineDescriptor()
+        gd.label = "CanopyGlass"
+        gd.vertexFunction = gv; gd.fragmentFunction = gf
+        let ga = gd.colorAttachments[0]!
+        ga.pixelFormat = .rgba16Float
+        ga.isBlendingEnabled = true
+        ga.sourceRGBBlendFactor = .one; ga.destinationRGBBlendFactor = .oneMinusSourceAlpha
+        ga.sourceAlphaBlendFactor = .one; ga.destinationAlphaBlendFactor = .oneMinusSourceAlpha
+        gd.depthAttachmentPixelFormat = .depth32Float
+        do { canopyGlassPipeline = try device.makeRenderPipelineState(descriptor: gd) }
+        catch { throw RendererError.pipeline(String(describing: error)) }
         do {
             let plib = try device.makeLibrary(source: PostShaders.source, options: nil)
             let fd = MTLRenderPipelineDescriptor()
@@ -805,6 +827,20 @@ public final class WorldRenderer {
             sceneDepth = scaledDepth!
         }
         try encodeScene(cmd: cmd, colour: scene, depth: sceneDepth, camera: c, aircraftPosition: aircraftPosition, aircraftBodyToENU: aircraftBodyToENU)
+        // Round 4: centimetre-scale contact shadows and AO over the cabin (cockpit view only).
+        if cockpitView, cockpitContactShadows {
+            if cockpitContact == nil { cockpitContact = try CockpitContactPass(device: device, colorFormat: .rgba16Float) }
+            let fwdC = simd_normalize(c.target - c.position)
+            let sunC = simd_normalize(lighting.toSun)
+            // Same window-sun term as ck_cockpitMetal: sun elevation, less the cloud cover over the aircraft.
+            let cloudShadeEstimate = min(1, max(0, Float(clouds.coverage)))
+            let direct: Float = 0.55 * min(1, max(0, sunC.z * 3)) * (1 - cloudShadeEstimate)
+            try cockpitContact?.encode(cmd: cmd, scene: scene, depth: sceneDepth, near: Float(c.near),
+                                       fovY: Float(c.verticalFOVDeg) * .pi / 180, aspect: Float(sw) / Float(sh),
+                                       forward: SIMD3<Float>(Float(fwdC.x), Float(fwdC.y), Float(fwdC.z)),
+                                       up: SIMD3<Float>(Float(c.up.x), Float(c.up.y), Float(c.up.z)),
+                                       toSun: sunC, directShare: direct)
+        }
         func pass(_ t: MTLTexture, load: MTLLoadAction, label: String, _ body: (MTLRenderCommandEncoder) -> Void) throws {
             let pd = MTLRenderPassDescriptor()
             pd.colorAttachments[0].texture = t
@@ -844,6 +880,8 @@ public final class WorldRenderer {
             }
         }
         // SSAO from the scene depth (reversed infinite Z).
+        // Round 4: in the cockpit view the contact pass handles centimetre scale, so the 2.5 m SSAO is capped.
+        let ssaoStrength: Float = cockpitView && cockpitContactShadows ? min(self.ssaoStrength, 0.35) : self.ssaoStrength
         if ssaoStrength > 0 {
             aoTarget = target(aoTarget, .r16Float, sw, sh)
             guard let ao = aoTarget else { throw RendererError.commandQueue }
@@ -1217,6 +1255,31 @@ public final class WorldRenderer {
             cu.groundAmb = SIMD4(L.ambientGround, 1)
             cu.tableDims = SIMD4(dims.x, dims.y, dims.z, 1)      // linear HDR into the scene buffer
             try cr.encode(cmd: cmd, colour: colour, depth: depth, uniforms: cu, inscatter: ins, transmit: tr)
+        }
+        // Round 4: canopy glass after the cloud composite (so cloud transmittance does not dim its reflection and sun
+        // flare). Inner faces of the fuselage glazing, premultiplied blend, depth tested and not written.
+        if cockpitView, canopyGlass, cockpit != nil, let a = aircraft, let p = aircraftPosition, let m = aircraftBodyToENU {
+            let gpass = MTLRenderPassDescriptor()
+            gpass.colorAttachments[0].texture = colour
+            gpass.colorAttachments[0].loadAction = .load; gpass.colorAttachments[0].storeAction = .store
+            gpass.depthAttachment.texture = depth
+            gpass.depthAttachment.loadAction = .load; gpass.depthAttachment.storeAction = .store
+            guard let ge = cmd.makeRenderCommandEncoder(descriptor: gpass) else { throw RendererError.commandQueue }
+            ge.label = "CanopyGlass"
+            ge.setRenderPipelineState(canopyGlassPipeline)
+            ge.setDepthStencilState(propDepthState)            // reversed-Z test, no depth write
+            ge.setCullMode(.none)
+            ge.setFragmentTexture(sm, index: 2)                // shadow cascades
+            var gu = uniforms(model: Self.modelMatrix(m, p - c.position))
+            gu.cameraPos.w = 0                                 // keep the inner faces
+            gu.quality.y = 1
+            var gp = SIMD4<Float>(canopyDust, canopyScratches, canopyThickness, 0)
+            ge.setVertexBuffer(a.buffer, offset: 0, index: 0)
+            ge.setVertexBytes(&gu, length: MemoryLayout<WorldUniforms>.stride, index: 1)
+            ge.setFragmentBytes(&gu, length: MemoryLayout<WorldUniforms>.stride, index: 1)
+            ge.setFragmentBytes(&gp, length: MemoryLayout<SIMD4<Float>>.stride, index: 2)
+            ge.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: a.count)
+            ge.endEncoding()
         }
     }
 
