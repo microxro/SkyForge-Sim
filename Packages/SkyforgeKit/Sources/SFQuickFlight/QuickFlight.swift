@@ -594,6 +594,9 @@ public struct QuickFlightSession: Sendable {
     /// Ends the flight (an overstressed airframe, for example).
     public mutating func markCrashed() { crashed = true }
 
+    /// Wakes of other aircraft (AI traffic); their induced velocity adds to the air mass at this aircraft.
+    public mutating func setWakes(_ wakes: [WakeVortexPair]) { environment.wakes = wakes }
+
     /// Sets inputs directly (autopilots, tests).
     public mutating func setInputs(_ i: ControlInputs) { inputs = i.sanitized }
 
