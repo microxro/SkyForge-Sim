@@ -166,4 +166,45 @@ import SFAtmosphere
         let a = normalForceZ(0.94), b = normalForceZ(0.96)
         #expect(abs(a - b) < 0.5 * abs(a) + 1)
     }
+
+    @Test func wakeHasDownwashBetweenAndUpwashOutside() {
+        let w = WakeVortexPair(centerNED: .zero, headingRad: 0, circulation: 200, separation: 10)
+        let between = w.velocityNED(at: SIMD3(0, 0, 0))
+        let outside = w.velocityNED(at: SIMD3(0, 20, 0))
+        #expect(between.z > 0, "downwash between the vortices (NED z down)")
+        #expect(outside.z < 0, "upwash outside the pair")
+        // Symmetric about the centreline.
+        let left = w.velocityNED(at: SIMD3(0, -3, 0)), right = w.velocityNED(at: SIMD3(0, 3, 0))
+        #expect(abs(left.z - right.z) < 1e-9 && abs(left.y + right.y) < 1e-9)
+    }
+
+    @Test func wakeDecaysWithAge() {
+        var w = WakeVortexPair(centerNED: .zero, headingRad: 0, circulation: 200, separation: 10, decayTime: 60)
+        let young = abs(w.velocityNED(at: SIMD3(0, 0, 0)).z)
+        w.age = 60
+        let old = abs(w.velocityNED(at: SIMD3(0, 0, 0)).z)
+        #expect(abs(old / young - exp(-1)) < 1e-9)
+    }
+
+    @Test func generatedWakeMatchesWeightAndSeparation() {
+        let cfg = AircraftConfig.sf5Jet
+        let w = WakeVortexPair.generated(by: cfg, tas: 90, density: ISA.seaLevelDensity,
+                                         centerNED: .zero, headingRad: 0)
+        // Lift from the pair: rho * V * Gamma * separation = W (elliptic loading).
+        let lift = ISA.seaLevelDensity * 90 * w.circulation * w.separation
+        #expect(abs(lift - cfg.mass * 9.80665) / (cfg.mass * 9.80665) < 1e-9)
+        #expect(abs(w.separation - Double.pi * cfg.wingSpan / 4) < 1e-9)
+    }
+
+    @Test func wakeSinksAFollowingAircraft() {
+        // A trailing aircraft flying through the downwash between the vortices loses height unless it trims up.
+        let m = FlightModel(config: .sf2Cruiser)
+        let wake = WakeVortexPair(centerNED: SIMD3(0, 0, -1_000), headingRad: 0, circulation: 150, separation: 9)
+        let clear = FlightEnvironment()
+        let inWake = FlightEnvironment(wakes: [wake])
+        let s = AircraftState(positionNED: SIMD3(0, 0, -1_000), velocityBody: SIMD3(60, 0, 0), attitude: .identity, bodyRates: .zero)
+        let a = m.outputs(s, inputs: ControlInputs(throttle: 0.4, gear: 0), environment: clear).liftCoefficient
+        let b = m.outputs(s, inputs: ControlInputs(throttle: 0.4, gear: 0), environment: inWake).liftCoefficient
+        #expect(b < a, "downwash must reduce the lift coefficient at the wing")
+    }
 }

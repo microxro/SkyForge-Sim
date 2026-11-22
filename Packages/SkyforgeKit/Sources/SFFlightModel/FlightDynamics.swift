@@ -72,10 +72,14 @@ public struct FlightEnvironment: Sendable {
     public var terrain: any TerrainHeightProvider
     /// Runway/ground friction multiplier: 1 dry asphalt, ~0.5 wet, ~0.25 snow, ~0.1 ice.
     public var surfaceFriction: Double = 1
+    /// Wake vortices from other aircraft; their induced velocity adds to the wind at the aircraft.
+    public var wakes: [WakeVortexPair] = []
     public init(windNED: SIMD3<Double> = .zero, temperatureOffset: Double = 0, originHeight: Double = 0,
-                terrain: any TerrainHeightProvider = FlatTerrain(), surfaceFriction: Double = 1) {
+                terrain: any TerrainHeightProvider = FlatTerrain(), surfaceFriction: Double = 1,
+                wakes: [WakeVortexPair] = []) {
         self.windNED = windNED; self.temperatureOffset = temperatureOffset
         self.originHeight = originHeight; self.terrain = terrain
+        self.wakes = wakes
         self.surfaceFriction = surfaceFriction.isFinite ? min(1.2, max(0.02, surfaceFriction)) : 1
     }
 }
@@ -149,7 +153,9 @@ public struct FlightModel: Sendable {
         let input = inRaw.sanitized
         var out = FlightOutputs()
         let atm = ISA.state(geometricAltitude: env.originHeight + s.altitude, temperatureOffset: env.temperatureOffset)
-        let windBody = s.attitude.conjugate.rotate(env.windNED)
+        var airmass = env.windNED
+        for w in env.wakes { airmass += w.velocityNED(at: s.positionNED) }
+        let windBody = s.attitude.conjugate.rotate(airmass)
         let va = s.velocityBody - windBody
         let speed = length(va)
         var force = SIMD3<Double>(0, 0, 0)
