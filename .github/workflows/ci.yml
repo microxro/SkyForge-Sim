@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-24.04
     container: swift:6.3
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           persist-credentials: false
       - uses: actions/cache@v4
@@ -47,11 +47,12 @@ jobs:
           apt-get update -qq && apt-get install -y -qq python3 >/dev/null
           python3 tools/lint_pbxproj.py
           python3 tools/check_licenses.py
+          python3 tools/appstore_preflight.py
 
   apple:
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           persist-credentials: false
       - name: Select Xcode
@@ -85,14 +86,14 @@ jobs:
             CODE_SIGNING_ALLOWED=NO build | tee mac-build.log | tail -n 80
       - name: Upload logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: apple-build-logs
           path: "*-build.log"
           if-no-files-found: ignore
       - name: Upload visual regression output
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: visual-regression
           path: visual-out
@@ -104,7 +105,7 @@ jobs:
   frames:
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           persist-credentials: false
       - name: Select Xcode
