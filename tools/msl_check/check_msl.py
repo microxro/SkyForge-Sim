@@ -121,6 +121,9 @@ def main():
     a = ap.parse_args()
 
     units = [] if a.only else [(os.path.join(SHADERS, "CloudShaders.swift"), "common")]
+    # world_fragment calls MacroColourShaders, which WorldRenderer places before WorldShaders: make that the default.
+    if not a.only and not any(os.path.basename(f) == "MacroColourShaders.swift" for f in a.before):
+        a.before = ["MacroColourShaders.swift"] + a.before
     units += [resolve(f) for f in a.before]
     units += [] if a.only else [(os.path.join(SHADERS, "WorldShaders.swift"), "source")]
     units += [resolve(f) for f in a.files]
