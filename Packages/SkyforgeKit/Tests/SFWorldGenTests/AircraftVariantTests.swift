@@ -12,10 +12,10 @@ import SFMath
     }
     static func expected(_ id: String) -> Expected {
         switch id {
-        case "org.skyforge.sfc": return Expected(gearZ: 1.30, span: 11.0, length: 8.0...9.6, prop: true)
+        case "org.skyforge.sfc": return Expected(gearZ: 1.30, span: 10.2, length: 8.0...9.6, prop: true)
         case "org.skyforge.sfa": return Expected(gearZ: 1.15, span: 9.0, length: 6.0...7.4, prop: true)
-        case "org.skyforge.sft1": return Expected(gearZ: 1.35, span: 10.5, length: 11.5...13.5, prop: false)
-        default: return Expected(gearZ: 1.70, span: 11.5, length: 14.5...16.0, prop: false)   // org.skyforge.sff1
+        case "org.skyforge.sft1": return Expected(gearZ: 1.35, span: 9.4, length: 11.5...13.5, prop: false)
+        default: return Expected(gearZ: 1.70, span: 9.4, length: 14.5...16.0, prop: false)   // org.skyforge.sff1
         }
     }
 
