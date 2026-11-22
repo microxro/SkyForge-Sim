@@ -101,12 +101,9 @@ jobs:
 
   # Art-review frames (five showcase airports and SkyWorld at 1280×720, Metal), logged as SKYFORGE_PNG
   # lines in their own job so they can be read back without the rest of the test output.
+  # One job renders every scene in sequence: macOS runners are the scarce resource, so each PR needs 2, not 7.
   frames:
     runs-on: macos-26
-    strategy:
-      fail-fast: false
-      matrix:
-        ident: [KMRY, KBFI, KASE, LSZS, NZQN, SKYWORLD]   # one job each: a job log carries a handful of frames
     steps:
       - uses: actions/checkout@v5
         with:
@@ -117,5 +114,5 @@ jobs:
       - name: Showcase frames
         env:
           SKYFORGE_VISUAL_LOG: "1"
-          SKYFORGE_FRAMES: ${{ matrix.ident }}
+          SKYFORGE_FRAMES: KMRY,KBFI,KASE,LSZS,NZQN,SKYWORLD
         run: swift test --disable-automatic-resolution -c release -Xswiftc -enable-testing --package-path Packages/SkyforgeKit --filter ShowcaseRenderTests
