@@ -137,28 +137,22 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
-  # Publishes the frames as PNG files on the `ci-frames` branch, readable at raw.githubusercontent.com:
-  #   main/        frames from the latest push to main
-  #   pr-<number>/ frames for each open same-repo PR, which also get a PR comment with the images
-  # Each run rewrites the branch as one fresh commit holding only main and open PRs' frames, so it stays small.
-  # Fork PRs get a read-only token, so they are skipped. Runs on Linux so it does not take a macOS runner.
+  # Publishes main's review frames to the `ci-frames` branch (raw.githubusercontent.com/<repo>/ci-frames/main/).
+  # Runs only on pushes to main, so it never executes code from a pull request with a write token.
+  # Pull-request frames are published and commented by .github/workflows/pr-frames.yml (workflow_run).
   publish-frames:
     needs: frames
-    if: ${{ !cancelled() && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) }}
+    if: ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-24.04
     permissions:
       contents: write
-      pull-requests: write
-      issues: write
     concurrency:
       group: publish-frames
       cancel-in-progress: false
     env:
       GH_TOKEN: ${{ github.token }}
       REPO: ${{ github.repository }}
-      PR: ${{ github.event.pull_request.number }}
-      SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      SHA: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -170,55 +164,36 @@ jobs:
         with:
           name: skyforge-frames
           path: frames-out
-      - name: Push frames to ci-frames and comment on the PR
+      - name: Push main frames to ci-frames
         run: |
           set -euo pipefail
           mkdir -p frames-out
-          REMOTE="https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git"
+          AUTH="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          GIT=(git -c "http.https://github.com/.extraheader=$AUTH")
+          REMOTE="https://github.com/${REPO}.git"
           WT="$RUNNER_TEMP/ci-frames"
           rm -rf "$WT" && mkdir -p "$WT"
-          if git ls-remote --exit-code --heads "$REMOTE" ci-frames >/dev/null 2>&1; then
-            git fetch --depth 1 -q "$REMOTE" ci-frames
+          if "${GIT[@]}" ls-remote --exit-code --heads "$REMOTE" ci-frames >/dev/null 2>&1; then
+            "${GIT[@]}" fetch --depth 1 -q "$REMOTE" ci-frames
             git archive FETCH_HEAD | tar -x -C "$WT"
           fi
-          # Drop frames of PRs that are no longer open.
-          OPEN=$(gh api --paginate "repos/${REPO}/pulls?state=open&per_page=100" --jq '.[].number')
-          for d in "$WT"/pr-*; do
-            [ -d "$d" ] || continue
-            n=${d##*/pr-}
-            grep -qx "$n" <<<"$OPEN" || rm -rf "$d"
-          done
-          if [ -n "$PR" ]; then DIR="pr-$PR"; LABEL="PR #$PR"; else DIR=main; LABEL="main"; fi
-          DEST="$WT/$DIR"
+          DEST="$WT/main"
           rm -rf "$DEST" && mkdir -p "$DEST"
-          cp frames-out/*.png "$DEST/" 2>/dev/null || echo "::warning::No frames to publish for $LABEL"
+          cp frames-out/*.png "$DEST/" 2>/dev/null || echo "::warning::No frames to publish for main"
           printf '%s\n' "$SHA" > "$DEST/commit.txt"
           cat > "$WT/README.md" <<'EOF'
           # Review frames (generated)
 
-          Rewritten by .github/workflows/ci.yml (job publish-frames) on each push to main and each same-repo PR.
+          Rewritten by .github/workflows/ci.yml (job publish-frames) on each push to main.
 
-          - main/: frames from the latest push to main.
-          - pr-<number>/: frames for each open pull request. commit.txt names the commit they came from.
+          - main/: frames from the latest push to main. commit.txt names the commit.
+          - pr-<number>/: frames for open pull requests, published by .github/workflows/pr-frames.yml.
 
           Raw link pattern: https://raw.githubusercontent.com/<owner>/<repo>/ci-frames/main/<name>.png
-          Frames of closed pull requests are dropped on the next run.
           EOF
           cd "$WT"
           git init -q -b ci-frames
           git add -A
           git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-            commit -q -m "Review frames for ${LABEL} (${SHA:0:7})"
-          git push -q --force "$REMOTE" HEAD:refs/heads/ci-frames
-          cd "$GITHUB_WORKSPACE"
-          if [ -n "$PR" ]; then
-            python3 tools/ci_frames.py comment --repo "$REPO" --branch ci-frames --pr "$PR" --sha "$SHA" \
-              --run-id "$GITHUB_RUN_ID" --run-url "$RUN_URL" frames-out > comment.md
-            EXISTING=$(gh api --paginate "repos/${REPO}/issues/${PR}/comments" \
-              --jq '.[] | select(.body | contains("<!-- skyforge-frames -->")) | .id' | sed -n '1p')
-            if [ -n "$EXISTING" ]; then
-              gh api -X PATCH "repos/${REPO}/issues/comments/${EXISTING}" -F body=@comment.md >/dev/null
-            else
-              gh api -X POST "repos/${REPO}/issues/${PR}/comments" -F body=@comment.md >/dev/null
-            fi
-          fi
+            commit -q -m "Review frames for main (${SHA:0:7})"
+          "${GIT[@]}" push -q --force "$REMOTE" HEAD:refs/heads/ci-frames
