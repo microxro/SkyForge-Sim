@@ -111,6 +111,14 @@ public enum AircraftCatalog {
         cruiseSpeed: 52, approachSpeed: 38, rotateSpeed: 30, approachFlaps: 0.5,
         flyByWire: false, armament: [], unlock: .none)
 
+    /// Twin-engine passenger aircraft from the flight-model catalog (org.skyforge.sf3).
+    public static let sfTwin = PlaneSpec(
+        config: .sf3Twin, role: .tourer,
+        summary: "Six-seat twin-engine airliner. Stable at low speed, with power for a heavy load.",
+        limits: EnvelopeLimits(vne: 100, mmo: 0.3, vfe: 55, nzMax: 3.8, nzMin: -1.5, alphaLimit: 0.30),
+        cruiseSpeed: 70, approachSpeed: 48, rotateSpeed: 42, approachFlaps: 0.5,
+        flyByWire: false, armament: [], unlock: .mission("precision-landing"))
+
     public static let sfAerobat: PlaneSpec = {
         var c = AircraftConfig.sf1Trainer
         c.id = "org.skyforge.sfa"; c.name = "SF-A Aerobat"
@@ -143,7 +151,7 @@ public enum AircraftCatalog {
         cruiseSpeed: 220, approachSpeed: 80, rotateSpeed: 80, approachFlaps: 1.0,
         flyByWire: true, armament: [.cannon, .heatMissile, .radarMissile], unlock: .mission("wingman-formation"))
 
-    public static let all: [PlaneSpec] = [sf1Trainer, sfCruiser, sfAerobat, sfT1Jet, sfF1Fighter]
+    public static let all: [PlaneSpec] = [sf1Trainer, sfCruiser, sfTwin, sfAerobat, sfT1Jet, sfF1Fighter]
 
     public static func spec(id: String) -> PlaneSpec? { all.first { $0.id == id } }
     public static var civil: [PlaneSpec] { all.filter { !$0.isMilitary } }

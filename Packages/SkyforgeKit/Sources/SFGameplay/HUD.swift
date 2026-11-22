@@ -2,6 +2,7 @@
 // What the mission and weapon HUD shows, as plain values so any UI (SwiftUI, Metal) can draw it and
 // tests can check it.
 import Foundation
+import SFATC
 
 public extension EnvelopeWarning {
     /// Short cockpit callout.
@@ -53,6 +54,8 @@ public struct GameplayHUD: Sendable, Equatable {
     public var flares: Int = 0
     public var chaff: Int = 0
     public var radarMissiles: Int = 0
+    /// The last tower messages, oldest first.
+    public var atcLines: [String] = []
 
     public var timeText: String {
         let s = Int(max(0, elapsed))
@@ -93,5 +96,9 @@ public extension GameplayDirector {
 }
 
 public extension GameplaySession {
-    var hud: GameplayHUD { director.hud(mach: mach, time: time) }
+    var hud: GameplayHUD {
+        var value = director.hud(mach: mach, time: time)
+        value.atcLines = atc?.recentLines(3) ?? []
+        return value
+    }
 }
