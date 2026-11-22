@@ -126,42 +126,14 @@ public struct RealWorldRegion: FlightWorld {
 
     public enum LoadError: Error, Equatable { case unknownAirport(String), noRunwayGeometry(String) }
 
-    /// Height outside the near square: the mid mosaic, blended into the far one over its outer 15 %.
-    func outerHeight(_ x: Double, _ y: Double) -> Double {
-        guard let mid = midHeights else { return farHeights.height(x, y) }
-        let ex = mid.halfExtent - max(abs(x - mid.centre.x), abs(y - mid.centre.y))
-        if ex <= 0 { return farHeights.height(x, y) }
-        let band = 0.15 * mid.halfExtent
-        if ex >= band { return mid.height(x, y) }
-        let t = ex / band, w = t * t * (3 - 2 * t)
-        let f = farHeights.height(x, y)
-        return f + (mid.height(x, y) - f) * w
+    /// The ground's elevation as a value the renderer can sample too (the same surface trees and buildings stand on).
+    public var terrainField: TerrainHeightField {
+        TerrainHeightField(near: nearHeights, far: farHeights, mid: midHeights, runwayThreshold: runwayThreshold,
+                           runwayDirection: runwayDirection, runwayLengthMetres: runwayLengthMetres,
+                           runwayWidthMetres: runwayWidthMetres, runwayElevation: runwayElevation)
     }
 
-    public func height(_ x: Double, _ y: Double) -> Double {
-        // Runways are flat: hold the published elevation over the paved area and blend 60 m out.
-        let d = SIMD2(x, y) - runwayThreshold
-        let along = (d * runwayDirection).sum()
-        let across = abs(d.x * runwayDirection.y - d.y * runwayDirection.x)
-        let over = max(max(-along, along - runwayLengthMetres), across - runwayWidthMetres)
-        // Near (z14) heights blend into the far (z10) mosaic over the outer 15 % of the near square, so
-        // there is no cliff where the two elevation models disagree (mountains: tens of metres).
-        let ex = nearHeights.halfExtent - max(abs(x - nearHeights.centre.x), abs(y - nearHeights.centre.y))
-        let blendWidth = 0.15 * nearHeights.halfExtent
-        let natural: Double
-        if ex <= 0 {
-            natural = max(0, outerHeight(x, y))
-        } else if ex >= blendWidth {
-            natural = max(0, nearHeights.height(x, y))
-        } else {
-            let t = ex / blendWidth, w = t * t * (3 - 2 * t)
-            let o = outerHeight(x, y)
-            natural = max(0, o + (nearHeights.height(x, y) - o) * w)
-        }
-        if over <= 0 { return runwayElevation }
-        let t = min(1, over / 60)
-        return runwayElevation + (natural - runwayElevation) * (t * t * (3 - 2 * t))
-    }
+    public func height(_ x: Double, _ y: Double) -> Double { terrainField.height(x, y) }
 
     /// Loads an airport region (network once, then the content-store cache).
     /// `bundledBuildings`: use the showcase pack's building footprints when no live OpenStreetMap data came back.
