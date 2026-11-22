@@ -38,6 +38,7 @@ struct WorldUniforms {
     var quality: SIMD4<Float>         // shadow filter half width (taps), cabin fill, unused
     var runwayA: SIMD4<Float>         // low threshold x, y (region metres), direction x, y
     var runwayB: SIMD4<Float>         // length, width, low-end number, 1 if drawn
+    var airportRect: SIMD4<Float>     // airport mask rectangle: centre x, y, half extent (region m), 1 if bound
 }
 
 /// 16-byte vertex matching `TerrainVertex` (position + snorm normal; w = −127 marks bark).
@@ -151,7 +152,9 @@ public final class WorldRenderer {
     private var cockpit: (buffer: MTLBuffer, count: Int, screen: MTLBuffer)?
     private var cockpitScreen: MTLTexture?
     /// Draw from inside the cockpit: interior mesh, PFD screen, airframe back faces skipped.
-    public var cockpitView = false
+    public var cockpitView = false {
+        didSet { if oldValue != cockpitView { prevCullMvp = nil } }   // the Hi-Z history belongs to the other camera
+    }
     /// FXAA on the final frame (the scene renders into an internal texture first).
     public var antialiasing = true
     private let fxaaPipeline: MTLRenderPipelineState
@@ -205,6 +208,37 @@ public final class WorldRenderer {
     /// Contrast-adaptive sharpening of the final frame (0 = off; applied in the anti-aliasing pass).
     public var sharpen: Float = 0.5
     private var waterTex: MTLTexture?
+    /// Airport surface class mask (r8Unorm, the water mask's grid); nil binds the zero dummy and the shader skips it.
+    private var airportTex: MTLTexture?
+    /// Round 3: 64 m macro-colour grid of the near imagery (`MacroColourPass`), read at texture index 10 when
+    /// `macroColourDecoupling` is on. Built whenever near imagery is set; nil binds a zero texture (alpha 0 = none).
+    private var macroTex: MTLTexture?
+    /// Near imagery the macro texture is built from; the build (pipeline compile and a GPU wait) runs on first use with
+    /// `macroColourDecoupling` on, not when a region loads.
+    private var macroSource: (tex: MTLTexture, centre: SIMD2<Double>, half: Double)?
+    /// CPU suburb mask waiting for its first use with `suburbParcels` on.
+    private var pendingSuburb: SuburbMaskRaster?
+    private lazy var zeroMacro: MTLTexture = MacroColourPass.zeroTexture(device: device)
+    /// Replace the near-ground tone-map stack with the macro-colour decoupling pass (round 3). Off by default, so the
+    /// art-tuned rounds 1–62 look is unchanged until the KBFI/KMRY/KASE/LSZS/NZQN frames are compared.
+    public var macroColourDecoupling = false
+    /// Round 2: suburban parcel fabric (kerbs, sidewalks, driveways, per-lot lawns) on near ground within 2 km, read from the
+    /// RGBA8 mask at texture index 11. Off by default: the mask is then not bound (a zero texture is) and the shader's weight is 0,
+    /// so the art-tuned frames are unchanged. Needs `landuse.sfl` in the airport's pack. docs/rounds/ROUND2.md.
+    public var suburbParcels = false
+    private var suburbTex: MTLTexture?
+    /// Round 2: GPU frustum + Hi-Z occlusion culling of the building batches (`BuildingCuller`), one indirect draw per batch.
+    /// Off by default: the CPU cell loop stays the path. Shadow cascades always use the CPU loop.
+    public var gpuBuildingCulling = false {
+        didSet { if !gpuBuildingCulling { prevCullMvp = nil } }
+    }
+    private var culler: BuildingCuller?
+    private var cullerCellsDirty = true
+    /// The previous frame's camera-relative view-projection (the Hi-Z pyramid's frame); nil on the first frame and after a cut.
+    private var prevCullMvp: simd_float4x4?
+    /// Counters of the last GPU cull (valid after the frame's command buffer completes); nil when the GPU path is off.
+    public var lastBuildingCullStats: BuildingCuller.Stats? { gpuBuildingCulling ? culler?.lastStats : nil }
+    private var airportRect = SIMD4<Float>(0, 0, 1, 0)   // centre x, y, half extent (region m), 1 when a mask is bound
     private lazy var dummy2D: MTLTexture = makeDummy()
     /// Chunks drawn in the last frame after frustum culling (diagnostics/tests).
     public private(set) var lastDrawnChunks = 0
@@ -282,6 +316,13 @@ public final class WorldRenderer {
     private var propDisc: (buffer: MTLBuffer, count: Int)?
     private let propPipeline: MTLRenderPipelineState
     private let propDepthState: MTLDepthStencilState
+    // Round 4 cockpit: canopy glass pipeline, dust film and scratch amount (0…1) and plate thickness (m), and the
+    // centimetre-scale contact-shadow pass. Cockpit view only; no other frame is touched.
+    private let canopyGlassPipeline: MTLRenderPipelineState
+    public var canopyDust: Float = 0.35, canopyScratches: Float = 0.45, canopyThickness: Float = 0.005
+    public var canopyGlass = true
+    private var cockpitContact: CockpitContactPass?
+    public var cockpitContactShadows = true
     private var tables: (ins: MTLTexture, tr: MTLTexture, key: SIMD4<Float>)?
     public private(set) var lighting: LightingSetup
     public let colorFormat: MTLPixelFormat
@@ -309,7 +350,7 @@ public final class WorldRenderer {
         self.lighting = lighting
         sky = try PhysicalSkyRenderer(device: device, colorFormat: .rgba16Float)
         let lib: MTLLibrary
-        do { lib = try device.makeLibrary(source: CloudShaders.common + WorldShaders.source, options: nil) }
+        do { lib = try device.makeLibrary(source: CloudShaders.common + "\n" + MacroColourShaders.source + "\n" + WorldShaders.source, options: nil) }
         catch { throw RendererError.shaderCompile(String(describing: error)) }
         worldLibrary = lib
         guard let v = lib.makeFunction(name: "world_vertex"), let f = lib.makeFunction(name: "world_fragment") else {
@@ -378,6 +419,21 @@ public final class WorldRenderer {
         pds.isDepthWriteEnabled = false
         guard let pdss = device.makeDepthStencilState(descriptor: pds) else { throw RendererError.commandQueue }
         propDepthState = pdss
+        // Canopy glass (Round 4): world_vertex + canopy_glass_fragment over the aircraft buffer, premultiplied blend.
+        guard let gv = lib.makeFunction(name: "world_vertex"), let gf = lib.makeFunction(name: "canopy_glass_fragment") else {
+            throw RendererError.shaderCompile("missing canopy glass functions")
+        }
+        let gd = MTLRenderPipelineDescriptor()
+        gd.label = "CanopyGlass"
+        gd.vertexFunction = gv; gd.fragmentFunction = gf
+        let ga = gd.colorAttachments[0]!
+        ga.pixelFormat = .rgba16Float
+        ga.isBlendingEnabled = true
+        ga.sourceRGBBlendFactor = .one; ga.destinationRGBBlendFactor = .oneMinusSourceAlpha
+        ga.sourceAlphaBlendFactor = .one; ga.destinationAlphaBlendFactor = .oneMinusSourceAlpha
+        gd.depthAttachmentPixelFormat = .depth32Float
+        do { canopyGlassPipeline = try device.makeRenderPipelineState(descriptor: gd) }
+        catch { throw RendererError.pipeline(String(describing: error)) }
         do {
             let plib = try device.makeLibrary(source: PostShaders.source, options: nil)
             let fd = MTLRenderPipelineDescriptor()
@@ -566,6 +622,9 @@ public final class WorldRenderer {
             try Self.imageryTexture(i, device: device, queue: queue).texture
         }
         imageryNear = try data.near.map { (try imageryTexture($0), $0.centre, $0.halfExtent) }
+        macroTex = nil
+        macroSource = imageryNear.map { (tex: $0.tex, centre: $0.centre, half: $0.half) }
+        prevCullMvp = nil                                  // new world: the old frame's Hi-Z no longer applies
         imageryFar = try data.far.map { (try imageryTexture($0), $0.centre, $0.halfExtent) }
         imageryDetail = try data.detail.map { (try imageryTexture($0), $0.centre, $0.halfExtent) }
         imageryMid = try data.mid.map { (try imageryTexture($0), $0.centre, $0.halfExtent) }
@@ -587,16 +646,56 @@ public final class WorldRenderer {
             }
             waterTex = t
         } else { waterTex = nil }
+        airportTex = nil
+        airportRect = SIMD4<Float>(0, 0, 1, 0)
+        if let am = data.airportMask, am.texels.count == 2 * am.size * am.size {
+            let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rg8Unorm, width: am.size, height: am.size, mipmapped: false)
+            d.usage = [.shaderRead]
+            guard let t = device.makeTexture(descriptor: d) else { throw RendererError.commandQueue }
+            t.replace(region: MTLRegionMake2D(0, 0, am.size, am.size), mipmapLevel: 0, withBytes: am.texels, bytesPerRow: 2 * am.size)
+            airportTex = t
+            airportRect = SIMD4<Float>(Float(am.centre.x), Float(am.centre.y), Float(am.halfExtent), 1)
+        }
+        suburbTex = nil
+        pendingSuburb = nil
+        if let sm = data.suburbMask, sm.texels.count == 4 * sm.size * sm.size { pendingSuburb = sm }   // uploaded on first use
     }
+
+    /// The macro-colour texture, built on first use; nil when there is no near imagery or the build fails.
+    private func macroTexture() -> MTLTexture? {
+        if let t = macroTex { return t }
+        guard let src = macroSource else { return nil }
+        macroTex = try? MacroColourPass.build(image: src.tex, centre: src.centre, half: src.half, library: worldLibrary, device: device, queue: queue)
+        return macroTex
+    }
+
+    /// The suburb mask texture, uploaded on first use.
+    private func suburbTexture() -> MTLTexture? {
+        if let t = suburbTex { return t }
+        guard let sm = pendingSuburb else { return nil }
+        // Same extent and row order as the near imagery (the shader indexes it with the imagery's own uv).
+        let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm, width: sm.size, height: sm.size, mipmapped: false)
+        d.usage = [.shaderRead]
+        guard let t = device.makeTexture(descriptor: d) else { return nil }
+        t.replace(region: MTLRegionMake2D(0, 0, sm.size, sm.size), mipmapLevel: 0, withBytes: sm.texels, bytesPerRow: 4 * sm.size)
+        suburbTex = t
+        pendingSuburb = nil
+        return t
+    }
+
+    /// Forget the Hi-Z history (call after a camera cut or teleport): the next GPU cull uses frustum and distance only.
+    public func resetBuildingCullHistory() { prevCullMvp = nil }
 
     /// Uploads buildings (nil or empty removes them).
     public func setBuildings(_ mesh: BuildingMesh?) throws {
-        guard let mesh, !mesh.indices.isEmpty, !mesh.vertices.isEmpty else { buildingData = nil; return }
+        prevCullMvp = nil                                  // new geometry: drop the Hi-Z history
+        guard let mesh, !mesh.indices.isEmpty, !mesh.vertices.isEmpty else { buildingData = nil; cullerCellsDirty = true; return }
         guard let vb = mesh.vertices.withUnsafeBytes({ device.makeBuffer(bytes: $0.baseAddress!, length: $0.count, options: .storageModeShared) }),
               let ib = mesh.indices.withUnsafeBytes({ device.makeBuffer(bytes: $0.baseAddress!, length: $0.count, options: .storageModeShared) }) else {
             throw RendererError.commandQueue
         }
         buildingData = (vb, ib, mesh.cells)
+        cullerCellsDirty = true
     }
 
     /// Frustum planes (camera-relative) from a view-projection matrix (reversed-Z: near plane is w − z ≥ 0 … any order works).
@@ -781,6 +880,20 @@ public final class WorldRenderer {
             sceneDepth = scaledDepth!
         }
         try encodeScene(cmd: cmd, colour: scene, depth: sceneDepth, camera: c, aircraftPosition: aircraftPosition, aircraftBodyToENU: aircraftBodyToENU)
+        // Round 4: centimetre-scale contact shadows and AO over the cabin (cockpit view only).
+        if cockpitView, cockpitContactShadows {
+            if cockpitContact == nil { cockpitContact = try CockpitContactPass(device: device, colorFormat: .rgba16Float) }
+            let fwdC = simd_normalize(c.target - c.position)
+            let sunC = simd_normalize(lighting.toSun)
+            // Same window-sun term as ck_cockpitMetal: sun elevation, less the cloud cover over the aircraft.
+            let cloudShadeEstimate = min(1, max(0, Float(clouds.coverage)))
+            let direct: Float = 0.55 * min(1, max(0, sunC.z * 3)) * (1 - cloudShadeEstimate)
+            try cockpitContact?.encode(cmd: cmd, scene: scene, depth: sceneDepth, near: Float(c.near),
+                                       fovY: Float(c.verticalFOVDeg) * .pi / 180, aspect: Float(sw) / Float(sh),
+                                       forward: SIMD3<Float>(Float(fwdC.x), Float(fwdC.y), Float(fwdC.z)),
+                                       up: SIMD3<Float>(Float(c.up.x), Float(c.up.y), Float(c.up.z)),
+                                       toSun: sunC, directShare: direct)
+        }
         func pass(_ t: MTLTexture, load: MTLLoadAction, label: String, _ body: (MTLRenderCommandEncoder) -> Void) throws {
             let pd = MTLRenderPassDescriptor()
             pd.colorAttachments[0].texture = t
@@ -820,6 +933,8 @@ public final class WorldRenderer {
             }
         }
         // SSAO from the scene depth (reversed infinite Z).
+        // Round 4: in the cockpit view the contact pass handles centimetre scale, so the 2.5 m SSAO is capped.
+        let ssaoStrength: Float = cockpitView && cockpitContactShadows ? min(self.ssaoStrength, 0.35) : self.ssaoStrength
         if ssaoStrength > 0 {
             aoTarget = target(aoTarget, .r16Float, sw, sh)
             guard let ao = aoTarget else { throw RendererError.commandQueue }
@@ -1010,6 +1125,21 @@ public final class WorldRenderer {
         // Stored always: the cloud march, SSAO and the depth-aware FXAA all read scene depth (SSAO used
         // to read an undefined depth buffer on clear-sky frames).
         pass.depthAttachment.storeAction = .store
+        // Round 2: GPU cull of the building batches (compute, before the main pass). mvp = viewProj × translation(−camera):
+        // the cells are in region metres and the renderer is camera-relative. Hi-Z comes from last frame's depth.
+        var cullMvp: simd_float4x4?
+        if gpuBuildingCulling, let bd = buildingData {
+            let upC = SIMD3<Float>(Float(c.up.x), Float(c.up.y), Float(c.up.z))
+            let vpC = Self.reversedZProjection(fovY: Float(fovY), aspect: Float(aspect), near: Float(c.near)) * Self.view(forward: fwd, up: upC)
+            let mvp = vpC * Self.translation(-c.position)
+            if culler == nil { culler = try BuildingCuller(device: device) }
+            if let cu = culler {
+                if cullerCellsDirty { try cu.setCells(bd.cells); cullerCellsDirty = false }
+                try cu.encodeCull(cmd: cmd, mvp: mvp, hizMvp: prevCullMvp,
+                                  cameraLocal: SIMD3<Float>(Float(c.position.x), Float(c.position.y), Float(c.position.z)))
+                cullMvp = mvp
+            }
+        }
         guard let enc = cmd.makeRenderCommandEncoder(descriptor: pass) else { throw RendererError.commandQueue }
         enc.setRenderPipelineState(pipeline)
         enc.setDepthStencilState(depthState)
@@ -1024,6 +1154,9 @@ public final class WorldRenderer {
         enc.setFragmentTexture(parcelTex?.tex ?? dummy2D, index: 6)
         enc.setFragmentTexture(imageryDetail?.tex ?? dummy2D, index: 7)
         enc.setFragmentTexture(imageryMid?.tex ?? dummy2D, index: 8)
+        enc.setFragmentTexture(airportTex ?? dummy2D, index: 9)      // dummy2D reads 0 in r: no airport
+        enc.setFragmentTexture((macroColourDecoupling ? macroTexture() : nil) ?? zeroMacro, index: 10)     // alpha 0 (zeroMacro): no macro colour, pass skipped
+        enc.setFragmentTexture((suburbParcels ? suburbTexture() : nil) ?? dummy2D, index: 11)   // dummy2D reads 0 in r: parcel weight 0
         let upHint = SIMD3<Float>(Float(c.up.x), Float(c.up.y), Float(c.up.z))
         let viewProj = Self.reversedZProjection(fovY: Float(fovY), aspect: Float(aspect), near: Float(c.near)) * Self.view(forward: fwd, up: upHint)
         let sunAz = Float(atan2(Double(toSun.y), Double(toSun.x)))
@@ -1047,7 +1180,7 @@ public final class WorldRenderer {
         let cascadeCount: Float = doShadows ? Float(ShadowCascades.count) : 0
         let uTableDims = SIMD4<Float>(dims.x, dims.y, dims.z, cascadeCount)
         let uZenith = SIMD4<Float>(L.skyZenith, Float(time.truncatingRemainder(dividingBy: 3_600)))
-        let uQuality = SIMD4<Float>(Float(max(1, min(3, shadowFilter))), 0, Float(debugView), 0)
+        let uQuality = SIMD4<Float>(Float(max(1, min(3, shadowFilter))), 0, Float(debugView), macroColourDecoupling ? 1 : 0)
         let cloudLayer = CloudUniforms(layer: clouds, steps: 0).layer
         var uRunwayA = SIMD4<Float>(0, 0, 0, 1), uRunwayB = SIMD4<Float>(0, 0, 0, 0)
         if let rw = runway {
@@ -1062,7 +1195,7 @@ public final class WorldRenderer {
                           cascadeSplits: uSplits, cascadeTexel: uTexel, cascadeDepth: uDepth,
                           cameraPos: uCameraPos, cameraLocal: uCameraLocal, imageryNear: uNear, imageryFar: uFar,
                           clouds: cloudLayer, fieldGrid: uFieldGrid, imageryDetail: uDetail, imageryMid: uMid,
-                          skyZenith: uZenith, quality: uQuality, runwayA: uRunwayA, runwayB: uRunwayB)
+                          skyZenith: uZenith, quality: uQuality, runwayA: uRunwayA, runwayB: uRunwayB, airportRect: airportRect)
         }
         if let e = environment {
             let o = e.origin - c.position
@@ -1105,10 +1238,15 @@ public final class WorldRenderer {
             enc.setVertexBytes(&u, length: MemoryLayout<WorldUniforms>.stride, index: 1)
             enc.setFragmentBytes(&u, length: MemoryLayout<WorldUniforms>.stride, index: 1)
             var drawn = 0
-            for cell in bd.cells where Self.boxVisible(planes, cell.min + o, cell.max + o) {
-                enc.drawIndexedPrimitives(type: .triangle, indexCount: cell.indexCount, indexType: .uint32, indexBuffer: bd.indices,
-                                          indexBufferOffset: cell.indexStart * 4)
-                drawn += 1
+            if cullMvp != nil, let cu = culler {
+                cu.encodeDraws(enc, indexBuffer: bd.indices)     // one indirect draw per batch; culled batches carry instanceCount 0
+                drawn = cu.batches.count                         // batches submitted (the GPU decides which draw)
+            } else {
+                for cell in bd.cells where Self.boxVisible(planes, cell.min + o, cell.max + o) {
+                    enc.drawIndexedPrimitives(type: .triangle, indexCount: cell.indexCount, indexType: .uint32, indexBuffer: bd.indices,
+                                              indexBufferOffset: cell.indexStart * 4)
+                    drawn += 1
+                }
             }
             lastDrawnBuildingCells = drawn
             enc.setRenderPipelineState(pipeline)
@@ -1172,6 +1310,10 @@ public final class WorldRenderer {
             }
         }
         enc.endEncoding()
+        if let mvp = cullMvp, let cu = culler {
+            try cu.encodeHiZ(cmd: cmd, depth: depth)      // this frame's depth, for next frame's occlusion test
+            prevCullMvp = mvp
+        }
         if cloudsOn {
             if cloudRenderer == nil { cloudRenderer = try CloudRenderer(device: device, colorFormat: .rgba16Float) }
             let cr = cloudRenderer!
@@ -1191,6 +1333,31 @@ public final class WorldRenderer {
             cu.groundAmb = SIMD4(L.ambientGround, 1)
             cu.tableDims = SIMD4(dims.x, dims.y, dims.z, 1)      // linear HDR into the scene buffer
             try cr.encode(cmd: cmd, colour: colour, depth: depth, uniforms: cu, inscatter: ins, transmit: tr)
+        }
+        // Round 4: canopy glass after the cloud composite (so cloud transmittance does not dim its reflection and sun
+        // flare). Inner faces of the fuselage glazing, premultiplied blend, depth tested and not written.
+        if cockpitView, canopyGlass, cockpit != nil, let a = aircraft, let p = aircraftPosition, let m = aircraftBodyToENU {
+            let gpass = MTLRenderPassDescriptor()
+            gpass.colorAttachments[0].texture = colour
+            gpass.colorAttachments[0].loadAction = .load; gpass.colorAttachments[0].storeAction = .store
+            gpass.depthAttachment.texture = depth
+            gpass.depthAttachment.loadAction = .load; gpass.depthAttachment.storeAction = .store
+            guard let ge = cmd.makeRenderCommandEncoder(descriptor: gpass) else { throw RendererError.commandQueue }
+            ge.label = "CanopyGlass"
+            ge.setRenderPipelineState(canopyGlassPipeline)
+            ge.setDepthStencilState(propDepthState)            // reversed-Z test, no depth write
+            ge.setCullMode(.none)
+            ge.setFragmentTexture(sm, index: 2)                // shadow cascades
+            var gu = uniforms(model: Self.modelMatrix(m, p - c.position))
+            gu.cameraPos.w = 0                                 // keep the inner faces
+            gu.quality.y = 1
+            var gp = SIMD4<Float>(canopyDust, canopyScratches, canopyThickness, 0)
+            ge.setVertexBuffer(a.buffer, offset: 0, index: 0)
+            ge.setVertexBytes(&gu, length: MemoryLayout<WorldUniforms>.stride, index: 1)
+            ge.setFragmentBytes(&gu, length: MemoryLayout<WorldUniforms>.stride, index: 1)
+            ge.setFragmentBytes(&gp, length: MemoryLayout<SIMD4<Float>>.stride, index: 2)
+            ge.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: a.count)
+            ge.endEncoding()
         }
     }
 
