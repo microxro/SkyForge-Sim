@@ -19,7 +19,7 @@ public struct MissionRecord: Sendable, Codable, Equatable {
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         bestScore = try c.decodeIfPresent(Int.self, forKey: .bestScore) ?? 0
-        bestMedal = try c.decodeIfPresent(MissionMedal.self, forKey: .bestMedal) ?? .none
+        bestMedal = (try? c.decode(MissionMedal.self, forKey: .bestMedal)) ?? .none   // an unknown medal value costs the medal, not the file
         attempts = try c.decodeIfPresent(Int.self, forKey: .attempts) ?? 0
         completions = try c.decodeIfPresent(Int.self, forKey: .completions) ?? 0
         bestTime = try c.decodeIfPresent(Double.self, forKey: .bestTime)
@@ -57,7 +57,7 @@ public struct PlayerProgress: Sendable, Codable, Equatable {
     }
 
     /// Whether a mission may be flown in an aircraft: both unlocked and the aircraft allowed by the mission.
-    public func canStart(_ mission: MissionDefinition, in aircraft: AircraftSpec) -> Bool {
+    public func canStart(_ mission: MissionDefinition, in aircraft: PlaneSpec) -> Bool {
         isUnlocked(mission) && isUnlocked(aircraft) && mission.allows(aircraft)
     }
 
@@ -73,20 +73,20 @@ public struct PlayerProgress: Sendable, Codable, Equatable {
         }
     }
 
-    public func isUnlocked(_ aircraft: AircraftSpec) -> Bool { isUnlocked(aircraft.unlock) }
+    public func isUnlocked(_ aircraft: PlaneSpec) -> Bool { isUnlocked(aircraft.unlock) }
     public func isUnlocked(_ mission: MissionDefinition) -> Bool { isUnlocked(mission.unlock) }
 
-    public var unlockedAircraft: [AircraftSpec] { AircraftCatalog.all.filter { isUnlocked($0) } }
+    public var unlockedAircraft: [PlaneSpec] { AircraftCatalog.all.filter { isUnlocked($0) } }
     public var unlockedMissions: [MissionDefinition] { MissionCatalog.all.filter { isUnlocked($0) } }
 
     /// Unlocked aircraft that may fly a mission.
-    public func aircraft(for mission: MissionDefinition) -> [AircraftSpec] {
+    public func aircraft(for mission: MissionDefinition) -> [PlaneSpec] {
         unlockedAircraft.filter { mission.allows($0) }
     }
 
     /// Records a finished mission; returns the aircraft and missions this result newly unlocked.
     @discardableResult
-    public mutating func record(_ result: MissionResult) -> (aircraft: [AircraftSpec], missions: [MissionDefinition]) {
+    public mutating func record(_ result: MissionResult) -> (aircraft: [PlaneSpec], missions: [MissionDefinition]) {
         let beforeAircraft = Set(unlockedAircraft.map(\.id)), beforeMissions = Set(unlockedMissions.map(\.id))
         var r = records[result.missionID] ?? MissionRecord()
         let lim = MissionRecord.limit
@@ -118,13 +118,13 @@ public struct ProgressStore: Sendable {
     public static let maxFileSize = 1_000_000
 
     /// Loads the saved progress. A missing file gives a fresh profile. A file that is too large, unreadable
-    /// or from a newer version is moved aside to `progress.json.bak` (so the next save cannot destroy it)
+    /// or from a newer version is moved aside to `progress.json.bak-<time>` (so the next save cannot destroy it)
     /// and a fresh profile is returned.
     public func load() -> PlayerProgress {
         guard FileManager.default.fileExists(atPath: url.path) else { return PlayerProgress() }
         guard let data = try? Data(contentsOf: url), data.count <= Self.maxFileSize,
               var p = try? JSONDecoder().decode(PlayerProgress.self, from: data),
-              p.version <= PlayerProgress.currentVersion else {
+              p.version >= 1, p.version <= PlayerProgress.currentVersion else {
             backUpUnreadableFile()
             return PlayerProgress()
         }
@@ -134,8 +134,9 @@ public struct ProgressStore: Sendable {
     }
 
     private func backUpUnreadableFile() {
-        let backup = url.appendingPathExtension("bak")
-        try? FileManager.default.removeItem(at: backup)
+        // Timestamped, so a second bad file never replaces the first backup.
+        let stamp = Int(Date().timeIntervalSince1970 * 1000)
+        let backup = url.appendingPathExtension("bak-\(stamp)")
         try? FileManager.default.moveItem(at: url, to: backup)   // best effort: the save that follows is the real write
     }
 

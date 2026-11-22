@@ -45,7 +45,7 @@ public enum UnlockRequirement: Sendable, Codable, Equatable {
     case medals(Int)         // earn this many medals in total
 }
 
-public struct AircraftSpec: Sendable, Codable, Equatable, Identifiable {
+public struct PlaneSpec: Sendable, Codable, Equatable, Identifiable {
     public var config: AircraftConfig
     public var role: AircraftRole
     public var summary: String
@@ -97,14 +97,14 @@ enum Conv {
 
 /// The built-in fleet.
 public enum AircraftCatalog {
-    public static let sf1Trainer = AircraftSpec(
+    public static let sf1Trainer = PlaneSpec(
         config: .sf1Trainer, role: .lightTrainer,
         summary: "Docile two-seat trainer. Forgiving stall, gentle handling: the place to start.",
         limits: EnvelopeLimits(vne: 62, mmo: 0.3, vfe: 36, nzMax: 4.4, nzMin: -1.8, alphaLimit: 0.30),
         cruiseSpeed: 46, approachSpeed: 34, rotateSpeed: 28, approachFlaps: 0.5,
         flyByWire: false, armament: [], unlock: .none)
 
-    public static let sfCruiser: AircraftSpec = {
+    public static let sfCruiser: PlaneSpec = {
         var c = AircraftConfig.sf1Trainer
         c.id = "org.skyforge.sfc"; c.name = "SF-C Cruiser"
         c.mass = 1_150; c.inertia = SIMD3(1_480, 2_100, 3_070)
@@ -112,7 +112,7 @@ public enum AircraftCatalog {
         c.maxPower = 150_000
         c.aero.cD0 = 0.027; c.aero.cLMaxClean = 1.5
         c.gear = fleetGear(massFactor: 1.15, nose: SIMD3(1.35, 0, 1.30), main: SIMD3(-0.30, 1.15, 1.30))
-        return AircraftSpec(
+        return PlaneSpec(
             config: c, role: .tourer,
             summary: "Four-seat tourer with more power and a faster cruise. Stable and efficient.",
             limits: EnvelopeLimits(vne: 74, mmo: 0.3, vfe: 40, nzMax: 3.8, nzMin: -1.5, alphaLimit: 0.30),
@@ -120,7 +120,7 @@ public enum AircraftCatalog {
             flyByWire: false, armament: [], unlock: .none)
     }()
 
-    public static let sfAerobat: AircraftSpec = {
+    public static let sfAerobat: PlaneSpec = {
         var c = AircraftConfig.sf1Trainer
         c.id = "org.skyforge.sfa"; c.name = "SF-A Aerobat"
         c.mass = 800; c.inertia = SIMD3(760, 1_150, 1_680)
@@ -130,7 +130,7 @@ public enum AircraftCatalog {
         c.aero.cL0 = 0.1; c.aero.cLMaxClean = 1.45; c.aero.cLMaxFlaps = 1.8
         c.aero.cD0 = 0.028; c.aero.oswald = 0.8; c.aero.cmAlpha = -0.8
         c.gear = fleetGear(massFactor: 0.8, nose: SIMD3(1.15, 0, 1.15), main: SIMD3(-0.25, 1.0, 1.15))
-        return AircraftSpec(
+        return PlaneSpec(
             config: c, role: .aerobatic,
             summary: "Light, powerful and quick to roll. Rated +6 / -3 g for loops, rolls and spins.",
             limits: EnvelopeLimits(vne: 92, mmo: 0.3, vfe: 40, nzMax: 6.0, nzMin: -3.0, alphaLimit: 0.30),
@@ -138,7 +138,7 @@ public enum AircraftCatalog {
             flyByWire: false, armament: [], unlock: .mission("first-flight"))
     }()
 
-    public static let sfT1Jet: AircraftSpec = {
+    public static let sfT1Jet: PlaneSpec = {
         var c = AircraftConfig.sf1Trainer
         c.id = "org.skyforge.sft1"; c.name = "SF-T1 Jet Trainer"
         c.mass = 3_500; c.inertia = SIMD3(3_400, 11_500, 13_800)
@@ -150,7 +150,7 @@ public enum AircraftCatalog {
         c.aero.cL0 = 0.15; c.aero.cLMaxClean = 1.4; c.aero.cLMaxFlaps = 1.9
         c.aero.cD0 = 0.024; c.aero.oswald = 0.8; c.aero.cmAlpha = -0.9
         c.gear = fleetGear(massFactor: 3.5, nose: SIMD3(2.6, 0, 1.55), main: SIMD3(-0.45, 1.3, 1.55))
-        return AircraftSpec(
+        return PlaneSpec(
             config: c, role: .jetTrainer,
             summary: "Twin-seat advanced jet trainer. Fast, agile, with a fly-by-wire g limiter.",
             limits: EnvelopeLimits(vne: 226, mmo: 0.85, vfe: 100, nzMax: 7.3, nzMin: -3.0, alphaLimit: 0.26),
@@ -158,7 +158,7 @@ public enum AircraftCatalog {
             flyByWire: true, armament: [.cannon], unlock: .mission("pattern-landing"))
     }()
 
-    public static let sfF1Fighter: AircraftSpec = {
+    public static let sfF1Fighter: PlaneSpec = {
         var c = AircraftConfig.sf1Trainer
         c.id = "org.skyforge.sff1"; c.name = "SF-F1 Interceptor"
         c.mass = 11_000; c.inertia = SIMD3(12_000, 65_000, 73_000)
@@ -171,7 +171,7 @@ public enum AircraftCatalog {
         c.aero.cLMaxClean = 1.3; c.aero.cLMaxFlaps = 1.6
         c.aero.cD0 = 0.024; c.aero.oswald = 0.7; c.aero.cmAlpha = -0.8
         c.gear = fleetGear(massFactor: 11, nose: SIMD3(4.5, 0, 1.9), main: SIMD3(-0.8, 1.5, 1.9))
-        return AircraftSpec(
+        return PlaneSpec(
             config: c, role: .fighter,
             summary: "Single-seat interceptor: 90 kN thrust, +9 g, cannon and heat-seeking missiles.",
             limits: EnvelopeLimits(vne: 330, mmo: 0.95, vfe: 120, nzMax: 9.0, nzMin: -3.0, alphaLimit: 0.30),
@@ -179,11 +179,11 @@ public enum AircraftCatalog {
             flyByWire: true, armament: [.cannon, .heatMissile], unlock: .mission("wingman-formation"))
     }()
 
-    public static let all: [AircraftSpec] = [sf1Trainer, sfCruiser, sfAerobat, sfT1Jet, sfF1Fighter]
+    public static let all: [PlaneSpec] = [sf1Trainer, sfCruiser, sfAerobat, sfT1Jet, sfF1Fighter]
 
-    public static func spec(id: String) -> AircraftSpec? { all.first { $0.id == id } }
-    public static var civil: [AircraftSpec] { all.filter { !$0.isMilitary } }
-    public static var military: [AircraftSpec] { all.filter { $0.isMilitary } }
+    public static func spec(id: String) -> PlaneSpec? { all.first { $0.id == id } }
+    public static var civil: [PlaneSpec] { all.filter { !$0.isMilitary } }
+    public static var military: [PlaneSpec] { all.filter { $0.isMilitary } }
 
     /// Tricycle gear scaled with mass so the spring and damper keep the SF-1's natural frequency and damping ratio.
     static func fleetGear(massFactor f: Double, nose: SIMD3<Double>, main: SIMD3<Double>) -> [GearLeg] {

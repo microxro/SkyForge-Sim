@@ -26,7 +26,7 @@ public struct FlightSnapshot: Sendable {
 }
 
 public struct GameplayDirector: Sendable {
-    public let aircraft: AircraftSpec
+    public let aircraft: PlaneSpec
     public let frame: RunwayFrame
     public let mission: MissionDefinition?
     public private(set) var targets: [AITarget]
@@ -38,7 +38,7 @@ public struct GameplayDirector: Sendable {
     public private(set) var pendingEvents: [GameEvent] = []
     private var previousWarnings: Set<EnvelopeWarning> = []
 
-    public init(aircraft: AircraftSpec, frame: RunwayFrame, mission: MissionDefinition?) {
+    public init(aircraft: PlaneSpec, frame: RunwayFrame, mission: MissionDefinition?) {
         self.aircraft = aircraft; self.frame = frame; self.mission = mission
         targets = (mission?.targets ?? []).map { $0.makeTarget(frame: frame) }
         weapons = WeaponSystem(kinds: aircraft.armament)
@@ -47,7 +47,7 @@ public struct GameplayDirector: Sendable {
     }
 
     /// Fly-by-wire limiter for the flight model's control path; nil for aircraft with direct controls.
-    public static func makeControlFilter(for aircraft: AircraftSpec) -> ControlFilter? {
+    public static func makeControlFilter(for aircraft: PlaneSpec) -> ControlFilter? {
         guard aircraft.flyByWire else { return nil }
         let law = FlightControlLaw(limits: aircraft.limits, config: aircraft.config)
         let config = aircraft.config

@@ -52,16 +52,25 @@ import SFFlightModel
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let store = ProgressStore(url: dir.appendingPathComponent("progress.json"))
         try Data("{ broken".utf8).write(to: store.url)
+        func backups() -> Int {
+            ((try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []).filter { $0.hasPrefix("progress.json.bak") }.count
+        }
         #expect(store.load() == PlayerProgress())
-        #expect(FileManager.default.fileExists(atPath: store.url.appendingPathExtension("bak").path))
+        #expect(backups() == 1)
         #expect(!FileManager.default.fileExists(atPath: store.url.path))
         // A save larger than the cap is treated the same way.
+        Thread.sleep(forTimeInterval: 0.01)
         try Data(repeating: 0x20, count: ProgressStore.maxFileSize + 1).write(to: store.url)
         #expect(store.load() == PlayerProgress())
+        #expect(backups() == 2)                 // the first backup survives
         // A newer version is not overwritten silently.
+        Thread.sleep(forTimeInterval: 0.01)
         try Data(#"{"version":99}"#.utf8).write(to: store.url)
         #expect(store.load() == PlayerProgress())
-        #expect(FileManager.default.fileExists(atPath: store.url.appendingPathExtension("bak").path))
+        #expect(backups() == 3)
+        // An unknown medal value loses the medal but keeps the record.
+        try Data(#"{"version":1,"records":{"first-flight":{"completions":2,"bestMedal":42}}}"#.utf8).write(to: store.url)
+        #expect(store.load().records["first-flight"]?.completions == 2)
     }
 
     @Test func missingFieldsFallBackToDefaults() throws {
@@ -114,7 +123,7 @@ import SFFlightModel
             }
             for _ in 0..<3 { air(250) }
             ground(300, 40)
-            if bounce { for _ in 0..<3 { air(340) }; ground(380, 38) }
+            if bounce { for _ in 0..<6 { air(340) }; ground(380, 38) }
             var v = 38.0, a = 380.0
             while v > 0.5 && !rt.isFinished { v = max(0, v - 0.5); a += v * 0.1; ground(a, v) }
             return rt.result?.success == true ? rt.result?.score : nil
@@ -122,6 +131,35 @@ import SFFlightModel
         let clean = run(bounce: false), bounced = run(bounce: true)
         #expect(clean != nil && bounced != nil)
         #expect(clean! > bounced!)
+    }
+
+    @Test func wheelFlickerDuringRolloutIsNotABounce() {
+        var rt = MissionRuntime(mission: oneObjectiveMission(.land(aimAlong: 300, zoneHalfLength: 200, maxSinkRate: 3)), frame: testFrame, aircraftID: "x")
+        var t = 0.0
+        for _ in 0..<5 { rt.update(sample: airborne(along: 250, up: 2, velocity: SIMD3(40, 0, 1), t: t), targets: []); t += 0.1 }
+        var a = 300.0, v = 40.0, flicker = 0
+        while v > 0.5 && !rt.isFinished {
+            v = max(0, v - 0.4); a += v * 0.1
+            // Every fifth step the wheels lift for one sample, at a sink rate that would fail a landing.
+            let lifted = v > 20 && (flicker % 5 == 4)
+            flicker += 1
+            rt.update(sample: FlightSample(time: t, positionNED: testFrame.ned(along: a, right: 0, up: lifted ? 0.2 : 0),
+                                           velocityNED: SIMD3(v, 0, lifted ? 5 : 0), heightAGL: lifted ? 0.2 : 0, onGround: !lifted), targets: [])
+            t += 0.1
+        }
+        #expect(rt.status == .succeeded)
+    }
+
+    @Test func landingObjectiveStartedOnTheGroundCompletesAfterStopping() {
+        var rt = MissionRuntime(mission: oneObjectiveMission(.land(aimAlong: 300, zoneHalfLength: 200, maxSinkRate: 3)), frame: testFrame, aircraftID: "x")
+        var t = 0.0, v = 10.0
+        while v > 0.5 && !rt.isFinished {
+            v = max(0, v - 0.5)
+            rt.update(sample: FlightSample(time: t, positionNED: testFrame.ned(along: 300, right: 0, up: 0), velocityNED: SIMD3(v, 0, 0),
+                                           heightAGL: 0, onGround: true), targets: [])
+            t += 0.1
+        }
+        #expect(rt.status == .succeeded)
     }
 
     @Test func nanHealthTargetsCountAsDestroyed() {

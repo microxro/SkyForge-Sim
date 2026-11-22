@@ -27,7 +27,7 @@ public struct AircraftPickerView: View {
         }
     }
 
-    private func row(_ a: AircraftSpec) -> some View {
+    private func row(_ a: PlaneSpec) -> some View {
         let unlocked = progress.isUnlocked(a)
         let h = a.highlights
         return Button {
@@ -60,9 +60,9 @@ public struct AircraftPickerView: View {
 public struct MissionListView: View {
     public let progress: PlayerProgress
     public let aircraftID: String
-    public let onStart: (MissionDefinition, AircraftSpec) -> Void
+    public let onStart: (MissionDefinition, PlaneSpec) -> Void
 
-    public init(progress: PlayerProgress, aircraftID: String, onStart: @escaping (MissionDefinition, AircraftSpec) -> Void) {
+    public init(progress: PlayerProgress, aircraftID: String, onStart: @escaping (MissionDefinition, PlaneSpec) -> Void) {
         self.progress = progress
         self.aircraftID = aircraftID
         self.onStart = onStart

@@ -73,7 +73,7 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
     @Published var gameplayHUD: GameplayHUD?
     @Published var missionResult: MissionResult?
     @Published var unlockMessage: String?
-    let spec: AircraftSpec
+    let spec: PlaneSpec
     let mission: MissionDefinition?
     private let controlFilter: ControlFilter?
     private var resultSaved = false
@@ -89,7 +89,7 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
     private let start: QuickFlightStart
     let location: QuickFlightLocation
 
-    init(start: QuickFlightStart, location: QuickFlightLocation, aircraft: AircraftSpec, mission: MissionDefinition?) {
+    init(start: QuickFlightStart, location: QuickFlightLocation, aircraft: PlaneSpec, mission: MissionDefinition?) {
         self.start = start
         self.location = location
         spec = aircraft
@@ -104,7 +104,7 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
     }
 
     /// A flight session and director for a world: the aircraft, its wind and (for missions) the airborne start.
-    private static func makeFlight(world: any FlightWorld, start: QuickFlightStart, spec: AircraftSpec,
+    private static func makeFlight(world: any FlightWorld, start: QuickFlightStart, spec: PlaneSpec,
                                    mission: MissionDefinition?, filter: ControlFilter?) -> (session: QuickFlightSession, director: GameplayDirector) {
         let frame = RunwayFrame(world: world)
         let wind = mission?.wind.windNED(runwayHeading: frame.heading) ?? .zero
@@ -368,7 +368,7 @@ public struct QuickFlightView: View {
     @Environment(\.dismiss) private var dismiss
 
     public init(start: QuickFlightStart = .runway, location: QuickFlightLocation = .skyWorld,
-                aircraft: AircraftSpec = AircraftCatalog.sf1Trainer, mission: MissionDefinition? = nil) {
+                aircraft: PlaneSpec = AircraftCatalog.sf1Trainer, mission: MissionDefinition? = nil) {
         _controller = StateObject(wrappedValue: QuickFlightController(start: start, location: location,
                                                                       aircraft: aircraft, mission: mission))
     }

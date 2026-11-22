@@ -6,13 +6,13 @@ import SFGameplay
 import SFGameplayUI
 
 struct GameplayMenuView: View {
-    let onStart: (AircraftSpec, MissionDefinition?) -> Void
+    let onStart: (PlaneSpec, MissionDefinition?) -> Void
     @State private var progress = ProgressStore(url: ProgressStore.defaultURL).load()
     @State private var aircraftID = ProgressStore(url: ProgressStore.defaultURL).load().selectedAircraftID
     @State private var tab = 0
     @Environment(\.dismiss) private var dismiss
 
-    private var aircraft: AircraftSpec { AircraftCatalog.spec(id: aircraftID) ?? AircraftCatalog.sf1Trainer }
+    private var aircraft: PlaneSpec { AircraftCatalog.spec(id: aircraftID) ?? AircraftCatalog.sf1Trainer }
 
     var body: some View {
         VStack(spacing: 0) {

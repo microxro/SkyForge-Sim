@@ -191,7 +191,7 @@ public struct MissionDefinition: Sendable, Codable, Equatable, Identifiable {
 
     public var isMilitary: Bool { category == .military }
 
-    public func allows(_ aircraft: AircraftSpec) -> Bool {
+    public func allows(_ aircraft: PlaneSpec) -> Bool {
         allowedRoles.isEmpty || allowedRoles.contains(aircraft.role)
     }
 

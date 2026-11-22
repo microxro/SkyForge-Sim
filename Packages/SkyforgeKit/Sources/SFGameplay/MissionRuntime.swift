@@ -69,6 +69,9 @@ public struct MissionRuntime: Sendable {
     private var bounces = 0
     private var lastOnGround = false
     private var lastSink = 0.0
+    /// Continuous time off the ground; short wheel flicker during the rollout is not a bounce.
+    private var airTime = 0.0
+    private static let bounceTime = 0.5
 
     public init(mission: MissionDefinition, frame: RunwayFrame, aircraftID: String) {
         self.mission = mission; self.frame = frame; self.aircraftID = aircraftID
@@ -122,7 +125,7 @@ public struct MissionRuntime: Sendable {
             beginObjective(sample: sample, targets: targets)
         }
         lastOnGround = sample.onGround
-        if !sample.onGround { lastSink = sample.sinkRate }
+        if sample.onGround { airTime = 0 } else { airTime += dt; lastSink = sample.sinkRate }
         return events
     }
 
@@ -133,6 +136,8 @@ public struct MissionRuntime: Sendable {
         if let obj = currentObjective, case .flyTo(let wp) = obj.kind {
             initialDistance = Self.distance(sample.positionNED, wp.ned(frame))
         }
+        // A landing objective that starts with the wheels already down counts the contact as made.
+        if let obj = currentObjective, case .land = obj.kind, sample.onGround { touchedDown = true; progress = 0.6 }
     }
 
     // MARK: Failure and finish
@@ -255,7 +260,7 @@ public struct MissionRuntime: Sendable {
 
     private mutating func evaluateLanding(sample s: FlightSample, aim: Double, zone: Double, maxSink: Double) -> Evaluation {
         let local = frame.local(s.positionNED)
-        if s.onGround && !lastOnGround && !touchedDown {
+        if s.onGround && !lastOnGround && !touchedDown && (airTime >= Self.bounceTime || bounces == 0) {
             // First contact: judge the sink rate recorded in the last airborne sample.
             let sink = max(0, lastSink)
             if local.along < 0 || local.along > frame.length || abs(local.right) > frame.halfWidth + 5 {
@@ -271,8 +276,8 @@ public struct MissionRuntime: Sendable {
             return .running
         }
         if touchedDown && !s.onGround {
-            // Bounced back into the air: wait for the next contact.
-            touchedDown = false; bounces += 1; progress = 0
+            // Airborne again: a bounce only once it has stayed off the ground for half a second.
+            if airTime >= Self.bounceTime { touchedDown = false; bounces += 1; progress = 0 }
             return .running
         }
         if touchedDown {

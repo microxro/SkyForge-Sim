@@ -97,7 +97,7 @@ public enum MissionCatalog {
         id: "low-level-nav", title: "Low-Level Navigation", category: .military,
         briefing: "Fly the four-leg route below 500 ft for full marks. Dropping under 60 ft for more than three seconds ends the sortie.",
         difficulty: 4, recommendedAircraft: AircraftCatalog.sfT1Jet.id, allowedRoles: jets,
-        spawn: MissionSpawn(along: 0, up: 200, speed: .fixed(150)),
+        spawn: MissionSpawn(along: 0, up: 120, speed: .fixed(150)),
         objectives: [
             MissionObjective(id: "route", title: "Fly the low-level route", kind: .lowLevelRoute(
                 points: [MissionWaypoint(4_000, 1_500, 120, radius: 400), MissionWaypoint(9_000, -1_500, 120, radius: 400),

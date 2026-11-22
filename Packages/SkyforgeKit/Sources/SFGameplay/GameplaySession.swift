@@ -27,7 +27,7 @@ public struct GameplaySession: Sendable {
     public static let dt = 1.0 / 120
 
     public let world: any FlightWorld
-    public let aircraft: AircraftSpec
+    public let aircraft: PlaneSpec
     public let mission: MissionDefinition?
     public let frame: RunwayFrame
     public let model: FlightModel
@@ -48,7 +48,7 @@ public struct GameplaySession: Sendable {
     private var crashReported = false
 
     /// Starts a mission, or a free flight on the runway when `mission` is nil.
-    public init(world: any FlightWorld, aircraft: AircraftSpec, mission: MissionDefinition? = nil) {
+    public init(world: any FlightWorld, aircraft: PlaneSpec, mission: MissionDefinition? = nil) {
         self.world = world
         self.aircraft = aircraft
         self.mission = mission
@@ -73,7 +73,7 @@ public struct GameplaySession: Sendable {
     public var spawnTrim: ControlInputs { trimmedInputs }
 
     /// The aircraft state and control inputs for a mission spawn (or the runway start when `onRunway`).
-    public static func makeInitialState(spawn: MissionSpawn, aircraft: AircraftSpec, frame: RunwayFrame, wind: SIMD3<Double>,
+    public static func makeInitialState(spawn: MissionSpawn, aircraft: PlaneSpec, frame: RunwayFrame, wind: SIMD3<Double>,
                                  terrain: any TerrainHeightProvider) -> (AircraftState, ControlInputs) {
         let heading = frame.heading + spawn.headingOffset
         if spawn.onRunway {
