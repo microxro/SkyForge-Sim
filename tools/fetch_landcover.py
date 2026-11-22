@@ -16,6 +16,7 @@ import argparse, math
 
 import numpy as np
 import rasterio
+import rasterio.errors
 from rasterio.enums import Resampling
 from rasterio.windows import from_bounds
 from PIL import Image
@@ -63,7 +64,9 @@ def main():
                 continue
             try:
                 src = rasterio.open(BASE.format(name))
-            except Exception as e:            # open ocean has no tile: permanent water
+            except rasterio.errors.RasterioIOError as e:   # open ocean has no tile: permanent water
+                if not any(s in str(e) for s in ("HTTP response code: 404", "No such file", "not recognized as", "does not exist")):
+                    raise                                  # network/auth failures must not become "water"
                 print(f"{name}: no tile ({type(e).__name__}); treated as water")
                 sel = (lat2 >= tlat) & (lat2 < tlat + 3) & (lon >= tlon) & (lon < tlon + 3)
                 out[sel] = 80

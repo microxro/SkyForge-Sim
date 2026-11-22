@@ -82,6 +82,14 @@ public struct SyntheticILS: Sendable, Equatable {
     public var label: String { "Synthetic ILS \(runwayIdent) (not real-world data)" }
 }
 
+/// Finite number from a CSV field (`Double("nan")` / `"inf"` parse successfully and must not reach geometry).
+@inline(__always) private func num(_ s: String?) -> Double? { s.flatMap { Double($0) }.flatMap { $0.isFinite ? $0 : nil } }
+/// Latitude/longitude pair within valid ranges.
+private func latLon(_ lat: String?, _ lon: String?) -> (Double, Double)? {
+    guard let la = num(lat), let lo = num(lon), abs(la) <= 90, abs(lo) <= 180 else { return nil }
+    return (la, lo)
+}
+
 public struct NavDatabase: Sendable {
     public private(set) var airports: [String: Airport] = [:]
     public private(set) var runwaysByAirport: [String: [Runway]] = [:]
@@ -92,8 +100,8 @@ public struct NavDatabase: Sendable {
     public init(airportsCSV: String, runwaysCSV: String, navaidsCSV: String) {
         for r in CSV.records(airportsCSV) {
             guard let ident = r["ident"], !ident.isEmpty,
-                  let lat = Double(r["latitude_deg"] ?? ""), let lon = Double(r["longitude_deg"] ?? "") else { continue }
-            let elev = Double(r["elevation_ft"] ?? "")
+                  let (lat, lon) = latLon(r["latitude_deg"], r["longitude_deg"]) else { continue }
+            let elev = num(r["elevation_ft"])
             airports[ident] = Airport(ident: ident, type: r["type"] ?? "", name: r["name"] ?? "",
                                       position: Geodetic(latitudeDegrees: lat, longitudeDegrees: lon, height: (elev ?? 0) * Units.feetToMetres),
                                       elevationFeet: elev, country: r["iso_country"] ?? "", municipality: r["municipality"] ?? "",
@@ -102,27 +110,27 @@ public struct NavDatabase: Sendable {
         for r in CSV.records(runwaysCSV) {
             guard let ident = r["airport_ident"], !ident.isEmpty else { continue }
             func end(_ p: String) -> RunwayEnd {
-                let lat = Double(r["\(p)_latitude_deg"] ?? ""), lon = Double(r["\(p)_longitude_deg"] ?? "")
-                let elev = Double(r["\(p)_elevation_ft"] ?? "")
-                let pos = (lat != nil && lon != nil) ? Geodetic(latitudeDegrees: lat!, longitudeDegrees: lon!, height: (elev ?? 0) * Units.feetToMetres) : nil
+                let ll = latLon(r["\(p)_latitude_deg"], r["\(p)_longitude_deg"])
+                let elev = num(r["\(p)_elevation_ft"])
+                let pos = ll.map { Geodetic(latitudeDegrees: $0.0, longitudeDegrees: $0.1, height: (elev ?? 0) * Units.feetToMetres) }
                 return RunwayEnd(ident: r["\(p)_ident"] ?? "", position: pos, elevationFeet: elev,
-                                 headingTrueDegrees: Double(r["\(p)_heading_degT"] ?? ""),
-                                 displacedThresholdFeet: Double(r["\(p)_displaced_threshold_ft"] ?? "") ?? 0)
+                                 headingTrueDegrees: num(r["\(p)_heading_degT"]),
+                                 displacedThresholdFeet: num(r["\(p)_displaced_threshold_ft"]) ?? 0)
             }
-            let rw = Runway(airportIdent: ident, lengthFeet: Double(r["length_ft"] ?? "") ?? 0, widthFeet: Double(r["width_ft"] ?? "") ?? 0,
+            let rw = Runway(airportIdent: ident, lengthFeet: num(r["length_ft"]) ?? 0, widthFeet: num(r["width_ft"]) ?? 0,
                             surface: r["surface"] ?? "", lighted: r["lighted"] == "1", closed: r["closed"] == "1",
                             low: end("le"), high: end("he"))
             runwaysByAirport[ident, default: []].append(rw)
         }
         for r in CSV.records(navaidsCSV) {
-            guard let ident = r["ident"], let lat = Double(r["latitude_deg"] ?? ""), let lon = Double(r["longitude_deg"] ?? "") else { continue }
-            let elev = (Double(r["elevation_ft"] ?? "") ?? 0) * Units.feetToMetres
+            guard let ident = r["ident"], let (lat, lon) = latLon(r["latitude_deg"], r["longitude_deg"]) else { continue }
+            let elev = (num(r["elevation_ft"]) ?? 0) * Units.feetToMetres
             var dme: Geodetic?
-            if let dl = Double(r["dme_latitude_deg"] ?? ""), let dn = Double(r["dme_longitude_deg"] ?? "") {
+            if let (dl, dn) = latLon(r["dme_latitude_deg"], r["dme_longitude_deg"]) {
                 dme = Geodetic(latitudeDegrees: dl, longitudeDegrees: dn, height: elev)
             }
             navaids.append(Navaid(ident: ident, name: r["name"] ?? "", type: NavaidType(rawValue: r["type"] ?? "") ?? .other,
-                                  frequencyKHz: Double(r["frequency_khz"] ?? "") ?? 0,
+                                  frequencyKHz: num(r["frequency_khz"]) ?? 0,
                                   position: Geodetic(latitudeDegrees: lat, longitudeDegrees: lon, height: elev),
                                   dmePosition: dme, associatedAirport: r["associated_airport"] ?? ""))
         }

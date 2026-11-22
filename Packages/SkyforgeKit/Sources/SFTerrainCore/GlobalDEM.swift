@@ -20,14 +20,22 @@ public final class GlobalDEM: Sendable {
     public init(data: Data) throws {
         guard data.count > 28, data.prefix(6) == Data("SFDEM1".utf8) else { throw GlobalDEMError.badHeader }
         func u32(_ o: Int) -> Int { data.withUnsafeBytes { Int(UInt32(littleEndian: $0.loadUnaligned(fromByteOffset: o, as: UInt32.self))) } }
-        func u64(_ o: Int) -> Int { data.withUnsafeBytes { Int(UInt64(littleEndian: $0.loadUnaligned(fromByteOffset: o, as: UInt64.self))) } }
+        func u64(_ o: Int) -> Int { data.withUnsafeBytes { Int(truncatingIfNeeded: UInt64(littleEndian: $0.loadUnaligned(fromByteOffset: o, as: UInt64.self))) } }
         width = u32(8); height = u32(12); tileSize = u32(16); tilesX = u32(20); tilesY = u32(24)
-        guard width > 0, height > 0, tileSize > 0, tilesX * tileSize == width, tilesY * tileSize == height,
-              data.count >= 28 + tilesX * tilesY * 12 else { throw GlobalDEMError.badHeader }
+        let maxDim = 1 << 20
+        guard width > 0, height > 0, tileSize > 0, tileSize <= 4096, width <= maxDim, height <= maxDim,
+              tilesX > 0, tilesY > 0, tilesX <= maxDim, tilesY <= maxDim else { throw GlobalDEMError.badHeader }
+        let (wx, o1) = tilesX.multipliedReportingOverflow(by: tileSize)
+        let (hy, o2) = tilesY.multipliedReportingOverflow(by: tileSize)
+        let (nTiles, o3) = tilesX.multipliedReportingOverflow(by: tilesY)
+        let (tableBytes, o4) = nTiles.multipliedReportingOverflow(by: 12)
+        let (need, o5) = tableBytes.addingReportingOverflow(28)
+        guard !(o1 || o2 || o3 || o4 || o5), wx == width, hy == height, data.count >= need else { throw GlobalDEMError.badHeader }
         var t: [(Int, Int)] = []
         for i in 0..<(tilesX * tilesY) {
             let o = u64(28 + i * 12), l = u32(36 + i * 12)
-            guard o + l <= data.count else { throw GlobalDEMError.badHeader }
+            let (end, ov) = o.addingReportingOverflow(l)
+            guard !ov, o >= 0, end <= data.count else { throw GlobalDEMError.badHeader }
             t.append((o, l))
         }
         table = t
@@ -67,8 +75,12 @@ public final class GlobalDEM: Sendable {
 
     /// Bilinear elevation (m) at a latitude/longitude in degrees.
     public func elevation(latitude: Double, longitude: Double) -> Double {
-        let fx = (longitude + 180) / 360 * Double(width) - 0.5
-        let fy = (90 - latitude) / 180 * Double(height) - 0.5
+        guard latitude.isFinite, longitude.isFinite else { return 0 }
+        var lon = (longitude + 180).truncatingRemainder(dividingBy: 360)
+        if lon < 0 { lon += 360 }
+        let lat = min(max(latitude, -90), 90)
+        let fx = lon / 360 * Double(width) - 0.5
+        let fy = (90 - lat) / 180 * Double(height) - 0.5
         let x0 = Int(fx.rounded(.down)), y0 = Int(fy.rounded(.down))
         let tx = fx - Double(x0), ty = fy - Double(y0)
         return lerp(lerp(sample(column: x0, row: y0), sample(column: x0 + 1, row: y0), tx),
