@@ -1,0 +1,15 @@
+# Keeps GitHub Actions and Swift package pins current with weekly update PRs.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "ci"
+  - package-ecosystem: "swift"
+    directory: "/Packages/SkyforgeKit"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "deps"
