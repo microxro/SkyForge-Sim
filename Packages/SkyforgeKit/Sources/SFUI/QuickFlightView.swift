@@ -333,6 +333,7 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
                                              bodyToENU: simd_double3x3(columns: (SIMD3(sin(h), cos(h), 0),
                                                                                  SIMD3(cos(h), -sin(h), 0),
                                                                                  SIMD3(0, 0, -1))))
+        }
         // AI traffic lights: nav red and green at the wingtips, white at the tail, strobe on top. Offsets are body
         // metres (x forward, y right, z down), approximate for the traffic types. Drawn by the night-light pass.
         r.trafficLights = r.trafficPoses.enumerated().flatMap { (i, pose) -> [NightLight] in
