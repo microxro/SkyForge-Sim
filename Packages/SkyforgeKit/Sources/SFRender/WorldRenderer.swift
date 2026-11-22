@@ -253,7 +253,7 @@ public final class WorldRenderer {
     /// Sun shadows (two cascades). Low-tier devices may turn this off.
     public var shadowsEnabled = true
     /// Volumetric cumulus layer (coverage 0 disables the cloud passes).
-    public var clouds: CloudLayer = .clear
+    public var clouds: SFAtmosphere.CloudLayer = .clear
     /// Cloud march steps per ray (device tier knob).
     public var cloudSteps = 64
     /// Display grade strength (gentle filmic contrast and vibrance after the tone map; 0 = off).
