@@ -138,10 +138,10 @@ public enum AircraftCatalog {
 
     public static let sfF1Fighter = PlaneSpec(
         config: .sf9Fighter, role: .fighter,
-        summary: "Single-seat supersonic interceptor: afterburner, +9 g, cannon and heat-seeking missiles.",
+        summary: "Single-seat supersonic interceptor: afterburner, +9 g, cannon, heat-seeking and radar missiles.",
         limits: EnvelopeLimits(vne: 450, mmo: 1.6, vfe: 120, nzMax: 9.0, nzMin: -3.0, alphaLimit: 0.30),
         cruiseSpeed: 220, approachSpeed: 80, rotateSpeed: 80, approachFlaps: 1.0,
-        flyByWire: true, armament: [.cannon, .heatMissile], unlock: .mission("wingman-formation"))
+        flyByWire: true, armament: [.cannon, .heatMissile, .radarMissile], unlock: .mission("wingman-formation"))
 
     public static let all: [PlaneSpec] = [sf1Trainer, sfCruiser, sfAerobat, sfT1Jet, sfF1Fighter]
 
