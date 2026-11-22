@@ -313,11 +313,15 @@ public final class WorldRenderer {
         public var cloudLightSteps: Int
         /// Shadow map edge (texels) and PCF half width (taps).
         public var shadowMapSize: Int, shadowFilter: Int
+        /// Round 5 AA and cascade tier (nil keeps the existing FXAA path and two sun cascades).
+        public var aaTier: AAShadowTier?
         /// Scene-density settings (see `WorldRenderer.vegetationDensity` and friends). 1 = full.
         public var vegetationDensity: Float, drawDistanceScale: Float, terrainSSEScale: Float
         public init(renderScale: Float, cloudSteps: Int, cloudDownsample: Int, bloomIntensity: Float, ssaoStrength: Float,
                     cloudLightSteps: Int = 6, shadowMapSize: Int = 2_048, shadowFilter: Int = 1,
-                    vegetationDensity: Float = 1, drawDistanceScale: Float = 1, terrainSSEScale: Float = 1) {
+                    vegetationDensity: Float = 1, drawDistanceScale: Float = 1, terrainSSEScale: Float = 1,
+                    aaTier: AAShadowTier? = nil) {
+            self.aaTier = aaTier
             self.cloudLightSteps = cloudLightSteps
             self.shadowMapSize = shadowMapSize; self.shadowFilter = shadowFilter
             self.vegetationDensity = vegetationDensity; self.drawDistanceScale = drawDistanceScale
@@ -326,18 +330,19 @@ public final class WorldRenderer {
             self.bloomIntensity = bloomIntensity; self.ssaoStrength = ssaoStrength
         }
         public static let low = Settings(renderScale: 1, cloudSteps: 40, cloudDownsample: 2, bloomIntensity: 0.04, ssaoStrength: 0.5,
-                                         cloudLightSteps: 4)
-        public static let medium = Settings(renderScale: 1, cloudSteps: 48, cloudDownsample: 2, bloomIntensity: 0.05, ssaoStrength: 0.7)
+                                         cloudLightSteps: 4, aaTier: .low)
+        public static let medium = Settings(renderScale: 1, cloudSteps: 48, cloudDownsample: 2, bloomIntensity: 0.05, ssaoStrength: 0.7,
+                                            aaTier: .medium)
         // 32 view steps and 4 light taps (was 40 and 6): clouds cost ~4 ms of the 16.7 ms high budget, and
         // SkyWorld high sat at its limit (16.3 ms minimum, run 42582311298).
         // Clouds 1/3 resolution at 22 view steps, 3 light taps: 26/4 left no headroom (run 42721244906: KMRY high
         // 16.71, SkyWorld high 16.67 ms against 16.7); the Bayer step jitter keeps the lower count unbanded.
         public static let high = Settings(renderScale: 0.75, cloudSteps: 22, cloudDownsample: 3, bloomIntensity: 0.05, ssaoStrength: 0.7,
-                                          cloudLightSteps: 3)
+                                          cloudLightSteps: 3, aaTier: .high)
         /// Image quality first, frame time not considered: 2 × 2 supersampling, clouds marched at the output
         /// resolution with long self-shadow rays, 4096² shadow cascades with a 5 × 5 filter.
         public static let ultra = Settings(renderScale: 2, cloudSteps: 96, cloudDownsample: 2, bloomIntensity: 0.06, ssaoStrength: 0.85,
-                                           cloudLightSteps: 8, shadowMapSize: 4_096, shadowFilter: 2)
+                                           cloudLightSteps: 8, shadowMapSize: 4_096, shadowFilter: 2, aaTier: .ultra)
     }
 
     public func apply(_ s: Settings) {
@@ -345,6 +350,7 @@ public final class WorldRenderer {
         bloomIntensity = s.bloomIntensity; ssaoStrength = s.ssaoStrength
         cloudDetail = s.renderScale >= 2 ? 1 : 0
         shadowMapSize = s.shadowMapSize; shadowFilter = s.shadowFilter
+        aaTier = s.aaTier
         vegetationDensity = s.vegetationDensity; drawDistanceScale = s.drawDistanceScale; terrainSSEScale = s.terrainSSEScale
     }
     private var cloudRenderer: CloudRenderer?

@@ -96,6 +96,19 @@ import SFPreview
         #expect(ridge > eave + 1 && ridge < 9, "ridge \(ridge) above eave \(eave)")
     }
 
+    /// One house is not one flat colour: its facades and roof planes each take their own tone.
+    @Test func facadesAndRoofPlanesDifferInToneWithinOneHouse() {
+        let m = BuildingMeshBuilder.build([Self.house], ground: { _, _ in 0 })
+        var wallTones = Set<Float>(), roofTones = Set<Float>()
+        for i in 0..<m.vertexCount {
+            let n = m.normal(i)
+            if m.material(i) == Material.wall.rawValue { wallTones.insert(m.albedo(i).x) }
+            else if n.z > 0.5 && n.z < 0.98 { roofTones.insert(m.albedo(i).x) }
+        }
+        #expect(wallTones.count >= 2, "facade tones: \(wallTones.count)")
+        #expect(roofTones.count >= 2, "roof plane tones: \(roofTones.count)")
+    }
+
     @Test func insetRejectsOffsetsDeeperThanTheFootprint() {
         let ring = Self.house.footprint
         #expect(BuildingMeshBuilder.inset(ring, by: 2) != nil)
