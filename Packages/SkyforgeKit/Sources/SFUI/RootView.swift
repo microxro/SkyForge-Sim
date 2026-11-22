@@ -49,6 +49,7 @@ public struct SkyforgeRootView: View {
                 Section {
                     Text("SKYFORGE is free and open source (Apache-2.0).")
                         .font(.footnote)
+                    NavigationLink("Acknowledgements and Data Attribution") { AcknowledgementsView() }
                 } header: {
                     Text("About")
                 }
