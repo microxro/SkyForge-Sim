@@ -62,6 +62,8 @@ public enum ObjectiveKind: Sendable, Codable, Equatable {
     /// Hold an altitude above the runway for `hold` seconds.
     case reachAltitude(up: Double, tolerance: Double, hold: Double)
     case flyTo(MissionWaypoint)
+    /// Fly through the radius below `maxAGL` at a speed between `minSpeed` and `maxSpeed` (m/s): a water-drop run.
+    case dropRun(MissionWaypoint, maxAGL: Double, minSpeed: Double, maxSpeed: Double)
     /// Fly the waypoints in order while staying between the two heights above the ground.
     case lowLevelRoute(points: [MissionWaypoint], minAGL: Double, maxAGL: Double)
     /// Touch down on the runway at an acceptable sink rate, then stop.
@@ -221,6 +223,8 @@ public struct MissionDefinition: Sendable, Codable, Equatable, Identifiable {
                 if zone <= 0 || maxSink <= 0 { out.append("\(o.id): bad landing limits") }
             case .reachAltitude(_, let tol, let hold):
                 if tol <= 0 || hold < 0 { out.append("\(o.id): bad altitude hold") }
+            case .dropRun(_, let maxAGL, let minSpeed, let maxSpeed):
+                if maxAGL <= 0 || minSpeed < 0 || maxSpeed <= minSpeed { out.append("\(o.id): bad drop run limits") }
             case .takeoff, .flyTo: break
             }
         }

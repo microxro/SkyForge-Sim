@@ -182,7 +182,18 @@ public enum MissionCatalog {
         ],
         parTime: 200, timeLimit: 420, areaRadius: 25_000, unlock: .mission("coastal-survey"))
 
-    public static let all: [MissionDefinition] = [firstFlight, patternLanding, precisionLanding, wingman, intercept, gunnery, lowLevel, dogfight, coastalSurvey, twinBandits, bushStrip, airportTour, valleyRun]
+    public static let waterDropRun = MissionDefinition(
+        id: "water-drop-run", title: "Water Drop Run", category: .training,
+        briefing: "A grass fire is burning 3 km out. Fly to the fire line, then make a low, steady run through it at 30 m or less and 45 to 70 m/s.",
+        difficulty: 3, recommendedAircraft: AircraftCatalog.sfAerobat.id, allowedRoles: civil,
+        spawn: MissionSpawn(along: -1_000, up: 300, speed: .cruise),
+        objectives: [
+            MissionObjective(id: "approach", title: "Fly to the fire line", kind: .flyTo(MissionWaypoint(3_000, 0, 150, radius: 500)), points: 150),
+            MissionObjective(id: "drop", title: "Make the drop run", kind: .dropRun(MissionWaypoint(3_000, 0, 30, radius: 250), maxAGL: 30, minSpeed: 45, maxSpeed: 70), points: 350),
+        ],
+        parTime: 240, timeLimit: 480, areaRadius: 20_000, unlock: .mission("pattern-landing"))
+
+    public static let all: [MissionDefinition] = [firstFlight, patternLanding, precisionLanding, wingman, intercept, gunnery, lowLevel, dogfight, coastalSurvey, twinBandits, bushStrip, airportTour, valleyRun, waterDropRun]
 
     public static func mission(id: String) -> MissionDefinition? { all.first { $0.id == id } }
     public static func missions(in category: MissionCategory) -> [MissionDefinition] { all.filter { $0.category == category } }
