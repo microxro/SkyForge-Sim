@@ -75,8 +75,12 @@ public final class GlobalDEM: Sendable {
 
     /// Bilinear elevation (m) at a latitude/longitude in degrees.
     public func elevation(latitude: Double, longitude: Double) -> Double {
-        let fx = (longitude + 180) / 360 * Double(width) - 0.5
-        let fy = (90 - latitude) / 180 * Double(height) - 0.5
+        guard latitude.isFinite, longitude.isFinite else { return 0 }
+        var lon = (longitude + 180).truncatingRemainder(dividingBy: 360)
+        if lon < 0 { lon += 360 }
+        let lat = min(max(latitude, -90), 90)
+        let fx = lon / 360 * Double(width) - 0.5
+        let fy = (90 - lat) / 180 * Double(height) - 0.5
         let x0 = Int(fx.rounded(.down)), y0 = Int(fy.rounded(.down))
         let tx = fx - Double(x0), ty = fy - Double(y0)
         return lerp(lerp(sample(column: x0, row: y0), sample(column: x0 + 1, row: y0), tx),
