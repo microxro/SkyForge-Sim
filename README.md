@@ -2,7 +2,7 @@
 
 A free, open-source (Apache-2.0) flight simulator for iOS, iPadOS and macOS, written in Swift 6 with a custom Metal renderer. The world ("SkyWorld") is generated procedurally on top of real elevation data, so it works offline and needs no accounts, API keys or paid services.
 
-**Status: playable early release.** Quick Flight works offline from six bundled real airports (KMRY, KASE, KBFI, LSZS, NZQN, KCOI) and a procedural SkyWorld airfield, with a custom Metal renderer, a six-degree-of-freedom flight model, instruments and rebindable input. Missions, a world map, settings and military aircraft are not available yet. See `PROGRESS.md` and `docs/STATE.md`.
+**Status: playable early release.** Quick Flight works offline from six bundled real airports (KMRY, KASE, KBFI, LSZS, NZQN, KCOI) and a procedural SkyWorld airfield, with a custom Metal renderer, a six-degree-of-freedom flight model, instruments and rebindable input. Missions (10) and five aircraft, including a jet trainer and an interceptor, are in Quick Flight's menu. Air traffic, player damage and a world map are not available yet. See `PROGRESS.md` and `docs/STATE.md`.
 
 ## Open and run
 1. Open `SKYFORGE.xcodeproj` in Xcode 26.6 or newer.
