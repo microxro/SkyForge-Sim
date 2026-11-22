@@ -1,10 +1,22 @@
 // SKYFORGE — Apache-2.0
 // Round 5: TAA resolve (Halton jitter, depth-based reprojection, YCoCg variance clipping), a low-tier
-// luma edge AA (SMAA-lite), and up-to-4-cascade (tier-bounded) sun shadow lookup with blending and PCSS. Concatenate after
-// PostShaders.source (for PostVarying) and WorldShaders.source (for shadowCmp).
+// luma edge AA (SMAA-lite), and up-to-4-cascade (tier-bounded) sun shadow lookup with blending and PCSS.
+// Self-contained (its own varying struct, vertex stage and comparison sampler), so it is spliced into the world
+// library BEFORE WorldShaders.source: world_fragment calls cascadedShadowVisibility. Library order (WorldRenderer):
+// CloudShaders.common + MacroColourShaders.source + OceanShaders.source + AAShadowShaders.source + WorldShaders.source.
 
 public enum AAShadowShaders {
     public static let source = """
+    struct AAVarying { float4 position [[position]]; float2 uv; };
+
+    vertex AAVarying aa_vertex(uint vid [[vertex_id]]) {
+        float2 p = float2((vid << 1) & 2, vid & 2);
+        AAVarying o;
+        o.position = float4(p * 2.0 - 1.0, 0.0, 1.0);
+        o.uv = float2(p.x, 1.0 - p.y);
+        return o;
+    }
+
     struct TAAParams {
         float4x4 invViewProj;       // current, jitter-free, camera-relative
         float4x4 prevViewProj;      // previous, jitter-free, same camera-relative origin (translated by camera delta)
@@ -16,8 +28,9 @@ public enum AAShadowShaders {
 
     constexpr sampler taaLinear(filter::linear, address::clamp_to_edge);
     constexpr sampler taaNearest(filter::nearest, address::clamp_to_edge);
+    constexpr sampler casCmp(filter::linear, address::clamp_to_edge, compare_func::less_equal);
 
-    fragment float4 taa_resolve_fragment(PostVarying in [[stage_in]], texture2d<float> cur [[texture(0)]],
+    fragment float4 taa_resolve_fragment(AAVarying in [[stage_in]], texture2d<float> cur [[texture(0)]],
                                          texture2d<float> hist [[texture(1)]], depth2d<float> depth [[texture(2)]],
                                          constant TAAParams& tp [[buffer(0)]]) {
         float2 ts = 1.0 / float2(cur.get_width(), cur.get_height());
@@ -54,7 +67,7 @@ public enum AAShadowShaders {
 
     // SMAA-lite for the low tier: luma edge detect, then blend along the edge normal by the edge's
     // sub-pixel offset (a cheaper, single-pass cousin of morphological AA).
-    fragment float4 smaa_lite_fragment(PostVarying in [[stage_in]], texture2d<float> t [[texture(0)]]) {
+    fragment float4 smaa_lite_fragment(AAVarying in [[stage_in]], texture2d<float> t [[texture(0)]]) {
         float2 ts = 1.0 / float2(t.get_width(), t.get_height());
         float3 c = t.sample(taaLinear, in.uv).rgb;
         float3 lw = float3(0.299, 0.587, 0.114);
@@ -95,7 +108,7 @@ public enum AAShadowShaders {
         int n = max(taps, 1);   // a 0 tap count would divide 0 / 0 = NaN
         for (int i = 0; i < n; i++) {
             float r = sqrt((float(i) + 0.5) / float(n)), a = 2.39996323 * float(i) + rot;
-            lit += sm.sample_compare(shadowCmp, uv + float2(cos(a), sin(a)) * r * radiusTexels * ts, layer, z);
+            lit += sm.sample_compare(casCmp, uv + float2(cos(a), sin(a)) * r * radiusTexels * ts, layer, z);
         }
         return lit / float(n);
     }

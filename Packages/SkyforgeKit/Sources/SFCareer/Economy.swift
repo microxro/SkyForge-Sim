@@ -52,7 +52,7 @@ public enum Economy {
     public static let cargoRatePer100KgKm = 0.35
 
     /// Hangar catalog. Every id here must be flyable on main (SFFlightModel/AircraftCatalog or SFGameplay/Aircraft).
-    /// Retired ids (sf2, sf5, sf9 had no flight config) are refunded on load, see `retiredAircraftRefunds`.
+    /// Retired ids (sf2, sf5, sf9 had no gameplay aircraft spec) are refunded on load, see `retiredAircraftRefunds`.
     public static let catalog: [HangarAircraft] = [
         .init(id: "org.skyforge.sf1", name: "SF-1 Trainer", seats: 1, payloadKg: 150, rangeKm: 600, cruiseKts: 105, minRunwayM: 450, purchasePrice: 0, rentalPerHour: 0, fuelBurnKgPerHour: 28, unlockLevel: 1),
         .init(id: "org.skyforge.sfc", name: "SF-C Cruiser", seats: 3, payloadKg: 320, rangeKm: 1_100, cruiseKts: 130, minRunwayM: 600, purchasePrice: 45_000, rentalPerHour: 90, fuelBurnKgPerHour: 38, unlockLevel: 3),

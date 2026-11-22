@@ -74,12 +74,15 @@ public struct FlightEnvironment: Sendable {
     public var surfaceFriction: Double = 1
     /// Wake vortices from other aircraft; their induced velocity adds to the wind at the aircraft.
     public var wakes: [WakeVortexPair] = []
+    /// Airframe ice severity, 0 clean … 1 heavily iced (see `IcingModel`).
+    public var iceIndex: Double = 0
     public init(windNED: SIMD3<Double> = .zero, temperatureOffset: Double = 0, originHeight: Double = 0,
                 terrain: any TerrainHeightProvider = FlatTerrain(), surfaceFriction: Double = 1,
-                wakes: [WakeVortexPair] = []) {
+                wakes: [WakeVortexPair] = [], iceIndex: Double = 0) {
         self.windNED = windNED; self.temperatureOffset = temperatureOffset
         self.originHeight = originHeight; self.terrain = terrain
         self.wakes = wakes
+        self.iceIndex = iceIndex.isFinite ? min(1, max(0, iceIndex)) : 0
         self.surfaceFriction = surfaceFriction.isFinite ? min(1.2, max(0.02, surfaceFriction)) : 1
     }
 }
@@ -185,8 +188,9 @@ public struct FlightModel: Sendable {
             let hb = 16 * h / c.wingSpan
             let phi = (hb * hb) / (1 + hb * hb)
 
-            let cLAlphaEff = a.cLAlpha * mp.liftSlope
-            let cLMax = (a.cLMaxClean + (a.cLMaxFlaps - a.cLMaxClean) * flaps) * mp.clMax
+            let iceFrac = env.iceIndex
+            let cLAlphaEff = a.cLAlpha * mp.liftSlope * IcingModel.liftSlopeFactor(iceFrac)
+            let cLMax = (a.cLMaxClean + (a.cLMaxFlaps - a.cLMaxClean) * flaps) * mp.clMax * IcingModel.clMaxFactor(iceFrac)
             let cLLin = a.cL0 + cLAlphaEff * alpha + a.cLFlap * flaps
             let alphaStall = max(0.1, (cLMax - a.cL0 - a.cLFlap * flaps) / cLAlphaEff)
             // Linear lift softly saturated at CLmax, then blended (Beard & McLain sigmoid) into
@@ -206,7 +210,7 @@ public struct FlightModel: Sendable {
             cL += a.cLQ * qh + a.cLElevator * de
             let k = phi / (Double.pi * a.oswald * c.aspectRatio)
             let cD = a.cD0 + a.cDFlap * flaps + a.cDGear * gearPos + a.cDSpeedbrake * input.speedbrake
-                + mp.waveDrag + k * cL * cL + sigma * 1.2 * sa * sa
+                + mp.waveDrag + IcingModel.dragIncrement(iceFrac) + k * cL * cL + sigma * 1.2 * sa * sa
             let cY = a.cYBeta * beta + a.cYRudder * dr
             let cl = a.clBeta * beta + a.clP * ph + a.clR * rh + a.clAileron * da + a.clRudder * dr
                 + sigma * (c.stall.autorotation * (-a.clP) * ph + c.stall.wingDropGain * beta)

@@ -19,7 +19,7 @@ extension AircraftConfig {
         a.cD0 = 0.024; a.cDGear = 0.020; a.cDFlap = 0.050; a.oswald = 0.78
         a.cmAlpha = -1.0; a.cmElevator = -1.35
         var p = PropulsionConfig(kind: .piston, engineCount: 1)
-        p.powerPerEngine = 224_000; p.staticThrustPerWatt = 0.022; p.propEfficiency = 0.82
+        p.powerPerEngine = 224_000; p.staticThrustPerWatt = 0.030; p.propEfficiency = 0.82
         p.maxRPM = 2_500; p.propTorqueRoll = 0.1; p.pFactorArm = 0.25
         var c = AircraftConfig(
             id: "org.skyforge.sfc", name: "SF-C Cruiser",
@@ -27,7 +27,7 @@ extension AircraftConfig {
             wingArea: 16.8, wingSpan: 10.2, chord: 1.65,
             aero: a,
             maxPower: 224_000, propDiameter: 2.0, maxRPM: 2_500,
-            staticThrustPerWatt: 0.022,
+            staticThrustPerWatt: 0.030,   // static T/W ~0.3, as for a light piston single
             stallAlpha: 15 * .pi / 180,
             elevatorMax: 25 * .pi / 180, aileronMax: 18 * .pi / 180, rudderMax: 20 * .pi / 180,
             flapMax: 30 * .pi / 180,
@@ -51,7 +51,7 @@ extension AircraftConfig {
         a.cmAlpha = -1.05; a.cmQ = -13.5; a.cmElevator = -1.3
         a.cnBeta = 0.08; a.cnR = -0.12; a.cnRudder = -0.075; a.cYRudder = 0.2
         var p = PropulsionConfig(kind: .piston, engineCount: 2, engineSpanOffset: 2.1)
-        p.powerPerEngine = 190_000; p.staticThrustPerWatt = 0.021; p.propEfficiency = 0.80
+        p.powerPerEngine = 190_000; p.staticThrustPerWatt = 0.030; p.propEfficiency = 0.80
         p.maxRPM = 2_700; p.windmillDragArea = 0.45
         return AircraftConfig(
             id: "org.skyforge.sf3", name: "SF-3 Twin",
@@ -59,7 +59,7 @@ extension AircraftConfig {
             wingArea: 18.5, wingSpan: 11.5, chord: 1.6,
             aero: a,
             maxPower: 380_000, propDiameter: 1.9, maxRPM: 2_700,
-            staticThrustPerWatt: 0.021,
+            staticThrustPerWatt: 0.030,   // was 0.021 (static T/W 0.17): too low to lift off within a normal takeoff roll
             stallAlpha: 15 * .pi / 180,
             elevatorMax: 25 * .pi / 180, aileronMax: 18 * .pi / 180, rudderMax: 22 * .pi / 180,
             flapMax: 30 * .pi / 180,
