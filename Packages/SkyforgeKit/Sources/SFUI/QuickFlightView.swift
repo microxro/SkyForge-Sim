@@ -19,6 +19,8 @@ import SFFlightModel
 import SFGameplay
 import SFCareer
 import SFGameplayUI
+import SFTraffic
+import SFATC
 
 /// Where Quick Flight takes place.
 public enum QuickFlightLocation: Hashable, Sendable {
@@ -75,6 +77,15 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
     @Published var missionResult: MissionResult?
     @Published var unlockMessage: String?
     private var touchdownDetector = TouchdownDetector()
+    /// AI traffic and the tower, for free flight only (missions keep their own rules).
+    private(set) var traffic: TrafficSystem?
+    private(set) var atc: ATCController?
+    private var atcClock = 0.0
+    /// The tower's last messages, shown under the HUD.
+    @Published var atcLines: [String] = []
+    /// Speaks the tower's messages with Apple's on-device voice. Off until the pilot turns it on.
+    @Published var atcVoice = false
+    private let speaker = AVSpeechATCSpeaker()
     let spec: PlaneSpec
     let mission: MissionDefinition?
     private let controlFilter: ControlFilter?
@@ -103,7 +114,18 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
         let built = Self.makeFlight(world: provisional, start: start, spec: aircraft, mission: mission, filter: filter)
         session = built.session
         director = built.director
+        let trafficSetup = Self.makeTraffic(world: provisional, mission: mission)
+        traffic = trafficSetup?.system
+        atc = trafficSetup?.tower
         super.init()
+    }
+
+    /// AI traffic and the tower for a free flight at this world's runway. Missions get none.
+    private static func makeTraffic(world: any FlightWorld, mission: MissionDefinition?) -> (system: TrafficSystem, tower: ATCController)? {
+        guard mission == nil else { return nil }
+        let runway = TrafficRunway(threshold: world.runwayThreshold, heading: world.runwayHeading,
+                                   length: world.runwayLengthMetres, elevation: world.runwayElevation)
+        return (TrafficSystem(runway: runway), ATCController(runwayDesignator: runway.designator))
     }
 
     /// A flight session and director for a world: the aircraft, its wind and (for missions) the airborne start.
@@ -130,6 +152,11 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
         touchdownDetector = TouchdownDetector()
         gameplayHUD = nil; missionResult = nil; unlockMessage = nil; resultSaved = false
         fireHeld = false
+        let trafficSetup = Self.makeTraffic(world: world, mission: mission)
+        traffic = trafficSetup?.system
+        atc = trafficSetup?.tower
+        atcClock = 0
+        atcLines = []
     }
 
     func launchMissile() { launchRequested = true }
@@ -264,6 +291,7 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
         device.pressed.formUnion(touch.pressed)
         session.update(realDt: dt, device: device)
         stepGameplay(dt: dt)
+        stepTraffic(dt: dt)
         let tex = drawable.texture
         if depth == nil || depth!.width != tex.width || depth!.height != tex.height {
             depth = try? r.makeDepth(width: tex.width, height: tex.height)
@@ -299,6 +327,27 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
 
     private var machNumber: Double {
         EnvelopeMath.mach(trueAirspeed: session.lastOutputs?.trueAirspeed ?? 0, altitudeMSL: session.state.altitude)
+    }
+
+    /// Steps AI traffic and the tower, and gives the aircraft the wakes of the heavy traffic near it.
+    private func stepTraffic(dt: Double) {
+        guard traffic != nil else { return }
+        traffic?.step(dt: dt)
+        _ = traffic?.drainEvents()   // nothing reads these yet; drain so the buffer stays short
+        atcClock += dt
+        if atcClock >= GameplaySession.atcInterval {
+            atcClock = 0
+            let simTime = traffic?.time ?? 0
+            let snapshots = traffic?.snapshots ?? []
+            let wind = ATCWind(windNED: session.environment.windNED)
+            let instructions = atc?.update(time: simTime, traffic: snapshots, wind: wind) ?? []
+            for instruction in instructions {
+                if let clearance = instruction.clearance { _ = traffic?.issue(clearance, to: instruction.aircraftID) }
+                if atcVoice { speaker.speak(instruction.text) }
+            }
+            atcLines = atc?.recentLines(3) ?? []
+        }
+        session.setWakes(traffic?.wakesNear(session.state.positionNED) ?? [])
     }
 
     /// Runs AI, weapons, the envelope monitor and the mission against the flight, once per frame.
@@ -416,6 +465,10 @@ public struct QuickFlightView: View {
                     .buttonStyle(.bordered)
                     Button(controller.cockpit ? "Chase view" : "Cockpit view") { controller.cockpit.toggle() }
                         .buttonStyle(.bordered)
+                    if controller.atc != nil {
+                        Button(controller.atcVoice ? "Tower voice on" : "Tower voice off") { controller.atcVoice.toggle() }
+                            .buttonStyle(.bordered)
+                    }
                     Spacer()
                     if !controller.cockpit {
                         InstrumentCanvas(PFD.draw(controller.hud, options: PFDOptions()))
@@ -429,6 +482,17 @@ public struct QuickFlightView: View {
                         MissionHUDView(hud: hud).frame(maxWidth: 380)
                         Spacer()
                     }
+                    .padding(.horizontal)
+                }
+                if !controller.atcLines.isEmpty {
+                    VStack(alignment: .leading, spacing: 2) {
+                        ForEach(Array(controller.atcLines.enumerated()), id: \.offset) { _, line in
+                            Text(line).font(.caption).foregroundStyle(.white)
+                        }
+                    }
+                    .padding(6)
+                    .background(.black.opacity(0.45))
+                    .frame(maxWidth: 380, alignment: .leading)
                     .padding(.horizontal)
                 }
                 Spacer()
