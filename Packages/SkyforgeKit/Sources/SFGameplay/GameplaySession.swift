@@ -7,6 +7,8 @@ import SFMath
 import SFAtmosphere
 import SFFlightModel
 import SFQuickFlight
+import SFTraffic
+import SFATC
 
 public struct PilotControls: Sendable, Equatable {
     public var flight = ControlInputs()
@@ -31,7 +33,8 @@ public struct GameplaySession: Sendable {
     public let mission: MissionDefinition?
     public let frame: RunwayFrame
     public let model: FlightModel
-    public let environment: FlightEnvironment
+    /// Wind, terrain and the wake vortices of other aircraft (`wakes`, updated from the traffic each step).
+    public private(set) var environment: FlightEnvironment
 
     public private(set) var state: AircraftState
     /// Inputs after the control law (what the surfaces actually did on the last step).
@@ -48,9 +51,16 @@ public struct GameplaySession: Sendable {
     /// Landing-gear travel for retractable aircraft; `ControlInputs.gear` follows its position.
     private var gear = GearActuator()
     private var crashReported = false
+    /// AI traffic and the tower, when the session has them. Nil by default, so headless tests run unchanged.
+    public private(set) var traffic: TrafficSystem?
+    public private(set) var atc: ATCController?
+    private var atcClock = 0.0
+    /// Seconds between tower decisions (s).
+    public static let atcInterval = 0.5
 
     /// Starts a mission, or a free flight on the runway when `mission` is nil.
-    public init(world: any FlightWorld, aircraft: PlaneSpec, mission: MissionDefinition? = nil) {
+    /// `trafficEnabled` adds AI arrivals and departures at this runway, with the tower clearing them.
+    public init(world: any FlightWorld, aircraft: PlaneSpec, mission: MissionDefinition? = nil, trafficEnabled: Bool = false) {
         self.world = world
         self.aircraft = aircraft
         self.mission = mission
@@ -70,6 +80,12 @@ public struct GameplaySession: Sendable {
         effectiveInputs = trimmed
         gear = GearActuator(position: trimmed.gear)
         onGround = spawn.onRunway
+        if trafficEnabled {
+            let runway = TrafficRunway(threshold: world.runwayThreshold, heading: world.runwayHeading,
+                                       length: world.runwayLengthMetres, elevation: world.runwayElevation)
+            traffic = TrafficSystem(runway: runway)
+            atc = ATCController(runwayDesignator: runway.designator)
+        }
     }
 
     /// Gear position (0 retracted … 1 extended) as it travels; 1 for fixed-gear aircraft.
@@ -170,6 +186,31 @@ public struct GameplaySession: Sendable {
                                                           heightAGL: heightAGL, crashed: crashed, crashReason: crashReason),
                          weaponInput: controls.weapons)
         if director.monitor.structuralFailure { fail("Airframe overstressed") }
+        updateTraffic(dt: dt)
+    }
+
+    /// Snapshots of the AI aircraft, for the renderer and HUD.
+    public var trafficSnapshots: [TrafficSnapshot] { traffic?.snapshots ?? [] }
+
+    /// Steps the traffic in place, lets the tower clear it, and gives ownship the wakes of the heavy aircraft near it.
+    private mutating func updateTraffic(dt: Double) {
+        guard traffic != nil else { return }
+        traffic?.step(dt: dt)
+        _ = traffic?.drainEvents()   // nothing reads these yet; drain so the buffer stays short
+        atcClock += dt
+        if atcClock >= Self.atcInterval {
+            atcClock = 0
+            let simTime = traffic?.time ?? 0
+            let snapshots = traffic?.snapshots ?? []
+            let wind = ATCWind(windNED: environment.windNED)
+            let instructions = atc?.update(time: simTime, traffic: snapshots, wind: wind) ?? []
+            for instruction in instructions {
+                if let clearance = instruction.clearance {
+                    _ = traffic?.issue(clearance, to: instruction.aircraftID)
+                }
+            }
+        }
+        environment.wakes = traffic?.wakesNear(state.positionNED) ?? []
     }
 
     private mutating func fail(_ reason: String) {
