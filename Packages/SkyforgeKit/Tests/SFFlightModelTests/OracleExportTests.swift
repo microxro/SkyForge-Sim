@@ -1,6 +1,3 @@
-// PROPOSED FILE: Packages/SkyforgeKit/Tests/SFFlightModelTests/OracleExportTests.swift
-// (kept as .txt under tools/jsbsim_oracle/ because it was written without a Swift toolchain: it has NOT been
-// compiled. Copy it to the path above, drop the .txt, and fix any compile nits.)
 //
 // SKYFORGE — Apache-2.0
 // Runs the real `FlightModel` through the oracle scenarios of tools/jsbsim_oracle/scenarios.py and writes the

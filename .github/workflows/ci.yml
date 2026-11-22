@@ -38,6 +38,9 @@ jobs:
         run: "! grep -E 'Packages/SkyforgeKit/(Sources|Tests)/.*warning:' build.log"
       - name: Test
         run: swift test --disable-automatic-resolution --package-path Packages/SkyforgeKit
+      - name: TEMP dump actual golden candidates
+        if: always()
+        run: for f in /tmp/skyforge-visual/instruments_*.actual.png; do [ -f "$f" ] && echo "GOLDEN_B64 $(basename $f) $(base64 -w0 $f)"; done; true
       - name: Soak memory (30 simulated minutes, run alone so resident memory is attributable)
         env:
           SKYFORGE_SOAK_MEMORY: "1"

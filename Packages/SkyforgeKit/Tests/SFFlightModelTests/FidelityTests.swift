@@ -145,4 +145,25 @@ import SFAtmosphere
         e.update(command: 1, dt: .nan); e.update(command: 1, dt: -1)
         #expect(e.level == 0)
     }
+
+    @Test func gearActuatorTravelsAtFixedRate() {
+        var g = GearActuator(position: 1, travelTime: 5)
+        for _ in 0..<(2 * 120) { g.update(commandDown: false, dt: 1.0 / 120) }
+        #expect(abs(g.position - 0.6) < 0.01 && g.inTransit)
+        for _ in 0..<(10 * 120) { g.update(commandDown: false, dt: 1.0 / 120) }
+        #expect(g.isUpAndLocked)
+        for _ in 0..<(10 * 120) { g.update(commandDown: true, dt: 1.0 / 120) }
+        #expect(g.isDownAndLocked)
+    }
+
+    @Test func gearTravelBlendsGroundContactWithoutAPop() {
+        let m = FlightModel(config: .sf2Cruiser)
+        func normalForceZ(_ gear: Double) -> Double {
+            let s = AircraftState(positionNED: SIMD3(0, 0, -1.0), velocityBody: .zero, attitude: .identity, bodyRates: .zero)
+            return m.outputs(s, inputs: ControlInputs(gear: gear), environment: FlightEnvironment()).forceBody.z
+        }
+        // Contact force changes continuously as the gear extends past the 0.95 threshold of the old model.
+        let a = normalForceZ(0.94), b = normalForceZ(0.96)
+        #expect(abs(a - b) < 0.5 * abs(a) + 1)
+    }
 }

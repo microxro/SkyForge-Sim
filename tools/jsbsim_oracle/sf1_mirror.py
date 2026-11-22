@@ -10,7 +10,7 @@ Ported from (read them side by side when either changes):
     Packages/SkyforgeKit/Sources/SFAtmosphere/ISA.swift               (ISA, Airspeed)
 
 Why a mirror: this sandbox has no Swift toolchain, so the oracle comparison runs on this port today.
-The authoritative path is the Swift test in OracleExportTests.swift.txt (see SWIFT_EMITTER.md), which
+The authoritative path is the Swift test in OracleExportTests.swift (see SWIFT_EMITTER.md), which
 runs the real FlightModel through the identical scenarios (scenarios.py) and writes the same JSON that
 run_sf1.py writes. Once that exists, diff the two JSON files: any difference is a mirror bug.
 
