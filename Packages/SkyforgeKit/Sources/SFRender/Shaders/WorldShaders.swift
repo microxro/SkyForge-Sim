@@ -500,7 +500,8 @@ public enum WorldShaders {
         if (k.dry > 0.01) {
             // Tufts and wind-laid streaks (stretched noise along a slowly turning direction).
             float a = 0.6 + 1.2 * groundNoise(w + 61.0, 30.0);
-            float2 d = float2(cos(a), sin(a)), sw = float2(dot(w, d) / 3.0, dot(w, float2(-d.y, d.x)) * 2.0);
+            // Streak aspect 2.4:1 (was 6:1): the 6:1 stretch read as smeared hillsides at KASE in the PR #48 frames.
+            float2 d = float2(cos(a), sin(a)), sw = float2(dot(w, d) / 1.5, dot(w, float2(-d.y, d.x)) * 1.6);
             float streak = groundNoise(sw + 13.0, 1.0) * o2, tuft = groundNoise(w - 3.7, 0.4) * o1, bare = groundNoise(w + 44.0, 4.0) * o3;
             float3 g = float3(1.0 + 0.14 * streak + 0.16 * tuft);
             g *= mix(float3(1.0), float3(0.90, 0.86, 0.80), saturate(bare) * 0.7);      // thin, earthy patches
