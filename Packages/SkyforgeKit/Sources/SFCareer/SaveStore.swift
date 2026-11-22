@@ -8,6 +8,23 @@ public struct SaveStore: Sendable {
     var backupURL: URL { url.appendingPathExtension("bak") }
     var quarantineURL: URL { url.appendingPathExtension("corrupt") }
 
+    /// The pilot's career file in Application Support, next to the mission progress file.
+    public static var defaultURL: URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+        return base.appendingPathComponent("Skyforge", isDirectory: true).appendingPathComponent("career.json")
+    }
+
+    /// Applies one finished flight to the saved career and writes it back. Returns nil if the save could not be
+    /// read or written (a newer-version or unreadable save is never overwritten).
+    @discardableResult
+    public func record(_ report: FlightReport, challenge: Challenge? = nil) -> FlightOutcome? {
+        guard var career = try? load() else { return nil }
+        let outcome = CareerEngine.apply(report, to: &career, challenge: challenge)
+        do { try save(career) } catch { return nil }
+        return outcome
+    }
+
     public enum SaveError: Error, Sendable, Equatable { case newerThanApp(Int), unreadable }
     public static let maxFileBytes = 1_048_576
 
