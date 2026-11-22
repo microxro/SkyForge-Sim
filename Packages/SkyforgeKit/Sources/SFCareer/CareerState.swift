@@ -64,6 +64,9 @@ public struct CareerState: Codable, Sendable, Equatable {
 
     /// Clamps numbers and bounds collections so a tampered or corrupt save can never trap or bloat memory.
     public mutating func sanitize() {
+        for id in ownedAircraft where Economy.spec(id) == nil {
+            credits += Economy.retiredAircraftRefunds[id] ?? 0   // refund once; the id is dropped below
+        }
         xp = min(max(xp, 0), Self.maxXP)
         credits = min(max(credits, 0), Self.maxCredits)
         pilotName = String(pilotName.prefix(32))
