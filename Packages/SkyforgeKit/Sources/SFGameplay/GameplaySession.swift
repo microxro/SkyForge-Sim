@@ -221,6 +221,15 @@ public struct GameplaySession: Sendable {
         return out
     }
 
+    /// A flight's control filter with battle damage applied after the base filter (the fly-by-wire limiter, if
+    /// any). Callers rebuild it when the damage changes; intact damage leaves the inputs unchanged.
+    public static func damagedControlFilter(base: ControlFilter?, damage: AircraftDamage) -> ControlFilter {
+        { inputs, state, outputs in
+            let filtered: ControlInputs = base?(inputs, state, outputs) ?? inputs
+            return GameplaySession.applyDamageScaling(filtered, damage: damage)
+        }
+    }
+
     /// Feeds hostile weapon events straight into the director, as if hostile fire had produced them, then
     /// applies the shot-down check. Internal: for tests and scripted sequences.
     mutating func receiveHostileEvents(_ events: [HostileWeaponEvent]) {
