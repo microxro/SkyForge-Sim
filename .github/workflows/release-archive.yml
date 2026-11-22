@@ -34,7 +34,7 @@ jobs:
       matrix:
         platform: [ios, macos]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Select Xcode
@@ -121,7 +121,7 @@ jobs:
           security delete-keychain "$RUNNER_TEMP/build.keychain-db" 2>/dev/null || true
           rm -rf "$RUNNER_TEMP/keys" "$RUNNER_TEMP/cert.p12"
       - name: Upload archive
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: skyforge-${{ matrix.platform }}-${{ inputs.sign && 'signed' || 'unsigned' }}
           path: |
