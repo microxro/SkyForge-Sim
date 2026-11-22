@@ -97,7 +97,7 @@ public enum AircraftVariants {
             // Four-seat low-wing tourer: the SF-1's fuselage stretched, a lower cabin roof under a bubble greenhouse.
             let keys: [Key] = AircraftMesh.fuselageKeys.map { k in (k.x * 1.06 + 0.06, k.w * 1.05, max(k.top, -0.80), k.bot, k.n) }
             return Spec(keys: keys, capLen: 0.05, step: 0.07,
-                        wing: Planform(halfSpan: 5.5, rootLE: 0.55, z: 0.30, rootChord: 1.75, tipChord: 1.30, sweep: 0, dihedral: deg(4),
+                        wing: Planform(halfSpan: 5.1, rootLE: 0.55, z: 0.30, rootChord: 1.75, tipChord: 1.30, sweep: 0, dihedral: deg(4),
                                        twistRoot: deg(1.5), twistTip: deg(-1.0)),
                         wingThickness: 0.12, wingCamber: 0.02,
                         htail: Planform(halfSpan: 1.75, rootLE: -4.35, z: -0.36, rootChord: 1.15, tipChord: 0.75, sweep: deg(12), dihedral: 0),
@@ -105,7 +105,7 @@ public enum AircraftVariants {
                         canopy: Canopy(x0: 1.55, x1: -1.95, width: 0.50, height: 0.30),
                         power: .prop(x: keys[0].x + 0.03, z: -0.05, radius: 1.0, spinner: 0.17),
                         gearZ: 1.30,
-                        gear: GearSpec(noseX: 1.35, mainX: -0.30, mainY: 1.15, noseRadius: 0.19, mainRadius: 0.22, noseWidth: 0.13,
+                        gear: GearSpec(noseX: 1.55, mainX: -0.35, mainY: 1.35, noseRadius: 0.19, mainRadius: 0.22, noseWidth: 0.13,
                                        mainWidth: 0.16, attachY: 0.45, attachZ: 0.32),
                         style: AircraftVariantStyle(skin: SIMD3(0.74, 0.74, 0.72), surface: SIMD3(0.72, 0.72, 0.70),
                                                     canopy: SIMD3(0.015, 0.022, 0.030), hasPropeller: true))
@@ -129,7 +129,7 @@ public enum AircraftVariants {
                         style: AircraftVariantStyle(skin: SIMD3(0.42, 0.06, 0.03), surface: SIMD3(0.40, 0.055, 0.03),
                                                     canopy: SIMD3(0.015, 0.022, 0.030), hasPropeller: true))
         case "org.skyforge.sft1":
-            // Two-seat jet trainer: tandem canopy, side intakes, low swept wing. 10.5 m span.
+            // Two-seat jet trainer: tandem canopy, side intakes, low swept wing. 9.4 m span.
             let keys: [Key] = [
                 (5.20, 0.10, -0.12, 0.10, 2.2), (4.90, 0.26, -0.26, 0.22, 2.4), (4.30, 0.42, -0.42, 0.34, 2.6),
                 (3.50, 0.56, -0.56, 0.42, 2.8), (2.60, 0.66, -0.78, 0.46, 3.0), (1.60, 0.70, -0.92, 0.48, 3.2),
@@ -137,7 +137,7 @@ public enum AircraftVariants {
                 (-3.60, 0.54, -0.70, 0.34, 2.8), (-4.80, 0.46, -0.62, 0.25, 2.6), (-5.80, 0.36, -0.55, 0.15, 2.4),
                 (-6.40, 0.32, -0.50, 0.08, 2.3)]
             return Spec(keys: keys, capLen: 0.30, step: 0.16,
-                        wing: Planform(halfSpan: 5.25, rootLE: 0.90, z: 0.28, rootChord: 2.2, tipChord: 1.05, sweep: deg(14), dihedral: deg(2),
+                        wing: Planform(halfSpan: 4.7, rootLE: 0.90, z: 0.28, rootChord: 2.2, tipChord: 1.05, sweep: deg(14), dihedral: deg(2),
                                        twistRoot: deg(1.0), twistTip: deg(-1.0)),
                         wingThickness: 0.10, wingCamber: 0.01,
                         htail: Planform(halfSpan: 2.0, rootLE: -4.6, z: -0.15, rootChord: 1.5, tipChord: 0.75, sweep: deg(30), dihedral: 0),
@@ -145,28 +145,28 @@ public enum AircraftVariants {
                         canopy: Canopy(x0: 3.4, x1: -1.6, width: 0.52, height: 0.50),
                         power: .jet(nozzleX: -6.40, z: -0.21, radius: 0.32,
                                     intake: Intake(x0: 2.5, x1: 1.4, y: 0.70, z: 0.05, hw: 0.17, hh: 0.27)),
-                        gearZ: 1.55,
-                        gear: GearSpec(noseX: 2.6, mainX: -0.45, mainY: 1.3, noseRadius: 0.24, mainRadius: 0.32, noseWidth: 0.16,
+                        gearZ: 1.35,
+                        gear: GearSpec(noseX: 3.0, mainX: -0.6, mainY: 1.6, noseRadius: 0.24, mainRadius: 0.32, noseWidth: 0.16,
                                        mainWidth: 0.2, attachY: 1.15, attachZ: 0.36),
                         style: AircraftVariantStyle(skin: SIMD3(0.70, 0.70, 0.68), surface: SIMD3(0.68, 0.68, 0.66),
                                                     canopy: SIMD3(0.015, 0.022, 0.030), hasPropeller: false))
         case "org.skyforge.sff1":
-            // Single-seat interceptor: 11.5 m span, about 15 m long, cheek intakes, thin swept wing, big fin.
+            // Single-seat interceptor: 9.4 m span, about 15 m long, cheek intakes, thin swept wing, big fin.
             let keys: [Key] = [
                 (7.40, 0.04, -0.08, 0.08, 2.2), (7.05, 0.20, -0.22, 0.16, 2.4), (6.60, 0.38, -0.40, 0.28, 2.6),
                 (5.40, 0.54, -0.60, 0.38, 2.8), (4.20, 0.64, -0.80, 0.44, 3.0), (2.80, 0.72, -0.92, 0.46, 3.2),
                 (1.00, 0.80, -0.92, 0.48, 3.4), (-1.00, 0.82, -0.86, 0.50, 3.4), (-3.00, 0.76, -0.80, 0.50, 3.4),
                 (-4.80, 0.68, -0.76, 0.48, 3.2), (-6.20, 0.62, -0.72, 0.44, 3.0), (-7.00, 0.60, -0.70, 0.42, 2.8)]
             return Spec(keys: keys, capLen: 0.30, step: 0.20,
-                        wing: Planform(halfSpan: 5.75, rootLE: 1.40, z: 0.10, rootChord: 5.2, tipChord: 1.4, sweep: deg(38), dihedral: deg(-2)),
+                        wing: Planform(halfSpan: 4.7, rootLE: 1.40, z: 0.10, rootChord: 5.2, tipChord: 1.4, sweep: deg(38), dihedral: deg(-2)),
                         wingThickness: 0.05, wingCamber: 0.01,
                         htail: Planform(halfSpan: 2.6, rootLE: -4.9, z: 0.10, rootChord: 2.6, tipChord: 1.0, sweep: deg(42), dihedral: deg(-5)),
                         fin: Fin(rootLE: -3.2, baseZ: -0.68, height: 2.5, rootChord: 4.2, tipChord: 1.4, sweep: deg(48)),
                         canopy: Canopy(x0: 5.7, x1: 2.2, width: 0.48, height: 0.46),
                         power: .jet(nozzleX: -7.0, z: -0.14, radius: 0.50,
                                     intake: Intake(x0: 5.2, x1: 3.5, y: 0.70, z: -0.20, hw: 0.22, hh: 0.32)),
-                        gearZ: 1.90,
-                        gear: GearSpec(noseX: 4.5, mainX: -0.8, mainY: 1.5, noseRadius: 0.30, mainRadius: 0.40, noseWidth: 0.2,
+                        gearZ: 1.70,
+                        gear: GearSpec(noseX: 3.2, mainX: -0.6, mainY: 1.2, noseRadius: 0.30, mainRadius: 0.40, noseWidth: 0.2,
                                        mainWidth: 0.26, attachY: 1.3, attachZ: 0.22),
                         style: AircraftVariantStyle(skin: SIMD3(0.16, 0.18, 0.21), surface: SIMD3(0.14, 0.16, 0.19),
                                                     canopy: SIMD3(0.015, 0.022, 0.030), hasPropeller: false))
