@@ -4,6 +4,7 @@ For someone who has never opened this project. Takes about 15 minutes plus the f
 
 ## What you need
 - A Mac running macOS 26 or newer with **Xcode 26.6 or newer** (free in the Mac App Store).
+- Command line tools selected: run `xcode-select -p` (it should print a path inside Xcode.app). Python 3 (preinstalled with Xcode's tools) is only needed for the optional `tools/` scripts and `tools/gate.sh`.
 - An Apple ID. A free account runs the app on your own Mac, simulator, iPhone or iPad. The paid Apple Developer Program is only needed for TestFlight and the App Store.
 - About 10 GB of free disk space.
 
@@ -28,18 +29,17 @@ If Xcode shows a package error, use File > Packages > Reset Package Caches, then
 2. Select the **SKYFORGE** target, then the **Signing & Capabilities** tab.
 3. Tick **Automatically manage signing**.
 4. Under **Team**, choose your Apple ID (Xcode > Settings > Accounts > + to add one).
-5. Change **Bundle Identifier** from `org.skyforge.SKYFORGE` to something unique to you, for example `com.yourname.skyforge`. Apple rejects identifiers that someone else already owns.
+5. Change **Bundle Identifier** from `org.skyforge.SKYFORGE` to something unique to you, for example `com.yourname.skyforge`. Apple rejects identifiers that someone else already owns. Your team and identifier edits change `SKYFORGE.xcodeproj/project.pbxproj`; keep them local and do not commit them (`git update-index --skip-worktree SKYFORGE.xcodeproj/project.pbxproj` helps), or they will end up in pull requests.
 
 ## 4. Run
 - **Mac:** pick **My Mac** at the top, press Run (Cmd+R).
 - **Simulator:** pick any iPhone or iPad simulator, press Run. The simulator's GPU is slower than a real device, so judge speed on hardware.
 - **iPhone or iPad:** connect with a cable, unlock it, tap Trust. On the device turn on Settings > Privacy & Security > Developer Mode (it restarts the device). Pick the device at the top and press Run. The first time, on the device open Settings > General > VPN & Device Management and trust your developer certificate.
 
-In the app, tap **Fly now: Monterey**. The six bundled airports work offline.
+In the app, tap the **Fly now** button for Monterey. The six bundled airports work offline.
 
 ## 5. Run the tests
-- In Xcode: choose the SKYFORGE scheme, then Product > Test (Cmd+U) runs what the scheme includes.
-- The full suite lives in the Swift package. In Terminal:
+- Cmd+U in the SKYFORGE scheme runs nothing: the app scheme has no test targets. The tests live in the Swift package, so use Terminal:
   ```
   swift test -c release -Xswiftc -enable-testing --package-path Packages/SkyforgeKit --skip ShowcaseRenderTests
   tools/gate.sh full        # build, tests, project lint, iOS Simulator and macOS builds
@@ -47,14 +47,14 @@ In the app, tap **Fly now: Monterey**. The six bundled airports work offline.
 - Rendered review frames: `swift test -c release -Xswiftc -enable-testing --package-path Packages/SkyforgeKit --filter ShowcaseRenderTests` (needs a Mac with a GPU).
 
 ## 6. Archive for TestFlight or the App Store
-You need the paid Apple Developer Program and an app record in App Store Connect. The owner-only list is in `docs/appstore/OWNER_TODO.md` and the store text in `docs/appstore/METADATA.md`.
+You need the paid Apple Developer Program and an app record in App Store Connect. The owner-only list and store text are in `docs/appstore/` (`OWNER_TODO.md`, `METADATA.md`), which arrive with the "Prepare SkyForge for App Store release" pull request (#14); until it is merged, read them on that branch.
 1. Set the **Team** and a unique **Bundle Identifier** (step 3).
 2. Raise the version in the target's General tab: **Version** (marketing) and **Build** (must grow with every upload).
 3. Pick **Any iOS Device (arm64)** (or **My Mac**) at the top.
 4. Product > Archive. When the Organizer opens, choose **Distribute App > App Store Connect > Upload**.
 5. In App Store Connect, wait for processing, add the build to TestFlight, test, then submit for review.
 
-No Mac handy? The manual GitHub Actions workflow `release-archive.yml` builds the archives in the cloud (unsigned unless you add the signing secrets it lists).
+No Mac handy? The manual GitHub Actions workflow `release-archive.yml` (also from PR #14) builds the archives in the cloud (unsigned unless you add the signing secrets it lists).
 
 ## If something goes wrong
 | Symptom | Fix |
