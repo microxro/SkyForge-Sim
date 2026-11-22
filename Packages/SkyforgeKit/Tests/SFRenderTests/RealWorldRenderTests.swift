@@ -56,7 +56,7 @@ actor FixtureImageryTransport: HTTPTransport {
         let data = RealWorldRenderData(region: region, chunkQuads: 32, cdlod: false)
         let session = QuickFlightSession(world: region, start: .final)
         let cam = session.chaseCamera()
-        let lighting =LightingSetup.physicalPreset(.midday, azimuthDegrees: 200, cameraHeightMetres: cam.position.z)
+        let lighting = LightingSetup.physicalPreset(.midday, azimuthDegrees: 200, cameraHeightMetres: cam.position.z)
         let r = try WorldRenderer(lighting: lighting)
         try r.setRealWorld(data)
         try r.setAircraft(QuickFlightWorld.aircraftMesh())
