@@ -305,6 +305,19 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
             let cam = session.chaseCamera()
             camera = WorldCamera(position: cam.position, target: cam.target)
         }
+        // Round 5 ocean inputs, live each frame: wind from the flight environment and this aircraft as a wake on
+        // water. ENU convention: x east, y north; headings are radians from east, counter-clockwise.
+        do {
+            let w = session.environment.windNED
+            r.oceanWindSpeed = Float((w.x * w.x + w.y * w.y).squareRoot())
+            r.oceanWindDirection = Float(atan2(w.x, w.y))   // NED wind (north, east) to ENU heading of the air mass
+            let v = session.state.velocityNED
+            let groundSpeed = (v.x * v.x + v.y * v.y).squareRoot()
+            let wake = OceanWake.aircraft(position: SIMD2(Float(session.positionENU.x), Float(session.positionENU.y)),
+                                          heading: Float(atan2(v.x, v.y)), speed: Float(groundSpeed),
+                                          wingspan: Float(spec.config.wingSpan))
+            r.oceanWakes = wake.map { [$0] } ?? []
+        }
         let c = session.bodyToENUColumns
         do {
             try r.encode(cmd: cmd, colour: tex, depth: depth, camera: camera,
