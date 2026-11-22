@@ -180,6 +180,10 @@ public struct ImageryMosaic: Sendable {
         let se = origin.coordinate(east: centre.x + halfExtent, north: centre.y - halfExtent)
         let t0 = TileCoord.containing(latitude: nw.latitude, longitude: nw.longitude, zoom: z)
         let t1 = TileCoord.containing(latitude: se.latitude, longitude: se.longitude, zoom: z)
+        guard size > 0, t1.x >= t0.x, t1.y >= t0.y else {   // inverted range (antimeridian / bad input) would trap
+            return ImageryMosaic(centre: centre, halfExtent: halfExtent, size: max(0, size), rgb: [UInt8](repeating: 0, count: max(0, size) * max(0, size) * 3),
+                                 coverage: [UInt8](repeating: 0, count: max(0, size) * max(0, size)), zoom: z)
+        }
         var tiles: [TileCoord: RGBImage] = [:]
         await withTaskGroup(of: (TileCoord, RGBImage?).self) { g in
             for ty in t0.y...t1.y { for tx in t0.x...t1.x {

@@ -17,7 +17,8 @@ tiles, so every written tile is complete.
 A layer is zoom:half-extent-metres:east-offset:north-offset about (lat, lon). Datasets are listed best
 first; a later one only fills what the earlier ones left empty.
 """
-import argparse, hashlib, io, json, math, os, re, subprocess, sys, urllib.request
+import argparse, hashlib, io, json, math, os, re, sys, urllib.request
+import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
@@ -31,6 +32,8 @@ from rasterio.windows import from_bounds
 from pyproj import Transformer
 from PIL import Image, ImageFilter
 
+from _net import HEX64, read_bounded
+
 BUCKET = "https://nz-imagery.s3.ap-southeast-2.amazonaws.com"
 KEY = "skyforge-pack://linz-aerial/{z}/{x}/{y}.jpg"
 ATTRIBUTION = "Imagery: Toitū Te Whenua Land Information New Zealand aerial imagery, CC BY 4.0"
@@ -40,7 +43,7 @@ ORIGIN = 20037508.342789244
 
 def http(url):
     with urllib.request.urlopen(url, timeout=120) as r:
-        return r.read()
+        return read_bounded(r)
 
 
 def list_tiffs(dataset):
@@ -49,12 +52,13 @@ def list_tiffs(dataset):
         url = f"{BUCKET}/?list-type=2&prefix={dataset}/rgb/2193/"
         if token:
             url += "&continuation-token=" + urllib.request.quote(token, safe="")
-        body = http(url).decode()
-        keys += [k for k in re.findall(r"<Key>([^<]+)</Key>", body) if k.endswith(".tiff")]
-        m = re.search(r"<NextContinuationToken>([^<]+)</NextContinuationToken>", body)
-        if not m:
+        root = ET.fromstring(http(url))
+        ns = root.tag.partition("}")[0] + "}" if root.tag.startswith("{") else ""
+        keys += [k.text for k in root.iter(ns + "Key") if k.text and k.text.endswith(".tiff")]
+        nxt = root.find(ns + "NextContinuationToken")
+        if nxt is None or not nxt.text:
             return keys
-        token = m.group(1)
+        token = nxt.text
 
 
 def sheet_bounds(keys):
@@ -111,7 +115,11 @@ def main():
         index.append((ds, b))
 
     manifest_path = os.path.join(a.pack, "manifest.json")
-    manifest = json.load(open(manifest_path))
+    with open(manifest_path) as mf:
+        manifest = json.load(mf)
+    for u, h in manifest["files"].items():
+        if not isinstance(h, str) or not HEX64.match(h):
+            sys.exit(f"manifest entry {u!r} has an invalid hash {h!r} (need 64 lowercase hex chars)")
     written = 0
     for spec in a.layer:
         z, half, de, dn = spec.split(":")
@@ -184,7 +192,11 @@ def main():
                 for sx in range(sx0, sx1 + 1):
                     url = S2.format(z=sz, x=sx, y=sy)
                     h = manifest["files"].get(url)
-                    body = open(os.path.join(a.pack, h), "rb").read() if h else http(url)
+                    if h:
+                        with open(os.path.join(a.pack, h), "rb") as pf:
+                            body = pf.read()
+                    else:
+                        body = http(url)
                     mos[(sy - sy0) * 256:(sy - sy0 + 1) * 256, (sx - sx0) * 256:(sx - sx0 + 1) * 256] = np.asarray(Image.open(io.BytesIO(body)).convert("RGB"))
             scale = 1 << k
             ox, oy = (tx0 - (sx0 << k)) * 256, (ty0 - (sy0 << k)) * 256
