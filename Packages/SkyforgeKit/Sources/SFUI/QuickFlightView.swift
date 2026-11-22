@@ -164,10 +164,11 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
 
     private func loadSkyWorld(detail: QuickFlightDetail) {
         let world = QuickFlightWorld()
+        let aircraftID = spec.id
         Task.detached(priority: .userInitiated) {
             let env = world.buildEnvironmentInstanced(detail: detail)
             let trees = RealWorldRenderData.trees(env.trees)
-            let aircraft = QuickFlightWorld.aircraftMesh()
+            let aircraft = QuickFlightWorld.aircraftMesh(for: aircraftID)
             await MainActor.run {
                 do {
                     try self.renderer?.setEnvironment(env.soup)
@@ -182,6 +183,7 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
     private func loadRealAirport(ident: String, name: String, detail: RealWorldDetail) {
         status = .loading("Loading \(name)…")
         let start = self.start
+        let aircraftID = spec.id
         let stations = location.metarStations
         Task.detached(priority: .userInitiated) {
             do {
@@ -198,7 +200,7 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
                 // Live sky from the nearest METAR (keyless aviationweather.gov); fair-weather cumulus if none answers.
                 let weather = await WeatherClouds.live(stations: stations, fieldElevation: region.runwayElevation,
                                                        service: METARService(transport: URLSessionTransport(), cache: cache))
-                let aircraft = QuickFlightWorld.aircraftMesh()
+                let aircraft = QuickFlightWorld.aircraftMesh(for: aircraftID)
                 await MainActor.run {
                     do {
                         try self.renderer?.setRealWorld(data)
