@@ -122,7 +122,7 @@ public enum Inflate {
 
     static func inflate(_ r: inout BitReader, expectedSize: Int, maxOutput: Int = Inflate.maxOutputSize) throws -> [UInt8] {
         var out = [UInt8]()
-        out.reserveCapacity(max(min(expectedSize, maxOutput), 1024))
+        out.reserveCapacity(max(min(expectedSize, maxOutput, 64 * 1024 * 1024), 1024))
         let fixedLit: Huffman = try {
             var l = [Int](repeating: 8, count: 288)
             for i in 144..<256 { l[i] = 9 }

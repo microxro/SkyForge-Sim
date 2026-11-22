@@ -34,6 +34,7 @@ public enum RoadPack {
             }
             let lat0 = Double(bitPattern: UInt64(littleEndian: try read(UInt64.self)))
             let lon0 = Double(bitPattern: UInt64(littleEndian: try read(UInt64.self)))
+            guard lat0.isFinite, lon0.isFinite, abs(lat0) <= 90, abs(lon0) <= 180 else { throw ParseError.truncated }
             let count = Int(UInt32(littleEndian: try read(UInt32.self)))
             // The pack's metres (equirectangular about lat0/lon0) → region metres, as BuildingPack.
             let mlat = 111_132.0, mlon = 111_320.0 * cos(lat0 * .pi / 180)

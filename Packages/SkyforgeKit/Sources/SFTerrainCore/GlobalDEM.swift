@@ -20,7 +20,7 @@ public final class GlobalDEM: Sendable {
     public init(data: Data) throws {
         guard data.count > 28, data.prefix(6) == Data("SFDEM1".utf8) else { throw GlobalDEMError.badHeader }
         func u32(_ o: Int) -> Int { data.withUnsafeBytes { Int(UInt32(littleEndian: $0.loadUnaligned(fromByteOffset: o, as: UInt32.self))) } }
-        func u64(_ o: Int) -> Int { data.withUnsafeBytes { Int(UInt64(littleEndian: $0.loadUnaligned(fromByteOffset: o, as: UInt64.self))) } }
+        func u64(_ o: Int) -> Int { data.withUnsafeBytes { Int(truncatingIfNeeded: UInt64(littleEndian: $0.loadUnaligned(fromByteOffset: o, as: UInt64.self))) } }
         width = u32(8); height = u32(12); tileSize = u32(16); tilesX = u32(20); tilesY = u32(24)
         let maxDim = 1 << 20
         guard width > 0, height > 0, tileSize > 0, tileSize <= 4096, width <= maxDim, height <= maxDim,

@@ -37,6 +37,7 @@ public enum BuildingPack {
             }
             let lat0 = Double(bitPattern: UInt64(littleEndian: try read(UInt64.self)))
             let lon0 = Double(bitPattern: UInt64(littleEndian: try read(UInt64.self)))
+            guard lat0.isFinite, lon0.isFinite, abs(lat0) <= 90, abs(lon0) <= 180 else { throw ParseError.truncated }
             let count = Int(UInt32(littleEndian: try read(UInt32.self)))
             // The pack's metres (equirectangular about lat0/lon0) → region metres: an affine map through
             // three reference points (second-order terms are centimetres over a 20 km pack).
