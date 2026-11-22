@@ -10,19 +10,24 @@ import SFMath
     @Test func failingAnEngineSetsItsBitInTheMask() {
         var ops = EngineOperations(engineCount: 2)
         #expect(ops.failureMask == 0)
-        #expect(ops.fail(1))
+        let firstFail = ops.fail(1)
+        #expect(firstFail)
         #expect(ops.failureMask == 0b10)
         #expect(ops.runningCount == 1)
-        #expect(!ops.fail(1), "a failed engine cannot fail again")
-        #expect(!ops.fail(5), "an out-of-range index is ignored")
+        let repeatFail = ops.fail(1)
+        #expect(!repeatFail, "a failed engine cannot fail again")
+        let badIndexFail = ops.fail(5)
+        #expect(!badIndexFail, "an out-of-range index is ignored")
     }
 
     @Test func relightIsRefusedBelowTheWindmillSpeed() {
         var ops = EngineOperations(engineCount: 1, relightTime: 10, minRelightSpeed: 55)
         ops.fail(0)
-        #expect(!ops.requestRestart(0, trueAirspeed: 40))
+        let tooSlow = ops.requestRestart(0, trueAirspeed: 40)
+        #expect(!tooSlow)
         #expect(ops.states[0] == .failed)
-        #expect(ops.requestRestart(0, trueAirspeed: 70))
+        let fastEnough = ops.requestRestart(0, trueAirspeed: 70)
+        #expect(fastEnough)
         #expect(ops.failureMask == 1, "a relighting engine still produces no thrust")
     }
 
