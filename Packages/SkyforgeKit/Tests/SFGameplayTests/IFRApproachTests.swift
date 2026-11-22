@@ -4,7 +4,7 @@ import Foundation
 @testable import SFGameplay
 
 /// Samples flying the 3 degree glidepath with a lateral offset, from 4 km out to the threshold, 0.1 s apart.
-private func glideSamples(offset: Double, steps: Int = 400) -> [FlightSample] {
+private func glideSamples(offset: Double, steps: Int = 401) -> [FlightSample] {
     let slope = tan(3.0 * Double.pi / 180)
     return (0..<steps).map { i in
         let along = -4_000 + Double(i) * 10
