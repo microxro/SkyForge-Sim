@@ -41,9 +41,9 @@ public enum PNGDecoder {
                 case 6: channels = 4
                 default: throw PNGDecodeError.unsupported("colour type \(colour)")
                 }
-                guard width > 0, height > 0, width <= 16_384, height <= 16_384 else { throw PNGDecodeError.corrupt("size") }
+                guard width > 0, height > 0, width <= 4_096, height <= 4_096 else { throw PNGDecodeError.corrupt("size") }
                 let (px, ov) = width.multipliedReportingOverflow(by: height)
-                guard !ov, px <= 64_000_000 else { throw PNGDecodeError.corrupt("image too large") }
+                guard !ov, px <= 16_777_216 else { throw PNGDecodeError.corrupt("image too large") }
             case "IDAT":
                 idat.append(contentsOf: bytes[body..<(body + len)])
             case "IEND":
