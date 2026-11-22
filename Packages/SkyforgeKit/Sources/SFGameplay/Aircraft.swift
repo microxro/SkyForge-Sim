@@ -117,7 +117,7 @@ public enum AircraftCatalog {
         summary: "Six-seat twin-engine airliner. Stable at low speed, with power for a heavy load.",
         limits: EnvelopeLimits(vne: 100, mmo: 0.3, vfe: 55, nzMax: 3.8, nzMin: -1.5, alphaLimit: 0.30),
         cruiseSpeed: 70, approachSpeed: 48, rotateSpeed: 42, approachFlaps: 0.5,
-        flyByWire: false, armament: [], unlock: .none)
+        flyByWire: false, armament: [], unlock: .mission("precision-landing"))
 
     public static let sfAerobat: PlaneSpec = {
         var c = AircraftConfig.sf1Trainer
