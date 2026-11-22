@@ -62,6 +62,8 @@ public enum ObjectiveKind: Sendable, Codable, Equatable {
     /// Hold an altitude above the runway for `hold` seconds.
     case reachAltitude(up: Double, tolerance: Double, hold: Double)
     case flyTo(MissionWaypoint)
+    /// Stop inside the radius at or below `maxSpeed` (m/s), on or near the ground, for `hold` seconds (a rescue pickup).
+    case pickup(MissionWaypoint, maxSpeed: Double, hold: Double)
     /// Fly the waypoints in order while staying between the two heights above the ground.
     case lowLevelRoute(points: [MissionWaypoint], minAGL: Double, maxAGL: Double)
     /// Touch down on the runway at an acceptable sink rate, then stop.
@@ -217,6 +219,8 @@ public struct MissionDefinition: Sendable, Codable, Equatable, Identifiable {
                 if spacing <= 0 || tol <= 0 || hold <= 0 { out.append("\(o.id): bad formation numbers") }
             case .lowLevelRoute(let pts, let lo, let hi):
                 if pts.isEmpty || lo >= hi { out.append("\(o.id): bad low-level route") }
+            case .pickup(_, let speed, let hold):
+                if speed <= 0 || hold < 0 { out.append("\(o.id): bad pickup limits") }
             case .land(_, let zone, let maxSink):
                 if zone <= 0 || maxSink <= 0 { out.append("\(o.id): bad landing limits") }
             case .reachAltitude(_, let tol, let hold):
