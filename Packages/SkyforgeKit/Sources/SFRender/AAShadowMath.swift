@@ -113,7 +113,8 @@ public enum TAAMath {
         for s in samples { m1 += s; m2 += s * s }
         let n = Float(samples.count)
         m1 /= n; m2 /= n
-        let sigma = (m2 - m1 * m1).replacing(with: .zero, where: (m2 - m1 * m1) .< 0).squareRoot()
+        let variance = m2 - m1 * m1
+        let sigma = pointwiseMax(variance, SIMD3<Float>.zero).squareRoot()
         return (m1 - gamma * sigma, m1 + gamma * sigma)
     }
 
