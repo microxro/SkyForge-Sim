@@ -207,4 +207,25 @@ import SFAtmosphere
         let b = m.outputs(s, inputs: ControlInputs(throttle: 0.4, gear: 0), environment: inWake).liftCoefficient
         #expect(b < a, "downwash must reduce the lift coefficient at the wing")
     }
+
+    @Test func icingGrowsInCloudAndMeltsAboveFreezing() {
+        var i = 0.0
+        for _ in 0..<(60 * 120) { i = IcingModel.step(index: i, liquidWater: 0.5, tas: 90, temperatureK: 263, dt: 1.0 / 120) }
+        #expect(i > 0.5 && i <= 1)
+        let warm = IcingModel.step(index: i, liquidWater: 0.5, tas: 90, temperatureK: 280, dt: 10)
+        #expect(warm < i)
+        #expect(IcingModel.step(index: 0, liquidWater: 0, tas: 90, temperatureK: 263, dt: 100) == 0)
+    }
+
+    @Test func icingLowersStallSpeedAndRaisesDrag() {
+        let m = FlightModel(config: .sf3Twin)
+        let clean = m.designStallSpeed(altitude: 0, flaps: 0)
+        #expect(IcingModel.clMaxFactor(1) < 1 && IcingModel.dragIncrement(1) > 0)
+        let s = AircraftState(positionNED: SIMD3(0, 0, -1_500), velocityBody: SIMD3(70, 0, 0), attitude: .identity, bodyRates: .zero)
+        let dirty = FlightEnvironment(iceIndex: 1)
+        let a = m.outputs(s, inputs: ControlInputs(throttle: 0.4, gear: 0), environment: FlightEnvironment())
+        let b = m.outputs(s, inputs: ControlInputs(throttle: 0.4, gear: 0), environment: dirty)
+        #expect(b.forceBody.x < a.forceBody.x, "ice adds drag")
+        #expect(clean > 0)
+    }
 }

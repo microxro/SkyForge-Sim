@@ -211,6 +211,12 @@ public final class WorldRenderer {
     public var drawDistanceScale: Float = 1
     /// Terrain CDLOD screen-space-error multiplier (>1 = coarser terrain). Set by the quality ladder.
     public var terrainSSEScale: Float = 1
+    /// Round 5 AA and tier shadows. nil (default) keeps the FXAA frame and the hero + distance cascades unchanged; a tier
+    /// runs SMAA-lite (low) or TAA (medium and up) and 2 / 3 / 4 view-depth cascades. See AAShadowPasses.swift.
+    public var aaTier: AAShadowTier?
+    private var aaPasses: AAShadowPasses?
+    /// Clip-space jitter for this frame's scene pass (identity unless TAA runs).
+    private var aaJitterClip = matrix_identity_float4x4
     /// Animation time (s) for water and other moving surfaces.
     public var time: Double = 0
     /// Round 5 ocean: wind (m/s, direction the wind blows toward in radians), quality tier and live wake sources
@@ -378,7 +384,8 @@ public final class WorldRenderer {
         self.lighting = lighting
         sky = try PhysicalSkyRenderer(device: device, colorFormat: .rgba16Float)
         let lib: MTLLibrary
-        do { lib = try device.makeLibrary(source: CloudShaders.common + "\n" + MacroColourShaders.source + "\n" + OceanShaders.source + "\n" + WorldShaders.source, options: nil) }
+        // AAShadowShaders (Round 5: TAA/SMAA entry points and the tier cascade lookup) precedes WorldShaders, which calls it.
+        do { lib = try device.makeLibrary(source: CloudShaders.common + "\n" + MacroColourShaders.source + "\n" + OceanShaders.source + "\n" + AAShadowShaders.source + "\n" + WorldShaders.source, options: nil) }
         catch { throw RendererError.shaderCompile(String(describing: error)) }
         worldLibrary = lib
         guard let v = lib.makeFunction(name: "world_vertex"), let f = lib.makeFunction(name: "world_fragment") else {
@@ -908,6 +915,12 @@ public final class WorldRenderer {
             if scaledDepth?.width != sw || scaledDepth?.height != sh { scaledDepth = try makeDepth(width: sw, height: sh) }
             sceneDepth = scaledDepth!
         }
+        // Round 5: TAA jitter for the scene pass (identity without a tier or with a non-TAA tier).
+        aaJitterClip = matrix_identity_float4x4
+        if let tier = aaTier {
+            if aaPasses == nil { aaPasses = try AAShadowPasses(device: device, library: worldLibrary, colorFormat: colorFormat) }
+            aaJitterClip = aaPasses?.beginFrame(camera: c, width: sw, height: sh, tier: tier) ?? matrix_identity_float4x4
+        }
         try encodeScene(cmd: cmd, colour: scene, depth: sceneDepth, camera: c, aircraftPosition: aircraftPosition, aircraftBodyToENU: aircraftBodyToENU)
         // Round 4: centimetre-scale contact shadows and AO over the cabin (cockpit view only).
         if cockpitView, cockpitContactShadows {
@@ -931,6 +944,8 @@ public final class WorldRenderer {
             try weatherRenderer?.encode(cmd: cmd, colour: scene, effects: weatherEffects, time: time, airspeed: weatherAirspeed,
                                         lightning: lightning, ambient: amb)
         }
+        // Round 5: TAA resolve (no-op unless this frame ran a TAA tier); its result replaces `scene` for the post chain.
+        try aaPasses?.resolve(cmd: cmd, scene: scene, depth: sceneDepth)
         func pass(_ t: MTLTexture, load: MTLLoadAction, label: String, _ body: (MTLRenderCommandEncoder) -> Void) throws {
             let pd = MTLRenderPassDescriptor()
             pd.colorAttachments[0].texture = t
@@ -1005,7 +1020,7 @@ public final class WorldRenderer {
         if antialiasing {
             var fp = SIMD4<Float>(sharpen, 0, 0, 0)
             try pass(colour, load: .dontCare, label: "FXAA") { e in
-                e.setRenderPipelineState(fxaaPipeline)
+                e.setRenderPipelineState(aaTier == .low ? (aaPasses?.smaaPipeline ?? fxaaPipeline) : fxaaPipeline)   // Round 5 low tier: SMAA-lite
                 e.setFragmentTexture(toneOut, index: 0)
                 e.setFragmentTexture(sceneDepth, index: 1)
                 e.setFragmentBytes(&fp, length: 16, index: 0)
@@ -1036,7 +1051,16 @@ public final class WorldRenderer {
         for ci in 1..<ShadowCascades.count {
             cascades.append(ShadowCascades.matrix(cascade: ci, size: smSize, toSun: toSunF, forward: fwd, cameraWorld: c.position))
         }
-        for ci in 0..<ShadowCascades.count {
+        // Round 5 tier cascades (aaTier set, shadows on): the tier's cascade count, view-depth splits, packed for buffer 12.
+        var tierSet: AAShadowPasses.CascadeSet?
+        if let tier = aaTier, doShadows {
+            let cs = AAShadowPasses.cascades(tier: tier, camera: c, toSun: toSunF, forward: fwd, mapSize: smSize, aspect: Float(aspect))
+            cascades = cs.matrices
+            tierSet = cs
+        }
+        let shadowLayers = tierSet?.count ?? ShadowCascades.count
+        var cascadeGPU = tierSet?.gpu ?? CascadeShadowGPU.inactive
+        for ci in 0..<shadowLayers {
             let sp = MTLRenderPassDescriptor()
             sp.depthAttachment.texture = sm
             sp.depthAttachment.slice = ci
@@ -1045,7 +1069,7 @@ public final class WorldRenderer {
             sp.depthAttachment.storeAction = .store
             guard let se = cmd.makeRenderCommandEncoder(descriptor: sp) else { throw RendererError.commandQueue }
             se.label = "Shadow\(ci)"
-            if doShadows && ci == 0 {
+            if doShadows && ci == 0 && tierSet == nil {
                 // Hero cascade: the airframe alone (self-shadowing and its shadow on the ground).
                 if hasHero, let a = aircraft, let p = aircraftPosition, let m = aircraftBodyToENU {
                     se.setRenderPipelineState(shadowPipeline)
@@ -1122,6 +1146,16 @@ public final class WorldRenderer {
                     se.setRenderPipelineState(shadowPipeline)
                 }
                 // Without a hero cascade (no aircraft position) nothing else casts the airframe's shadow.
+            }
+            // Round 5 tier cascades have no hero column: the airframe casts into every cascade instead.
+            if tierSet != nil, hasHero, let a = aircraft, let p = aircraftPosition, let m = aircraftBodyToENU {
+                se.setRenderPipelineState(shadowPipeline)
+                se.setDepthStencilState(shadowDepthState)
+                se.setCullMode(.none)
+                var su = ShadowUniforms(lightViewProj: cascades[ci], model: Self.modelMatrix(m, p - c.position))
+                se.setVertexBuffer(a.buffer, offset: 0, index: 0)
+                se.setVertexBytes(&su, length: MemoryLayout<ShadowUniforms>.stride, index: 1)
+                se.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: a.count)
             }
             se.endEncoding()
         }
@@ -1204,8 +1238,10 @@ public final class WorldRenderer {
         var oceanParamData = oceanP.packed(wakeCount: wakeUsed.count)
         enc.setFragmentBytes(&oceanParamData, length: OceanParams.byteSize, index: 6)
         enc.setFragmentBytes(&oceanWakeData, length: oceanWakeData.count * MemoryLayout<Float>.stride, index: 7)
+        // Round 5: tier cascade parameters for world_fragment (buffer 12); fwd.w = 0 keeps the legacy cascades.
+        enc.setFragmentBytes(&cascadeGPU, length: MemoryLayout<CascadeShadowGPU>.stride, index: 12)
         let upHint = SIMD3<Float>(Float(c.up.x), Float(c.up.y), Float(c.up.z))
-        let viewProj = Self.reversedZProjection(fovY: Float(fovY), aspect: Float(aspect), near: Float(c.near)) * Self.view(forward: fwd, up: upHint)
+        let viewProj = aaJitterClip * Self.reversedZProjection(fovY: Float(fovY), aspect: Float(aspect), near: Float(c.near)) * Self.view(forward: fwd, up: upHint)
         let sunAz = Float(atan2(Double(toSun.y), Double(toSun.x)))
         let dims = tables?.key ?? SIMD4(1, 1, 1, 1000)
         // Typed pieces first: one large initialiser expression is slow for the type checker.
