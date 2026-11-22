@@ -82,7 +82,8 @@ private func report(onGround: Bool, speed: Double = 0, along: Double, right: Dou
     @Test func leftTrafficMirrorsTheDownwind() {
         let left = TrafficPatternGeometry(leftTraffic: true)
         #expect(OwnshipTracker.patternPhase(at: SIMD3(0, -1_000, 305), pattern: left) == .downwind)
-        #expect(OwnshipTracker.patternPhase(at: SIMD3(0, 1_000, 305), pattern: left) == .inbound)
+        // 1 km out on the other side is still within reach of the final approach path, so go farther out.
+        #expect(OwnshipTracker.patternPhase(at: SIMD3(0, 2_500, 305), pattern: left) == .inbound)
     }
 
     // MARK: - Snapshot
