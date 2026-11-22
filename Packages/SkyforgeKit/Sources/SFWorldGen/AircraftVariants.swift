@@ -105,7 +105,7 @@ public enum AircraftVariants {
                         canopy: Canopy(x0: 1.55, x1: -1.95, width: 0.50, height: 0.30),
                         power: .prop(x: keys[0].x + 0.03, z: -0.05, radius: 1.0, spinner: 0.17),
                         gearZ: 1.30,
-                        gear: GearSpec(noseX: 1.35, mainX: -0.30, mainY: 1.15, noseRadius: 0.19, mainRadius: 0.22, noseWidth: 0.13,
+                        gear: GearSpec(noseX: 1.55, mainX: -0.35, mainY: 1.35, noseRadius: 0.19, mainRadius: 0.22, noseWidth: 0.13,
                                        mainWidth: 0.16, attachY: 0.45, attachZ: 0.32),
                         style: AircraftVariantStyle(skin: SIMD3(0.74, 0.74, 0.72), surface: SIMD3(0.72, 0.72, 0.70),
                                                     canopy: SIMD3(0.015, 0.022, 0.030), hasPropeller: true))
@@ -145,8 +145,8 @@ public enum AircraftVariants {
                         canopy: Canopy(x0: 3.4, x1: -1.6, width: 0.52, height: 0.50),
                         power: .jet(nozzleX: -6.40, z: -0.21, radius: 0.32,
                                     intake: Intake(x0: 2.5, x1: 1.4, y: 0.70, z: 0.05, hw: 0.17, hh: 0.27)),
-                        gearZ: 1.55,
-                        gear: GearSpec(noseX: 2.6, mainX: -0.45, mainY: 1.3, noseRadius: 0.24, mainRadius: 0.32, noseWidth: 0.16,
+                        gearZ: 1.35,
+                        gear: GearSpec(noseX: 3.0, mainX: -0.6, mainY: 1.6, noseRadius: 0.24, mainRadius: 0.32, noseWidth: 0.16,
                                        mainWidth: 0.2, attachY: 1.15, attachZ: 0.36),
                         style: AircraftVariantStyle(skin: SIMD3(0.70, 0.70, 0.68), surface: SIMD3(0.68, 0.68, 0.66),
                                                     canopy: SIMD3(0.015, 0.022, 0.030), hasPropeller: false))
@@ -165,8 +165,8 @@ public enum AircraftVariants {
                         canopy: Canopy(x0: 5.7, x1: 2.2, width: 0.48, height: 0.46),
                         power: .jet(nozzleX: -7.0, z: -0.14, radius: 0.50,
                                     intake: Intake(x0: 5.2, x1: 3.5, y: 0.70, z: -0.20, hw: 0.22, hh: 0.32)),
-                        gearZ: 1.90,
-                        gear: GearSpec(noseX: 4.5, mainX: -0.8, mainY: 1.5, noseRadius: 0.30, mainRadius: 0.40, noseWidth: 0.2,
+                        gearZ: 1.70,
+                        gear: GearSpec(noseX: 3.2, mainX: -0.6, mainY: 1.2, noseRadius: 0.30, mainRadius: 0.40, noseWidth: 0.2,
                                        mainWidth: 0.26, attachY: 1.3, attachZ: 0.22),
                         style: AircraftVariantStyle(skin: SIMD3(0.16, 0.18, 0.21), surface: SIMD3(0.14, 0.16, 0.19),
                                                     canopy: SIMD3(0.015, 0.022, 0.030), hasPropeller: false))
