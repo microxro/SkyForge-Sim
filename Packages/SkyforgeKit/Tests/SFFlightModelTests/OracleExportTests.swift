@@ -253,7 +253,7 @@ private func runTakeoff(_ p: Plant) -> Metrics {
     let vr = 55.0, pitchDeg = 9.0, gainFt = 55.0, maxS = 90.0
     p.initGround()
     let psi0 = p.obs().psiDeg
-    p.set(throttle: 1, brakes: 0, flaps: 0)
+    p.set(throttle: 1, flaps: 0, brakes: 0)
     var rec: [Obs] = []
     var rotating = false
     var liftI: Int? = nil
@@ -283,8 +283,8 @@ private func runTakeoff(_ p: Plant) -> Metrics {
 
 /// JSON has no NaN/Infinity: emit null (compare.py reports the row as MISSING).
 private func jsonSafe(_ v: Any) -> Any {
-    if let d = v as? Double { return d.isFinite ? d : NSNull() }
-    if let a = v as? [Double] { return a.map { $0.isFinite ? $0 : NSNull() } as [Any] }
+    if let d = v as? Double { return d.isFinite ? (d as Any) : (NSNull() as Any) }
+    if let a = v as? [Double] { return a.map { (x: Double) -> Any in x.isFinite ? x : NSNull() } }
     if let m = v as? [String: Any] { return m.mapValues(jsonSafe) }
     return v
 }
