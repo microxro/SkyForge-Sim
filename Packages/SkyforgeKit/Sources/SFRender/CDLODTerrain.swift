@@ -32,7 +32,11 @@ final class CDLODTerrain {
     private let device: MTLDevice
     private let field: TerrainHeightField
     private let layout: CDLODLayout
-    private let tree: CDLODQuadtree
+    /// Quadtree for the current error scale. Rebuilt when the quality governor changes the scale.
+    private var tree: CDLODQuadtree
+    private var treeScale: Double = 1
+    /// Finest-level distance (m) at full quality; the morph bands follow it.
+    private let baseFinestRange: Double
     private let bounds: ConstantBounds
     private var cache: [Key: Node] = [:]
 
@@ -40,17 +44,24 @@ final class CDLODTerrain {
         self.device = device
         self.field = field
         self.layout = layout
+        baseFinestRange = finestRange
         let range = field.elevationRange
         bounds = ConstantBounds(low: range.low, high: range.high)
-        tree = CDLODQuadtree(rootMinX: -layout.rootSize / 2, rootMinY: -layout.rootSize / 2, rootSize: layout.rootSize,
-                             settings: CDLODSettings(levels: layout.levels, finestRange: finestRange))
+        tree = Self.makeTree(layout: layout, finestRange: finestRange)
         let idx = CDLODNodeMesher.topology(quads: layout.quads)
         indices = try Self.makeBuffer(idx, device: device)
         indexCount = idx.count
     }
 
     /// The nodes that tile the terrain square for `camera` (camera-space metres, region-local origin), with their morph bands.
-    func draws(camera: SIMD3<Double>) -> [Draw] {
+    /// `sseScale` is the quality governor's terrain error scale (1 = full quality, larger = coarser): the level distances
+    /// and morph bands shrink by it, so the same nodes are used nearer the camera.
+    func draws(camera: SIMD3<Double>, sseScale: Double) -> [Draw] {
+        let scale = sseScale.isFinite && sseScale > 0 ? sseScale : 1
+        if scale != treeScale {
+            tree = Self.makeTree(layout: layout, finestRange: baseFinestRange / scale)
+            treeScale = scale
+        }
         let selected = tree.select(camera: camera, bounds: bounds)
         var out: [Draw] = []
         out.reserveCapacity(selected.count)
@@ -80,6 +91,11 @@ final class CDLODTerrain {
         if cache.count >= Self.cacheLimit { cache.removeAll(keepingCapacity: true) }
         cache[key] = node
         return node
+    }
+
+    private static func makeTree(layout: CDLODLayout, finestRange: Double) -> CDLODQuadtree {
+        CDLODQuadtree(rootMinX: -layout.rootSize / 2, rootMinY: -layout.rootSize / 2, rootSize: layout.rootSize,
+                      settings: CDLODSettings(levels: layout.levels, finestRange: finestRange))
     }
 
     private static func snorm(_ x: Float) -> Int8 { Int8(max(-127, min(127, (x * 127).rounded()))) }

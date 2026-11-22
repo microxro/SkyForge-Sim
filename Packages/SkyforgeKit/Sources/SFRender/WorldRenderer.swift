@@ -1091,7 +1091,7 @@ public final class WorldRenderer {
                     se.setRenderPipelineState(shadowTerrainLODPipeline)
                     se.setVertexBytes(&su, length: MemoryLayout<ShadowUniforms>.stride, index: 1)
                     let lp = Self.clipPlanes(cascades[ci] * su.model)
-                    for d in cd.draws(camera: c.position) where Self.boxVisible(lp, d.node.boundsMin, d.node.boundsMax) {
+                    for d in cd.draws(camera: c.position, sseScale: Double(terrainSSEScale)) where Self.boxVisible(lp, d.node.boundsMin, d.node.boundsMax) {
                         var morph = SIMD2<Float>(d.morphStart, d.morphEnd)
                         se.setVertexBuffer(d.node.vertices, offset: 0, index: 0)
                         se.setVertexBuffer(d.node.morph, offset: 0, index: 2)
@@ -1296,7 +1296,7 @@ public final class WorldRenderer {
             enc.setVertexBytes(&u, length: MemoryLayout<WorldUniforms>.stride, index: 1)
             enc.setFragmentBytes(&u, length: MemoryLayout<WorldUniforms>.stride, index: 1)
             var drawn = 0
-            for d in cd.draws(camera: c.position) where Self.boxVisible(planes, d.node.boundsMin + o, d.node.boundsMax + o) {
+            for d in cd.draws(camera: c.position, sseScale: Double(terrainSSEScale)) where Self.boxVisible(planes, d.node.boundsMin + o, d.node.boundsMax + o) {
                 var morph = SIMD2<Float>(d.morphStart, d.morphEnd)
                 enc.setVertexBuffer(d.node.vertices, offset: 0, index: 0)
                 enc.setVertexBuffer(d.node.morph, offset: 0, index: 2)
