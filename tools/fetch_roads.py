@@ -2,7 +2,8 @@
 """SKYFORGE build-time tool: OpenStreetMap road centrelines for a showcase region.
 
 Source: the Overture Maps Foundation "transportation" theme (type=segment) on AWS Open Data (public
-bucket, no key). Only records whose primary source is OpenStreetMap are kept, so the output is OSM data
+bucket, no key). By default only records whose primary source is OpenStreetMap are kept (--sources widens
+the allow-list; docs/DECISIONS.md forbids non-OSM sources until revisited), so the output is OSM data
 (© OpenStreetMap contributors, ODbL 1.0). Row groups are found through a cached bounding-box index, as
 in fetch_buildings.py.
 
@@ -14,62 +15,14 @@ Output: a compact binary (`SFR1`) read by `SFQuickFlight.RoadPack`:
 
 Usage: fetch_roads.py --lat 47.53 --lon -122.30 --half-km 6 --out KBFI/roads.sfr [--release 2026-10-21.0]
 """
-import argparse, json, math, os, re, struct, sys
+import argparse, os, struct, sys
 
-import fetch_buildings as fb
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from overture_common import BUCKET, RangeFile, footer_index, parse_sources, region_box, row_groups_in_box, source_allowed
 
 CLASSES = ["motorway", "trunk", "primary", "secondary", "tertiary", "unclassified", "residential", "living_street",
            "service", "track"]
 UNPAVED = {"unpaved", "dirt", "gravel", "ground", "earth", "sand", "grass", "compacted", "fine_gravel", "mud"}
-
-
-def list_files(release):
-    keys, token = [], None
-    while True:
-        url = f"{fb.BUCKET}/?list-type=2&prefix=release/{release}/theme=transportation/type=segment/&max-keys=1000"
-        if token:
-            url += "&continuation-token=" + fb.requests.utils.quote(token)
-        x = fb.SESSION.get(url, timeout=60).text
-        for m in re.finditer(r"<Contents>(.*?)</Contents>", x, re.S):
-            k = re.search(r"<Key>([^<]+)</Key>", m.group(1)).group(1)
-            s = int(re.search(r"<Size>(\d+)</Size>", m.group(1)).group(1))
-            if k.endswith(".parquet"):
-                keys.append((k, s))
-        t = re.search(r"<NextContinuationToken>([^<]+)</NextContinuationToken>", x)
-        if not t:
-            return keys
-        token = t.group(1)
-
-
-def footer_index(release, cache_dir):
-    import pyarrow.parquet as pq
-    path = os.path.join(cache_dir, f"overture-segments-{release}.index.json")
-    index = json.load(open(path)) if os.path.exists(path) else {}
-    files = list_files(release)
-    dirty = 0
-    for n, (key, size) in enumerate(files):
-        if key in index:
-            continue
-        f = fb.RangeFile(f"{fb.BUCKET}/{key}", size, block=1 << 20)
-        md = pq.ParquetFile(f).metadata
-        names = {md.schema.column(i).path: i for i in range(md.num_columns)}
-        cols = [names["bbox.xmin"], names["bbox.xmax"], names["bbox.ymin"], names["bbox.ymax"]]
-        groups = []
-        for g in range(md.num_row_groups):
-            rg = md.row_group(g)
-            st = [rg.column(c).statistics for c in cols]
-            if any(s is None or not s.has_min_max for s in st):
-                groups.append(None)
-                continue
-            groups.append([st[0].min, st[1].max, st[2].min, st[3].max])
-        index[key] = {"size": size, "groups": groups}
-        dirty += 1
-        print(f"  footer {n + 1}/{len(files)} {md.num_row_groups} groups ({f.fetched >> 10} KiB)", file=sys.stderr, flush=True)
-        if dirty % 16 == 0:
-            json.dump(index, open(path, "w"))
-    if dirty:
-        json.dump(index, open(path, "w"))
-    return [(k, index[k]["size"], index[k]["groups"]) for k, _ in files]
 
 
 def linestring(wkb):
@@ -101,21 +54,21 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--release", default="2026-10-21.0")
     ap.add_argument("--cache", default=os.path.expanduser("~/.cache/skyforge-overture"))
+    ap.add_argument("--sources", default="OpenStreetMap",
+                    help='comma-separated Overture source datasets to keep ("any" keeps all); default OpenStreetMap only')
     a = ap.parse_args()
     os.makedirs(a.cache, exist_ok=True)
-    mlat = 111_132.0
-    mlon = 111_320.0 * math.cos(math.radians(a.lat))
-    dlat, dlon = a.half_km * 1000 / mlat, a.half_km * 1000 / mlon
-    box = (a.lon - dlon, a.lon + dlon, a.lat - dlat, a.lat + dlat)
-    index = footer_index(a.release, a.cache)
+    allow = parse_sources(a.sources)
+    if allow != {"OpenStreetMap"}:
+        print("WARNING: non-OSM sources selected; docs/DECISIONS.md forbids shipping them.", file=sys.stderr)
+    b0, b1, b2, b3, mlat, mlon = region_box(a.lat, a.lon, a.half_km)
+    box = (b0, b1, b2, b3)
+    index = footer_index(a.release, a.cache, "transportation", "segment")
     wanted = ["geometry", "bbox", "sources", "subtype", "class", "subclass", "road_surface", "road_flags"]
     out = bytearray(b"SFR1") + struct.pack("<ddI", a.lat, a.lon, 0)
     count = skipped = 0
-    for key, size, groups in index:
-        hit = [g for g, b in enumerate(groups) if b is None or not (b[1] < box[0] or b[0] > box[1] or b[3] < box[2] or b[2] > box[3])]
-        if not hit:
-            continue
-        f = fb.RangeFile(f"{fb.BUCKET}/{key}", size, block=4 << 20)
+    for key, size, hit in row_groups_in_box(index, box):
+        f = RangeFile(f"{BUCKET}/{key}", size, block=4 << 20)
         pf = pq.ParquetFile(f)
         cols = [c for c in wanted if c in set(pf.schema_arrow.names)]
         for g in hit:
@@ -131,8 +84,7 @@ def main():
                 sub = (r.get("subclass") or "").lower()
                 if sub in ("driveway", "sidewalk", "crosswalk", "cycle_crossing"):
                     continue
-                src = r.get("sources") or []
-                if not src or (src[0].get("dataset") or "") != "OpenStreetMap":
+                if not source_allowed(r, allow):
                     skipped += 1
                     continue
                 try:
@@ -145,6 +97,8 @@ def main():
                 if any((s.get("value") or "") in UNPAVED and not s.get("between") for s in surf):
                     flags |= 8
                 pts = [(round((lo - a.lon) * mlon * 10), round((la - a.lat) * mlat * 10)) for lo, la in line]
+                if not pts:
+                    continue
                 ded = [pts[0]]
                 for p in pts[1:]:
                     # Steps longer than an i16 of decimetres are split.
@@ -164,7 +118,7 @@ def main():
     struct.pack_into("<I", out, 20, count)
     with open(a.out, "wb") as fh:
         fh.write(out)
-    print(f"{a.out}: {count} roads, {len(out)} bytes ({skipped} non-OSM records dropped)")
+    print(f"{a.out}: {count} roads, {len(out)} bytes ({skipped} records dropped by --sources)")
 
 
 if __name__ == "__main__":

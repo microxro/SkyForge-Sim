@@ -101,6 +101,8 @@ public struct RealWorldRegion: FlightWorld {
     /// OpenStreetMap buildings and roads around the airfield (nil when Overpass was unreachable and
     /// nothing was cached; the renderer then shows imagery only).
     public var osm: OSMData? = nil
+    /// Bundled airport pavement and boundary geometry (round 1 procedural airport surface; nil without a pack).
+    public var airport: AirportSurfaces? = nil
     /// Middle-distance imagery (between the near and far layers), colour-matched to the near photo.
     public var midImagery: ImageryMosaic? = nil
     /// The aerial-photo source of the sharp camera-following layer (nil where there is none).
@@ -281,6 +283,8 @@ public struct RealWorldRegion: FlightWorld {
         // Dark runway and apron asphalt reads as water by colour; real water is flat and sizeable.
         region.ground = region.ground.cleaningWater(exclude: region.pavedArea) { x, y in max(0, hn.height(x, y)) }
         region.osm = osm
+        if bundledBuildings, let packed = Showcase.airportData(for: ident),
+           let surfaces = try? AirportPack.parse(packed, origin: origin), !surfaces.isEmpty { region.airport = surfaces }
         region.midHeights = hm
         if wantDetail { region.detailProvider = detailProvider }
         region.runwayLowNumber = Int(rwy.low.ident.prefix { $0.isNumber }) ?? 0

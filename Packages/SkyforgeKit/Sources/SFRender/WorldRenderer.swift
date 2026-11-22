@@ -38,6 +38,7 @@ struct WorldUniforms {
     var quality: SIMD4<Float>         // shadow filter half width (taps), cabin fill, unused
     var runwayA: SIMD4<Float>         // low threshold x, y (region metres), direction x, y
     var runwayB: SIMD4<Float>         // length, width, low-end number, 1 if drawn
+    var airportRect: SIMD4<Float>     // airport mask rectangle: centre x, y, half extent (region m), 1 if bound
 }
 
 /// 16-byte vertex matching `TerrainVertex` (position + snorm normal; w = −127 marks bark).
@@ -205,6 +206,16 @@ public final class WorldRenderer {
     /// Contrast-adaptive sharpening of the final frame (0 = off; applied in the anti-aliasing pass).
     public var sharpen: Float = 0.5
     private var waterTex: MTLTexture?
+    /// Airport surface class mask (r8Unorm, the water mask's grid); nil binds the zero dummy and the shader skips it.
+    private var airportTex: MTLTexture?
+    /// Round 3: 64 m macro-colour grid of the near imagery (`MacroColourPass`), read at texture index 10 when
+    /// `macroColourDecoupling` is on. Built whenever near imagery is set; nil binds a zero texture (alpha 0 = none).
+    private var macroTex: MTLTexture?
+    private lazy var zeroMacro: MTLTexture = MacroColourPass.zeroTexture(device: device)
+    /// Replace the near-ground tone-map stack with the macro-colour decoupling pass (round 3). Off by default, so the
+    /// art-tuned rounds 1–62 look is unchanged until the KBFI/KMRY/KASE/LSZS/NZQN frames are compared.
+    public var macroColourDecoupling = false
+    private var airportRect = SIMD4<Float>(0, 0, 1, 0)   // centre x, y, half extent (region m), 1 when a mask is bound
     private lazy var dummy2D: MTLTexture = makeDummy()
     /// Chunks drawn in the last frame after frustum culling (diagnostics/tests).
     public private(set) var lastDrawnChunks = 0
@@ -309,7 +320,7 @@ public final class WorldRenderer {
         self.lighting = lighting
         sky = try PhysicalSkyRenderer(device: device, colorFormat: .rgba16Float)
         let lib: MTLLibrary
-        do { lib = try device.makeLibrary(source: CloudShaders.common + WorldShaders.source, options: nil) }
+        do { lib = try device.makeLibrary(source: CloudShaders.common + MacroColourShaders.source + WorldShaders.source, options: nil) }
         catch { throw RendererError.shaderCompile(String(describing: error)) }
         worldLibrary = lib
         guard let v = lib.makeFunction(name: "world_vertex"), let f = lib.makeFunction(name: "world_fragment") else {
@@ -566,6 +577,9 @@ public final class WorldRenderer {
             try Self.imageryTexture(i, device: device, queue: queue).texture
         }
         imageryNear = try data.near.map { (try imageryTexture($0), $0.centre, $0.halfExtent) }
+        macroTex = try imageryNear.map {
+            try MacroColourPass.build(image: $0.tex, centre: $0.centre, half: $0.half, library: worldLibrary, device: device, queue: queue)
+        }
         imageryFar = try data.far.map { (try imageryTexture($0), $0.centre, $0.halfExtent) }
         imageryDetail = try data.detail.map { (try imageryTexture($0), $0.centre, $0.halfExtent) }
         imageryMid = try data.mid.map { (try imageryTexture($0), $0.centre, $0.halfExtent) }
@@ -587,6 +601,16 @@ public final class WorldRenderer {
             }
             waterTex = t
         } else { waterTex = nil }
+        airportTex = nil
+        airportRect = SIMD4<Float>(0, 0, 1, 0)
+        if let am = data.airportMask, am.texels.count == 2 * am.size * am.size {
+            let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rg8Unorm, width: am.size, height: am.size, mipmapped: false)
+            d.usage = [.shaderRead]
+            guard let t = device.makeTexture(descriptor: d) else { throw RendererError.commandQueue }
+            t.replace(region: MTLRegionMake2D(0, 0, am.size, am.size), mipmapLevel: 0, withBytes: am.texels, bytesPerRow: 2 * am.size)
+            airportTex = t
+            airportRect = SIMD4<Float>(Float(am.centre.x), Float(am.centre.y), Float(am.halfExtent), 1)
+        }
     }
 
     /// Uploads buildings (nil or empty removes them).
@@ -1024,6 +1048,8 @@ public final class WorldRenderer {
         enc.setFragmentTexture(parcelTex?.tex ?? dummy2D, index: 6)
         enc.setFragmentTexture(imageryDetail?.tex ?? dummy2D, index: 7)
         enc.setFragmentTexture(imageryMid?.tex ?? dummy2D, index: 8)
+        enc.setFragmentTexture(airportTex ?? dummy2D, index: 9)      // dummy2D reads 0 in r: no airport
+        enc.setFragmentTexture(macroTex ?? zeroMacro, index: 10)     // alpha 0 (zeroMacro): no macro colour, pass skipped
         let upHint = SIMD3<Float>(Float(c.up.x), Float(c.up.y), Float(c.up.z))
         let viewProj = Self.reversedZProjection(fovY: Float(fovY), aspect: Float(aspect), near: Float(c.near)) * Self.view(forward: fwd, up: upHint)
         let sunAz = Float(atan2(Double(toSun.y), Double(toSun.x)))
@@ -1047,7 +1073,7 @@ public final class WorldRenderer {
         let cascadeCount: Float = doShadows ? Float(ShadowCascades.count) : 0
         let uTableDims = SIMD4<Float>(dims.x, dims.y, dims.z, cascadeCount)
         let uZenith = SIMD4<Float>(L.skyZenith, Float(time.truncatingRemainder(dividingBy: 3_600)))
-        let uQuality = SIMD4<Float>(Float(max(1, min(3, shadowFilter))), 0, Float(debugView), 0)
+        let uQuality = SIMD4<Float>(Float(max(1, min(3, shadowFilter))), 0, Float(debugView), macroColourDecoupling ? 1 : 0)
         let cloudLayer = CloudUniforms(layer: clouds, steps: 0).layer
         var uRunwayA = SIMD4<Float>(0, 0, 0, 1), uRunwayB = SIMD4<Float>(0, 0, 0, 0)
         if let rw = runway {
@@ -1062,7 +1088,7 @@ public final class WorldRenderer {
                           cascadeSplits: uSplits, cascadeTexel: uTexel, cascadeDepth: uDepth,
                           cameraPos: uCameraPos, cameraLocal: uCameraLocal, imageryNear: uNear, imageryFar: uFar,
                           clouds: cloudLayer, fieldGrid: uFieldGrid, imageryDetail: uDetail, imageryMid: uMid,
-                          skyZenith: uZenith, quality: uQuality, runwayA: uRunwayA, runwayB: uRunwayB)
+                          skyZenith: uZenith, quality: uQuality, runwayA: uRunwayA, runwayB: uRunwayB, airportRect: airportRect)
         }
         if let e = environment {
             let o = e.origin - c.position

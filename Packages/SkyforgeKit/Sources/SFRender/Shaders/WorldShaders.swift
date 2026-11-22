@@ -42,6 +42,7 @@ public enum WorldShaders {
         float4 quality;           // x = shadow filter half width (taps), y = cabin interior fill (cockpit pass), z = debug view, w unused
         float4 runwayA;           // low threshold x, y (region metres), direction x, y (unit, toward the high end)
         float4 runwayB;           // length, width (m), low-end number (0 = none), 1 if a runway is drawn
+        float4 airportRect;       // airport mask rectangle: centre x, y, half extent (region m), 1 if the mask is bound
     };
 
     struct BuildingVertex { packed_float3 position; char4 normal; uchar4 colour; packed_float2 uv; uchar4 style; };
@@ -997,12 +998,18 @@ public enum WorldShaders {
         return select(a, 0.24 + (a - 0.24) * 0.25, a > 0.24);
     }
 
+    constexpr sampler apNearest(filter::nearest, address::clamp_to_edge, coord::normalized);
+
+    \(AirportSurfaceShaders.source)
+
     fragment float4 world_fragment(WorldVarying in [[stage_in]], constant WorldUniforms& u [[buffer(1)]],
                                    texture3d<float> ins [[texture(0)]], texture3d<float> tr [[texture(1)]],
                                    depth2d_array<float> sm [[texture(2)]],
                                    texture2d<float> imgNear [[texture(3)]], texture2d<float> imgFar [[texture(4)]],
                                    texture2d<float> waterMask [[texture(5)]], texture2d<float> parcels [[texture(6)]],
-                                   texture2d<float> imgDetail [[texture(7)]], texture2d<float> imgMid [[texture(8)]]) {
+                                   texture2d<float> imgDetail [[texture(7)]], texture2d<float> imgMid [[texture(8)]],
+                                   texture2d<float> airportMask [[texture(9)]],
+                                   texture2d<float> macroTex [[texture(10)]]) {
         float dist = length(in.rel);
         float3 dir = in.rel / max(dist, 1e-3);
         float3 n = normalize(in.normal);
@@ -1019,6 +1026,9 @@ public enum WorldShaders {
         float imgForest = 0.0;                               // canopy score of the imagery colour (real terrain)
         float groundMat = 0.0;                               // weight of the near-ground detail materials
         float2 groundTilt = float2(0.0);                     // their normal tilt (applied after the normal is final)
+        float apCover = 0.0, apInfield = 0.0;                // procedural airport pavement / infield weights (texture 9)
+        float2 apTilt = float2(0.0);                         // pavement relief tilt
+        float apRough = 0.8, apMetal = 0.0;                  // pavement PBR parameters, used by the ground lighting
         float2 canopyTilt = float2(0.0);                     // lit crown relief on mid-ring photo forest (applied with groundTilt)
         float dbgPatch = 0.0, dbgNatural = 0.0;              // near-ground patch term and its class weight (debug view 3)
         float dbgTexel = 0.0;                                // finest imagery layer's metres per texel here (debug view 5)
@@ -1040,6 +1050,30 @@ public enum WorldShaders {
             imgForest = smoothstep(0.0, 0.02, c.g - max(c.r, c.b)) * smoothstep(0.10, 0.03, cl);   // dark green canopy
             // Same photo→albedo conversion as SFPreview.ImageryGround (textures are sRGB, so c is linear).
             albedo = photoAlbedo(c);
+            // Procedural airport ground (round 1): inside the aerodrome the photo albedo is discarded. R of the mask is
+            // pavement coverage (bilinear), G the class (nearest); see AirportSurfaceShaders.
+            if (inNear && u.airportRect.w > 0.5) {
+                float2 auv = float2((photoW.x - u.airportRect.x) / (2.0 * u.airportRect.z) + 0.5,
+                                    0.5 - (photoW.y - u.airportRect.y) / (2.0 * u.airportRect.z));
+                if (all(auv > 0.0) && all(auv < 1.0)) {
+                    float4 ak = airportClasses(airportMask.sample(tbl, auv, level(0.0)).r, airportMask.sample(apNearest, auv, level(0.0)).g);
+                    if (ak.x + ak.y + ak.z + ak.w > 0.01) {
+                        float fpA = length(dwx) + length(dwy);
+                        float3 tone64 = photoAlbedo(imgNear.sample(imgSampler, nuv, level(7.0)).rgb);
+                        float2 rdA = photoW - u.runwayA.xy, rdirA = u.runwayA.zw;
+                        float raA = dot(rdA, rdirA), rcA = rdA.x * rdirA.y - rdA.y * rdirA.x;
+                        float fromEndA = min(raA, u.runwayB.x - raA);
+                        float rcS = raA < 0.5 * u.runwayB.x ? rcA : -rcA;
+                        AirportSurface ap = airportSurface(photoW, rdirA, ak, tone64, n, in.rel.z + u.cameraLocal.z, fpA,
+                                                           fromEndA, rcS, u.runwayB.w, u.runwayB.y, 0.8);
+                        albedo = mix(albedo, ap.albedo, ap.cover);
+                        // Infield turf keeps the tuned photo-ground path; the airport only adds mowing stripes and finer turf detail on top.
+                        if (ap.infield > 0.0) albedo *= mix(float3(1.0), airportInfieldDetail(photoW, fpA), ap.infield);
+                        apTilt = ap.tilt; apRough = ap.roughness; apMetal = ap.metallic;
+                        apCover = ap.cover; apInfield = ap.infield;
+                    }
+                }
+            }
             float rwCover = 0.0;                             // 1 on the runway's paved rectangle
             if (u.runwayB.w > 0.5 && inNear) {
                 float2 rd = photoW - u.runwayA.xy, rdir = u.runwayA.zw;
@@ -1059,6 +1093,7 @@ public enum WorldShaders {
                     float fromEnd = min(ra, rlen - ra);
                     float rubber = smoothstep(120.0, 260.0, fromEnd) * (1.0 - smoothstep(520.0, 900.0, fromEnd)) * exp(-rc * rc / 30.0);
                     asphalt *= 1.0 - 0.38 * rubber * (0.65 + 0.35 * groundNoise(rp * float2(0.05, 1.5), 1.0));
+                    asphalt = mix(asphalt, albedo, apCover);   // procedural pavement (airport mask) replaces the photo-toned asphalt; paint goes on top
                     int low = int(u.runwayB.z + 0.5);
                     float paint = ra < 0.5 * rlen ? runwayPaint(ra, rc, rlen, rw, low, rfp)
                                                   : runwayPaint(rlen - ra, -rc, rlen, rw, low > 0 ? (low + 18 > 36 ? low - 18 : low + 18) : 0, rfp);
@@ -1067,6 +1102,7 @@ public enum WorldShaders {
                     albedo = mix(albedo, surface, rwCover);
                 }
             }
+            rwCover = max(rwCover, apCover);   // later photo passes (tone hold, ground detail, mid imagery) leave airport pavement alone; infield turf stays on them
             // Canopy albedo floor (hue kept), the same 0.05 as the 3D tree tints: Sentinel-2 forest comes out
             // near-black (~0.03), so the ground between the 3D trees read as a dark smear (LSZS, rounds 4–6).
             float al = dot(albedo, float3(0.2126, 0.7152, 0.0722));
@@ -1136,6 +1172,7 @@ public enum WorldShaders {
             // Local tone compression: each pixel held within ±40 % of the photo's ~30 m mean, so baked shadows,
             // dark car parks and bright roofs in the photo do not read as black or white blotches next to the
             // 3D scene's own lighting (art round 23: KMRY, KBFI). Near ground only; not on water or the runway.
+            float3 albedoPhoto = albedo;                     // before the tone-map stack below (round 3 macro-colour path, u.quality.w)
             float ltW = (1.0 - smoothstep(900.0, 1800.0, dist)) * (1.0 - saturate((wm - 0.2) / 0.2)) * (1.0 - rwCover) * (1.0 - clearW);
             if (ltW > 0.0) {
                 float fp0 = length(dwx) + length(dwy);
@@ -1293,6 +1330,29 @@ public enum WorldShaders {
                 }
                 albedo *= 1.0 + (f - 1.0) * groundMat;
                 groundTilt = tilt * groundMat;
+            }
+            // Round 3, macro-colour decoupling (u.quality.w > 0.5; default off, so the stack above is unchanged). The photo is
+            // used as a 64–128 m colour lookup only; ground detail comes from the vector masks and procedural octaves. It
+            // overrides the albedo and tilt the stack produced, except on canopy (weight × (1 − forest)). ltMean and groundMat
+            // are left as the stack set them, so the field passes below and the normal tilt still work. docs/rounds/ROUND3.md.
+            if (u.quality.w > 0.5 && inNear) {
+                float4 mq = macroTex.sample(imgSampler, nuv, level(0.0));        // rgb: 128 m mean, a: 128 m median luminance (0 = none)
+                float amountMc = (1.0 - smoothstep(900.0, 1800.0, dist)) * (1.0 - saturate((wm - 0.2) / 0.2)) * (1.0 - rwCover) * (1.0 - clearW);
+                if (mq.a > 0.0 && mc_luma(mq.rgb) > 1e-4 && amountMc * (1.0 - saturate(imgForest)) > 0.0) {
+                    float3 macroAlb = photoAlbedo(mq.rgb);
+                    float medianL = mc_luma(photoAlbedo(mq.rgb * (mq.a / mc_luma(mq.rgb))));
+                    float localL = ltMean.x >= 0.0 ? mc_luma(ltMean) : 0.0;    // 30 m mean: the pavement clamp's median
+                    float fpm = length(dwx) + length(dwy);
+                    float lsw = max(1.0, 390.0 / max(fpm, 1e-3));
+                    float2 wuv; bool win; float ww0, ww1;
+                    float3 wideAlb = photoAlbedo(photoColour(u, imgNear, imgMid, imgFar, imgDetail, photoW, dwx * lsw, dwy * lsw, wuv, win, ww0, ww1));
+                    float steepMc = smoothstep(0.0, 0.5, 1.0 - n.z);
+                    float2 mcTilt; float mcW;
+                    float3 mcAlb = mc_decoupleGround(albedoPhoto, macroAlb, medianL, localL, wideAlb, imgForest, steepMc, roadNear, burb,
+                                                     in.rel.xy + u.cameraPos.xy, 2.0 * sqrt(length(dwx) * length(dwy)), amountMc, 0.15, mcTilt, mcW);
+                    albedo = mix(albedo, mcAlb, mcW);
+                    groundTilt = mix(groundTilt, mcTilt, mcW);
+                }
             }
             {
                 // Magnified coarse photo (round-45 debug view 5, KASE high: the z14 mid layer at ~6.8 m per texel under a
@@ -1599,6 +1659,7 @@ public enum WorldShaders {
             n = normalize(n + float3(-gx, -gy, 0.0) * (0.12 * wFine * fade));
         }
         if (groundMat > 0.0 && !imageryWater) n = normalize(n + float3(-groundTilt, 0.0));
+        if (apCover > 0.0) n = normalize(n + float3(-apTilt * apCover, 0.0));
         if (any(canopyTilt != 0.0) && !imageryWater) n = normalize(n + float3(canopyTilt, 0.0));
         // Photo terrain enters at 0.985 so the slope tone bands reach moderate slopes; its relief still starts
         // at 0.97 through `steep` (round 32: the bands' wider gate sat inside a 0.97 gate and never applied).
@@ -1983,6 +2044,19 @@ public enum WorldShaders {
                 float3 h = normalize(toSun - dir);
                 float spec = pow(max(0.0, dot(n, h)), 20.0) * 0.08;
                 col += u.sunColour.rgb * spec * vis;
+            }
+            if (apCover > 0.02) {
+                // Airport pavement is a PBR surface: GGX sun lobe (roughness 0.65–0.85, f0 0.04, slightly more on asphalt's
+                // 0.05 metallic) plus a Fresnel sky/ground reflection, both fading out as the pavement coverage does.
+                float3 vA = -dir;
+                float f0A = mix(0.04, dot(albedo, float3(0.2126, 0.7152, 0.0722)), apMetal);
+                float3 envA = mix(u.ambientGround.rgb, u.skyHorizon.rgb, saturate(reflect(dir, n).z * 0.5 + 0.5));
+                float nvA = saturate(dot(n, vA));
+                // Roughness-aware Schlick (rough surfaces reflect less at grazing angles), lowered in cast shadow and capped at
+                // a quarter of the sky radiance so a 3° final-approach view cannot wash the pavement out.
+                float FvA = f0A + (max(1.0 - apRough, f0A) - f0A) * pow(1.0 - nvA, 5.0);
+                float3 specEnvA = min(envA * FvA * mix(0.3, 1.0, vis), envA * 0.25);
+                col += (u.sunColour.rgb * ggxLobe(n, vA, toSun, apRough, f0A) * vis + specEnvA) * apCover;
             }
         }
         if (u.quality.z > 0.5) {
