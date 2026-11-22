@@ -176,7 +176,44 @@ public enum MissionCatalog {
         ],
         parTime: 240, timeLimit: 480, areaRadius: 50_000, unlock: .mission("radar-intercept"))
 
-    public static let all: [MissionDefinition] = [firstFlight, patternLanding, precisionLanding, wingman, intercept, gunnery, lowLevel, dogfight, coastalSurvey, twinBandits, radarIntercept, twoShipDefence]
+    public static let bushStrip = MissionDefinition(
+        id: "bush-strip", title: "Bush Strip", category: .landing,
+        briefing: "Come in low over the trees and land in the first 200 m of the strip. Short fields reward a slow, steady approach.",
+        difficulty: 3, recommendedAircraft: AircraftCatalog.sfAerobat.id, allowedRoles: civil,
+        spawn: MissionSpawn(along: -1_500, up: 120, speed: .approach),
+        objectives: [
+            MissionObjective(id: "short-land", title: "Land in the first 200 m", kind: .land(aimAlong: 120, zoneHalfLength: 80, maxSinkRate: 2.2), points: 300),
+        ],
+        parTime: 180, timeLimit: 420, areaRadius: 10_000, unlock: .mission("pattern-landing"))
+
+    public static let airportTour = MissionDefinition(
+        id: "airport-tour", title: "Airport Tour", category: .navigation,
+        briefing: "Take off and fly a loop around the field: four legs at 1,000 to 1,500 ft, then back over the runway.",
+        difficulty: 2, recommendedAircraft: AircraftCatalog.sfCruiser.id, allowedRoles: civil,
+        spawn: MissionSpawn(along: 60, onRunway: true),
+        objectives: [
+            MissionObjective(id: "airborne", title: "Take off", kind: .takeoff(minHeightAGL: 30), points: 50),
+            MissionObjective(id: "leg-1", title: "Pass the first point", kind: .flyTo(MissionWaypoint(3_000, 3_000, 300, radius: 500)), points: 100),
+            MissionObjective(id: "leg-2", title: "Pass the far point", kind: .flyTo(MissionWaypoint(6_000, 0, 350, radius: 500)), points: 100),
+            MissionObjective(id: "leg-3", title: "Pass the south point", kind: .flyTo(MissionWaypoint(3_000, -3_000, 300, radius: 500)), points: 100),
+            MissionObjective(id: "leg-4", title: "Back over the runway", kind: .flyTo(MissionWaypoint(0, 0, 250, radius: 400)), points: 100),
+        ],
+        parTime: 420, timeLimit: 900, areaRadius: 20_000, unlock: .mission("coastal-survey"))
+
+    public static let valleyRun = MissionDefinition(
+        id: "valley-run", title: "Valley Run", category: .navigation,
+        briefing: "Follow the valley at 80 to 350 ft above the ground, through three gates. Dropping under 80 ft for more than three seconds ends the run.",
+        difficulty: 4, recommendedAircraft: AircraftCatalog.sfAerobat.id, allowedRoles: civil,
+        spawn: MissionSpawn(along: 0, up: 110, speed: .fixed(70)),
+        objectives: [
+            MissionObjective(id: "valley", title: "Fly the valley route", kind: .lowLevelRoute(
+                points: [MissionWaypoint(4_000, 800, 110, radius: 400), MissionWaypoint(8_000, -900, 100, radius: 400),
+                         MissionWaypoint(12_000, 600, 110, radius: 400)],
+                minAGL: 25, maxAGL: 110), points: 300),
+        ],
+        parTime: 200, timeLimit: 420, areaRadius: 25_000, unlock: .mission("coastal-survey"))
+
+    public static let all: [MissionDefinition] = [firstFlight, patternLanding, precisionLanding, wingman, intercept, gunnery, lowLevel, dogfight, coastalSurvey, twinBandits, bushStrip, airportTour, valleyRun, radarIntercept, twoShipDefence]
 
     public static func mission(id: String) -> MissionDefinition? { all.first { $0.id == id } }
     public static func missions(in category: MissionCategory) -> [MissionDefinition] { all.filter { $0.category == category } }

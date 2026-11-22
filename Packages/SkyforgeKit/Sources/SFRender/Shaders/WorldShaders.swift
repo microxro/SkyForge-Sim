@@ -1014,7 +1014,8 @@ public enum WorldShaders {
                                    texture2d<float> airportMask [[texture(9)]],
                                    texture2d<float> macroTex [[texture(10)]],
                                    texture2d<float> suburbMask [[texture(11)]],
-                                   constant OWParams& ow [[buffer(6)]], constant OWWake* wakes [[buffer(7)]]) {
+                                   constant OWParams& ow [[buffer(6)]], constant OWWake* wakes [[buffer(7)]],
+                                   constant CascadeShadowParams& cas [[buffer(12)]]) {
         float dist = length(in.rel);
         float3 dir = in.rel / max(dist, 1e-3);
         float3 n = normalize(in.normal);
@@ -1801,7 +1802,10 @@ public enum WorldShaders {
             }
         }
         float ndl = dot(n, toSun);
-        float vis = toSun.z > -0.05 ? shadowVisibility(u, sm, in.rel, n, dist, max(0.0f, ndl)) : 0.0;
+        // Round 5: tier cascades when the CPU packed them (fwd.w >= 1); otherwise the existing hero + distance cascades.
+        float vis = toSun.z > -0.05 ? (cas.fwd.w >= 1.0
+            ? cascadedShadowVisibility(cas, sm, in.rel, n, max(0.0f, ndl), in.position.xy)
+            : shadowVisibility(u, sm, in.rel, n, dist, max(0.0f, ndl))) : 0.0;
         float cloudShade = 0.0;                    // fraction of sunlight the cumulus removes here
         if (u.clouds.shape.z > 0.0 && toSun.z > 0.05 && vis > 0.0) {
             // Cloud shadow: optical depth along the sun ray through the cumulus slab (3 samples).
