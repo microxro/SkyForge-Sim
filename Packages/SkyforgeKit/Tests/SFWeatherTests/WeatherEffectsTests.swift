@@ -4,7 +4,7 @@ import Foundation
 @testable import SFWeather
 
 @Suite struct WeatherEffectsTests {
-    static func fx(_ s: String) throws -> WeatherEffects { WeatherEffects(metar: try METAR.parse(s)) }
+    static func fx(_ s: String) throws -> WeatherEffects { WeatherEffects(metar: try METARParser.parse(s)) }
 
     @Test func clearSkyHasNoPrecipitation() throws {
         let e = try Self.fx("KMRY 221656Z 27008KT 10SM CLR 16/08 A3002")

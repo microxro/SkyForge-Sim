@@ -63,7 +63,7 @@ import SFWeather
     @Test func windGrowsWithAirspeedAndRainFollowsWeather() throws {
         #expect(AudioModel.windGain(trueAirspeed: 20, openness: 0.2) < AudioModel.windGain(trueAirspeed: 60, openness: 0.2))
         #expect(AudioModel.windGain(trueAirspeed: 200, openness: 1) <= 1)
-        let rain = WeatherEffects(metar: try METAR.parse("KSEA 221656Z 18010KT 1SM +RA OVC008 10/08 A2990"))
+        let rain = WeatherEffects(metar: try METARParser.parse("KSEA 221656Z 18010KT 1SM +RA OVC008 10/08 A2990"))
         var m = AudioModel()
         _ = m.update(dt: 0.02, time: 0, state: Self.state(), outputs: Self.outputs(), inputs: ControlInputs(), weather: rain)
         #expect(m.params.rainGain > 0.8)
@@ -74,7 +74,7 @@ import SFWeather
         var c = ControlInputs(); c.flaps = 0.5
         let e = m.update(dt: 0.02, time: 0, state: Self.state(), outputs: Self.outputs(), inputs: c, weather: .clear)
         #expect(e.contains(.flapMotor))
-        let ts = WeatherEffects(metar: try METAR.parse("KMCO 221656Z 18015G28KT 3SM +TSRA BKN025CB 27/23 A2992"))
+        let ts = WeatherEffects(metar: try METARParser.parse("KMCO 221656Z 18015G28KT 3SM +TSRA BKN025CB 27/23 A2992"))
         var thunder = 0
         for i in 0..<(60 * 50) {   // 60 s at 50 Hz
             for ev in m.update(dt: 0.02, time: Double(i) * 0.02, state: Self.state(), outputs: Self.outputs(), inputs: c, weather: ts) {
