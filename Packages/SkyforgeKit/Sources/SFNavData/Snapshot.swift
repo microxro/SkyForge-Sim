@@ -54,7 +54,11 @@ public enum BundledNavData {
 public struct AirportDatabaseUpdater: Sendable {
     public let transport: any HTTPTransport
     public let baseline: SnapshotManifest
-    public init(transport: any HTTPTransport, baseline: SnapshotManifest) { self.transport = transport; self.baseline = baseline }
+    /// Per-file download cap in bytes.
+    public let maxDownloadBytes: Int
+    public init(transport: any HTTPTransport, baseline: SnapshotManifest, maxDownloadBytes: Int = 64 * 1024 * 1024) {
+        self.transport = transport; self.baseline = baseline; self.maxDownloadBytes = maxDownloadBytes
+    }
 
     /// Downloads airports/runways/navaids, validates them (parse success, row counts within ±20 % of the
     /// baseline after the same filtering, size sanity) and writes them atomically into `directory`.
@@ -63,6 +67,7 @@ public struct AirportDatabaseUpdater: Sendable {
         for name in ["airports", "runways", "navaids"] {
             guard let url = URL(string: NavDatabase.ourAirportsURL(name)) else { throw SnapshotError.transport("bad URL") }
             let data = try await transport.get(url)
+            guard data.count <= maxDownloadBytes else { throw SnapshotError.validation("\(name): \(data.count) bytes exceeds cap") }
             guard data.count > 1_000 else { throw SnapshotError.validation("\(name): only \(data.count) bytes") }
             texts[name] = String(decoding: data, as: UTF8.self)
         }
@@ -84,8 +89,11 @@ public struct AirportDatabaseUpdater: Sendable {
         let tmp = directory.deletingLastPathComponent().appendingPathComponent(".airports-\(UUID().uuidString)")
         try fm.createDirectory(at: tmp, withIntermediateDirectories: true)
         for (name, text) in texts { try Data(text.utf8).write(to: tmp.appendingPathComponent("\(name).csv")) }
-        if fm.fileExists(atPath: directory.path) { try fm.removeItem(at: directory) }
-        try fm.moveItem(at: tmp, to: directory)
+        if fm.fileExists(atPath: directory.path) {
+            _ = try fm.replaceItemAt(directory, withItemAt: tmp)
+        } else {
+            try fm.moveItem(at: tmp, to: directory)
+        }
         return db
     }
 }

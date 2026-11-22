@@ -29,6 +29,24 @@ import Foundation
         let jpg = try [UInt8](Data(contentsOf: Self.dir.appendingPathComponent("usgs_15_13676_9038.jpg")))
         #expect(throws: (any Error).self) { try JPEGDecoder.decode(Array(jpg.prefix(300))) }
     }
+
+    @Test func rejectsTruncatedDQTSegment() {
+        // DQT declares a 64-byte table but the segment ends after the id byte.
+        let b: [UInt8] = [0xFF, 0xD8, 0xFF, 0xDB, 0x00, 0x03, 0x00] + [UInt8](repeating: 0x11, count: 80)
+        #expect(throws: (any Error).self) { try JPEGDecoder.decode(b) }
+    }
+
+    @Test func rejectsOversubscribedHuffmanTable() {
+        // Three 1-bit codes cannot exist.
+        let counts: [UInt8] = [3] + [UInt8](repeating: 0, count: 15)
+        let b: [UInt8] = [0xFF, 0xD8, 0xFF, 0xC4, 0x00, 0x16, 0x00] + counts + [0, 1, 2, 0xFF, 0xD9]
+        #expect(throws: (any Error).self) { try JPEGDecoder.decode(b) }
+    }
+
+    @Test func rejectsBadSegmentLength() {
+        let b: [UInt8] = [0xFF, 0xD8, 0xFF, 0xDB, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00]
+        #expect(throws: (any Error).self) { try JPEGDecoder.decode(b) }
+    }
 }
 
 import SFContent

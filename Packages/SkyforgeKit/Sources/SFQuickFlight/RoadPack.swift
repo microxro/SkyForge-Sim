@@ -12,6 +12,8 @@ public enum RoadPack {
     public enum ParseError: Error, Equatable { case badMagic, truncated }
 
     /// Road classes in the order `fetch_roads.py` writes them.
+    /// Smallest possible record in bytes (fixed fields plus a 2-point line).
+    static let minRecordSize = 16
     static let classes: [OSMHighway] = [.motorway, .trunk, .primary, .secondary, .tertiary, .unclassified, .residential,
                                         .livingStreet, .service, .track]
     static let links: [OSMHighway: OSMHighway] = [.motorway: .motorwayLink, .trunk: .trunkLink, .primary: .primaryLink,
@@ -32,6 +34,7 @@ public enum RoadPack {
             }
             let lat0 = Double(bitPattern: UInt64(littleEndian: try read(UInt64.self)))
             let lon0 = Double(bitPattern: UInt64(littleEndian: try read(UInt64.self)))
+            guard lat0.isFinite, lon0.isFinite, abs(lat0) <= 90, abs(lon0) <= 180 else { throw ParseError.truncated }
             let count = Int(UInt32(littleEndian: try read(UInt32.self)))
             // The pack's metres (equirectangular about lat0/lon0) → region metres, as BuildingPack.
             let mlat = 111_132.0, mlon = 111_320.0 * cos(lat0 * .pi / 180)
@@ -41,6 +44,7 @@ public enum RoadPack {
             }
             let p0 = region(0, 0), ex = (region(1_000, 0) - p0) / 1_000, ey = (region(0, 1_000) - p0) / 1_000
             var out: [OSMRoad] = []
+            guard count <= (raw.count - o) / minRecordSize else { throw ParseError.truncated }
             out.reserveCapacity(count)
             var line: [SIMD2<Double>] = []
             for i in 0..<count {
