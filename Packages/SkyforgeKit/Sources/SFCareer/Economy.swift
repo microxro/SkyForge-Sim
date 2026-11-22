@@ -52,19 +52,18 @@ public enum Economy {
     public static let cargoRatePer100KgKm = 0.35
 
     /// Hangar catalog. Every id here must be flyable on main (SFFlightModel/AircraftCatalog or SFGameplay/Aircraft).
-    /// Retired ids (sf2, sf5, sf9 had no flight config) are refunded on load, see `retiredAircraftRefunds`.
+    /// Retired ids (sf2, sf3, sf5, sf9 had no gameplay aircraft spec) are refunded on load, see `retiredAircraftRefunds`.
     public static let catalog: [HangarAircraft] = [
         .init(id: "org.skyforge.sf1", name: "SF-1 Trainer", seats: 1, payloadKg: 150, rangeKm: 600, cruiseKts: 105, minRunwayM: 450, purchasePrice: 0, rentalPerHour: 0, fuelBurnKgPerHour: 28, unlockLevel: 1),
         .init(id: "org.skyforge.sfc", name: "SF-C Cruiser", seats: 3, payloadKg: 320, rangeKm: 1_100, cruiseKts: 130, minRunwayM: 600, purchasePrice: 45_000, rentalPerHour: 90, fuelBurnKgPerHour: 38, unlockLevel: 3),
         .init(id: "org.skyforge.sfa", name: "SF-A Aerobat", seats: 1, payloadKg: 110, rangeKm: 500, cruiseKts: 140, minRunwayM: 400, purchasePrice: 38_000, rentalPerHour: 110, fuelBurnKgPerHour: 42, unlockLevel: 5),
-        .init(id: "org.skyforge.sf3", name: "SF-3 Twin", seats: 6, payloadKg: 780, rangeKm: 2_200, cruiseKts: 200, minRunwayM: 900, purchasePrice: 340_000, rentalPerHour: 420, fuelBurnKgPerHour: 120, unlockLevel: 14),
         .init(id: "org.skyforge.sft1", name: "SF-T1 Jet Trainer", seats: 2, payloadKg: 200, rangeKm: 1_500, cruiseKts: 340, minRunwayM: 1_200, purchasePrice: 900_000, rentalPerHour: 800, fuelBurnKgPerHour: 380, unlockLevel: 20, isMilitary: true),
         .init(id: "org.skyforge.sff1", name: "SF-F1 Interceptor", seats: 1, payloadKg: 300, rangeKm: 1_900, cruiseKts: 480, minRunwayM: 1_500, purchasePrice: 3_500_000, rentalPerHour: 2_400, fuelBurnKgPerHour: 1_200, unlockLevel: 36, isMilitary: true),
     ]
 
     /// Aircraft that were once sold but cannot be flown. Owners get the purchase price back on load.
     public static let retiredAircraftRefunds: [String: Int] = [
-        "org.skyforge.sf2": 120_000, "org.skyforge.sf5": 1_200_000, "org.skyforge.sf9": 8_000_000,
+        "org.skyforge.sf2": 120_000, "org.skyforge.sf3": 340_000, "org.skyforge.sf5": 1_200_000, "org.skyforge.sf9": 8_000_000,
     ]
 
     public static func spec(_ id: String, in catalog: [HangarAircraft] = Economy.catalog) -> HangarAircraft? {
