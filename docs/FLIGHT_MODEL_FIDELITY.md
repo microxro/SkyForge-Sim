@@ -7,7 +7,7 @@ Adds to SFFlightModel (all defaults reproduce the previous behaviour for existin
 - Ground handling: friction circle, speed-faded nose-wheel steering, `FlightEnvironment.surfaceFriction` (wet/snow/ice), retractable gear with belly contact when retracted.
 - New outputs: `mach`, `loadFactor`, `stallWarning`. New inputs: `gear`, `speedbrake`.
 - Catalog (ids match SFGameplay): `.sf2Cruiser` = org.skyforge.sfc, `.sf3Twin` = org.skyforge.sf3, `.sf5Jet` = org.skyforge.sft1, `.sf9Fighter` = org.skyforge.sff1 (supersonic-capable).
-- SF-1 `cnAileron` corrected from -0.053 to -0.0053 (oracle found a 10x slip); mild stall behaviour added.
+- SF-1 mild stall behaviour added. The oracle flags `cnAileron` (-0.053) as likely 10x too large (c172p: -0.0053); not changed here because it shifts the instrument golden images (follow-up: change it and re-bless goldens).
 - `tools/jsbsim_oracle/`: JSBSim c172p comparison (P1.1b). See its README and RESULTS.md (results are for the pre-change SF-1; re-port before trusting).
 
 Not modelled yet: fuel burn/CG shift, dynamic-stall hysteresis, spool state inside the model, hydroplaning.
