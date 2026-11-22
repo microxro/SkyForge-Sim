@@ -1734,3 +1734,12 @@ Tree counts: LSZS 650k (capped), KASE 650k (capped), NZQN 116k (+70k scrub), KMR
   5. **Trees** (KMRY final, LSZS final): lollipop crowns repeat at mid distance. Low priority.
 - **Caveat:** frames are 1280×720, so edge and shimmer judgements are coarse. Native-resolution captures are requested.
 - **Hold lifted:** PR #42 (TAA, SMAA-lite, 4 cascades) merged as 5451516. The next round scores main/ frames from fb87688 (run 45069547574).
+
+## Round 63 verdict (main d087036, frames in ci-frames/main/)
+
+- **Frames:** main/ from run 45070726691 (d087036, includes #42 and #47). Ultra set of 17 frames.
+- **Result:** 15 of 17 frames are byte-identical to the round 62 set (PR #46). The two that differ (KBFI close, KMRY cockpit) look the same by eye.
+- **Verdict:** unchanged at **6.2** by eye. No visual gain from round 63.
+- **Why nothing changed:** `aaTier` is never set anywhere in Sources or tests. TAA, SMAA-lite and the 4-cascade shadows therefore never run, so #42 changes no frame.
+- **Correction:** the round 62 entry says #42 lifted the hold. That was premature. The hold stays until `aaTier` is set for the showcase render and a before/after pair shows the change.
+- **Main CI:** the linux job of run 45070726691 failed in `ScenarioTests` with one issue. Other suites passed.

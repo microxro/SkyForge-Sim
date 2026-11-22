@@ -138,8 +138,11 @@ public struct GameplayDirector: Sendable {
         monitor.update(nz: loadFactor, trueAirspeed: o.trueAirspeed, mach: mach, flaps: snapshot.flaps,
                        stalled: o.stalled, onGround: o.weightOnWheels, heightAGL: snapshot.heightAGL,
                        sinkRate: s.velocityNED.z, dt: dt)
-        for w in monitor.warnings.subtracting(previousWarnings).sorted() { pendingEvents.append(.warning(w)) }
-        previousWarnings = monitor.warnings
+        // Runs every 120 Hz step; the warning set is almost always unchanged, so skip the set algebra then.
+        if monitor.warnings != previousWarnings {
+            for w in monitor.warnings.subtracting(previousWarnings).sorted() { pendingEvents.append(.warning(w)) }
+            previousWarnings = monitor.warnings
+        }
 
         // 7. Mission runtime. A shot-down airframe ends the mission like a crash.
         if runtime != nil {
