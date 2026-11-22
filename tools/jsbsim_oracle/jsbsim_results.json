@@ -55,7 +55,7 @@
         "throttle": 1.0
       }
     },
-    "runtime_s": 2.1
+    "runtime_s": 1.9
   },
   "scenarios": {
     "trim": {

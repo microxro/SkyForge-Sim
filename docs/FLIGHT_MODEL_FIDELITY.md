@@ -11,3 +11,15 @@ Adds to SFFlightModel (all defaults reproduce the previous behaviour for existin
 - `tools/jsbsim_oracle/`: JSBSim c172p comparison (P1.1b). See its README and RESULTS.md (results are for the pre-change SF-1; re-port before trusting).
 
 Not modelled yet: fuel burn/CG shift, dynamic-stall hysteresis, spool state inside the model, hydroplaning.
+
+## Known differences from the JSBSim c172p oracle (design choices, not errors)
+
+The oracle compares SF-1 against a Cessna 172. SF-1 is an original design, so these gaps are documented, not tuned away. Each was reviewed; none is a sign, units or implementation error.
+
+- **Sideslip per degree of rudder (FAIL, +64%):** `cnRudder` gives SF-1 more rudder authority than the 172. This is a control-feel choice.
+- **Short-period frequency (WARN, -23%):** `cmAlpha` is softer than the 172. The damping ratio matches (0.59).
+- **Roll rate at 50% stick (WARN, -32%):** aileron authority is lower by design. `cnAileron` was already corrected for the 10x slip.
+- **Stall angle and CLmax (WARN):** SF-1 peaks at about 13.8 deg, and the 172 at about 16 deg. The stall behaviour is deliberately abrupt for the trainer's teaching profile.
+- **Ground roll and takeoff distance (WARN, +18%):** SF-1 has a higher rotate speed by design.
+
+The pass/warn/fail bands are sanity checks against a different aircraft, not targets. Coefficients are only changed for real errors, which is why the current values stay.
