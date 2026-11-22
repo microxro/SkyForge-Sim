@@ -115,7 +115,7 @@ import SFFlightModel
             s.step(c)
             peak = max(peak, s.loadFactor)
         }
-        #expect(!s.crashed, s.crashReason ?? "")
+        #expect(!s.crashed, "\(s.crashReason ?? "")")
         #expect(peak < a.limits.nzMax * 1.5, "peak \(peak) g")
         #expect(s.state.isFinite)
     }

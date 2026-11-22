@@ -128,20 +128,20 @@ import SFMath
     @Test func catalogIsConsistentAndFullyUnlockable() {
         var progress = PlayerProgress()
         for m in MissionCatalog.all {
-            #expect(AircraftCatalog.spec(id: m.recommendedAircraft) != nil, m.id)
-            #expect(m.allows(AircraftCatalog.spec(id: m.recommendedAircraft)!), m.id)
-            #expect(Set(m.objectives.map(\.id)).count == m.objectives.count, m.id)
+            #expect(AircraftCatalog.spec(id: m.recommendedAircraft) != nil, "\(m.id)")
+            #expect(m.allows(AircraftCatalog.spec(id: m.recommendedAircraft)!), "\(m.id)")
+            #expect(Set(m.objectives.map(\.id)).count == m.objectives.count, "\(m.id)")
             let ids = Set(m.targets.map(\.id))
-            #expect(ids.count == m.targets.count, m.id)
+            #expect(ids.count == m.targets.count, "\(m.id)")
             for o in m.objectives {
                 switch o.kind {
-                case .destroy(let t): #expect(Set(t).isSubset(of: ids), m.id)
-                case .identify(let t, _, _): #expect(ids.contains(t), m.id)
-                case .formation(let l, _, _, _, _): #expect(ids.contains(l), m.id)
+                case .destroy(let t): #expect(Set(t).isSubset(of: ids), "\(m.id)")
+                case .identify(let t, _, _): #expect(ids.contains(t), "\(m.id)")
+                case .formation(let l, _, _, _, _): #expect(ids.contains(l), "\(m.id)")
                 default: break
                 }
             }
-            if case .mission(let req) = m.unlock { #expect(MissionCatalog.mission(id: req) != nil, m.id) }
+            if case .mission(let req) = m.unlock { #expect(MissionCatalog.mission(id: req) != nil, "\(m.id)") }
         }
         // Play through in unlock order: every mission must become flyable with an unlocked aircraft.
         var remaining = MissionCatalog.all

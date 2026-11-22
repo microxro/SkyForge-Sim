@@ -216,5 +216,14 @@ public struct MissionResult: Sendable, Codable, Equatable {
     public var medal: Medal
     public var elapsed: Double
     public var objectivesCompleted: Int
+    /// Hostile aircraft destroyed during the mission.
+    public var kills: Int
     public var breakdown: [String: Int]
+
+    public init(missionID: String, aircraftID: String, success: Bool, failureReason: String?, score: Int, medal: Medal,
+                elapsed: Double, objectivesCompleted: Int, kills: Int = 0, breakdown: [String: Int]) {
+        self.missionID = missionID; self.aircraftID = aircraftID; self.success = success
+        self.failureReason = failureReason; self.score = score; self.medal = medal; self.elapsed = elapsed
+        self.objectivesCompleted = objectivesCompleted; self.kills = kills; self.breakdown = breakdown
+    }
 }

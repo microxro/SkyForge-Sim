@@ -428,7 +428,8 @@ public struct QuickFlightWorld: FlightWorld {
 
 public struct QuickFlightSession: Sendable {
     public let world: any FlightWorld
-    public let model = FlightModel(config: .sf1Trainer)
+    public let aircraft: AircraftConfig
+    public let model: FlightModel
     public let environment: FlightEnvironment
     public private(set) var state: AircraftState
     public private(set) var inputs = ControlInputs()
@@ -439,23 +440,35 @@ public struct QuickFlightSession: Sendable {
     private var accumulator = 0.0
     private var lastFlapAction = false
     public static let dt = 1.0 / 120
+    /// Optional control filter applied to the pilot's inputs before each step (a fly-by-wire limiter).
+    public var inputFilter: (@Sendable (ControlInputs, AircraftState, FlightOutputs) -> ControlInputs)?
+    /// Lowest point of the gear below the centre of gravity (m).
+    public var gearHeight: Double { aircraft.gear.map { $0.position.z }.max() ?? 1.25 }
 
-    public init(world: any FlightWorld = QuickFlightWorld(), start: QuickFlightStart = .runway) {
+    /// - Parameters:
+    ///   - aircraft: the aircraft to fly (default: the SF-1 Trainer).
+    ///   - approachSpeed: true airspeed (m/s) and `approachFlaps` for the `.final` start.
+    public init(world: any FlightWorld = QuickFlightWorld(), start: QuickFlightStart = .runway,
+                aircraft: AircraftConfig = .sf1Trainer, approachSpeed: Double = 34, approachFlaps: Double = 0.5,
+                wind: SIMD3<Double> = .zero) {
         self.world = world
-        environment = FlightEnvironment(terrain: FlightWorldTerrain(world))
+        self.aircraft = aircraft
+        model = FlightModel(config: aircraft)
+        let gear = aircraft.gear.map { $0.position.z }.max() ?? 1.25
+        environment = FlightEnvironment(windNED: wind, terrain: FlightWorldTerrain(world))
         let dir = world.runwayDirection
         let hdg = world.runwayHeading
         switch start {
         case .runway:
             let p = world.runwayThreshold + dir * 60
-            state = AircraftState(positionNED: SIMD3(p.y, p.x, -(world.runwayElevation + 1.22)), velocityBody: .zero,
+            state = AircraftState(positionNED: SIMD3(p.y, p.x, -(world.runwayElevation + gear - 0.03)), velocityBody: .zero,
                                   attitude: Quaternion(roll: 0, pitch: 0, yaw: hdg), bodyRates: .zero)
             inputs.brakes = 0
         case .final:
             let dist = 2_000.0
             let p = world.runwayThreshold - dir * dist
             let alt = world.runwayElevation + 15 + dist * tan(3 * Double.pi / 180)
-            let trim = model.trimLevel(trueAirspeed: 34, altitude: alt, flaps: 0.5, environment: environment)
+            let trim = model.trimLevel(trueAirspeed: approachSpeed, altitude: alt, flaps: approachFlaps, environment: environment)
             var s = trim.state
             s.positionNED = SIMD3(p.y, p.x, -alt)
             s.attitude = Quaternion(roll: 0, pitch: trim.alpha, yaw: hdg)
@@ -499,17 +512,35 @@ public struct QuickFlightSession: Sendable {
 
     /// One fixed simulation step with the current inputs.
     public mutating func step() {
-        let o = model.outputs(state, inputs: inputs, environment: environment)
+        var o = model.outputs(state, inputs: inputs, environment: environment)
+        var applied = inputs
+        if let filter = inputFilter { applied = filter(inputs, state, o); o = model.outputs(state, inputs: applied, environment: environment) }
+        lastOutputs = o
         let rho = ISA.state(geometricAltitude: state.altitude).density
-        instruments.update(state: state, outputs: o, environment: environment, inputs: inputs,
-                           rpm: PropellerRPM.rpm(throttle: inputs.throttle, trueAirspeed: o.trueAirspeed, density: rho), dt: Self.dt)
+        instruments.update(state: state, outputs: o, environment: environment, inputs: applied,
+                           rpm: PropellerRPM.rpm(throttle: applied.throttle, trueAirspeed: o.trueAirspeed, density: rho, config: aircraft), dt: Self.dt)
         let vBefore = state.velocityNED.z
-        state = model.step(state, inputs: inputs, environment: environment, dt: Self.dt)
+        state = model.step(state, inputs: applied, environment: environment, dt: Self.dt)
         time += Self.dt
-        // Crash: hard ground contact (> 600 fpm at contact) or the airframe below the surface.
-        if heightAboveGround < 0.3 && vBefore > 3.0 { crashed = true }
-        if heightAboveGround < -0.5 { crashed = true }
+        // Crash: hard ground contact (> 600 fpm at contact) or the airframe below the surface. Heights are
+        // relative to the gear, which is 1.25 m below the centre of gravity on the SF-1 (the original 0.3 m and -0.5 m).
+        let belowGear = heightAboveGround - gearHeight
+        if belowGear < -0.95 && vBefore > 3.0 { crashed = true }
+        if belowGear < -1.75 { crashed = true }
     }
+
+    /// Places the aircraft in a given state (a mission's airborne start) with the control inputs that hold it.
+    public mutating func place(state s: AircraftState, inputs i: ControlInputs) {
+        state = s
+        inputs = i.sanitized
+        accumulator = 0
+    }
+
+    /// Flight-model outputs from the last step (airspeed, load, weight on wheels), for gameplay layers.
+    public private(set) var lastOutputs = FlightOutputs()
+
+    /// Ends the flight (an overstressed airframe, for example).
+    public mutating func markCrashed() { crashed = true }
 
     /// Sets inputs directly (autopilots, tests).
     public mutating func setInputs(_ i: ControlInputs) { inputs = i.sanitized }

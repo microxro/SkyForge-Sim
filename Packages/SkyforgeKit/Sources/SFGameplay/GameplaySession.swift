@@ -36,22 +36,16 @@ public struct GameplaySession: Sendable {
     public private(set) var state: AircraftState
     /// Inputs after the control law (what the surfaces actually did on the last step).
     public private(set) var effectiveInputs = ControlInputs()
-    public private(set) var targets: [AITarget] = []
-    public private(set) var weapons: WeaponSystem
-    public private(set) var monitor: EnvelopeMonitor
-    public private(set) var runtime: MissionRuntime?
+    public private(set) var director: GameplayDirector
     public private(set) var time = 0.0
-    public private(set) var loadFactor = 1.0
     public private(set) var onGround = false
     public private(set) var crashed = false
     public private(set) var crashReason: String?
-    public private(set) var pendingEvents: [GameEvent] = []
 
-    private var control: FlightControlLaw
+    private let controlFilter: ControlFilter?
     private var accumulator = 0.0
-    private var lastSinkRate = 0.0
-    private var previousWarnings: Set<EnvelopeWarning> = []
     private var trimmedInputs = ControlInputs()
+    private var crashReported = false
 
     /// Starts a mission, or a free flight on the runway when `mission` is nil.
     public init(world: any FlightWorld, aircraft: AircraftSpec, mission: MissionDefinition? = nil) {
@@ -64,17 +58,14 @@ public struct GameplaySession: Sendable {
         let wind = mission?.wind.windNED(runwayHeading: frame.heading) ?? .zero
         let env = FlightEnvironment(windNED: wind, terrain: FlightWorldTerrain(world))
         environment = env
-        control = FlightControlLaw(limits: aircraft.limits, config: aircraft.config)
-        monitor = EnvelopeMonitor(limits: aircraft.limits)
-        weapons = WeaponSystem(kinds: aircraft.armament)
+        controlFilter = GameplayDirector.makeControlFilter(for: aircraft)
+        director = GameplayDirector(aircraft: aircraft, frame: frame, mission: mission)
 
         let spawn = mission?.spawn ?? MissionSpawn(along: 60, onRunway: true)
         let (s, trimmed) = Self.makeInitialState(spawn: spawn, aircraft: aircraft, frame: frame, wind: wind, terrain: env.terrain)
         state = s
         trimmedInputs = trimmed
         effectiveInputs = trimmed
-        targets = (mission?.targets ?? []).map { $0.makeTarget(frame: frame) }
-        if let m = mission { runtime = MissionRuntime(mission: m, frame: frame, aircraftID: aircraft.id) }
         onGround = spawn.onRunway
     }
 
@@ -115,15 +106,21 @@ public struct GameplaySession: Sendable {
     }
     public var trueAirspeed: Double { length(state.velocityBody - state.attitude.conjugate.rotate(environment.windNED)) }
     public var mach: Double { EnvelopeMath.mach(trueAirspeed: trueAirspeed, altitudeMSL: altitudeMSL) }
-    public var missionResult: MissionResult? { runtime?.result }
-    public var isFinished: Bool { crashed || (runtime?.isFinished ?? false) }
+    public var targets: [AITarget] { director.targets }
+    public var weapons: WeaponSystem { director.weapons }
+    public var monitor: EnvelopeMonitor { director.monitor }
+    public var runtime: MissionRuntime? { director.runtime }
+    public var loadFactor: Double { director.loadFactor }
+    public var missionResult: MissionResult? { director.runtime?.result }
+    public var isFinished: Bool { crashed || director.isFinished }
     /// Position in world coordinates (x east, y north, z up), as the renderer uses.
     public var positionENU: SIMD3<Double> { SIMD3(state.positionNED.y, state.positionNED.x, -state.positionNED.z) }
 
     /// Returns and clears the events raised since the last call.
     public mutating func drainEvents() -> [GameEvent] {
-        defer { pendingEvents.removeAll(keepingCapacity: true) }
-        return pendingEvents
+        var events = director.drainEvents()
+        if let reason = crashReason, !crashReported { events.append(.crashed(reason)); crashReported = true }
+        return events
     }
 
     // MARK: Stepping
@@ -141,54 +138,29 @@ public struct GameplaySession: Sendable {
     public mutating func step(_ controls: PilotControls) {
         let dt = Self.dt
         var input = controls.flight.sanitized
-        let atm = ISA.state(geometricAltitude: state.altitude)
         let before = model.forcesAndMoments(state, input, environment).2
-        loadFactor = EnvelopeMath.loadFactor(state: state, outputs: before, config: aircraft.config)
-        if aircraft.flyByWire {
-            let qbar = 0.5 * atm.density * before.trueAirspeed * before.trueAirspeed
-            input = control.apply(input, qbar: qbar, nz: loadFactor)
-        }
+        if let filter = controlFilter { input = filter(input, state, before) }
         effectiveInputs = input
         let sinkBefore = state.velocityNED.z
 
         state = model.step(state, inputs: input, environment: environment, dt: dt)
         time += dt
         onGround = before.weightOnWheels
-        if !onGround { lastSinkRate = sinkBefore }
 
-        // Crash: gear well below the surface, or ground contact at over 3 m/s sink.
-        let clearance = heightAGL - aircraft.gearHeight
-        if clearance < -0.8 || (clearance < -0.25 && sinkBefore > 3.0) { fail("Crashed into the ground") }
+        // Crash: the airframe well below the surface, or ground contact at over 3 m/s sink. The
+        // thresholds match Quick Flight's (a belly strike), so a firm gear landing is not a crash.
+        let lowest = heightAGL - aircraft.gearHeight
+        if lowest < -1.75 || (lowest < -0.95 && sinkBefore > 3.0) { fail("Crashed into the ground") }
 
-        // AI aircraft and weapons.
-        for i in targets.indices { targets[i].step(dt: dt, threat: state.positionNED) }
-        let own = Ownship(position: state.positionNED, velocity: state.velocityNED, forward: state.attitude.rotate(SIMD3(1, 0, 0)))
-        for e in weapons.update(dt: dt, ownship: own, input: controls.weapons, targets: &targets) {
-            pendingEvents.append(.weapon(e))
-        }
-
-        // Envelope.
-        let m = EnvelopeMath.mach(trueAirspeed: before.trueAirspeed, altitudeMSL: state.altitude)
-        monitor.update(nz: loadFactor, trueAirspeed: before.trueAirspeed, mach: m, flaps: input.flaps,
-                       stalled: before.stalled, onGround: onGround, heightAGL: heightAGL, sinkRate: state.velocityNED.z, dt: dt)
-        for w in monitor.warnings.subtracting(previousWarnings).sorted() { pendingEvents.append(.warning(w)) }
-        previousWarnings = monitor.warnings
-        if monitor.structuralFailure { fail("Airframe overstressed") }
-
-        // Mission.
-        if runtime != nil {
-            let sample = FlightSample(time: time, positionNED: state.positionNED, velocityNED: state.velocityNED,
-                                      heightAGL: clearance, onGround: onGround, crashed: crashed, crashReason: crashReason)
-            for e in runtime!.update(sample: sample, targets: targets, overstressSeconds: monitor.overstressSeconds) {
-                pendingEvents.append(.mission(e))
-            }
-        }
+        director.advance(dt: dt, snapshot: FlightSnapshot(time: time, state: state, outputs: before, flaps: input.flaps,
+                                                          heightAGL: heightAGL, crashed: crashed, crashReason: crashReason),
+                         weaponInput: controls.weapons)
+        if director.monitor.structuralFailure { fail("Airframe overstressed") }
     }
 
     private mutating func fail(_ reason: String) {
         guard !crashed else { return }
         crashed = true
         crashReason = reason
-        pendingEvents.append(.crashed(reason))
     }
 }
