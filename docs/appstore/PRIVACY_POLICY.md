@@ -2,7 +2,7 @@
 
 Last updated: 2026-11-22
 
-SKYFORGE does not collect, store on our servers, share or sell personal data. There are no accounts, no advertising, no analytics and no tracking, and the app contains no third-party SDKs.
+SKYFORGE does not collect, store on our servers, share or sell personal data. There are no accounts, no advertising, no analytics and no tracking, and the app contains no third-party SDKs that collect data (its only dependencies are Apple's open-source swift-crypto and swift-asn1, used for hashing).
 
 ## What stays on your device
 Settings and cached map tiles are stored locally on your device. Deleting the app removes them.

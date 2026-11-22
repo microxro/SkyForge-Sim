@@ -13,3 +13,5 @@ Nothing here can be done from the repository. In order:
 9. Verify on a real iPhone, iPad and Mac: frame rate, thermals, memory (see `docs/MAC_DAY.md`). This repo's CI has not run on-device.
 10. For CI archives: add repository secrets listed in `.github/workflows/release-archive.yml` (an App Store Connect API key and a distribution certificate), then run the workflow manually. Upload to TestFlight, test, then submit for review.
 11. Re-check the privacy manifest reason codes against Apple's current required-reason API list.
+
+Note on privacy reason codes: no first-party source calls UserDefaults, file timestamp or disk-space APIs directly (grepped 2026-11-22). The manifest declares CA92.1, C617.1 and E174.1 defensively because Apple frameworks and SwiftPM resources may use them. Trim the manifest if Xcode's privacy report on the archive shows they are unused.

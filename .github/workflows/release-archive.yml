@@ -29,7 +29,7 @@ jobs:
           if [ -d /Applications/Xcode_26.6.app ]; then sudo xcode-select -s /Applications/Xcode_26.6.app; fi
           xcodebuild -version
       - name: Static preflight
-        run: python3 tools/appstore_preflight.py
+        run: python3 tools/appstore_preflight.py ${{ inputs.sign && '--release' || '' }}
       - name: Set build number
         run: echo "BUILD_NUMBER=${{ github.run_number }}" >> "$GITHUB_ENV"
       - name: Archive (unsigned)
@@ -63,6 +63,7 @@ jobs:
           set -o pipefail
           DEST=$([ "${{ matrix.platform }}" = ios ] && echo 'generic/platform=iOS' || echo 'generic/platform=macOS')
           AUTH="-allowProvisioningUpdates -authenticationKeyPath $RUNNER_TEMP/keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8 -authenticationKeyID ${{ secrets.ASC_KEY_ID }} -authenticationKeyIssuerID ${{ secrets.ASC_ISSUER_ID }}"
+          /usr/libexec/PlistBuddy -c "Set :teamID ${{ secrets.APPLE_TEAM_ID }}" tools/appstore/ExportOptions-macos.plist || true
           xcodebuild archive -project SKYFORGE.xcodeproj -scheme SKYFORGE -configuration Release \
             -destination "$DEST" -archivePath build/SKYFORGE-${{ matrix.platform }}.xcarchive \
             DEVELOPMENT_TEAM="${{ secrets.APPLE_TEAM_ID }}" CURRENT_PROJECT_VERSION="$BUILD_NUMBER" $AUTH | tail -n 60

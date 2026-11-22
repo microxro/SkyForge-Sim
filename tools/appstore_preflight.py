@@ -4,6 +4,7 @@ import plistlib, struct, sys, pathlib
 
 root = pathlib.Path(__file__).resolve().parent.parent
 errors = []
+release = '--release' in sys.argv
 
 def load(rel):
     try:
@@ -53,6 +54,11 @@ for rel in ('docs/appstore/METADATA.md', 'docs/appstore/PRIVACY_POLICY.md', 'doc
 
 if not (root / 'Packages/SkyforgeKit/Sources/SFUI/AcknowledgementsView.swift').exists():
     errors.append('in-app acknowledgements view missing (ODbL/CC BY attribution)')
+
+if release:
+    proj = (root / 'SKYFORGE.xcodeproj/project.pbxproj').read_text()
+    if 'org.skyforge.SKYFORGE' in proj or 'PRODUCT_BUNDLE_IDENTIFIER = org.skyforge' in proj:
+        errors.append('bundle ID is still the org.skyforge placeholder (docs/appstore/OWNER_TODO.md step 2)')
 
 for e in errors:
     print('FAIL', e)
