@@ -13,6 +13,8 @@ public enum BuildingPack {
     public enum ParseError: Error, Equatable { case badMagic, truncated }
 
     /// `class`/`subtype` values in the order `fetch_buildings.py` writes them.
+    /// Smallest possible record in bytes (fixed fields plus a 3-point ring).
+    static let minRecordSize = 32
     static let kinds = ["yes", "house", "residential", "apartments", "commercial", "industrial", "retail", "office", "warehouse",
                         "hangar", "garage", "shed", "church", "school", "hospital", "hotel", "civic", "transportation", "roof",
                         "agricultural", "service", "religious", "education", "medical", "entertainment", "military", "outbuilding"]
@@ -45,6 +47,8 @@ public enum BuildingPack {
             }
             let p0 = region(0, 0), ex = (region(1_000, 0) - p0) / 1_000, ey = (region(0, 1_000) - p0) / 1_000
             var out: [OSMBuilding] = []
+            // Smallest record: 24-byte header plus a 3-point ring (8 bytes of deltas).
+            guard count <= (raw.count - o) / minRecordSize else { throw ParseError.truncated }
             out.reserveCapacity(count)
             var ring: [SIMD2<Double>] = []
             for i in 0..<count {

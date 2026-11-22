@@ -28,11 +28,13 @@ public enum JPEGDecoder {
 
         init(counts: [UInt8], values v: [UInt8]) throws {
             values = v
+            guard counts.count == 16, counts.reduce(0, { $0 + Int($1) }) == v.count else { throw JPEGError.corrupt("huffman table size") }
             var code = 0, k = 0
             for len in 1...16 {
                 valPtr[len] = k
                 minCode[len] = code
                 code += Int(counts[len - 1])
+                guard code <= (1 << len) else { throw JPEGError.corrupt("huffman oversubscribed") }
                 k += Int(counts[len - 1])
                 maxCode[len] = counts[len - 1] > 0 ? code - 1 : -1
                 if len <= 9 {
@@ -146,6 +148,7 @@ public enum JPEGDecoder {
             if marker == 0xD8 || (0xD0...0xD7).contains(marker) { pos += 2; continue }
             if marker == 0xD9 { break }
             let len = be16(pos + 2)
+            guard len >= 2 else { throw JPEGError.corrupt("segment length") }
             let seg = pos + 4, end = pos + 2 + len
             guard end <= bytes.count else { throw JPEGError.corrupt("segment overruns") }
             switch marker {
@@ -153,7 +156,8 @@ public enum JPEGDecoder {
                 var p = seg
                 while p < end {
                     let pq = Int(bytes[p] >> 4), tq = Int(bytes[p] & 15); p += 1
-                    guard tq < 4 else { throw JPEGError.corrupt("dqt id") }
+                    guard tq < 4, pq <= 1 else { throw JPEGError.corrupt("dqt id") }
+                    guard p + (pq == 0 ? 64 : 128) <= end else { throw JPEGError.corrupt("dqt truncated") }
                     for i in 0..<64 {
                         qt[tq][zigzag[i]] = pq == 0 ? Int(bytes[p]) : be16(p)
                         p += pq == 0 ? 1 : 2
@@ -162,33 +166,43 @@ public enum JPEGDecoder {
             case 0xC4:
                 var p = seg
                 while p < end {
+                    guard p + 17 <= end else { throw JPEGError.corrupt("dht truncated") }
                     let tc = Int(bytes[p] >> 4), th = Int(bytes[p] & 15); p += 1
-                    guard th < 4 else { throw JPEGError.corrupt("dht id") }
+                    guard th < 4, tc <= 1 else { throw JPEGError.corrupt("dht id") }
                     let counts = Array(bytes[p..<(p + 16)]); p += 16
                     let n = counts.reduce(0) { $0 + Int($1) }
+                    guard p + n <= end else { throw JPEGError.corrupt("dht truncated") }
                     let vals = Array(bytes[p..<(p + n)]); p += n
                     let h = try Huffman(counts: counts, values: vals)
                     if tc == 0 { dcT[th] = h } else { acT[th] = h }
                 }
             case 0xC0, 0xC1:
+                guard end - seg >= 6 else { throw JPEGError.corrupt("sof truncated") }
                 guard bytes[seg] == 8 else { throw JPEGError.unsupported("precision \(bytes[seg])") }
                 height = be16(seg + 1); width = be16(seg + 3)
                 let nc = Int(bytes[seg + 5])
                 guard nc == 1 || nc == 3 else { throw JPEGError.unsupported("\(nc) components") }
+                guard end - seg >= 6 + 3 * nc else { throw JPEGError.corrupt("sof truncated") }
+                guard width > 0, height > 0, width * height <= 64_000_000 else { throw JPEGError.corrupt("image size") }
+                comps.removeAll()
                 for i in 0..<nc {
                     let b = seg + 6 + 3 * i
-                    comps.append(Component(id: bytes[b], h: max(1, Int(bytes[b + 1] >> 4)), v: max(1, Int(bytes[b + 1] & 15)), tq: Int(bytes[b + 2] & 3)))
+                    comps.append(Component(id: bytes[b], h: min(4, max(1, Int(bytes[b + 1] >> 4))), v: min(4, max(1, Int(bytes[b + 1] & 15))), tq: Int(bytes[b + 2] & 3)))
                 }
             case 0xC2, 0xC3, 0xC5...0xC7, 0xC9...0xCB, 0xCD...0xCF:
                 throw JPEGError.unsupported("non-baseline SOF \(String(marker, radix: 16))")
             case 0xDD:
+                guard end - seg >= 2 else { throw JPEGError.corrupt("dri truncated") }
                 restartInterval = be16(seg)
             case 0xDA:
                 guard width > 0, !comps.isEmpty else { throw JPEGError.corrupt("SOS before SOF") }
+                guard end - seg >= 1 else { throw JPEGError.corrupt("sos truncated") }
                 let ns = Int(bytes[seg])
+                guard ns >= 1, end - seg >= 1 + 2 * ns else { throw JPEGError.corrupt("sos truncated") }
                 for i in 0..<ns {
                     let cid = bytes[seg + 1 + 2 * i], t = bytes[seg + 2 + 2 * i]
                     guard let k = comps.firstIndex(where: { $0.id == cid }) else { throw JPEGError.corrupt("scan component") }
+                    guard t >> 4 < 4, t & 15 < 4 else { throw JPEGError.corrupt("scan table id") }
                     comps[k].td = Int(t >> 4); comps[k].ta = Int(t & 15)
                 }
                 let hmax = comps.map(\.h).max()!, vmax = comps.map(\.v).max()!
@@ -215,6 +229,7 @@ public enum JPEGDecoder {
                                 for bx in 0..<comps[k].h {
                                     for i in 0..<64 { coef[i] = 0 }
                                     let t = try br.decode(dc)
+                                    guard t <= 16 else { throw JPEGError.corrupt("dc category") }
                                     comps[k].pred += BitReader.extend(br.get(t), t)
                                     coef[0] = Float(comps[k].pred * q[0])
                                     var i = 1

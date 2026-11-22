@@ -8,6 +8,21 @@ import Foundation
             .appendingPathComponent("Fixtures/terrarium")
     }
 
+    @Test func pngRejectsShortIHDR() {
+        let sig: [UInt8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
+        let chunk: [UInt8] = [0, 0, 0, 4, 0x49, 0x48, 0x44, 0x52, 0, 0, 0, 1, 0, 0, 0, 0]
+        #expect(throws: (any Error).self) { try PNGDecoder.decode(sig + chunk) }
+    }
+
+    @Test func huffmanRejectsOversubscribedCode() {
+        #expect(throws: InflateError.oversubscribed) { try Huffman(lengths: [1, 1, 1]) }
+    }
+
+    @Test func inflateEnforcesOutputCap() {
+        let z: [UInt8] = [0x78, 0x01, 0x01, 0x05, 0x00, 0xFA, 0xFF, 1, 2, 3, 4, 5, 0, 0, 0, 0]
+        #expect(throws: InflateError.outputTooLarge) { try Inflate.zlib(z, maxOutput: 3) }
+    }
+
     @Test func inflateRoundTripStoredBlocks() throws {
         // A zlib stream with stored blocks (as written by our own PNG encoder) decodes exactly.
         let payload: [UInt8] = (0..<70_000).map { UInt8(($0 * 31) & 0xFF) }

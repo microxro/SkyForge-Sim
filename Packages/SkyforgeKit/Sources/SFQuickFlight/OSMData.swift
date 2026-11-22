@@ -261,7 +261,10 @@ public enum OSMParser {
         do { response = try JSONDecoder().decode(Response.self, from: data) } catch { throw ParseError.invalidJSON(String(describing: error)) }
         var buildings: [OSMBuilding] = [], roads: [OSMRoad] = []
         func local(_ g: [LatLon?]) -> [SIMD2<Double>] {
-            g.compactMap { $0 }.map { let l = origin.local(latitude: $0.lat, longitude: $0.lon); return SIMD2(l.east, l.north) }
+            // Untrusted JSON (network or disk cache): any out-of-range coordinate discards the whole geometry.
+            let pts = g.compactMap { $0 }
+            guard pts.allSatisfy({ $0.lat.isFinite && $0.lon.isFinite && abs($0.lat) <= 90 && abs($0.lon) <= 180 }) else { return [] }
+            return pts.map { let l = origin.local(latitude: $0.lat, longitude: $0.lon); return SIMD2(l.east, l.north) }
         }
         for e in response.elements {
             guard let tags = e.tags else { continue }
@@ -350,7 +353,8 @@ public enum OSMParser {
     /// A plain number ("3", "2.5", "12,5"); the first value of a `;` list.
     public static func parseNumber(_ s: String) -> Double? {
         let t = s.split(separator: ";").first.map(String.init)?.trimmingCharacters(in: .whitespaces) ?? ""
-        return Double(t.contains(".") ? t : t.replacingOccurrences(of: ",", with: "."))
+        // Finite and bounded so callers can safely convert to Int.
+        return Double(t.contains(".") ? t : t.replacingOccurrences(of: ",", with: ".")).flatMap { $0.isFinite && abs($0) < 1_000_000 ? $0 : nil }
     }
 
     /// Lengths in metres: "12", "12.5", "12 m", "12m", "12 metres", "40 ft", "40'", "6'6\"", "1.2 km".
@@ -360,7 +364,7 @@ public enum OSMParser {
         if !t.contains(".") { t = t.replacingOccurrences(of: ",", with: ".") }
         let numChars = Set("0123456789.-+")
         let numEnd = t.firstIndex { !numChars.contains($0) } ?? t.endIndex
-        guard let value = Double(t[..<numEnd]), value.isFinite else { return nil }
+        guard let value = Double(t[..<numEnd]), value.isFinite, abs(value) < 1_000_000 else { return nil }
         let unit = t[numEnd...].trimmingCharacters(in: .whitespaces)
         switch unit {
         case "", "m", "meter", "meters", "metre", "metres": return value
@@ -697,7 +701,7 @@ public enum OSMMeshBuilder {
                 let a = pts[pts.count - 1], b = r.points[i]
                 let len = simdLength(b - a)
                 guard len > 0.01 else { continue }
-                let n = max(1, Int((len / max(1, maxSegment)).rounded(.up)))
+                let n = min(4_096, max(1, Int((len / max(1, maxSegment)).rounded(.up))))
                 for s in 1...n { pts.append(a + (b - a) * (Double(s) / Double(n))) }
             }
             guard pts.count >= 2 else { continue }
