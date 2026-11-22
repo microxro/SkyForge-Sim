@@ -3,7 +3,6 @@
 // bobbing, agree with what the GPU draws), tier knobs, Fresnel/absorption helpers and the wake-source list.
 
 import Foundation
-import simd
 
 public enum OceanTier: String, CaseIterable, Sendable {
     case low, medium, high, ultra
@@ -81,7 +80,7 @@ public enum OceanWaves {
             let d = SIMD2<Float>(cos(ang), sin(ang))
             let w = (g * k).squareRoot()
             let A = amp0 * pow(L / L0, 1.2) * fade
-            let ph = k * simd_dot(d, p) - w * t + Float(i) * 1.7
+            let ph = k * (d.x * p.x + d.y * p.y) - w * t + Float(i) * 1.7
             h += A * sin(ph)
             slope += d * (A * k * cos(ph))
             let q = min(params.choppy / max(k * A * Float(n), 1e-3), 1)

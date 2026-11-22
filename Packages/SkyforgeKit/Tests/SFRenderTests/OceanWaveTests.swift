@@ -1,9 +1,11 @@
 // SKYFORGE — Apache-2.0
 import Testing
-import simd
+import Foundation
 @testable import SFRender
 
 @Suite struct OceanWaveTests {
+    private func length(_ v: SIMD2<Float>) -> Float { (v.x * v.x + v.y * v.y).squareRoot() }
+
     @Test func fresnelSpansF0ToOne() {
         #expect(abs(OceanWaves.fresnel(cosTheta: 1) - 0.02) < 1e-6)
         #expect(abs(OceanWaves.fresnel(cosTheta: 0) - 1) < 1e-6)
@@ -32,7 +34,7 @@ import simd
         let p = OceanParams()
         let near = OceanWaves.sample(at: SIMD2(10, 4), time: 1, params: p, footprint: 0)
         let far = OceanWaves.sample(at: SIMD2(10, 4), time: 1, params: p, footprint: 500)
-        #expect(simd_length(far.slope) <= simd_length(near.slope) + 1e-6)
+        #expect(length(far.slope) <= length(near.slope) + 1e-6)
         #expect(abs(far.height) < 1e-4)
     }
 
