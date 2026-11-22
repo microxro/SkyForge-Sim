@@ -29,12 +29,15 @@ private final class RenderState: @unchecked Sendable {
                 s.events.removeAll(keepingCapacity: true)
             }
         }
-        let frames = min(frameCount, mono.count)
-        mono.withUnsafeMutableBufferPointer { synth.render($0.baseAddress!, frames: frames, params: current) }
-        for buffer in UnsafeMutableAudioBufferListPointer(abl) {
-            guard let dst = buffer.mData?.assumingMemoryBound(to: Float.self) else { continue }
-            for i in 0..<frames { dst[i] = mono[i] }
-            if frames < frameCount { for i in frames..<frameCount { dst[i] = 0 } }
+        var done = 0
+        while done < frameCount {                          // chunks, so any callback size renders fully
+            let frames = min(frameCount - done, mono.count)
+            mono.withUnsafeMutableBufferPointer { synth.render($0.baseAddress!, frames: frames, params: current) }
+            for buffer in UnsafeMutableAudioBufferListPointer(abl) {
+                guard let dst = buffer.mData?.assumingMemoryBound(to: Float.self) else { continue }
+                for i in 0..<frames { dst[done + i] = mono[i] }
+            }
+            done += frames
         }
     }
 }

@@ -26,6 +26,9 @@ public struct ProceduralSynth: Sendable {
         enum Kind: Sendable { case none, touchdown, flap, thunder }
     }
 
+    /// h^-0.85 for h = 1…14, so the per-sample loop never calls pow.
+    private static let harmonicAmp: [Double] = (1...14).map { pow(Double($0), -0.85) }
+
     public init(sampleRate: Double = 48_000) { self.sampleRate = sampleRate }
 
     public mutating func trigger(_ e: AudioEvent) {
@@ -78,7 +81,7 @@ public struct ProceduralSynth: Sendable {
                 var h = 1
                 while h <= nyquistHarmonics {
                     let hf = Double(h)
-                    let amp = pow(hf, -0.85) * (h == 1 ? 1 : (0.55 + 0.45 * load))
+                    let amp = Self.harmonicAmp[h - 1] * (h == 1 ? 1 : (0.55 + 0.45 * load))
                     s += amp * sin(hf * enginePhase + 0.7 * hf * hf)
                     h += 1
                 }
