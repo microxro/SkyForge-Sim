@@ -312,7 +312,7 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
         }
         let c = session.bodyToENUColumns
         // AI traffic: NED snapshots to ENU poses. Heading is NED (0 = north), so body x is (sin h, cos h, 0) in ENU.
-        r.trafficPoses = session.trafficSnapshots.map { t in
+        r.trafficPoses = (traffic?.snapshots ?? []).map { t in
             let h = t.heading
             return WorldRenderer.TrafficPose(position: SIMD3(t.positionNED.y, t.positionNED.x, -t.positionNED.z),
                                              bodyToENU: simd_double3x3(columns: (SIMD3(sin(h), cos(h), 0),
