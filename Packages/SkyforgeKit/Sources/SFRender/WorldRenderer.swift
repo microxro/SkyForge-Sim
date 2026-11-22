@@ -343,7 +343,7 @@ public final class WorldRenderer {
         self.lighting = lighting
         sky = try PhysicalSkyRenderer(device: device, colorFormat: .rgba16Float)
         let lib: MTLLibrary
-        do { lib = try device.makeLibrary(source: CloudShaders.common + MacroColourShaders.source + WorldShaders.source, options: nil) }
+        do { lib = try device.makeLibrary(source: CloudShaders.common + "\n" + MacroColourShaders.source + "\n" + WorldShaders.source, options: nil) }
         catch { throw RendererError.shaderCompile(String(describing: error)) }
         worldLibrary = lib
         guard let v = lib.makeFunction(name: "world_vertex"), let f = lib.makeFunction(name: "world_fragment") else {
