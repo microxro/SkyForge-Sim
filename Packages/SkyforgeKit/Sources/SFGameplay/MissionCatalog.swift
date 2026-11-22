@@ -193,7 +193,18 @@ public enum MissionCatalog {
         ],
         parTime: 240, timeLimit: 480, areaRadius: 20_000, unlock: .mission("pattern-landing"))
 
-    public static let all: [MissionDefinition] = [firstFlight, patternLanding, precisionLanding, wingman, intercept, gunnery, lowLevel, dogfight, coastalSurvey, twinBandits, bushStrip, airportTour, valleyRun, waterDropRun, rescuePickup]
+    public static let airshowLoop = MissionDefinition(
+        id: "airshow-loop", title: "Airshow Loop", category: .training,
+        briefing: "Set up on the display line at 2 km, then fly one clean loop. Keep at least 150 m of height and 40 m/s of speed the whole way round.",
+        difficulty: 3, recommendedAircraft: AircraftCatalog.sfAerobat.id, allowedRoles: civil,
+        spawn: MissionSpawn(along: -1_000, up: 300, speed: .cruise),
+        objectives: [
+            MissionObjective(id: "setup", title: "Set up on the display line", kind: .flyTo(MissionWaypoint(2_000, 0, 300, radius: 400)), points: 150),
+            MissionObjective(id: "loop", title: "Fly one full loop", kind: .loop(minAGL: 150, minSpeed: 40), points: 350),
+        ],
+        parTime: 240, timeLimit: 480, areaRadius: 20_000, unlock: .mission("valley-run"))
+
+    public static let all: [MissionDefinition] = [firstFlight, patternLanding, precisionLanding, wingman, intercept, gunnery, lowLevel, dogfight, coastalSurvey, twinBandits, bushStrip, airportTour, valleyRun, waterDropRun, rescuePickup, airshowLoop]
     public static let rescuePickup = MissionDefinition(
         id: "rescue-pickup", title: "Rescue Pickup", category: .navigation,
         briefing: "A hiker is waiting on a meadow strip about 1.5 km down the field. Land, stop beside them for three seconds, then fly the casualty to the hospital at the far end.",

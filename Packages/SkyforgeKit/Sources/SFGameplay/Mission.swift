@@ -75,6 +75,9 @@ public enum ObjectiveKind: Sendable, Codable, Equatable {
     case destroy(targetIDs: [String])
     /// Hold a slot on a friendly leader for `hold` seconds (the timer decays when out of tolerance).
     case formation(leaderID: String, slot: FormationSlot, spacing: Double, tolerance: Double, hold: Double)
+    /// Turn the velocity vector through one full loop in the vertical plane while staying above `minAGL`
+    /// and at or above `minSpeed` (m/s). Fails if the aircraft gets too low or too slow.
+    case loop(minAGL: Double, minSpeed: Double)
 }
 
 public struct MissionObjective: Sendable, Codable, Equatable, Identifiable {
@@ -229,6 +232,8 @@ public struct MissionDefinition: Sendable, Codable, Equatable, Identifiable {
                 if tol <= 0 || hold < 0 { out.append("\(o.id): bad altitude hold") }
             case .dropRun(_, let maxAGL, let minSpeed, let maxSpeed):
                 if maxAGL <= 0 || minSpeed < 0 || maxSpeed <= minSpeed { out.append("\(o.id): bad drop run limits") }
+            case .loop(let minAGL, let minSpeed):
+                if minAGL <= 0 || minSpeed <= 0 { out.append("\(o.id): bad loop limits") }
             case .takeoff, .flyTo: break
             }
         }
