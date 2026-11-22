@@ -1050,6 +1050,8 @@ public enum WorldShaders {
                                    texture2d<float> suburbMask [[texture(11)]],
                                    constant OWParams& ow [[buffer(6)]], constant OWWake* wakes [[buffer(7)]],
                                    constant CascadeShadowParams& cas [[buffer(12)]]) {
+        // Round 5 vegetation gate: no-op for everything except vegetation cards (style.x = -1).
+        if (!veg_keep(in.style, in.position.xy, in.uv, in.local)) discard_fragment();
         float dist = length(in.rel);
         float3 dir = in.rel / max(dist, 1e-3);
         float3 n = normalize(in.normal);

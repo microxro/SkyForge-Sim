@@ -148,6 +148,11 @@ public final class WorldRenderer {
     private var shadowMap: MTLTexture?
     private let terrainPipeline: MTLRenderPipelineState
     private let treePipeline: MTLRenderPipelineState
+    // Round 5 vegetation (no draw calls yet; see docs/rounds/ROUND5_vegetation.md).
+    private let vegPipeline: MTLRenderPipelineState
+    private let vegBoardPipeline: MTLRenderPipelineState
+    private let grassPipeline: MTLRenderPipelineState
+    private let shadowVegPipeline: MTLRenderPipelineState
     private let shadowTerrainPipeline: MTLRenderPipelineState
     private let terrainLODPipeline: MTLRenderPipelineState
     private let shadowTerrainLODPipeline: MTLRenderPipelineState
@@ -403,7 +408,9 @@ public final class WorldRenderer {
         sky = try PhysicalSkyRenderer(device: device, colorFormat: .rgba16Float)
         let lib: MTLLibrary
         // AAShadowShaders (Round 5: TAA/SMAA entry points and the tier cascade lookup) precedes WorldShaders, which calls it.
-        do { lib = try device.makeLibrary(source: CloudShaders.common + "\n" + MacroColourShaders.source + "\n" + OceanShaders.source + "\n" + AAShadowShaders.source + "\n" + WorldShaders.source, options: nil) }
+        // Round 5 vegetation: `common` helpers (and the veg_keep gate) precede WorldShaders; the vertex entry points follow it.
+        // NightShaders (nt_ prefix) is library-only for now; its draw passes are a later milestone.
+        do { lib = try device.makeLibrary(source: CloudShaders.common + "\n" + MacroColourShaders.source + "\n" + OceanShaders.source + "\n" + AAShadowShaders.source + "\n" + VegetationShaders.common + "\n" + NightShaders.source + "\n" + WorldShaders.source + "\n" + VegetationShaders.source, options: nil) }
         catch { throw RendererError.shaderCompile(String(describing: error)) }
         worldLibrary = lib
         guard let v = lib.makeFunction(name: "world_vertex"), let f = lib.makeFunction(name: "world_fragment") else {
@@ -447,6 +454,10 @@ public final class WorldRenderer {
         }
         terrainPipeline = try pso("terrain_vertex", "world_fragment", label: "RealTerrain", colour: true)
         treePipeline = try pso("tree_vertex", "world_fragment", label: "Trees", colour: true)
+        vegPipeline = try pso("veg_vertex", "world_fragment", label: "Veg", colour: true)
+        vegBoardPipeline = try pso("veg_billboard_vertex", "world_fragment", label: "VegBoard", colour: true)
+        grassPipeline = try pso("grass_vertex", "world_fragment", label: "Grass", colour: true)
+        shadowVegPipeline = try pso("shadow_veg_vertex", nil, label: "ShadowVeg", colour: false)
         shadowTerrainPipeline = try pso("shadow_terrain_vertex", nil, label: "ShadowTerrain", colour: false)
         terrainLODPipeline = try pso("terrain_lod_vertex", "world_fragment", label: "RealTerrainLOD", colour: true)
         shadowTerrainLODPipeline = try pso("shadow_terrain_lod_vertex", nil, label: "ShadowTerrainLOD", colour: false)
