@@ -103,6 +103,8 @@ public struct RealWorldRegion: FlightWorld {
     public var osm: OSMData? = nil
     /// Bundled airport pavement and boundary geometry (round 1 procedural airport surface; nil without a pack).
     public var airport: AirportSurfaces? = nil
+    /// Bundled land-use polygons (round 2 suburban parcels; empty without a `landuse.sfl` pack).
+    public var landUse: [LandUsePolygon] = []
     /// Middle-distance imagery (between the near and far layers), colour-matched to the near photo.
     public var midImagery: ImageryMosaic? = nil
     /// The aerial-photo source of the sharp camera-following layer (nil where there is none).
@@ -285,6 +287,8 @@ public struct RealWorldRegion: FlightWorld {
         region.osm = osm
         if bundledBuildings, let packed = Showcase.airportData(for: ident),
            let surfaces = try? AirportPack.parse(packed, origin: origin), !surfaces.isEmpty { region.airport = surfaces }
+        if bundledBuildings, let packed = Showcase.landUseData(for: ident),
+           let polygons = try? LandUsePack.parse(packed, origin: origin) { region.landUse = polygons }
         region.midHeights = hm
         if wantDetail { region.detailProvider = detailProvider }
         region.runwayLowNumber = Int(rwy.low.ident.prefix { $0.isNumber }) ?? 0

@@ -215,6 +215,22 @@ public final class WorldRenderer {
     /// Replace the near-ground tone-map stack with the macro-colour decoupling pass (round 3). Off by default, so the
     /// art-tuned rounds 1–62 look is unchanged until the KBFI/KMRY/KASE/LSZS/NZQN frames are compared.
     public var macroColourDecoupling = false
+    /// Round 2: suburban parcel fabric (kerbs, sidewalks, driveways, per-lot lawns) on near ground within 2 km, read from the
+    /// RGBA8 mask at texture index 11. Off by default: the mask is then not bound (a zero texture is) and the shader's weight is 0,
+    /// so the art-tuned frames are unchanged. Needs `landuse.sfl` in the airport's pack. docs/rounds/ROUND2.md.
+    public var suburbParcels = false
+    private var suburbTex: MTLTexture?
+    /// Round 2: GPU frustum + Hi-Z occlusion culling of the building batches (`BuildingCuller`), one indirect draw per batch.
+    /// Off by default: the CPU cell loop stays the path. Shadow cascades always use the CPU loop.
+    public var gpuBuildingCulling = false {
+        didSet { if !gpuBuildingCulling { prevCullMvp = nil } }
+    }
+    private var culler: BuildingCuller?
+    private var cullerCellsDirty = true
+    /// The previous frame's camera-relative view-projection (the Hi-Z pyramid's frame); nil on the first frame and after a cut.
+    private var prevCullMvp: simd_float4x4?
+    /// Counters of the last GPU cull (valid after the frame's command buffer completes); nil when the GPU path is off.
+    public var lastBuildingCullStats: BuildingCuller.Stats? { gpuBuildingCulling ? culler?.lastStats : nil }
     private var airportRect = SIMD4<Float>(0, 0, 1, 0)   // centre x, y, half extent (region m), 1 when a mask is bound
     private lazy var dummy2D: MTLTexture = makeDummy()
     /// Chunks drawn in the last frame after frustum culling (diagnostics/tests).
@@ -633,16 +649,29 @@ public final class WorldRenderer {
             airportTex = t
             airportRect = SIMD4<Float>(Float(am.centre.x), Float(am.centre.y), Float(am.halfExtent), 1)
         }
+        suburbTex = nil
+        if let sm = data.suburbMask, sm.texels.count == 4 * sm.size * sm.size {
+            // Same extent and row order as the near imagery (the shader indexes it with the imagery's own uv).
+            let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm, width: sm.size, height: sm.size, mipmapped: false)
+            d.usage = [.shaderRead]
+            guard let t = device.makeTexture(descriptor: d) else { throw RendererError.commandQueue }
+            t.replace(region: MTLRegionMake2D(0, 0, sm.size, sm.size), mipmapLevel: 0, withBytes: sm.texels, bytesPerRow: 4 * sm.size)
+            suburbTex = t
+        }
     }
+
+    /// Forget the Hi-Z history (call after a camera cut or teleport): the next GPU cull uses frustum and distance only.
+    public func resetBuildingCullHistory() { prevCullMvp = nil }
 
     /// Uploads buildings (nil or empty removes them).
     public func setBuildings(_ mesh: BuildingMesh?) throws {
-        guard let mesh, !mesh.indices.isEmpty, !mesh.vertices.isEmpty else { buildingData = nil; return }
+        guard let mesh, !mesh.indices.isEmpty, !mesh.vertices.isEmpty else { buildingData = nil; cullerCellsDirty = true; return }
         guard let vb = mesh.vertices.withUnsafeBytes({ device.makeBuffer(bytes: $0.baseAddress!, length: $0.count, options: .storageModeShared) }),
               let ib = mesh.indices.withUnsafeBytes({ device.makeBuffer(bytes: $0.baseAddress!, length: $0.count, options: .storageModeShared) }) else {
             throw RendererError.commandQueue
         }
         buildingData = (vb, ib, mesh.cells)
+        cullerCellsDirty = true
     }
 
     /// Frustum planes (camera-relative) from a view-projection matrix (reversed-Z: near plane is w − z ≥ 0 … any order works).
@@ -1072,6 +1101,21 @@ public final class WorldRenderer {
         // Stored always: the cloud march, SSAO and the depth-aware FXAA all read scene depth (SSAO used
         // to read an undefined depth buffer on clear-sky frames).
         pass.depthAttachment.storeAction = .store
+        // Round 2: GPU cull of the building batches (compute, before the main pass). mvp = viewProj × translation(−camera):
+        // the cells are in region metres and the renderer is camera-relative. Hi-Z comes from last frame's depth.
+        var cullMvp: simd_float4x4?
+        if gpuBuildingCulling, let bd = buildingData {
+            let upC = SIMD3<Float>(Float(c.up.x), Float(c.up.y), Float(c.up.z))
+            let vpC = Self.reversedZProjection(fovY: Float(fovY), aspect: Float(aspect), near: Float(c.near)) * Self.view(forward: fwd, up: upC)
+            let mvp = vpC * Self.translation(-c.position)
+            if culler == nil { culler = try BuildingCuller(device: device) }
+            if let cu = culler {
+                if cullerCellsDirty { try cu.setCells(bd.cells); cullerCellsDirty = false }
+                try cu.encodeCull(cmd: cmd, mvp: mvp, hizMvp: prevCullMvp,
+                                  cameraLocal: SIMD3<Float>(Float(c.position.x), Float(c.position.y), Float(c.position.z)))
+                cullMvp = mvp
+            }
+        }
         guard let enc = cmd.makeRenderCommandEncoder(descriptor: pass) else { throw RendererError.commandQueue }
         enc.setRenderPipelineState(pipeline)
         enc.setDepthStencilState(depthState)
@@ -1088,6 +1132,7 @@ public final class WorldRenderer {
         enc.setFragmentTexture(imageryMid?.tex ?? dummy2D, index: 8)
         enc.setFragmentTexture(airportTex ?? dummy2D, index: 9)      // dummy2D reads 0 in r: no airport
         enc.setFragmentTexture(macroTex ?? zeroMacro, index: 10)     // alpha 0 (zeroMacro): no macro colour, pass skipped
+        enc.setFragmentTexture(suburbParcels ? (suburbTex ?? dummy2D) : dummy2D, index: 11)   // dummy2D reads 0 in r: parcel weight 0
         let upHint = SIMD3<Float>(Float(c.up.x), Float(c.up.y), Float(c.up.z))
         let viewProj = Self.reversedZProjection(fovY: Float(fovY), aspect: Float(aspect), near: Float(c.near)) * Self.view(forward: fwd, up: upHint)
         let sunAz = Float(atan2(Double(toSun.y), Double(toSun.x)))
@@ -1169,10 +1214,15 @@ public final class WorldRenderer {
             enc.setVertexBytes(&u, length: MemoryLayout<WorldUniforms>.stride, index: 1)
             enc.setFragmentBytes(&u, length: MemoryLayout<WorldUniforms>.stride, index: 1)
             var drawn = 0
-            for cell in bd.cells where Self.boxVisible(planes, cell.min + o, cell.max + o) {
-                enc.drawIndexedPrimitives(type: .triangle, indexCount: cell.indexCount, indexType: .uint32, indexBuffer: bd.indices,
-                                          indexBufferOffset: cell.indexStart * 4)
-                drawn += 1
+            if cullMvp != nil, let cu = culler {
+                cu.encodeDraws(enc, indexBuffer: bd.indices)     // one indirect draw per batch; culled batches carry instanceCount 0
+                drawn = cu.batches.count                         // batches submitted (the GPU decides which draw)
+            } else {
+                for cell in bd.cells where Self.boxVisible(planes, cell.min + o, cell.max + o) {
+                    enc.drawIndexedPrimitives(type: .triangle, indexCount: cell.indexCount, indexType: .uint32, indexBuffer: bd.indices,
+                                              indexBufferOffset: cell.indexStart * 4)
+                    drawn += 1
+                }
             }
             lastDrawnBuildingCells = drawn
             enc.setRenderPipelineState(pipeline)
@@ -1236,6 +1286,10 @@ public final class WorldRenderer {
             }
         }
         enc.endEncoding()
+        if let mvp = cullMvp, let cu = culler {
+            try cu.encodeHiZ(cmd: cmd, depth: depth)      // this frame's depth, for next frame's occlusion test
+            prevCullMvp = mvp
+        }
         if cloudsOn {
             if cloudRenderer == nil { cloudRenderer = try CloudRenderer(device: device, colorFormat: .rgba16Float) }
             let cr = cloudRenderer!

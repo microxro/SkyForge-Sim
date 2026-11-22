@@ -44,6 +44,8 @@ public struct RealWorldRenderData: Sendable {
     public var roadMask: [Float]? = nil
     /// Airport surface mask over the airport's own rectangle (rg8: R pavement coverage, G class; ~1 m per texel).
     public var airportMask: AirportMaskRaster? = nil
+    /// Suburban parcel mask over the near imagery extent (RGBA8, round 2); nil without land use.
+    public var suburbMask: SuburbMaskRaster? = nil
     /// Where the 3D trees stand, for removing the photo's own trees and shadows from imagery streamed later
     /// (the in-flight detail layer), as `init(region:)` does for the near and detail layers.
     public var photoCrowns: [ImageryDelighting.Crown] = []
@@ -103,6 +105,7 @@ extension RealWorldRenderData {
         buildings = region.roadMesh()
         roadMask = region.roadMask(size: g.maskSize)
         airportMask = region.airportMask()
+        suburbMask = region.suburbMask()
         buildingMesh = region.buildingMesh()
         mid = withWater(region.midImagery)
         runway = Runway(threshold: region.runwayThreshold, direction: region.runwayDirection, length: region.runwayLengthMetres,

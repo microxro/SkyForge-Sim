@@ -1001,6 +1001,7 @@ public enum WorldShaders {
     constexpr sampler apNearest(filter::nearest, address::clamp_to_edge, coord::normalized);
 
     \(AirportSurfaceShaders.source)
+    \(SuburbShaders.source)
     \(CockpitMaterialShaders.source)
 
     fragment float4 world_fragment(WorldVarying in [[stage_in]], constant WorldUniforms& u [[buffer(1)]],
@@ -1010,7 +1011,8 @@ public enum WorldShaders {
                                    texture2d<float> waterMask [[texture(5)]], texture2d<float> parcels [[texture(6)]],
                                    texture2d<float> imgDetail [[texture(7)]], texture2d<float> imgMid [[texture(8)]],
                                    texture2d<float> airportMask [[texture(9)]],
-                                   texture2d<float> macroTex [[texture(10)]]) {
+                                   texture2d<float> macroTex [[texture(10)]],
+                                   texture2d<float> suburbMask [[texture(11)]]) {
         float dist = length(in.rel);
         float3 dir = in.rel / max(dist, 1e-3);
         float3 n = normalize(in.normal);
@@ -1357,6 +1359,20 @@ public enum WorldShaders {
                                                      in.rel.xy + u.cameraPos.xy, 2.0 * sqrt(length(dwx) * length(dwy)), amountMc, 0.15, mcTilt, mcW);
                     albedo = mix(albedo, mcAlb, mcW);
                     groundTilt = mix(groundTilt, mcTilt, mcW);
+                }
+            }
+            // Round 2, suburban parcel fabric within ~2 km (WorldRenderer.suburbParcels; the mask is a zero texture otherwise, so
+            // the red-channel test skips it). Bilinear R/B, nearest G/A (the road angle wraps and A is a class). Replaces the
+            // photo's smudged yards with kerb, sidewalk, driveways and per-lot lawns, off airports, water, canopy and clearings.
+            if (inNear && dist < 2000.0 && imgForest < 0.5) {
+                float4 smL = suburbMask.sample(imgSampler, nuv, level(0.0));
+                if (smL.r > 0.001) {
+                    float2 smDim = float2(float(suburbMask.get_width()), float(suburbMask.get_height()));
+                    float4 smN = suburbMask.read(uint2(clamp(nuv * smDim, float2(0.0), smDim - 1.0)));
+                    float3 lawnS = ltMean.x >= 0.0 ? ltMean : albedo;
+                    SuburbSurface ss = suburbParcels(smL, smN, photoW, 2.0 * sqrt(length(dwx) * length(dwy)), dist, lawnS);
+                    float wSub = ss.weight * (1.0 - saturate((wm - 0.2) / 0.2)) * (1.0 - rwCover) * (1.0 - clearW) * (1.0 - saturate(imgForest * 2.0));
+                    albedo = mix(albedo, ss.albedo, wSub);
                 }
             }
             {

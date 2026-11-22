@@ -75,3 +75,15 @@ Occlusion uses last frame's depth, so a newly revealed batch can appear one fram
 - Holes in land-use polygons are dropped; `SuburbMask` treats polygons as solid and lets parks, schools, commercial and industrial punch residential out.
 - No `aeroway` airport features were found in `base/land_use` near KBFI; airport aprons and taxiways live in `base/infrastructure` and are Round 1's concern.
 - The shim check proves syntax, not Metal-specific semantics (address spaces, `read` on depth textures with `access::read`).
+
+## Integration status (wired, both paths off by default)
+
+- `WorldRenderer.suburbParcels` (default `false`): binds the suburb mask at fragment texture 11 (a zero texture otherwise, so
+  the shader's red-channel test skips it). `world_fragment` blends `suburbParcels` into the albedo after the round-3 block, within 2 km,
+  off airports, water, canopy and clearings. Roughness and normal output of `SuburbSurface` are not consumed yet.
+  Needs `landuse.sfl` beside `roads.sfr` (`tools/fetch_landuse.py`); no showcase pack carries one yet, so `RealWorldRegion.suburbMask()` is nil.
+- `WorldRenderer.gpuBuildingCulling` (default `false`): `BuildingCuller` runs before the main pass with
+  `mvp = viewProj * translation(-camera)` and last frame's Hi-Z; the building draw becomes one indirect draw per batch, and
+  `encodeHiZ` runs after the pass. The CPU cell loop remains the fallback, and shadow cascades always use it.
+  Call `resetBuildingCullHistory()` after a camera cut. `lastDrawnBuildingCells` counts submitted batches on this path.
+- Region glue: `RealWorldRegion.landUse` and `suburbMask(size:)` (`SFQuickFlight/RegionSuburbMask.swift`), `RealWorldRenderData.suburbMask`.
