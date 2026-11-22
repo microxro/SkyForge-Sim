@@ -2,6 +2,7 @@
 // Round 3 host side: builds the 64 m macro-colour texture (`macro_colour_build` in MacroColourShaders) from the
 // near imagery layer. The world shader samples it at texture index 10 when `WorldRenderer.macroColourDecoupling`
 // is on; with it off (the default) the texture is built but never read.
+#if canImport(Metal)
 import Metal
 import simd
 
@@ -62,3 +63,4 @@ enum MacroColourPass {
         return out
     }
 }
+#endif

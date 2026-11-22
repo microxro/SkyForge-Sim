@@ -4,6 +4,7 @@
 // 4–8 cm and also marches a short ray toward the sun through the depth buffer, so switches, yoke shafts and
 // the glare shield's lip cast thin, soft shadows. It multiplies the colour buffer (blend: zero, destination ×
 // source), so it needs no read-write texture, and it ignores everything farther than the cabin.
+#if canImport(Metal)
 import Metal
 import simd
 
@@ -185,3 +186,4 @@ public final class CockpitContactPass {
         e.endEncoding()
     }
 }
+#endif
