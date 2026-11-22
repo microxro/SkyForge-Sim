@@ -1,0 +1,38 @@
+[
+  {
+    "change": "cnAileron -0.053 -> -0.0053 (c172p Cn_da)",
+    "scenario": "aileron_step",
+    "metric": "p_ss_dps",
+    "value": 27.4016359341294
+  },
+  {
+    "change": "cmAlpha -0.89 -> -1.8 (c172p Cm_alpha)",
+    "scenario": "short_period",
+    "metric": "wn_rad_s",
+    "value": 6.528686967195242
+  },
+  {
+    "change": "cmAlpha -0.89 -> -1.8 (c172p Cm_alpha)",
+    "scenario": "short_period",
+    "metric": "zeta",
+    "value": 0.45432182840193097
+  },
+  {
+    "change": "cm0 0.02 -> 0.10 and cmAlpha -> -1.8 (c172p)",
+    "scenario": "trim",
+    "metric": "elevator_deg_up",
+    "value": -3.3407976037811107
+  },
+  {
+    "change": "cD0 0.031 -> 0.027 (c172p CD0)",
+    "scenario": "trim",
+    "metric": "power_kw",
+    "value": 71.31871162593015
+  },
+  {
+    "change": "cnRudder -0.0657 -> -0.043 (c172p Cn_dr)",
+    "scenario": "rudder_step",
+    "metric": "beta_ss_per_deg_rudder",
+    "value": -0.9717184527905889
+  }
+]
