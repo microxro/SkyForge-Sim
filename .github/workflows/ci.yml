@@ -92,14 +92,14 @@ jobs:
             CODE_SIGNING_ALLOWED=NO build | tee mac-build.log | tail -n 80
       - name: Upload logs
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: apple-build-logs
           path: "*-build.log"
           if-no-files-found: ignore
       - name: Upload visual regression output
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: visual-regression
           path: visual-out
@@ -130,7 +130,7 @@ jobs:
           if [ -f frames.log ]; then python3 tools/ci_frames.py extract frames.log frames-out; else echo "::warning::No frames log"; fi
       - name: Upload frames
         if: ${{ always() }}
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: skyforge-frames
           path: frames-out
