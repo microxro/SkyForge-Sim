@@ -61,7 +61,7 @@ let airports = [kmry, ksfo, klax]
         #expect(Medal.forScore(10, thresholds: [500, 700, 850, 950]) == .none)
     }
     @Test func nonFiniteReportIsSanitised() {
-        var r = good(); r.maxG = .nan; r.durationS = .infinity; r.touchdownSinkFPM = -.infinity
+        var r = good(); r.maxG = .nan; r.durationS = .infinity; r.touchdownSinkFPM = -Double.infinity
         let s = r.sanitized()
         #expect(s.maxG.isFinite && s.durationS.isFinite && (s.touchdownSinkFPM ?? 0).isFinite)
     }
@@ -87,9 +87,9 @@ func isFailure(_ r: Result<Void, JobRejection>, _ e: JobRejection) -> Bool {
     @Test func emptyAirportListYieldsNoJobs() {
         #expect(JobBoard.generate(origin: kmry, airports: [kmry], dayIndex: 1, playerLevel: 1).isEmpty)
     }
-    @Test func distanceKMRYtoKSFOisAbout150km() {
+    @Test func distanceKMRYtoKSFOisAbout124km() {
         let d = greatCircleDistanceM(kmry, ksfo) / 1000
-        #expect(d > 130 && d < 160)
+        #expect(d > 110 && d < 140)
     }
     @Test func buyingChecksLevelAndFunds() {
         var s = CareerState()
@@ -104,7 +104,7 @@ func isFailure(_ r: Result<Void, JobRejection>, _ e: JobRejection) -> Bool {
     @Test func settlementPaysOnlyAtDestination() {
         let job = Job(id: "j", kind: .passenger, origin: kmry, destination: ksfo, distanceKm: 150, passengers: 2, cargoKg: 0,
                       deadlineMinutes: 60, basePay: 1_000, minLevel: 1, requiresRunwayM: 600, expiresDay: 9)
-        var r = FlightReport(kind: .job(jobID: "j"), aircraftID: "org.skyforge.sfc", arrivalICAO: "KSFO", durationS: 1_800, landed: true,
+        var r = FlightReport(kind: .job(jobID: "j"), aircraftID: "org.skyforge.sfc", departureICAO: "KMRY", arrivalICAO: "KSFO", durationS: 1_800, distanceM: 140_000, landed: true,
                              touchdownSinkFPM: 100, maxG: 1.3, minG: 0.9, maxBankDeg: 25)
         let ok = JobSettler.settle(job: job, report: r, owned: false)
         #expect(ok.success && ok.net == 1_250)
@@ -133,7 +133,7 @@ func isFailure(_ r: Result<Void, JobRejection>, _ e: JobRejection) -> Bool {
         var s = CareerState()
         let c = Challenge(id: "c1", type: .landing, title: "t", airportICAO: "KMRY", parSeconds: 0, medalThresholds: [500, 700, 850, 950],
                           crosswindKts: 0, visibilityKm: 10, cloudBaseFt: 3_000, aircraftID: "org.skyforge.sf1")
-        let r = FlightReport(kind: .challenge(challengeID: "c1"), aircraftID: "org.skyforge.sf1", landed: true,
+        let r = FlightReport(kind: .challenge(challengeID: "c1"), aircraftID: "org.skyforge.sf1", arrivalICAO: "KMRY", landed: true,
                              touchdownSinkFPM: 90, touchdownOffsetM: 0.5, touchdownDistancePastThresholdM: 300)
         let first = CareerEngine.apply(r, to: &s, challenge: c)
         let second = CareerEngine.apply(r, to: &s, challenge: c)
@@ -152,7 +152,7 @@ func isFailure(_ r: Result<Void, JobRejection>, _ e: JobRejection) -> Bool {
         if case .failure = s.accept(job: job, aircraft: sfc) { Issue.record("first accept should succeed") }
         let second = s.accept(job: job, aircraft: sfc)
         #expect(isFailure(second, .alreadyHaveJob))
-        let r = FlightReport(kind: .job(jobID: "j"), aircraftID: "org.skyforge.sfc", arrivalICAO: "KSFO", durationS: 1_800, landed: true, touchdownSinkFPM: 200)
+        let r = FlightReport(kind: .job(jobID: "j"), aircraftID: "org.skyforge.sfc", departureICAO: "KMRY", arrivalICAO: "KSFO", durationS: 1_800, distanceM: 140_000, landed: true, touchdownSinkFPM: 200)
         let out = CareerEngine.apply(r, to: &s)
         #expect(out.settlement?.success == true)
         #expect(s.activeJob == nil && s.stats.jobsCompleted == 1)
@@ -205,6 +205,6 @@ func isFailure(_ r: Result<Void, JobRejection>, _ e: JobRejection) -> Bool {
         let store = SaveStore(url: tmp())
         try FileManager.default.createDirectory(at: store.url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data(#"{"version":999}"#.utf8).write(to: store.url)
-        #expect(throws: SaveStore.SaveError.unreadable) { try store.load() }
+        #expect(throws: SaveStore.SaveError.newerThanApp(999)) { try store.load() }
     }
 }

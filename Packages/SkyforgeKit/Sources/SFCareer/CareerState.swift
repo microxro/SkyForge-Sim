@@ -25,6 +25,7 @@ public struct CareerState: Codable, Sendable, Equatable {
     public var stats = CareerStats()
     public var challenges: [String: ChallengeRecord] = [:]
     public var completedMissions: Set<String> = []
+    public var completedJobIDs: Set<String> = []
     public var activeJob: Job?
     public var log: [FlightLogEntry] = []        // most recent last, capped
     public init() {}
@@ -53,6 +54,7 @@ public struct CareerState: Codable, Sendable, Equatable {
     /// Accept a job. Fails if one is already active or the aircraft cannot do it.
     public mutating func accept(job: Job, aircraft: AircraftSpec) -> Result<Void, JobRejection> {
         if activeJob != nil { return .failure(.alreadyHaveJob) }
+        if completedJobIDs.contains(job.id) { return .failure(.alreadyHaveJob) }
         switch JobBoard.canFly(job, with: aircraft, level: level) {
         case .success: activeJob = job; return .success(())
         case .failure(let e): return .failure(e)
@@ -94,14 +96,17 @@ public enum CareerEngine {
         case .job(let jobID):
             if let job = state.activeJob, job.id == jobID {
                 let owned = state.ownedAircraft.contains(r.aircraftID)
-                let s = JobSettler.settle(job: job, report: r, owned: owned)
+                let rent = Economy.spec(r.aircraftID, in: catalog)?.rentalPerHour ?? 0
+                let s = JobSettler.settle(job: job, report: r, owned: owned, rentalPerHour: rent)
                 settlement = s
                 credits += s.net
-                if s.success { xp += 80 + Int(job.distanceKm / 4); state.stats.jobsCompleted += 1 } else { state.stats.jobsFailed += 1 }
+                if s.success { state.completedJobIDs.insert(job.id); xp += 80 + Int((job.distanceKm.isFinite ? min(max(job.distanceKm, 0), 20_000) : 0) / 4); state.stats.jobsCompleted += 1 } else { state.stats.jobsFailed += 1 }
                 state.activeJob = nil
             }
         case .challenge:
-            if let c = challenge {
+            if let c = challenge, case .challenge(let cid) = r.kind, cid == c.id {
+                var r = r
+                if c.type == .landing && r.arrivalICAO != c.airportICAO { r.landed = false }
                 let sc = c.score(r)
                 let m = c.medal(for: r)
                 score = sc; medal = m
@@ -118,11 +123,11 @@ public enum CareerEngine {
                 rec.bestScore = max(rec.bestScore, sc)
                 state.challenges[c.id] = rec
                 state.stats.challengesPlayed += 1
-                if c.id.hasPrefix("daily-"), let day = Int(c.id.dropFirst(6)) { updateStreak(&state.stats, day: day) }
+                if m != .none, c.id.hasPrefix("daily-"), let day = Int(c.id.dropFirst(6)) { updateStreak(&state.stats, day: day) }
             }
         case .mission(let id):
             score = r.rawScore
-            if r.missionSuccess && !r.crashed {
+            if r.missionSuccess && !r.crashed && r.durationS >= 60 {
                 let first = state.completedMissions.insert(id).inserted
                 xp += first ? 250 : 40
                 credits += first ? 1_500 : 150
@@ -131,7 +136,8 @@ public enum CareerEngine {
         }
 
         // --- combat ---
-        if r.kills > 0 { xp += r.kills * 60; credits += r.kills * 120 }
+        let paidKills = min(r.kills, 10)
+        if paidKills > 0 { xp += paidKills * 60; credits += paidKills * 120 }
 
         // --- stats ---
         var st = state.stats
@@ -141,18 +147,18 @@ public enum CareerEngine {
         st.kills += r.kills
         st.aerobaticFigures += r.aerobaticFigures.count
         st.highestG = max(st.highestG, r.maxG)
-        st.aircraftFlown.insert(r.aircraftID)
+        if Economy.spec(r.aircraftID, in: catalog) != nil { st.aircraftFlown.insert(r.aircraftID) }
         if r.crashed { st.crashes += 1 }
         if r.landed && !r.crashed {
             st.landings += 1
             if let s = r.touchdownSinkFPM, s < 120 { st.smoothLandings += 1 }
-            if let icao = r.arrivalICAO, !icao.isEmpty { st.airportsVisited.insert(icao) }
+            if let icao = r.arrivalICAO, !icao.isEmpty, icao.count <= 8, st.airportsVisited.count < 5_000 { st.airportsVisited.insert(icao) }
         }
         if credits > 0 { st.creditsEarned += credits }
         state.stats = st
 
         xp = max(0, xp)
-        state.xp += xp
+        state.xp = min(state.xp + xp, 1_000_000_000)
         state.credits = max(0, state.credits + credits)
 
         // --- level-up bonus, then achievements (which may add more xp) ---
@@ -181,7 +187,7 @@ public enum CareerEngine {
     }
 
     static func updateStreak(_ s: inout CareerStats, day: Int) {
-        if day == s.lastDailyDay { return }
+        if day <= s.lastDailyDay { return }
         s.dailyStreak = (day == s.lastDailyDay + 1) ? s.dailyStreak + 1 : 1
         s.lastDailyDay = day
         s.bestDailyStreak = max(s.bestDailyStreak, s.dailyStreak)

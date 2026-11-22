@@ -166,10 +166,11 @@ public struct JobSettlement: Codable, Sendable, Equatable {
 }
 
 public enum JobSettler {
-    public static func settle(job: Job, report r: FlightReport, owned: Bool) -> JobSettlement {
+    public static func settle(job: Job, report r: FlightReport, owned: Bool, rentalPerHour: Int = 0) -> JobSettlement {
         let rr = r.sanitized()
-        let fuel = owned ? Int((rr.fuelUsedKg * Economy.fuelPricePerKg).rounded()) : 0
-        let atDest = rr.landed && !rr.crashed && rr.arrivalICAO == job.destination.icao
+        let fuel = owned ? Int((rr.fuelUsedKg * Economy.fuelPricePerKg).rounded()) : Int((Double(rentalPerHour) * rr.durationS / 3600).rounded())
+        let flewFar = rr.distanceM >= job.distanceKm * 1000 * 0.6
+        let atDest = rr.landed && !rr.crashed && rr.arrivalICAO == job.destination.icao && rr.departureICAO == job.origin.icao && flewFar
         guard atDest else {
             let penalty = rr.crashed ? job.basePay / 2 : 0
             return JobSettlement(success: false, payout: 0, onTimeBonus: 0, smoothBonus: 0, latePenalty: 0, damagePenalty: penalty, fuelCost: fuel)

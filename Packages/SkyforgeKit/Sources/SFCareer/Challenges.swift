@@ -64,7 +64,7 @@ public enum ChallengeScoring {
     /// Time trial score: gates are mandatory (each missed gate costs a 10 s penalty), score is par/time scaled to 1000.
     public static func timeTrial(_ r: FlightReport, parSeconds: Double) -> Double {
         let r = r.sanitized()
-        guard !r.crashed, r.gatesTotal > 0, let t = r.completionTimeS, t > 0, parSeconds > 0 else { return 0 }
+        guard !r.crashed, r.gatesTotal > 0, r.gatesPassed * 5 >= r.gatesTotal * 4, let t = r.completionTimeS, t > 0, parSeconds > 0 else { return 0 }
         let missed = r.gatesTotal - r.gatesPassed
         let effective = t + Double(missed) * 10
         return min(1_500, (1_000 * parSeconds / effective)).rounded()
@@ -130,7 +130,7 @@ public enum DailyChallenge {
     public static func make(dayIndex: Int, airports: [AirportRef], aircraftIDs: [String]) -> Challenge? {
         guard !airports.isEmpty, !aircraftIDs.isEmpty else { return nil }
         var rng = Xoshiro256(seed: Hash.mix(UInt64(bitPattern: Int64(dayIndex))) ^ 0xDA11_C4A1)
-        let type = ChallengeType.allCases[Int(rng.next() % 4)]
+        let type = ChallengeType.allCases[Int(rng.next() % UInt64(ChallengeType.allCases.count))]
         let ap = airports[Int(rng.next() % UInt64(airports.count))]
         let ac = aircraftIDs[Int(rng.next() % UInt64(aircraftIDs.count))]
         let xw = (rng.range(0, 18)).rounded()

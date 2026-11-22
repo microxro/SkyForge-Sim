@@ -69,7 +69,7 @@ public struct FlightReport: Codable, Sendable, Equatable {
         func fo(_ v: Double?, _ lo: Double, _ hi: Double) -> Double? { v.map { f($0, lo, hi) } }
         r.durationS = f(durationS, 0, 86_400)
         r.distanceM = f(distanceM, 0, 2.0e7)
-        r.touchdownSinkFPM = fo(touchdownSinkFPM, -2_000, 20_000)
+        r.touchdownSinkFPM = fo(touchdownSinkFPM, 0, 20_000)
         r.touchdownOffsetM = fo(touchdownOffsetM, -5_000, 5_000)
         r.touchdownDistancePastThresholdM = fo(touchdownDistancePastThresholdM, -5_000, 20_000)
         r.maxG = f(maxG, -20, 30, 1)

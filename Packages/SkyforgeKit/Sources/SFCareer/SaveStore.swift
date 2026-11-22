@@ -18,7 +18,7 @@ public struct SaveStore: Sendable {
         let fm = FileManager.default
         try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         // Keep the previous good save as a backup before replacing it.
-        if fm.fileExists(atPath: url.path) {
+        if fm.fileExists(atPath: url.path), let cur = try? Data(contentsOf: url), (try? decode(cur)) != nil {
             try? fm.removeItem(at: backupURL)
             try? fm.copyItem(at: url, to: backupURL)
         }
@@ -30,8 +30,14 @@ public struct SaveStore: Sendable {
     public func load() throws -> CareerState {
         let fm = FileManager.default
         guard fm.fileExists(atPath: url.path) else { return CareerState() }
-        if let s = try? decode(Data(contentsOf: url)) { return s }
-        if let s = try? decode(Data(contentsOf: backupURL)) { return s }
+
+        for u in [url, backupURL] {
+            guard let data = try? Data(contentsOf: u) else { continue }
+            do { return try decode(data) }
+            catch let e as SaveError { throw e }   // newer-than-app must never fall back to a stale backup
+            catch { continue }
+        }
+
         throw SaveError.unreadable
     }
 
