@@ -142,8 +142,10 @@ import SFFlightModel
         }
         #expect(s.crashed && s.missionResult?.success == false)
         let reason = s.crashReason ?? ""
-        #expect(s.drainEvents().contains(.crashed(reason)))
-        #expect(s.drainEvents().isEmpty)
+        let drained = s.drainEvents()
+        #expect(drained.contains(.crashed(reason)))
+        let leftover = s.drainEvents()
+        #expect(leftover.isEmpty)
     }
 
     @Test func hudReflectsMissionState() {
