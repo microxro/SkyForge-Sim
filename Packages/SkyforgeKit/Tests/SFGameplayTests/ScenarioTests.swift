@@ -71,6 +71,23 @@ import SFFlightModel
         #expect(s.isFinished, "crash did not end the mission")
     }
 
+    @Test func pickupCompletesWhenStoppedAtTheSpot() {
+        // Stopped on the runway at the pickup point: the hold timer runs and the objective completes.
+        var m = oneObjectiveMission(.pickup(MissionWaypoint(60, 0, 0, radius: 40), maxSpeed: 10, hold: 3))
+        m.spawn = MissionSpawn(along: 60, onRunway: true)
+        var s = GameplaySession(world: world, aircraft: AircraftCatalog.sfCruiser, mission: m)
+        run(&s, seconds: 6)
+        #expect(s.missionResult?.success == true, "stopped pickup did not complete")
+    }
+
+    @Test func pickupDoesNotCompleteAwayFromTheSpot() {
+        var m = oneObjectiveMission(.pickup(MissionWaypoint(3_000, 0, 0, radius: 40), maxSpeed: 10, hold: 3))
+        m.spawn = MissionSpawn(along: 60, onRunway: true)
+        var s = GameplaySession(world: world, aircraft: AircraftCatalog.sfCruiser, mission: m)
+        run(&s, seconds: 6)
+        #expect(s.missionResult == nil && !s.isFinished, "pickup completed away from the spot")
+    }
+
     @Test func unlockChainReachesEveryMission() {
         // Every mission's unlock names a mission that exists and is reachable from the start.
         var progress = PlayerProgress()
