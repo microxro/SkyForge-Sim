@@ -217,6 +217,14 @@ public final class WorldRenderer {
     private var aaPasses: AAShadowPasses?
     /// Clip-space jitter for this frame's scene pass (identity unless TAA runs).
     private var aaJitterClip = matrix_identity_float4x4
+    /// One AI aircraft to draw this frame: ENU position (m, relative to the world origin) and its body-to-ENU matrix.
+    public struct TrafficPose: Sendable {
+        public var position: SIMD3<Double>
+        public var bodyToENU: simd_double3x3
+        public init(position: SIMD3<Double>, bodyToENU: simd_double3x3) { self.position = position; self.bodyToENU = bodyToENU }
+    }
+    /// AI traffic drawn with the hero aircraft mesh. The host sets this each frame; empty draws nothing.
+    public var trafficPoses: [TrafficPose] = []
     /// Animation time (s) for water and other moving surfaces.
     public var time: Double = 0
     /// Round 5 ocean: wind (m/s, direction the wind blows toward in radians), quality tier and live wake sources
@@ -1360,6 +1368,16 @@ public final class WorldRenderer {
             lastLODTreeCells = lodCells
             lastDrawnTreeCells = cellsDrawn
             enc.setRenderPipelineState(pipeline)
+        }
+        // AI traffic: the hero aircraft mesh at each pose (camera-relative, same model matrix path as the hero).
+        if let a = aircraft, !trafficPoses.isEmpty {
+            enc.setVertexBuffer(a.buffer, offset: 0, index: 0)
+            for pose in trafficPoses {
+                var u = uniforms(model: Self.modelMatrix(pose.bodyToENU, pose.position - c.position))
+                enc.setVertexBytes(&u, length: MemoryLayout<WorldUniforms>.stride, index: 1)
+                enc.setFragmentBytes(&u, length: MemoryLayout<WorldUniforms>.stride, index: 1)
+                enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: a.count)
+            }
         }
         if let a = aircraft, let p = aircraftPosition, let m = aircraftBodyToENU {
             var u = uniforms(model: Self.modelMatrix(m, p - c.position))
