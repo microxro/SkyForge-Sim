@@ -59,7 +59,10 @@ public enum OceanShaders {
     // omega = sqrt(g k), amplitude ~ Phillips-like k^-1.2 falloff.
     constant float OW_G = 9.81;
 
-    static float owWaveAngle(int i) { return (fract(sin(float(i) * 12.9898) * 43758.5453) - 0.5) * 1.9; }
+    static float owWaveAngle(int i) {
+        constexpr constant float tbl[16] = {-0.95, 0.8012, -0.8413, 0.1106, -0.2399, -0.0884, 0.2396, -0.6354, -0.3247, 0.0753, 0.8959, 0.6103, -0.6098, 0.9408, 0.6004, -0.1105};
+        return tbl[i & 15];
+    }
 
     // Returns the surface slope (dh/dx, dh/dy) and, through `height`/`crest`, the height and the Jacobian-style
     // crest measure (1 = sharp crest, 0 = trough). `footprint` is the pixel size in metres: octaves
@@ -131,7 +134,7 @@ public enum OceanShaders {
     // Subsurface glow through thin wave crests lit from behind (light travels through the crest toward the eye).
     static float3 owCrestSSS(float3 viewDir, float3 toSun, float3 n, float crest, float height,
                              float3 sunRadiance, float3 tint) {
-        float back = pow(saturate(dot(-viewDir, toSun) * 0.5 + 0.5), 4.0);   // view looking toward the sun side
+        float back = pow(saturate(dot(viewDir, toSun) * 0.5 + 0.5), 4.0);   // view looking toward the sun side
         float thin = saturate(crest * 1.3 - 0.35) * saturate(0.5 + height * 0.6);
         float wrap = saturate(dot(n, toSun) * 0.5 + 0.5);
         return tint * sunRadiance * (back * thin * wrap * 0.9 + 0.06 * thin);

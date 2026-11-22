@@ -36,7 +36,8 @@ public enum AAShadowShaders {
         float3 sigma = sqrt(max(m2 - m1 * m1, 0.0));
         float3 lo = m1 - tp.p.y * sigma, hi = m1 + tp.p.y * sigma;
         float4 ndc = float4((in.uv + dOff) * float2(2.0, -2.0) + float2(-1.0, 1.0), dz, 1.0);
-        float4 w = tp.invViewProj * ndc; w /= w.w;
+        float4 w = tp.invViewProj * ndc;
+        if (abs(w.w) > 1e-6) w /= w.w;   // sky (reversed infinite Z, depth 0) has w.w == 0: reproject the direction
         float4 pc = tp.prevViewProj * w;
         float2 puv = pc.xy / pc.w * float2(0.5, -0.5) + 0.5;
         bool valid = tp.p.z < 0.5 && pc.w > 0.0 && all(puv > 0.0) && all(puv < 1.0);

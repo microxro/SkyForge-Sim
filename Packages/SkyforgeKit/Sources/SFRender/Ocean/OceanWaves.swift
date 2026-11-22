@@ -59,10 +59,8 @@ public enum OceanWaves {
     public static let g: Float = 9.81
 
     public static func dominantWavelength(wind: Float) -> Float { min(220, max(12, 0.14 * 2 * .pi * wind * wind / g)) }
-    static func waveAngle(_ i: Int) -> Float {
-        let s = sin(Float(i) * 12.9898) * 43758.5453
-        return (s - floor(s) - 0.5) * 1.9
-    }
+    static let angleTable: [Float] = [-0.95, 0.8012, -0.8413, 0.1106, -0.2399, -0.0884, 0.2396, -0.6354, -0.3247, 0.0753, 0.8959, 0.6103, -0.6098, 0.9408, 0.6004, -0.1105]
+    static func waveAngle(_ i: Int) -> Float { angleTable[i & 15] }
 
     /// Height (m) and slope at `p`, evaluating the same octaves as the shader (`footprint` in m fades short waves).
     public static func sample(at p: SIMD2<Float>, time t: Float, params: OceanParams, footprint: Float = 0)
