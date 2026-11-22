@@ -17,8 +17,11 @@ Output: a compact binary (`SFB1`) read by `SFQuickFlight.BuildingPack`:
 
 Usage: fetch_buildings.py --lat 47.53 --lon -122.30 --half-km 6 --out KBFI/buildings.sfb [--release 2026-10-21.0]
 """
-import argparse, io, json, math, os, struct, sys, time, re
+import argparse, io, json, math, os, struct, sys, time
+import xml.etree.ElementTree as ET
 import requests
+
+from _net import MAX_BYTES
 
 BUCKET = "https://overturemaps-us-west-2.s3.amazonaws.com"
 SESSION = requests.Session()
@@ -44,12 +47,24 @@ class RangeFile(io.RawIOBase):
         return self.pos
 
     def _get(self, a, b):
+        if b <= a or b - a > MAX_BYTES:
+            raise ValueError(f"refusing range request of {b - a} bytes")
         for attempt in range(5):
             try:
-                r = SESSION.get(self.url, headers={"Range": f"bytes={a}-{b - 1}"}, timeout=120)
-                if r.status_code in (200, 206):
-                    self.fetched += len(r.content)
-                    return r.content
+                r = SESSION.get(self.url, headers={"Range": f"bytes={a}-{b - 1}"}, timeout=120, stream=True)
+                if r.status_code == 206:
+                    cr = r.headers.get("Content-Range", "")
+                    ok = cr.startswith(f"bytes {a}-{b - 1}/")
+                    if ok:
+                        body = r.raw.read(b - a + 1, decode_content=True)
+                        if len(body) == b - a and not r.raw.read(1):
+                            self.fetched += len(body)
+                            return body
+                    r.close()
+                    raise IOError(f"bad range response (Content-Range {cr!r}) for {self.url} {a}-{b}")
+                r.close()
+                if r.status_code == 200:                # server ignored Range: refuse, never buffer a whole object
+                    raise IOError(f"server ignored Range request: {self.url}")
             except requests.RequestException:
                 pass
             time.sleep(1.5 * (attempt + 1))
@@ -81,18 +96,25 @@ class RangeFile(io.RawIOBase):
 
 
 def list_files(release):
+    return list_prefix(f"release/{release}/theme=buildings/type=building/")
+
+
+def list_prefix(prefix):
+    """(key, size) of every .parquet under an S3 prefix; the listing XML is parsed, not pattern-matched."""
     keys, token = [], None
     while True:
-        url = f"{BUCKET}/?list-type=2&prefix=release/{release}/theme=buildings/type=building/&max-keys=1000"
+        url = f"{BUCKET}/?list-type=2&prefix={prefix}&max-keys=1000"
         if token: url += "&continuation-token=" + requests.utils.quote(token)
-        x = SESSION.get(url, timeout=60).text
-        for m in re.finditer(r"<Contents>(.*?)</Contents>", x, re.S):
-            k = re.search(r"<Key>([^<]+)</Key>", m.group(1)).group(1)
-            s = int(re.search(r"<Size>(\d+)</Size>", m.group(1)).group(1))
-            if k.endswith(".parquet"): keys.append((k, s))
-        t = re.search(r"<NextContinuationToken>([^<]+)</NextContinuationToken>", x)
+        resp = SESSION.get(url, timeout=60)
+        resp.raise_for_status()
+        root = ET.fromstring(resp.content)
+        ns = root.tag.partition("}")[0] + "}" if root.tag.startswith("{") else ""
+        for c in root.iter(ns + "Contents"):
+            k, s = c.findtext(ns + "Key"), c.findtext(ns + "Size")
+            if k and s and s.isdigit() and k.endswith(".parquet"): keys.append((k, int(s)))
+        t = root.findtext(ns + "NextContinuationToken")
         if not t: break
-        token = t.group(1)
+        token = t
     return keys
 
 

@@ -12,16 +12,32 @@ public protocol HTTPTransport: Sendable {
 public enum TransportError: Error, Equatable {
     case status(Int)
     case offline
+    case insecureURL
+    case tooLarge
 }
 
 public struct URLSessionTransport: HTTPTransport {
     public let userAgent: String
-    public init(userAgent: String = "SKYFORGE/0.1 (+https://github.com/microxro/SkyForge-Sim)") { self.userAgent = userAgent }
+    /// Largest response body accepted, in bytes.
+    public let maxBytes: Int
+    /// Per-request timeout in seconds.
+    public let timeout: TimeInterval
+    public init(userAgent: String = "SKYFORGE/0.1 (+https://github.com/microxro/SkyForge-Sim)",
+                maxBytes: Int = 64 * 1024 * 1024, timeout: TimeInterval = 30) {
+        self.userAgent = userAgent; self.maxBytes = maxBytes; self.timeout = timeout
+    }
     public func get(_ url: URL) async throws -> Data {
-        var req = URLRequest(url: url)
+        guard url.scheme?.lowercased() == "https" else { throw TransportError.insecureURL }
+        let cfg = URLSessionConfiguration.ephemeral
+        cfg.timeoutIntervalForRequest = timeout
+        cfg.timeoutIntervalForResource = timeout * 4
+        let session = URLSession(configuration: cfg)
+        defer { session.finishTasksAndInvalidate() }
+        var req = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: timeout)
         req.setValue(userAgent, forHTTPHeaderField: "User-Agent")
-        let (data, response) = try await URLSession.shared.data(for: req)
+        let (data, response) = try await session.data(for: req)
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) { throw TransportError.status(http.statusCode) }
+        guard data.count <= maxBytes else { throw TransportError.tooLarge }
         return data
     }
 }

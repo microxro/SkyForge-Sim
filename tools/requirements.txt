@@ -1,0 +1,7 @@
+# Build-time tool dependencies (tools/*.py). Pin exact versions; bump deliberately.
+numpy==2.2.6
+pillow==11.3.0
+pyproj==3.7.1
+rasterio==1.4.3
+requests==2.32.4
+pyarrow==20.0.0
