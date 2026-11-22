@@ -633,7 +633,8 @@ public struct RealWorldRegion: FlightWorld {
         var footprints: [SIMD2<Int>: [[SIMD2<Double>]]] = [:]
         for b in buildings {
             let xs = b.footprint.map(\.x), ys = b.footprint.map(\.y)
-            guard let x0 = xs.min(), let x1 = xs.max(), let y0 = ys.min(), let y1 = ys.max() else { continue }
+            guard let x0 = xs.min(), let x1 = xs.max(), let y0 = ys.min(), let y1 = ys.max(),
+                  x1 - x0 < 5_000, y1 - y0 < 5_000 else { continue }       // bounds the cell loops for corrupt data
             for cy in Int((y0 / 40).rounded(.down))...Int((y1 / 40).rounded(.down)) {
                 for cx in Int((x0 / 40).rounded(.down))...Int((x1 / 40).rounded(.down)) { footprints[SIMD2(cx, cy), default: []].append(b.footprint) }
             }
