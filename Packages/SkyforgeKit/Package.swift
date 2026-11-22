@@ -31,6 +31,7 @@ let package = Package(
         .target(name: "SFImagery", dependencies: ["SFMath", "SFContent", "SFTerrainCore"]),
         .target(name: "SFInstruments", dependencies: ["SFMath", "SFAtmosphere", "SFFlightModel"]),
         .target(name: "SFQuickFlight", dependencies: ["SFMath", "SFAtmosphere", "SFWeather", "SFFlightModel", "SFInstruments", "SFInput", "SFWorldGen", "SFPreview", "SFImagery", "SFNavData", "SFTerrainCore", "SFContent"], resources: [.copy("Resources")]),
+        .target(name: "SFCareer", dependencies: ["SFMath"]),
         // Missions, aircraft selection and military flight. Pure Swift on top of the flight model and Quick Flight worlds.
         .target(name: "SFGameplay", dependencies: ["SFMath", "SFAtmosphere", "SFFlightModel", "SFQuickFlight"]),
         .target(name: "SFGameplayUI", dependencies: ["SFGameplay"]),
@@ -40,9 +41,10 @@ let package = Package(
         .target(name: "SFRender", dependencies: ["SFPerf", "SFMath", "SFSim", "SFWeather", "SFTerrainCore", "SFWorldGen", "SFAtmosphere", "SFPreview", "SFQuickFlight"]),
         .target(name: "SFAudio", dependencies: ["SFSim", "SFMath", "SFFlightModel", "SFWeather"]),
         .target(name: "SFPlatform", dependencies: ["SFSim", "SFInput"]),
-        .target(name: "SFUI", dependencies: ["SFSim", "SFRender", "SFAudio", "SFPlatform", "SFNavData", "SFContent", "SFInstruments", "SFInput", "SFQuickFlight", "SFAtmosphere", "SFWeather", "SFImagery", "SFFlightModel", "SFGameplay", "SFGameplayUI"]),
+        .target(name: "SFUI", dependencies: ["SFSim", "SFRender", "SFAudio", "SFPlatform", "SFNavData", "SFContent", "SFInstruments", "SFInput", "SFQuickFlight", "SFAtmosphere", "SFWeather", "SFImagery", "SFFlightModel", "SFGameplay", "SFGameplayUI", "SFCareer"]),
         .executableTarget(name: "SFPreviewCLI", dependencies: ["SFPreview", "SFInstruments", "SFAtmosphere", "SFQuickFlight", "SFImagery", "SFContent", "SFWorldGen", "SFTerrainCore", "SFMath"]),
         // Tests (Swift Testing)
+        .testTarget(name: "SFCareerTests", dependencies: ["SFCareer", "SFMath"]),
         .testTarget(name: "SFMathTests", dependencies: ["SFMath"]),
         .testTarget(name: "SFAtmosphereTests", dependencies: ["SFAtmosphere"]),
         .testTarget(name: "SFFlightModelTests", dependencies: ["SFFlightModel"]),
