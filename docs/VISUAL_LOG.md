@@ -1707,3 +1707,30 @@ Tree counts: LSZS 650k (capped), KASE 650k (capped), NZQN 116k (+70k scrub), KMR
   - The final-frame spread is dominated by the perspective and haze gradient, so it is not a clean metric.
   - Other frames within 0.5 levels.
   - Sent to the reviewer as round 62 for a visual verdict instead of a fourth blind change.
+
+## Round 62 verdict (scored by eye)
+
+- **Frames:** PR #46 frames, commit 021096852 (base 36124fd). Round 62's own frames (a42678d) were not posted, but 36124fd has the round 62 code (mowing stripes, building radius). This set is before TAA (#42).
+- **Method:** 17 ultra frames (final, high, close per airport, cockpit for KMRY, SkyWorld final), each scored 0–10 by eye. Not a metric.
+
+| Airport | Final | High | Close / cockpit | Avg |
+|---|---|---|---|---|
+| KMRY | 6.0 | 5.5 | 6.5 / 5.5 | 5.9 |
+| KASE | 6.5 | 6.5 | 6.5 | 6.5 |
+| KBFI | 6.0 | 6.0 | 6.5 | 6.2 |
+| LSZS | 7.0 | 5.5 | 6.5 | 6.3 |
+| NZQN | 5.0 | 6.0 | 5.5 | 5.5 |
+| SkyWorld | 7.0 | – | – | 7.0 |
+
+**Overall: 6.2** (mean of the six airport averages).
+
+- **Round 62 verdict: accept.** KBFI lawns read as even turf, so the cloudy mottle from 61b is gone. The remaining lawn problem is flatness, not mottle.
+- **Works:** cumulus volumes, sky gradient, aerial haze, mountain light (LSZS, NZQN), SkyWorld farm variety, aircraft model at close range.
+- **Defects, most visible first:**
+  1. **Water** (LSZS high and close, NZQN final and close, KMRY coast, KBFI harbour): flat matte grey-white speckle. No sky reflection, no sun glint, no depth colour. Owner: "Make scenery and lighting beat MSFS".
+  2. **Suburbs** (KMRY final, KBFI close): untextured boxes with one roof grey, reading as toy blocks at 2–6 km. Owner: "Add real terrain LOD and building fill".
+  3. **Fields** (KASE valley, KBFI lawns, KMRY lawns): KASE shows smeared, stretched texture. KMRY lawns are flat olive. Owner: terrain LOD.
+  4. **Cockpit** (KMRY): dithered speckle on the canopy frame and top windscreen, diagonal glare streaks on the left pane, plain panel bezels. Owner: "Push airport frames past 8.2".
+  5. **Trees** (KMRY final, LSZS final): lollipop crowns repeat at mid distance. Low priority.
+- **Caveat:** frames are 1280×720, so edge and shimmer judgements are coarse. Native-resolution captures are requested.
+- **Hold lifted:** PR #42 (TAA, SMAA-lite, 4 cascades) merged as 5451516. The next round scores main/ frames from fb87688 (run 45069547574).
