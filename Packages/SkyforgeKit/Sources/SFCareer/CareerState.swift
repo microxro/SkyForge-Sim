@@ -230,6 +230,8 @@ public enum CareerEngine {
             for l in (levelBefore + 1)...levelAfter { let b = Economy.levelUpCreditBonus(l); state.credits += b; credits += b }
         }
 
+        state.xp = min(state.xp, CareerState.maxXP)
+        state.credits = min(state.credits, CareerState.maxCredits)
         state.log.append(FlightLogEntry(report: r, xpGained: xp, creditsDelta: credits))
         if state.log.count > CareerState.maxLogEntries { state.log.removeFirst(state.log.count - CareerState.maxLogEntries) }
 
