@@ -1,7 +1,6 @@
 // SKYFORGE — Apache-2.0
 import Testing
 import Foundation
-import SFMath
 @testable import SFGameplay
 
 /// Feeds the loop objective a velocity vector that turns through the vertical plane at 60 m/s.
