@@ -36,8 +36,10 @@ actor FixtureImageryTransport: HTTPTransport {
 
     @Test func regionConvertsToRenderData() async throws {
         let r = try await Self.region()
-        let d = RealWorldRenderData(region: r, chunkQuads: 16)
+        let d = RealWorldRenderData(region: r, chunkQuads: 16, cdlod: false)
         #expect(d.chunks.count == r.terrainChunks(quads: 16).count)
+        let cdlod = RealWorldRenderData(region: r)
+        #expect(cdlod.chunks.isEmpty && cdlod.terrainField != nil && cdlod.terrainLayout != nil, "CDLOD draws nodes, not chunks")
         #expect(d.trees.count == r.trees().count && !d.trees.isEmpty)
         let near = try #require(d.near)
         #expect(near.rgb.count == near.size * near.size * 3)
@@ -50,10 +52,11 @@ actor FixtureImageryTransport: HTTPTransport {
     @Test(.enabled(if: SkyRegressionTests.hasDevice, "no Metal device on this host"))
     func realWorldFrameRenders() async throws {
         let region = try await Self.region()
-        let data = RealWorldRenderData(region: region, chunkQuads: 32)
+        // The static-chunk path: its frustum-culling and golden image assertions are about chunks.
+        let data = RealWorldRenderData(region: region, chunkQuads: 32, cdlod: false)
         let session = QuickFlightSession(world: region, start: .final)
         let cam = session.chaseCamera()
-        let lighting = LightingSetup.physicalPreset(.midday, azimuthDegrees: 200, cameraHeightMetres: cam.position.z)
+        let lighting =LightingSetup.physicalPreset(.midday, azimuthDegrees: 200, cameraHeightMetres: cam.position.z)
         let r = try WorldRenderer(lighting: lighting)
         try r.setRealWorld(data)
         try r.setAircraft(QuickFlightWorld.aircraftMesh())
@@ -88,7 +91,7 @@ actor FixtureImageryTransport: HTTPTransport {
     @Test(.enabled(if: SkyRegressionTests.hasDevice, "no Metal device on this host"))
     func fxaaDoesNotSmearGroundTexture() async throws {
         let region = try await Self.region()
-        let data = RealWorldRenderData(region: region, chunkQuads: 32)
+        let data = RealWorldRenderData(region: region, chunkQuads: 32, cdlod: false)
         let session = QuickFlightSession(world: region, start: .final)
         let cam = session.chaseCamera()
         let r = try WorldRenderer(lighting: LightingSetup.physicalPreset(.midday, azimuthDegrees: 200, cameraHeightMetres: cam.position.z))
