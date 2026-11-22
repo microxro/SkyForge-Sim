@@ -6,6 +6,10 @@ public enum ThermalLevel: Int, Sendable, Comparable, CaseIterable {
     case nominal = 0, fair, serious, critical
     public static func < (a: ThermalLevel, b: ThermalLevel) -> Bool { a.rawValue < b.rawValue }
 
+}
+
+#if canImport(Darwin)
+extension ThermalLevel {
     public init(_ s: ProcessInfo.ThermalState) {
         switch s {
         case .nominal: self = .nominal
@@ -16,6 +20,7 @@ public enum ThermalLevel: Int, Sendable, Comparable, CaseIterable {
         }
     }
 }
+#endif
 
 /// Picks the frame-rate cap. `maxFPS` is what the display offers (120 on ProMotion and iPad Pro, else 60).
 public enum RefreshPolicy {
