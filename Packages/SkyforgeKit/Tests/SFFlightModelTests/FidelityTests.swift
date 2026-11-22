@@ -128,4 +128,21 @@ import SFAtmosphere
         for _ in 0..<600 { s = m.step(s, inputs: ControlInputs(throttle: 1), environment: FlightEnvironment()) }
         #expect(s.isFinite)
     }
+
+    @Test func severityScalesLowLevelTurbulence() {
+        func rms(_ sev: DrydenTurbulence.Severity) -> Double {
+            var t = DrydenTurbulence(seed: 11, severity: sev, wind20: 5)
+            var sum = 0.0
+            let n = 600 * 120
+            for _ in 0..<n { let g = t.step(dt: 1.0 / 120, heightAGL: 100, airspeed: 50, headingRad: 0); sum += g.z * g.z }
+            return (sum / Double(n)).squareRoot()
+        }
+        #expect(rms(.severe) > rms(.light))
+    }
+
+    @Test func engineSpoolIgnoresBadDt() {
+        var e = EngineSpool.jet
+        e.update(command: 1, dt: .nan); e.update(command: 1, dt: -1)
+        #expect(e.level == 0)
+    }
 }

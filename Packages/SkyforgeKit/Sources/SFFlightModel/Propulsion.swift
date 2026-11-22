@@ -104,6 +104,7 @@ public struct EngineSpool: Sendable, Equatable {
     /// Advances toward `command` (0…1). Jets accelerate more slowly at low RPM (`1 + 2(1-level)` factor).
     @discardableResult
     public mutating func update(command: Double, dt: Double, slowAtLowRPM: Bool = false) -> Double {
+        guard dt.isFinite, dt > 0 else { return level }
         let cmd = command.isFinite ? min(1, max(0, command)) : 0
         var tau = cmd > level ? spoolUpTime : spoolDownTime
         if slowAtLowRPM && cmd > level { tau *= 1 + 2 * (1 - level) }

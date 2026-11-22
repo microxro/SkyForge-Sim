@@ -90,7 +90,7 @@ extension AircraftConfig {
             mass: 4_500, inertia: SIMD3(4_200, 13_500, 16_500), ixz: 0,
             wingArea: 18.0, wingSpan: 9.4, chord: 2.1,
             aero: a,
-            maxPower: 7_150_000, propDiameter: 0, maxRPM: 1,   // informational only (jets use `propulsion`)
+            maxPower: 7_150_000, propDiameter: 1.0, maxRPM: 100,   // informational only (jets use `propulsion`)
             staticThrustPerWatt: 0.02,
             stallAlpha: 17 * .pi / 180,
             elevatorMax: 25 * .pi / 180, aileronMax: 20 * .pi / 180, rudderMax: 25 * .pi / 180,
@@ -130,7 +130,7 @@ extension AircraftConfig {
             mass: 12_000, inertia: SIMD3(12_000, 70_000, 80_000), ixz: 0,
             wingArea: 28.0, wingSpan: 9.4, chord: 3.5,
             aero: a,
-            maxPower: 20_900_000, propDiameter: 0, maxRPM: 1,   // informational only (jets use `propulsion`)
+            maxPower: 20_900_000, propDiameter: 1.0, maxRPM: 100,   // informational only (jets use `propulsion`)
             staticThrustPerWatt: 0.02,
             stallAlpha: 24 * .pi / 180,
             elevatorMax: 25 * .pi / 180, aileronMax: 20 * .pi / 180, rudderMax: 30 * .pi / 180,
