@@ -291,13 +291,13 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
     }
 
     private var machNumber: Double {
-        EnvelopeMath.mach(trueAirspeed: session.lastOutputs.trueAirspeed, altitudeMSL: session.state.altitude)
+        EnvelopeMath.mach(trueAirspeed: session.lastOutputs?.trueAirspeed ?? 0, altitudeMSL: session.state.altitude)
     }
 
     /// Runs AI, weapons, the envelope monitor and the mission against the flight, once per frame.
     private func stepGameplay(dt: Double) {
-        guard !director.isFinished else { return }
-        let snapshot = FlightSnapshot(time: session.time, state: session.state, outputs: session.lastOutputs,
+        guard !director.isFinished, let outputs = session.lastOutputs else { return }
+        let snapshot = FlightSnapshot(time: session.time, state: session.state, outputs: outputs,
                                       flaps: session.inputs.flaps, heightAGL: session.heightAboveGround,
                                       crashed: session.crashed, crashReason: session.crashed ? "Crashed into the ground" : nil)
         director.advance(dt: dt, snapshot: snapshot,

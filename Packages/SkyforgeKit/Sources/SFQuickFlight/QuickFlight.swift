@@ -537,7 +537,7 @@ public struct QuickFlightSession: Sendable {
     }
 
     /// Flight-model outputs from the last step (airspeed, load, weight on wheels), for gameplay layers.
-    public private(set) var lastOutputs = FlightOutputs()
+    public private(set) var lastOutputs: FlightOutputs?
 
     /// Ends the flight (an overstressed airframe, for example).
     public mutating func markCrashed() { crashed = true }

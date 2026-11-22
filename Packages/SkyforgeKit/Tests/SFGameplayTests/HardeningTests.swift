@@ -148,10 +148,11 @@ import SFFlightModel
         var director = GameplayDirector(aircraft: AircraftCatalog.sfF1Fighter, frame: testFrame, mission: mission)
         var state = AircraftState(positionNED: testFrame.ned(along: 0, right: 0, up: 3_000), velocityBody: SIMD3(200, 0, 0),
                                   attitude: .identity, bodyRates: .zero)
+        let outputs = AircraftCatalog.sfF1Fighter.model.outputs(state, inputs: ControlInputs(), environment: FlightEnvironment())
         var t = 0.0
         for _ in 0..<(120 * 3) where !director.isFinished {
             state.time = t
-            director.advance(dt: 1.0 / 120, snapshot: FlightSnapshot(time: t, state: state, outputs: FlightOutputs(), flaps: 0, heightAGL: 3_000),
+            director.advance(dt: 1.0 / 120, snapshot: FlightSnapshot(time: t, state: state, outputs: outputs, flaps: 0, heightAGL: 3_000),
                              weaponInput: WeaponInput(fireGun: true))
             t += 1.0 / 120
         }
