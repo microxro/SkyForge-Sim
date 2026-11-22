@@ -99,7 +99,8 @@ public enum StreamingPlanner {
     }
 }
 
-/// LRU residency set with a byte budget. Entries touched this frame are never evicted.
+/// LRU residency set with a byte budget. After `beginFrame()`, entries touched that frame are protected from
+/// insert-time eviction (before the first `beginFrame()` nothing is protected); `setBudget` may evict any entry.
 public struct ResidencyCache: Sendable {
     private struct Entry { var bytes: Int; var lastUsed: UInt64 }
     private var entries: [UInt64: Entry] = [:]
