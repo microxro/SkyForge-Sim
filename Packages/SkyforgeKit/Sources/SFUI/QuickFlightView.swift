@@ -78,6 +78,8 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
     @Published var missionResult: MissionResult?
     @Published var unlockMessage: String?
     private var touchdownDetector = TouchdownDetector()
+    /// A free flight is recorded to the career once, at its first landing or crash.
+    private var careerRecorded = false
     /// AI traffic and the tower, for free flight only (missions keep their own rules).
     private(set) var traffic: TrafficSystem?
     private(set) var atc: ATCController?
@@ -396,11 +398,26 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
                                      offsetM: lateral, distancePastThresholdM: along)
         if let e = touchdownDetector.feed(sample) {
             attribution.append(String(format: "Touchdown: %.0f fpm sink, %.0f m off centreline", e.sinkFPM, abs(e.offsetM)))
+            recordFreeFlight(event: e)
+        }
+    }
+
+    /// Records a free flight (not a mission, which saves through saveResult) into the pilot's career.
+    private func recordFreeFlight(event: TouchdownEvent?) {
+        guard !careerRecorded, mission == nil else { return }
+        careerRecorded = true
+        var report = FlightReport(kind: .freeFlight, aircraftID: spec.id, durationS: session.time,
+                                  landed: event != nil, crashed: session.crashed,
+                                  endedAt: Int(Date().timeIntervalSince1970))
+        if let e = event { report.applyTouchdown(e) }
+        if let outcome = SaveStore(url: SaveStore.defaultURL).record(report) {
+            attribution.append("Career: +\(outcome.xpGained) XP\(outcome.leveledUpTo.map { ", level \($0)" } ?? "")")
         }
     }
 
     private func stepGameplay(dt: Double) {
         trackTouchdown()
+        if session.crashed { recordFreeFlight(event: nil) }
         guard !director.isFinished, let outputs = session.lastOutputs else { return }
         let snapshot = FlightSnapshot(time: session.time, state: session.state, outputs: outputs,
                                       flaps: session.inputs.flaps, heightAGL: session.heightAboveGround,
