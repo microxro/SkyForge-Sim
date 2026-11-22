@@ -4,7 +4,7 @@ Legend: [x] done and verified, [ ] not done. Unchecked items are not available i
 
 ## CURRENT
 - CURRENT: Visual transformation (user directive 2026-11-10, ADR-0021, PR #5). Ultra-tier CI frames are the review loop.
-- Next 3: LINZ aerial imagery in the NZQN pack and its frames · near-ground sharpness at US airports · before/after comparison in the PR
+- Next 3: near-ground sharpness at US airports · before/after comparison in the PR
 
 ## Bold Mode (user directive 2026-11-08, docs/BOLD_MODE.md)
 ### Phase A — Real world first
