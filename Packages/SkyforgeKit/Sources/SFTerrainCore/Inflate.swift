@@ -37,6 +37,14 @@ struct BitReader {
         bitCount -= n
         return v
     }
+    /// Tops the bit buffer up to at least `n` bits when input remains; never throws (end of data just leaves fewer).
+    mutating func fill(_ n: Int) {
+        while bitCount < n, pos < data.count {
+            bitBuf |= UInt32(data[pos]) << UInt32(bitCount)
+            pos += 1
+            bitCount += 8
+        }
+    }
     mutating func alignToByte() { pos -= bitCount / 8; bitBuf = 0; bitCount = 0 }
 }
 
@@ -44,6 +52,9 @@ struct BitReader {
 struct Huffman {
     var counts = [Int](repeating: 0, count: 16)
     var symbols: [Int]
+    /// Lookup indexed by the next `fastBits` stream bits (LSB first): symbol | length << 9, 0 = use slow path.
+    var fast = [UInt16](repeating: 0, count: 1 << Huffman.fastBits)
+    static let fastBits = 9
 
     init(lengths: [Int]) throws {
         symbols = [Int](repeating: 0, count: lengths.count)
@@ -64,9 +75,33 @@ struct Huffman {
             symbols[offs[l]] = sym
             offs[l] += 1
         }
+        // Canonical codes (RFC 1951 3.2.2); codes are MSB-first in the stream, so index by the reversed code.
+        var next = [Int](repeating: 0, count: 17)
+        var code = 0
+        for l in 1..<16 { code = (code + counts[l - 1]) << 1; next[l] = code }
+        for (sym, l) in lengths.enumerated() where l != 0 && l <= Huffman.fastBits {
+            let c = next[l]
+            next[l] += 1
+            guard c < (1 << l) else { continue }   // over-subscribed: leave to the slow path
+            var rev = 0
+            for b in 0..<l where c & (1 << b) != 0 { rev |= 1 << (l - 1 - b) }
+            let entry = UInt16(sym | l << 9)
+            var idx = rev
+            while idx < (1 << Huffman.fastBits) { fast[idx] = entry; idx += 1 << l }
+        }
     }
 
     func decode(_ r: inout BitReader) throws -> Int {
+        r.fill(Huffman.fastBits)
+        let e = Int(fast[Int(r.bitBuf) & ((1 << Huffman.fastBits) - 1)])
+        if e != 0 {
+            let l = e >> 9
+            if l <= r.bitCount {
+                r.bitBuf >>= UInt32(l)
+                r.bitCount -= l
+                return e & 0x1FF
+            }
+        }
         var code = 0, first = 0, index = 0
         for len in 1..<16 {
             code |= try r.bits(1)
