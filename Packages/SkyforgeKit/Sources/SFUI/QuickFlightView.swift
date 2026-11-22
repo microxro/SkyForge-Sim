@@ -17,6 +17,7 @@ import SFAtmosphere
 import SFWeather
 import SFFlightModel
 import SFGameplay
+import SFCareer
 import SFGameplayUI
 
 /// Where Quick Flight takes place.
@@ -316,6 +317,12 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
         var progress = store.load()
         let unlocked = progress.record(result)
         do { try store.save(progress) } catch { attribution.append("Could not save mission progress: \(error.localizedDescription)") }
+        let report = FlightReport.fromMission(id: result.missionID, aircraftID: result.aircraftID, success: result.success,
+                                              score: result.score, elapsed: result.elapsed, kills: result.kills,
+                                              crashed: session.crashed, endedAt: Int(Date().timeIntervalSince1970))
+        if let outcome = SaveStore(url: SaveStore.defaultURL).record(report), let lvl = outcome.leveledUpTo {
+            attribution.append("Career: reached level \(lvl)")
+        }
         let names = unlocked.aircraft.map(\.name) + unlocked.missions.map(\.title)
         if result.success && !names.isEmpty { unlockMessage = "Unlocked: " + names.joined(separator: ", ") }
     }

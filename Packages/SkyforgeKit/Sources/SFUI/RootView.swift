@@ -9,6 +9,7 @@ import SFRender
 import SFQuickFlight
 import SFNavData
 import SFGameplay
+import SFCareer
 
 /// Root view shown by the app. Items that are not implemented yet are labelled honestly.
 public struct SkyforgeRootView: View {
@@ -33,6 +34,7 @@ public struct SkyforgeRootView: View {
                         AirportPickerView { location in flightLocation = location; showingFlight = true }
                     }
                     Button("SkyWorld airfield (procedural, offline)") { flightLocation = .skyWorld; showingFlight = true }
+                    NavigationLink("Pilot career: ranks, hangar, campaigns, awards") { CareerScreen() }
                     NavigationLink("Aircraft, missions and military flight") {
                         GameplayMenuView { aircraft, mission in
                             flightAircraft = aircraft; flightMission = mission
