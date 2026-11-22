@@ -28,6 +28,8 @@ jobs:
         platform: [ios, macos]
     steps:
       - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
       - name: Select Xcode
         run: |
           if [ -d /Applications/Xcode_26.6.app ]; then sudo xcode-select -s /Applications/Xcode_26.6.app; fi

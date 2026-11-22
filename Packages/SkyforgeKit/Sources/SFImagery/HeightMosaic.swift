@@ -26,10 +26,14 @@ public struct HeightMosaic: Sendable {
 
     static func buildTracked(origin: GeoOrigin, centre: SIMD2<Double>, halfExtent: Double, size: Int, zoom: Int,
                              streamer: TerrainStreamer) async -> (mosaic: HeightMosaic, complete: Bool) {
+        let size = max(2, size)          // size 1 divides by zero below
         let nw = origin.coordinate(east: centre.x - halfExtent, north: centre.y + halfExtent)
         let se = origin.coordinate(east: centre.x + halfExtent, north: centre.y - halfExtent)
         let t0 = TileCoord.containing(latitude: nw.latitude, longitude: nw.longitude, zoom: zoom)
         let t1 = TileCoord.containing(latitude: se.latitude, longitude: se.longitude, zoom: zoom)
+        guard t1.x >= t0.x, t1.y >= t0.y else {      // inverted range (antimeridian / bad input) would trap
+            return (HeightMosaic(centre: centre, halfExtent: halfExtent, size: size, heights: [Float](repeating: 0, count: size * size)), false)
+        }
         var tiles: [TileCoord: HeightGrid] = [:]
         var complete = true
         await withTaskGroup(of: (TileCoord, HeightGrid, Bool).self) { g in
@@ -57,6 +61,7 @@ public struct HeightMosaic: Sendable {
 
     /// Bilinear height at a local point (clamped to the mosaic edge).
     public func height(_ x: Double, _ y: Double) -> Double {
+        guard x.isFinite, y.isFinite, size >= 2, heights.count >= size * size else { return 0 }
         let fx = max(0, min(Double(size - 1) - 1e-9, (x - (centre.x - halfExtent)) / metresPerSample))
         let fy = max(0, min(Double(size - 1) - 1e-9, ((centre.y + halfExtent) - y) / metresPerSample))
         let i = Int(fx), j = Int(fy)

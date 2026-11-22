@@ -37,6 +37,7 @@ public struct LandCoverGrid: Sendable {
 
     /// Class at a point (0 outside the grid).
     public func cls(_ x: Double, _ y: Double) -> UInt8 {
+        guard x.isFinite, y.isFinite, abs(x) < 1e9, abs(y) < 1e9 else { return 0 }      // Int() of NaN/huge traps
         let i = Int(((x + halfExtent) / metresPerCell).rounded(.down)), j = Int(((halfExtent - y) / metresPerCell).rounded(.down))
         guard i >= 0, j >= 0, i < size, j < size else { return 0 }
         return classes[j * size + i]

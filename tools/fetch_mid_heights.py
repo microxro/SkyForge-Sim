@@ -18,6 +18,8 @@ import re
 import sys
 import urllib.request
 
+from _net import HEX64, read_bounded
+
 BASE = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium"
 HALF_KM = 15.5   # 12 km mid half extent + offset of the near centre + z14 quantisation
 
@@ -39,7 +41,11 @@ def lonlat_to_tile(lon, lat, z):
 def main(packs):
     for pack in packs:
         mpath = os.path.join(pack, "manifest.json")
-        m = json.load(open(mpath))
+        with open(mpath) as mf:
+            m = json.load(mf)
+        for u, h in m["files"].items():
+            if not isinstance(h, str) or not HEX64.match(h):
+                sys.exit(f"{pack}: manifest entry {u!r} has an invalid hash {h!r}")
         z14 = []
         for u in m["files"]:
             g = re.match(rf"{BASE}/14/(\d+)/(\d+)\.png$", u)
@@ -63,7 +69,7 @@ def main(packs):
                 if url in m["files"]:
                     continue
                 with urllib.request.urlopen(url, timeout=60) as r:
-                    body = r.read()
+                    body = read_bounded(r)
                 h = hashlib.sha256(body).hexdigest()
                 f = os.path.join(pack, h)
                 if not os.path.exists(f):
@@ -72,7 +78,8 @@ def main(packs):
                 m["files"][url] = h
                 added += 1
         # Keep the manifest's existing style: TilePack.write (Swift) escapes "/" and puts " : " after keys.
-        raw = open(mpath).read()
+        with open(mpath) as mf:
+            raw = mf.read()
         if "\\/" in raw:
             out = json.dumps(m, indent=2, sort_keys=True, ensure_ascii=False, separators=(",", " : ")).replace("/", "\\/")
         else:
