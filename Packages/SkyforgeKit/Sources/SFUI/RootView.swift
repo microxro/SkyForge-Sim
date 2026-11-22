@@ -8,6 +8,7 @@ import MetalKit
 import SFRender
 import SFQuickFlight
 import SFNavData
+import SFGameplay
 
 /// Root view shown by the app. Items that are not implemented yet are labelled honestly.
 public struct SkyforgeRootView: View {
@@ -15,6 +16,8 @@ public struct SkyforgeRootView: View {
     @State private var showingFlight = false
     @State private var flightLocation: QuickFlightLocation = .defaultStart
     @State private var showingInstruments = false
+    @State private var flightAircraft = AircraftCatalog.sf1Trainer
+    @State private var flightMission: MissionDefinition?
 
     public init() {}
 
@@ -30,6 +33,12 @@ public struct SkyforgeRootView: View {
                         AirportPickerView { location in flightLocation = location; showingFlight = true }
                     }
                     Button("SkyWorld airfield (procedural, offline)") { flightLocation = .skyWorld; showingFlight = true }
+                    NavigationLink("Aircraft, missions and military flight") {
+                        GameplayMenuView { aircraft, mission in
+                            flightAircraft = aircraft; flightMission = mission
+                            flightLocation = .defaultStart; showingFlight = true
+                        }
+                    }
                 } header: {
                     Text("Quick Flight")
                 }
@@ -49,16 +58,20 @@ public struct SkyforgeRootView: View {
                 Section {
                     Text("SKYFORGE is free and open source (Apache-2.0).")
                         .font(.footnote)
+                    NavigationLink("Acknowledgements and Data Attribution") { AcknowledgementsView() }
                 } header: {
                     Text("About")
                 }
             }
             .navigationTitle("SKYFORGE")
             #if os(iOS)
-            .fullScreenCover(isPresented: $showingFlight) { QuickFlightView(location: flightLocation) }
+            .fullScreenCover(isPresented: $showingFlight) { QuickFlightView(location: flightLocation, aircraft: flightAircraft, mission: flightMission) }
             #else
-            .sheet(isPresented: $showingFlight) { QuickFlightView(location: flightLocation).frame(minWidth: 1100, minHeight: 700) }
+            .sheet(isPresented: $showingFlight) { QuickFlightView(location: flightLocation, aircraft: flightAircraft, mission: flightMission).frame(minWidth: 1100, minHeight: 700) }
             #endif
+            .onChange(of: showingFlight) { _, isShowing in
+                if !isShowing { flightAircraft = AircraftCatalog.sf1Trainer; flightMission = nil }   // plain Quick Flight buttons fly the SF-1
+            }
             .sheet(isPresented: $showingInstruments) {
                 InstrumentDemoView()
             }

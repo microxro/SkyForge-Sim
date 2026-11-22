@@ -82,11 +82,17 @@ public enum Terrarium {
     public static func decode(png: [UInt8]) throws -> HeightGrid {
         let img = try PNGDecoder.decode(png)
         guard img.channels >= 3 else { throw TerrariumDecodeError.notRGB }
-        var out = [Float](repeating: 0, count: img.width * img.height)
-        for i in 0..<(img.width * img.height) {
-            let p = i * img.channels
-            let r = Double(img.pixels[p]), g = Double(img.pixels[p + 1]), b = Double(img.pixels[p + 2])
-            out[i] = Float(r * 256 + g + b / 256 - 32_768)
+        let n = img.width * img.height
+        let ch = img.channels
+        // Float math is exact here: R*256+G+B/256 needs only 24 bits of mantissa.
+        let out = [Float](unsafeUninitializedCapacity: n) { buf, count in
+            img.pixels.withUnsafeBufferPointer { px in
+                for i in 0..<n {
+                    let p = i * ch
+                    buf[i] = Float(px[p]) * 256 + Float(px[p + 1]) + Float(px[p + 2]) * (1.0 / 256.0) - 32_768
+                }
+            }
+            count = n
         }
         return HeightGrid(width: img.width, height: img.height, samples: out)
     }
