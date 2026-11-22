@@ -283,9 +283,11 @@ public struct RealWorldRegion: FlightWorld {
         }
         if let surveyed = osm?.buildings, !surveyed.isEmpty {
             // Where the survey thins out (a park, a quarter it missed), built-up imagery gets the same procedural houses,
-            // kept clear of every surveyed building. Radius: the full-detail band, where a house is visible.
+            // kept clear of every surveyed building. Radius: the full-detail band, where a house is visible, measured
+            // from the origin like the surveyed and bundled footprints (not from the mosaic, which sits 900 m out).
             region.gapBuildings = region.proceduralBuildings(radius: region.detail.buildingFullRadius,
-                                                             clearOf: BuildingGapIndex(footprints: surveyed.map(\.footprint)))
+                                                             clearOf: BuildingGapIndex(footprints: surveyed.map(\.footprint)),
+                                                             disc: .zero)
         } else {
             region.fallbackBuildings = region.proceduralBuildings()
         }
@@ -421,19 +423,25 @@ public struct RealWorldRegion: FlightWorld {
     /// Procedural fallback: low buildings on built-up imagery that shows building texture (local contrast)
     /// and a nearby cast shadow, so parking lots and concrete aprons stay flat. Roofs take the photo's
     /// colour and footprints follow the local edge direction. Deterministic.
+    /// Houses lie within `radius` of `disc` (nil: the near mosaic's centre). Only the mosaic can be sampled, so the
+    /// search square stays centred on the mosaic and widens to cover the whole disc.
     public func proceduralBuildings(radius: Double = 2_400, cell: Double = 18, maxCount: Int = 6_000,
-                                    clearOf surveyed: BuildingGapIndex? = nil) -> [OSMBuilding] {
+                                    clearOf surveyed: BuildingGapIndex? = nil, disc: SIMD2<Double>? = nil) -> [OSMBuilding] {
         let near = ground.near
         var out: [OSMBuilding] = []
         func lum(_ c: SIMD3<Float>) -> Float { 0.2126 * c.x + 0.7152 * c.y + 0.0722 * c.z }
         let c0 = nearHeights.centre
-        var y = -radius
-        while y < radius {
-            var x = -radius
-            while x < radius {
+        let centre = disc ?? c0
+        // Any point within `radius` of `centre` lies within `reach` of c0, so the square covers the whole disc.
+        let reach = radius + hypot(centre.x - c0.x, centre.y - c0.y)
+        var y = -reach
+        while y < reach {
+            var x = -reach
+            while x < reach {
                 defer { x += cell }
                 let px = c0.x + x, py = c0.y + y
-                if x * x + y * y > radius * radius || out.count >= maxCount { continue }
+                let dx = px - centre.x, dy = py - centre.y
+                if dx * dx + dy * dy > radius * radius || out.count >= maxCount { continue }
                 guard let c = near.sample(px, py) else { continue }
                 let lc = LandCover.classify(c)
                 if lc.urban < 0.5 || lc.water > 0.2 || lc.forest > 0.3 { continue }
