@@ -278,6 +278,8 @@ public final class WorldRenderer {
     /// Dynamic resolution: the scene renders at this fraction of the output size and is upscaled
     /// in the tone-map pass (FXAA runs at the output size).
     public var renderScale: Float = 1
+    /// Last GPU frame time, fed by `recordFrameTiming` for the quality governor.
+    public let frameTelemetry = FrameTelemetry()
     private var scaledDepth: MTLTexture?
 
     /// Per-device-tier render settings (the app and the CI frame-time test use the same presets).
@@ -877,6 +879,7 @@ public final class WorldRenderer {
     /// Encodes sky + world + aircraft into a pass whose colour attachment is already set.
     public func encode(cmd: MTLCommandBuffer, colour: MTLTexture, depth: MTLTexture, camera c: WorldCamera,
                        aircraftPosition: SIMD3<Double>?, aircraftBodyToENU: simd_double3x3?) throws {
+        recordFrameTiming(cmd)
         func target(_ t: MTLTexture?, _ format: MTLPixelFormat, _ w: Int, _ h: Int) -> MTLTexture? {
             if let t, t.width == w, t.height == h, t.pixelFormat == format { return t }
             let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: format, width: w, height: h, mipmapped: false)

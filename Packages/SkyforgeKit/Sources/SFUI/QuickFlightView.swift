@@ -10,6 +10,7 @@ import SFPreview
 import SFInput
 import SFInstruments
 import SFQuickFlight
+import SFPerf
 import SFPlatform
 import SFContent
 import SFImagery
@@ -84,6 +85,8 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
     private var cycleRequested = false
     var touch = InputMapper.DeviceState()
     private var renderer: WorldRenderer?
+    private var governor: QualityGovernor?
+    private var qualityBase: WorldRenderer.Settings = .high
     private var depth: MTLTexture?
     private var last: CFTimeInterval?
     private var hudCounter = 0
@@ -153,7 +156,9 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
         catch { attribution.append("Cockpit view unavailable: \(error)") }
         // Fair-weather cumulus; march quality by device tier (the march runs at half resolution).
         renderer?.clouds = .fairWeather
-        renderer?.apply(tier == .low ? .low : (tier == .medium ? .medium : .high))
+        qualityBase = tier == .low ? .low : (tier == .medium ? .medium : .high)
+        renderer?.apply(qualityBase)
+        governor = QualityGovernor(tier: PerfTier(deviceTier: tier), targetFPS: 60)
         switch location {
         case .skyWorld:
             let detail: QuickFlightDetail = tier == .low ? .phone : (tier == .medium ? .tablet : .desktop)
@@ -278,6 +283,7 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
             camera = WorldCamera(position: cam.position, target: cam.target)
         }
         let c = session.bodyToENUColumns
+        let encodeStart = CACurrentMediaTime()
         do {
             try r.encode(cmd: cmd, colour: tex, depth: depth, camera: camera,
                          aircraftPosition: session.positionENU, aircraftBodyToENU: simd_double3x3(columns: (c.0, c.1, c.2)))
@@ -287,6 +293,11 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
         }
         cmd.present(drawable)
         cmd.commit()
+        // Feed the governor: GPU time from the most recent completed frame, CPU time as this frame's encode cost.
+        let encodeMS = (CACurrentMediaTime() - encodeStart) * 1_000
+        if let plan = governor?.update(GovernorSample(gpuMS: r.frameTelemetry.lastGPUMS, cpuMS: encodeMS), now: now) {
+            r.applyQuality(plan, base: qualityBase)
+        }
         hudCounter += 1
         if hudCounter % 2 == 0 {
             hud = session.data; crashed = session.crashed
@@ -447,3 +458,14 @@ public struct QuickFlightView: View {
     }
 }
 #endif
+
+private extension PerfTier {
+    init(deviceTier: DeviceTier) {
+        switch deviceTier {
+        case .low: self = .low
+        case .medium: self = .medium
+        case .high: self = .high
+        case .ultra: self = .ultra
+        }
+    }
+}
