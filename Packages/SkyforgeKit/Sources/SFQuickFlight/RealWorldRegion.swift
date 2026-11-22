@@ -115,9 +115,14 @@ public struct RealWorldRegion: FlightWorld {
     public var runwayLowNumber = 0
     /// Procedural buildings placed on built-up imagery where OSM has none (empty when OSM has buildings).
     public var fallbackBuildings: [OSMBuilding] = []
+    /// Procedural houses where built-up imagery has no surveyed footprint nearby (OSM present but thin; empty otherwise).
+    public var gapBuildings: [OSMBuilding] = []
 
-    /// Buildings to draw and to keep trees out of: OSM where available, otherwise the procedural fallback.
-    public var buildings: [OSMBuilding] { (osm?.buildings.isEmpty == false) ? osm!.buildings : fallbackBuildings }
+    /// Buildings to draw and to keep trees out of: OSM where available (plus procedural gap houses), otherwise the fallback.
+    public var buildings: [OSMBuilding] {
+        guard let surveyed = osm?.buildings, !surveyed.isEmpty else { return fallbackBuildings }
+        return surveyed + gapBuildings
+    }
 
     public enum LoadError: Error, Equatable { case unknownAirport(String), noRunwayGeometry(String) }
 
@@ -301,7 +306,14 @@ public struct RealWorldRegion: FlightWorld {
             ImageryGrading.match(far: &m, to: region.ground.near)
             region.midImagery = m
         }
-        if osm?.buildings.isEmpty != false { region.fallbackBuildings = region.proceduralBuildings() }
+        if let surveyed = osm?.buildings, !surveyed.isEmpty {
+            // Where the survey thins out (a park, a quarter it missed), built-up imagery gets the same procedural houses,
+            // kept clear of every surveyed building. Radius: the full-detail band, where a house is visible.
+            region.gapBuildings = region.proceduralBuildings(radius: region.detail.buildingFullRadius,
+                                                             clearOf: BuildingGapIndex(footprints: surveyed.map(\.footprint)))
+        } else {
+            region.fallbackBuildings = region.proceduralBuildings()
+        }
         return region
     }
 
@@ -434,7 +446,8 @@ public struct RealWorldRegion: FlightWorld {
     /// Procedural fallback: low buildings on built-up imagery that shows building texture (local contrast)
     /// and a nearby cast shadow, so parking lots and concrete aprons stay flat. Roofs take the photo's
     /// colour and footprints follow the local edge direction. Deterministic.
-    public func proceduralBuildings(radius: Double = 2_400, cell: Double = 18, maxCount: Int = 6_000) -> [OSMBuilding] {
+    public func proceduralBuildings(radius: Double = 2_400, cell: Double = 18, maxCount: Int = 6_000,
+                                    clearOf surveyed: BuildingGapIndex? = nil) -> [OSMBuilding] {
         let near = ground.near
         var out: [OSMBuilding] = []
         func lum(_ c: SIMD3<Float>) -> Float { 0.2126 * c.x + 0.7152 * c.y + 0.0722 * c.z }
@@ -449,6 +462,7 @@ public struct RealWorldRegion: FlightWorld {
                 guard let c = near.sample(px, py) else { continue }
                 let lc = LandCover.classify(c)
                 if lc.urban < 0.5 || lc.water > 0.2 || lc.forest > 0.3 { continue }
+                if let surveyed, !surveyed.isClear(SIMD2(px, py), clearance: 34) { continue }
                 if let g = ground.ground(px, py), g.water > 0.2 { continue }        // the renderer's smoothed water mask
                 if apronOrRunway(px, py) { continue }
                 // 5 × 5 samples at 3 m: contrast, darkest value, structure tensor.
@@ -472,6 +486,8 @@ public struct RealWorldRegion: FlightWorld {
                 let hx = 4.5 + Hash.unit(rng.next()) * 3.5, hy = 4.5 + Hash.unit(rng.next()) * 3.5
                 let jx = (Hash.unit(rng.next()) - 0.5) * (cell - 2 * hx) * 0.8, jy = (Hash.unit(rng.next()) - 0.5) * (cell - 2 * hy) * 0.8
                 let cx = px + jx, cy = py + jy, ch = cos(heading), sh = sin(heading)
+                // 30 m from every surveyed outline: the house's corners (≤ 11.3 m from its centre) then clear it too.
+                if let surveyed, !surveyed.isClear(SIMD2(cx, cy), clearance: 30) { continue }
                 let fp = [(-hx, -hy), (hx, -hy), (hx, hy), (-hx, hy)].map { SIMD2(cx + ch * $0.0 - sh * $0.1, cy + sh * $0.0 + ch * $0.1) }
                 // Roof: the same photo→albedo conversion as the terrain (ImageryGround), so a roof is exactly
                 // as bright as the photo around it (×0.9 made every box read 25 % paler than the ground).
