@@ -201,6 +201,15 @@ func isFailure(_ r: Result<Void, JobRejection>, _ e: JobRejection) -> Bool {
         var t = s; CareerEngine.apply(FlightReport(aircraftID: "org.skyforge.sf1", durationS: 600), to: &t)
         #expect(t.xp <= CareerState.maxXP)
     }
+    @Test func retiredAircraftAreRefundedOnce() throws {
+        let store = SaveStore(url: tmp())
+        try FileManager.default.createDirectory(at: store.url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(#"{"version":1,"credits":100,"ownedAircraft":["org.skyforge.sf1","org.skyforge.sf5"]}"#.utf8).write(to: store.url)
+        let s = try store.load()
+        #expect(s.credits == 100 + 1_200_000)
+        #expect(!s.ownedAircraft.contains("org.skyforge.sf5"))
+        #expect(try store.load().credits == s.credits)
+    }
     @Test func missingFileGivesFreshProfile() throws { #expect(try SaveStore(url: tmp()).load() == CareerState()) }
     @Test func corruptMainFallsBackToBackup() throws {
         let store = SaveStore(url: tmp())
