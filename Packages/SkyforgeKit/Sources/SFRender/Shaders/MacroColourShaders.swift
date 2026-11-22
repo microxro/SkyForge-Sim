@@ -100,9 +100,9 @@ public enum MacroColourShaders {
         k.grass = smoothstep(0.0, 0.03, macroAlb.g - max(macroAlb.r, macroAlb.b) * 0.92) * (1.0 - forest);
         k.dry = smoothstep(0.08, 0.25, (macroAlb.r - macroAlb.b) / max(hi, 1e-3)) * smoothstep(0.02, 0.10, l) * (1.0 - k.grass);
         // Rock: steep and low chroma (cliffs, scree), never in the suburbs.
-        k.rock = smoothstep(0.45, 0.75, steep) * smoothstep(0.30, 0.12, chroma) * (1.0 - burb);
+        k.rock = smoothstep(0.45, 0.75, steep) * (1.0 - smoothstep(0.12, 0.30, chroma)) * (1.0 - burb);
         // Pavement: grey macro colour on flat ground, or any road-mask hit (the mask is vector truth).
-        k.pave = max(smoothstep(0.22, 0.10, chroma) * (1.0 - k.grass) * (1.0 - smoothstep(0.30, 0.55, steep)), 0.0);
+        k.pave = max((1.0 - smoothstep(0.10, 0.22, chroma)) * (1.0 - k.grass) * (1.0 - smoothstep(0.30, 0.55, steep)), 0.0);
         k.pave = max(k.pave * (1.0 - k.rock), roadNear * 0.6);
         k.soil = max(0.0, 1.0 - k.grass - k.dry - k.rock - k.pave) * (1.0 - forest);
         float sum = max(1e-3, k.grass + k.dry + k.soil + k.rock + k.pave);

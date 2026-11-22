@@ -16,7 +16,7 @@ public enum SuburbMask {
 
     /// `size`² RGBA bytes over the square `centre ± halfExtent` (region metres).
     public static func build(size: Int, centre: SIMD2<Double>, halfExtent: Double, landUse: [LandUsePolygon], roads: [OSMRoad]) -> [UInt8] {
-        precondition(size > 1 && halfExtent > 0)
+        guard size > 1, halfExtent > 0, halfExtent.isFinite else { return [UInt8](repeating: 0, count: max(0, size) * max(0, size) * 4) }
         var out = [UInt8](repeating: 0, count: size * size * 4)
         let px = 2 * halfExtent / Double(size), x0 = centre.x - halfExtent, y1 = centre.y + halfExtent
         var bestD = [Float](repeating: .infinity, count: size * size)
@@ -53,15 +53,21 @@ public enum SuburbMask {
             }
         }
         for k in 0..<(size * size) where bestD[k] == .infinity { out[k * 4 + 2] = 255 }
-        // Residential land use by scanline even-odd fill; larger polygons come first so nested ones overwrite.
-        var covered = [Bool](repeating: false, count: size * size)
-        for poly in landUse where poly.category == .residential && poly.ring.count >= 3 {
-            fill(poly.ring, size: size, x0: x0, y1: y1, px: px) { covered[$0] = true }
-        }
-        // Parks, schools, commercial and the like punch their area out again.
+        // Residential land use and the punch-out categories (parks, schools, commercial and the like) are painted together
+        // in order of falling polygon area, so a larger polygon never erases a smaller one nested inside it: a residential
+        // block inside a park stays residential, a park inside a residential area is carved out.
         let punch: Set<LandUseCategory> = [.park, .institutional, .commercial, .industrial, .golf, .cemetery, .airport, .transport]
-        for poly in landUse where punch.contains(poly.category) && poly.ring.count >= 3 {
-            fill(poly.ring, size: size, x0: x0, y1: y1, px: px) { covered[$0] = false }
+        func area(_ r: [SIMD2<Double>]) -> Double {
+            var a = 0.0, prev = r[r.count - 1]
+            for p in r { a += prev.x * p.y - p.x * prev.y; prev = p }
+            return abs(a) / 2
+        }
+        let ordered = landUse.filter { ($0.category == .residential || punch.contains($0.category)) && $0.ring.count >= 3 }
+            .map { (poly: $0, area: area($0.ring)) }.sorted { $0.area > $1.area }
+        var covered = [Bool](repeating: false, count: size * size)
+        for item in ordered {
+            let on = item.poly.category == .residential
+            fill(item.poly.ring, size: size, x0: x0, y1: y1, px: px) { covered[$0] = on }
         }
         for k in 0..<(size * size) where covered[k] && bestD[k] < Float(reach) { out[k * 4] = 255 }
         return out

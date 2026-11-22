@@ -63,7 +63,9 @@ public enum CockpitContactShaders {
         bool useY1 = zy1 > 0.0 && (zy0 <= 0.0 || abs(zy1 - z) < abs(zy0 - z));
         float3 tx = useX1 ? ck_view((float2(qx1) + 0.5) / fs, zx1, p) - P : P - ck_view((float2(qx0) + 0.5) / fs, zx0, p);
         float3 ty = useY1 ? ck_view((float2(qy1) + 0.5) / fs, zy1, p) - P : P - ck_view((float2(qy0) + 0.5) / fs, zy0, p);
-        float3 N = (zx0 > 0.0 || zx1 > 0.0) && (zy0 > 0.0 || zy1 > 0.0) ? normalize(cross(tx, ty)) : float3(0.0, 0.0, -1.0);
+        float3 cn = cross(tx, ty);
+        float cl2 = dot(cn, cn);
+        float3 N = (zx0 > 0.0 || zx1 > 0.0) && (zy0 > 0.0 || zy1 > 0.0) && cl2 > 1e-14 ? cn * rsqrt(cl2) : float3(0.0, 0.0, -1.0);
         if (N.z > 0.0) N = -N;                                    // face the camera (looking along +z)
         float3 L = normalize(cp.sunView.xyz);
         float ndl = dot(N, L);

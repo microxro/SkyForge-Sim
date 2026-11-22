@@ -132,12 +132,12 @@ public enum AirportSurfaceShaders {
         float2 v = apVoronoi(w / 5.5);
         float has = step(0.65, v.y);
         float bend = groundNoise(w + 11.0, 1.0) * 0.18 + groundNoise(w - 5.0, 0.25) * 0.07;
-        float edge = smoothstep(0.42, 0.14, v.x + bend);
-        float inner = smoothstep(0.24, 0.04, v.x + bend * 0.5);
+        float edge = (1.0 - smoothstep(0.14, 0.42, v.x + bend));
+        float inner = (1.0 - smoothstep(0.04, 0.24, v.x + bend * 0.5));
         // Second, finer scale: fuel drips and small leaks (1.2 m cells).
         float2 v2 = apVoronoi(w / 1.3 + 40.0);
         float has2 = step(0.84, v2.y);
-        float drip = smoothstep(0.30, 0.06, v2.x + 0.1 * groundNoise(w + 23.0, 0.25)) * has2;
+        float drip = (1.0 - smoothstep(0.06, 0.30, v2.x + 0.1 * groundNoise(w + 23.0, 0.25))) * has2;
         float fade = saturate(1.0 - fp / 6.0);
         core = max(inner * has, drip) * fade;
         return max(edge * has * 0.8, drip) * fade;

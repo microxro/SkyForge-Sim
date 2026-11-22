@@ -33,9 +33,11 @@ extension AirportSurfaces {
         guard !all.isEmpty, let lx = all.map(\.x).min(), let hx = all.map(\.x).max(),
               let ly = all.map(\.y).min(), let hy = all.map(\.y).max() else { return nil }
         let centre = SIMD2((lx + hx) / 2, (ly + hy) / 2)
-        let half = max(hx - lx, hy - ly) / 2 + margin
-        let px = max(metresPerTexel, 2 * half / Double(maxSize))
-        let size = max(2, Int((2 * half / px).rounded(.up)))
+        let wantHalf = max(hx - lx, hy - ly) / 2 + margin
+        let px = max(metresPerTexel, 2 * wantHalf / Double(maxSize))
+        let size = max(2, Int((2 * wantHalf / px).rounded(.up)))
+        // The texture spans exactly size·px; the shader maps uv over 2·halfExtent, so store that extent (no sub-texel shift).
+        let half = Double(size) * px / 2
         let x0 = centre.x - half, y1 = centre.y + half
         var cov = [UInt8](repeating: 0, count: size * size), cls = [UInt8](repeating: 0, count: size * size)
 
@@ -88,9 +90,22 @@ extension AirportSurfaces {
                     for k in 0..<(f.points.count - 1) {
                         let a = f.points[k], b = f.points[k + 1], ab = b - a
                         let len2 = max((ab * ab).sum(), 1e-6)
-                        guard let (i0, i1, j0, j1) = range(pointwiseMin(a, b) - SIMD2(repeating: half + px),
-                                                           pointwiseMax(a, b) + SIMD2(repeating: half + px)) else { continue }
+                        let pad = half + px
+                        guard let (_, _, j0, j1) = range(pointwiseMin(a, b) - SIMD2(repeating: pad),
+                                                         pointwiseMax(a, b) + SIMD2(repeating: pad)) else { continue }
                         for j in j0...j1 {
+                            // Per row: only the x span of the segment inside this row's band (± pad), not its whole bounding box.
+                            let yc = y1 - (Double(j) + 0.5) * px, ylo = yc - px / 2 - pad, yhi = yc + px / 2 + pad
+                            var t0 = 0.0, t1 = 1.0
+                            if abs(ab.y) > 1e-9 {
+                                let ta = (ylo - a.y) / ab.y, tb = (yhi - a.y) / ab.y
+                                t0 = max(0, min(ta, tb)); t1 = min(1, max(ta, tb))
+                            } else if a.y < ylo || a.y > yhi { continue }
+                            if t0 > t1 { continue }
+                            let xa = a.x + ab.x * t0, xb = a.x + ab.x * t1
+                            let i0 = max(0, Int(((min(xa, xb) - pad - x0) / px).rounded(.down)))
+                            let i1 = min(size - 1, Int(((max(xa, xb) + pad - x0) / px).rounded(.up)))
+                            if i0 > i1 { continue }
                             for i in i0...i1 {
                                 let t = max(0, min(1, ((cell(i, j) - a) * ab).sum() / len2))
                                 let d = cell(i, j) - (a + ab * t)

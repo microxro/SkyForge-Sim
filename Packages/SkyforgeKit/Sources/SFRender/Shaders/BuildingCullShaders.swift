@@ -78,12 +78,16 @@ public enum BuildingCullShaders {
                     uint2 t0 = uint2(clamp(floor(umin * msz), float2(0.0), msz - float2(1.0)));
                     uint2 t1 = uint2(clamp(floor(umax * msz), float2(0.0), msz - float2(1.0)));
                     // A rectangle of up to two texels can straddle three, so scan the whole span (at most 3x3 reads).
-                    float m = 1e30;
-                    for (uint ty = t0.y; ty <= min(t1.y, t0.y + 2u); ty++)
-                        for (uint tx = t0.x; tx <= min(t1.x, t0.x + 2u); tx++)
-                            m = min(m, hiz.read(uint2(tx, ty), mip).x);
-                    // Farthest surface in the rectangle is nearer than the box's nearest point: hidden.
-                    occluded = zNear + u.params.x < m;
+                    // When the top mip clamps (a very large rectangle) the span can exceed three texels; the scan then
+                    // cannot cover it, so the box is never culled by occlusion (conservative).
+                    if (t1.x - t0.x <= 2u && t1.y - t0.y <= 2u) {
+                        float m = 1e30;
+                        for (uint ty = t0.y; ty <= t1.y; ty++)
+                            for (uint tx = t0.x; tx <= t1.x; tx++)
+                                m = min(m, hiz.read(uint2(tx, ty), mip).x);
+                        // Farthest surface in the rectangle is nearer than the box's nearest point: hidden.
+                        occluded = zNear + u.params.x < m;
+                    }
                 }
             }
         }

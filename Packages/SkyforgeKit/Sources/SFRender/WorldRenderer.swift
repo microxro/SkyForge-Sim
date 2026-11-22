@@ -152,7 +152,9 @@ public final class WorldRenderer {
     private var cockpit: (buffer: MTLBuffer, count: Int, screen: MTLBuffer)?
     private var cockpitScreen: MTLTexture?
     /// Draw from inside the cockpit: interior mesh, PFD screen, airframe back faces skipped.
-    public var cockpitView = false
+    public var cockpitView = false {
+        didSet { if oldValue != cockpitView { prevCullMvp = nil } }   // the Hi-Z history belongs to the other camera
+    }
     /// FXAA on the final frame (the scene renders into an internal texture first).
     public var antialiasing = true
     private let fxaaPipeline: MTLRenderPipelineState
@@ -211,6 +213,11 @@ public final class WorldRenderer {
     /// Round 3: 64 m macro-colour grid of the near imagery (`MacroColourPass`), read at texture index 10 when
     /// `macroColourDecoupling` is on. Built whenever near imagery is set; nil binds a zero texture (alpha 0 = none).
     private var macroTex: MTLTexture?
+    /// Near imagery the macro texture is built from; the build (pipeline compile and a GPU wait) runs on first use with
+    /// `macroColourDecoupling` on, not when a region loads.
+    private var macroSource: (tex: MTLTexture, centre: SIMD2<Double>, half: Double)?
+    /// CPU suburb mask waiting for its first use with `suburbParcels` on.
+    private var pendingSuburb: SuburbMaskRaster?
     private lazy var zeroMacro: MTLTexture = MacroColourPass.zeroTexture(device: device)
     /// Replace the near-ground tone-map stack with the macro-colour decoupling pass (round 3). Off by default, so the
     /// art-tuned rounds 1–62 look is unchanged until the KBFI/KMRY/KASE/LSZS/NZQN frames are compared.
@@ -615,9 +622,9 @@ public final class WorldRenderer {
             try Self.imageryTexture(i, device: device, queue: queue).texture
         }
         imageryNear = try data.near.map { (try imageryTexture($0), $0.centre, $0.halfExtent) }
-        macroTex = try imageryNear.map {
-            try MacroColourPass.build(image: $0.tex, centre: $0.centre, half: $0.half, library: worldLibrary, device: device, queue: queue)
-        }
+        macroTex = nil
+        macroSource = imageryNear.map { (tex: $0.tex, centre: $0.centre, half: $0.half) }
+        prevCullMvp = nil                                  // new world: the old frame's Hi-Z no longer applies
         imageryFar = try data.far.map { (try imageryTexture($0), $0.centre, $0.halfExtent) }
         imageryDetail = try data.detail.map { (try imageryTexture($0), $0.centre, $0.halfExtent) }
         imageryMid = try data.mid.map { (try imageryTexture($0), $0.centre, $0.halfExtent) }
@@ -650,14 +657,30 @@ public final class WorldRenderer {
             airportRect = SIMD4<Float>(Float(am.centre.x), Float(am.centre.y), Float(am.halfExtent), 1)
         }
         suburbTex = nil
-        if let sm = data.suburbMask, sm.texels.count == 4 * sm.size * sm.size {
-            // Same extent and row order as the near imagery (the shader indexes it with the imagery's own uv).
-            let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm, width: sm.size, height: sm.size, mipmapped: false)
-            d.usage = [.shaderRead]
-            guard let t = device.makeTexture(descriptor: d) else { throw RendererError.commandQueue }
-            t.replace(region: MTLRegionMake2D(0, 0, sm.size, sm.size), mipmapLevel: 0, withBytes: sm.texels, bytesPerRow: 4 * sm.size)
-            suburbTex = t
-        }
+        pendingSuburb = nil
+        if let sm = data.suburbMask, sm.texels.count == 4 * sm.size * sm.size { pendingSuburb = sm }   // uploaded on first use
+    }
+
+    /// The macro-colour texture, built on first use; nil when there is no near imagery or the build fails.
+    private func macroTexture() -> MTLTexture? {
+        if let t = macroTex { return t }
+        guard let src = macroSource else { return nil }
+        macroTex = try? MacroColourPass.build(image: src.tex, centre: src.centre, half: src.half, library: worldLibrary, device: device, queue: queue)
+        return macroTex
+    }
+
+    /// The suburb mask texture, uploaded on first use.
+    private func suburbTexture() -> MTLTexture? {
+        if let t = suburbTex { return t }
+        guard let sm = pendingSuburb else { return nil }
+        // Same extent and row order as the near imagery (the shader indexes it with the imagery's own uv).
+        let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm, width: sm.size, height: sm.size, mipmapped: false)
+        d.usage = [.shaderRead]
+        guard let t = device.makeTexture(descriptor: d) else { return nil }
+        t.replace(region: MTLRegionMake2D(0, 0, sm.size, sm.size), mipmapLevel: 0, withBytes: sm.texels, bytesPerRow: 4 * sm.size)
+        suburbTex = t
+        pendingSuburb = nil
+        return t
     }
 
     /// Forget the Hi-Z history (call after a camera cut or teleport): the next GPU cull uses frustum and distance only.
@@ -665,6 +688,7 @@ public final class WorldRenderer {
 
     /// Uploads buildings (nil or empty removes them).
     public func setBuildings(_ mesh: BuildingMesh?) throws {
+        prevCullMvp = nil                                  // new geometry: drop the Hi-Z history
         guard let mesh, !mesh.indices.isEmpty, !mesh.vertices.isEmpty else { buildingData = nil; cullerCellsDirty = true; return }
         guard let vb = mesh.vertices.withUnsafeBytes({ device.makeBuffer(bytes: $0.baseAddress!, length: $0.count, options: .storageModeShared) }),
               let ib = mesh.indices.withUnsafeBytes({ device.makeBuffer(bytes: $0.baseAddress!, length: $0.count, options: .storageModeShared) }) else {
@@ -1131,8 +1155,8 @@ public final class WorldRenderer {
         enc.setFragmentTexture(imageryDetail?.tex ?? dummy2D, index: 7)
         enc.setFragmentTexture(imageryMid?.tex ?? dummy2D, index: 8)
         enc.setFragmentTexture(airportTex ?? dummy2D, index: 9)      // dummy2D reads 0 in r: no airport
-        enc.setFragmentTexture(macroTex ?? zeroMacro, index: 10)     // alpha 0 (zeroMacro): no macro colour, pass skipped
-        enc.setFragmentTexture(suburbParcels ? (suburbTex ?? dummy2D) : dummy2D, index: 11)   // dummy2D reads 0 in r: parcel weight 0
+        enc.setFragmentTexture((macroColourDecoupling ? macroTexture() : nil) ?? zeroMacro, index: 10)     // alpha 0 (zeroMacro): no macro colour, pass skipped
+        enc.setFragmentTexture((suburbParcels ? suburbTexture() : nil) ?? dummy2D, index: 11)   // dummy2D reads 0 in r: parcel weight 0
         let upHint = SIMD3<Float>(Float(c.up.x), Float(c.up.y), Float(c.up.z))
         let viewProj = Self.reversedZProjection(fovY: Float(fovY), aspect: Float(aspect), near: Float(c.near)) * Self.view(forward: fwd, up: upHint)
         let sunAz = Float(atan2(Double(toSun.y), Double(toSun.x)))

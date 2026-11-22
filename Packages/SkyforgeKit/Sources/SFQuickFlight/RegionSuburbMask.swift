@@ -17,6 +17,7 @@ extension RealWorldRegion {
     public func suburbMask(size: Int = 2_048) -> SuburbMaskRaster? {
         guard !landUse.isEmpty, let roads = osm?.roads, !roads.isEmpty else { return nil }
         let m = ground.near
+        guard size > 1, m.halfExtent > 0, m.halfExtent.isFinite else { return nil }
         let texels = SuburbMask.build(size: size, centre: m.centre, halfExtent: m.halfExtent, landUse: landUse, roads: roads)
         // Nothing residential in range: skip the upload.
         var any = false
