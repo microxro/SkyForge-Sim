@@ -1,6 +1,7 @@
 // SKYFORGE — Apache-2.0
 // Real-terrain CDLOD for the renderer. Each frame the quadtree picks the nodes for the camera. A node's mesh is built
 // from the region's height field the first time it is needed and kept in GPU buffers. Vertices morph in the shader.
+#if canImport(Metal)
 import Metal
 import SFQuickFlight
 import SFTerrainCore
@@ -107,3 +108,4 @@ final class CDLODTerrain {
         return b
     }
 }
+#endif
