@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-24.04
     container: swift:6.3
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: actions/cache@v4
@@ -54,7 +54,7 @@ jobs:
   apple:
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Select Xcode
@@ -111,7 +111,7 @@ jobs:
   frames:
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Select Xcode
@@ -154,7 +154,7 @@ jobs:
       REPO: ${{ github.repository }}
       SHA: ${{ github.sha }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Download frames
