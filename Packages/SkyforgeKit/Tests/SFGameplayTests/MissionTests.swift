@@ -44,7 +44,7 @@ import SFMath
         var rt = MissionRuntime(mission: oneObjectiveMission(wp, limit: 60), frame: testFrame, aircraftID: "x")
         rt.update(sample: airborne(t: 0), targets: [])
         rt.update(sample: airborne(t: 61), targets: [])
-        #expect(rt.status == .failed("Out of time") && rt.result?.medal == Medal.none)
+        #expect(rt.status == .failed("Out of time") && rt.result?.medal == MissionMedal.none)
 
         var crash = MissionRuntime(mission: oneObjectiveMission(wp), frame: testFrame, aircraftID: "x")
         crash.update(sample: FlightSample(time: 1, positionNED: .zero, velocityNED: .zero, heightAGL: 0, onGround: true,

@@ -5,7 +5,7 @@ import SFFlightModel
 @testable import SFGameplay
 
 @Suite struct ProgressTests {
-    private func result(_ id: String, success: Bool = true, score: Int = 200, medal: Medal = .silver, elapsed: Double = 90) -> MissionResult {
+    private func result(_ id: String, success: Bool = true, score: Int = 200, medal: MissionMedal = .silver, elapsed: Double = 90) -> MissionResult {
         MissionResult(missionID: id, aircraftID: "x", success: success, failureReason: nil, score: score, medal: medal,
                       elapsed: elapsed, objectivesCompleted: 1, breakdown: [:])
     }

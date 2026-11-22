@@ -5,7 +5,7 @@ import Foundation
 
 public struct MissionRecord: Sendable, Codable, Equatable {
     public var bestScore: Int = 0
-    public var bestMedal: Medal = .none
+    public var bestMedal: MissionMedal = .none
     public var attempts: Int = 0
     public var completions: Int = 0
     public var bestTime: Double?
@@ -19,7 +19,7 @@ public struct MissionRecord: Sendable, Codable, Equatable {
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         bestScore = try c.decodeIfPresent(Int.self, forKey: .bestScore) ?? 0
-        bestMedal = try c.decodeIfPresent(Medal.self, forKey: .bestMedal) ?? .none
+        bestMedal = try c.decodeIfPresent(MissionMedal.self, forKey: .bestMedal) ?? .none
         attempts = try c.decodeIfPresent(Int.self, forKey: .attempts) ?? 0
         completions = try c.decodeIfPresent(Int.self, forKey: .completions) ?? 0
         bestTime = try c.decodeIfPresent(Double.self, forKey: .bestTime)

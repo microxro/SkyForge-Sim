@@ -167,7 +167,7 @@ public struct MissionRuntime: Sendable {
         }
         let maxScore = Double(mission.maxBasePoints) * 1.2
         let frac = maxScore > 0 ? Double(score) / maxScore : 0
-        let medal: Medal = !success ? .none : frac >= 0.9 ? .gold : frac >= 0.75 ? .silver : frac >= 0.5 ? .bronze : .none
+        let medal: MissionMedal = !success ? .none : frac >= 0.9 ? .gold : frac >= 0.75 ? .silver : frac >= 0.5 ? .bronze : .none
         result = MissionResult(missionID: mission.id, aircraftID: aircraftID, success: success, failureReason: reason,
                                score: score, medal: medal, elapsed: elapsed, objectivesCompleted: earned.count,
                                kills: kills, breakdown: breakdown)

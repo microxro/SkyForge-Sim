@@ -228,10 +228,10 @@ public struct MissionDefinition: Sendable, Codable, Equatable, Identifiable {
     }
 }
 
-public enum Medal: Int, Sendable, Codable, Comparable, CaseIterable {
+public enum MissionMedal: Int, Sendable, Codable, Comparable, CaseIterable {
     case none = 0, bronze, silver, gold
 
-    public static func < (a: Medal, b: Medal) -> Bool { a.rawValue < b.rawValue }
+    public static func < (a: MissionMedal, b: MissionMedal) -> Bool { a.rawValue < b.rawValue }
     public var displayName: String {
         switch self { case .none: return "No medal"; case .bronze: return "Bronze"; case .silver: return "Silver"; case .gold: return "Gold" }
     }
@@ -243,14 +243,14 @@ public struct MissionResult: Sendable, Codable, Equatable {
     public var success: Bool
     public var failureReason: String?
     public var score: Int
-    public var medal: Medal
+    public var medal: MissionMedal
     public var elapsed: Double
     public var objectivesCompleted: Int
     /// Hostile aircraft destroyed during the mission.
     public var kills: Int
     public var breakdown: [String: Int]
 
-    public init(missionID: String, aircraftID: String, success: Bool, failureReason: String?, score: Int, medal: Medal,
+    public init(missionID: String, aircraftID: String, success: Bool, failureReason: String?, score: Int, medal: MissionMedal,
                 elapsed: Double, objectivesCompleted: Int, kills: Int = 0, breakdown: [String: Int]) {
         self.missionID = missionID; self.aircraftID = aircraftID; self.success = success
         self.failureReason = failureReason; self.score = score; self.medal = medal; self.elapsed = elapsed
