@@ -1012,7 +1012,8 @@ public enum WorldShaders {
                                    texture2d<float> imgDetail [[texture(7)]], texture2d<float> imgMid [[texture(8)]],
                                    texture2d<float> airportMask [[texture(9)]],
                                    texture2d<float> macroTex [[texture(10)]],
-                                   texture2d<float> suburbMask [[texture(11)]]) {
+                                   texture2d<float> suburbMask [[texture(11)]],
+                                   constant OWParams& ow [[buffer(6)]], constant OWWake* wakes [[buffer(7)]]) {
         float dist = length(in.rel);
         float3 dir = in.rel / max(dist, 1e-3);
         float3 n = normalize(in.normal);
@@ -1843,75 +1844,17 @@ public enum WorldShaders {
             vis = shield * (1.0 - cloudShade);
         }
         float3 col;
-        if (m == 1.0) {                                      // water
-            // Wind waves: two octaves of slope noise (14 m and 3.5 m), faded by pixel footprint so
-            // distant water calms to a mirror-like sheen instead of aliasing.
-            float2 ww = fieldW;
-            float wFar = saturate(1.0 - fieldFp * 2.5 / 14.0), wNear = saturate(1.0 - fieldFp * 2.5 / 3.5);
-            float2 slope = float2(groundNoise(ww + float2(0.7, 0.0), 14.0) - groundNoise(ww - float2(0.7, 0.0), 14.0),
-                                  groundNoise(ww + float2(0.0, 0.7), 14.0) - groundNoise(ww - float2(0.0, 0.7), 14.0)) * 0.9 * wFar
-                         + float2(groundNoise(ww + float2(0.2, 0.0) + 31.0, 3.5) - groundNoise(ww - float2(0.2, 0.0) + 31.0, 3.5),
-                                  groundNoise(ww + float2(0.0, 0.2) + 31.0, 3.5) - groundNoise(ww - float2(0.0, 0.2) + 31.0, 3.5)) * 0.7 * wNear;
-            // Swell: a 60 m octave on rotated axes, so the 14 m and 3.5 m wavelets no longer tile visibly
-            // across a near lake (art round 12).
-            float wSwell = saturate(1.0 - fieldFp * 2.5 / 60.0);
-            float2 sw = float2(0.8 * ww.x - 0.6 * ww.y, 0.6 * ww.x + 0.8 * ww.y) + 123.0;
-            slope += float2(groundNoise(sw + float2(2.0, 0.0), 60.0) - groundNoise(sw - float2(2.0, 0.0), 60.0),
-                            groundNoise(sw + float2(0.0, 2.0), 60.0) - groundNoise(sw - float2(0.0, 2.0), 60.0)) * 0.9 * wSwell;
-            // Wind: ruffled water beside calmer slicks (250 m and 1 km patches), at any distance, so a lake
-            // or a bay is not one uniform sheet.
-            float ruffle = 0.30 + 0.70 * smoothstep(-0.30, 0.40, groundNoise(ww + 211.0, 256.0) + 0.6 * groundNoise(ww + 97.0, 1024.0));
-            // Wind streaks: long bands of rougher water along one wind direction (~25 m across, ~300 m long),
-            // so a near lake seen steeply is not one uniform sheet (round 36, NZQN).
-            float2 wa = float2(0.94 * ww.x + 0.34 * ww.y, -0.34 * ww.x + 0.94 * ww.y);
-            ruffle = saturate(ruffle + 0.35 * smoothstep(0.15, 0.55, groundNoise(float2(wa.x * 0.08, wa.y) + 57.0, 25.0)));
-            slope *= 0.55 + 0.75 * ruffle;
-            float3 wn = normalize(float3(-slope, 1.0));
-            float3 r = reflect(dir, wn);
-            r.z = abs(r.z);
-            float cosT = max(0.0, -dot(dir, wn));
-            float fres = 0.02 + 0.98 * pow(1.0 - cosT, 5.0);
-            // The sky the surface mirrors. Wavelets too small to resolve still tilt the facets, so far water
-            // reflects sky from above the horizon line (deeper blue where it is ruffled, pale in the slicks).
-            float3 rr = normalize(float3(r.xy, max(r.z, 0.02) + 0.20 * ruffle * (1.0 - 0.6 * wNear)));
-            float3 skyR = skyEnv(u, rr);
-            // The needle lobe only where wavelets resolve, and capped: on sub-pixel wavelets it lit single
-            // pixels (fireflies that flicker in motion, art round 13).
-            float glitter = min(pow(max(0.0, dot(r, toSun)), 900.0) * 60.0 * wNear, 12.0) + pow(max(0.0, dot(r, toSun)), 60.0) * 0.6;
-            float3 refl = skyR + u.sunColour.rgb * glitter * vis;
-            float3 body = albedo * (ambient * 0.6 + u.sunColour.rgb * max(0.0, toSun.z) * 0.15);
-            // Sunlight scattered back out of the water column: the blue-green of clear water under sun.
-            body += float3(0.004, 0.030, 0.042) * u.sunColour.rgb * (max(0.0, toSun.z) * 0.55 * vis) * (0.6 + 0.8 * ruffle);
-            // Seen steeply the surface reflects little, so the body carries the look: wave facets toward the sun
-            // brighter, away darker, and ruffled water scatters more (round 35: NZQN near lake one uniform navy).
-            float2 sunH = toSun.xy / max(length(toSun.xy), 1e-3);
-            body *= clamp(1.0 - 2.6 * dot(slope, sunH), 0.5, 1.7) * (0.80 + 0.4 * ruffle);   // ×2.6 (1.4 sat below review, round 36)
-            // Sheen toward the sun from many unresolved facets, wider where the water is ruffled.
-            refl += u.sunColour.rgb * pow(max(0.0, dot(rr, toSun)), mix(260.0, 40.0, ruffle)) * (0.5 + 1.5 * ruffle) * vis;
-            if (imageryWater) {
-                // Shallows: a lighter green-turquoise body across the shore band (the mask's 0.6–0.9 rise), so
-                // a lake edge reads as depth rather than a navy cut-out (art round 11, NZQN).
-                float shallow = 1.0 - smoothstep(0.6, 0.97, shoreWm);   // wider band (round 12: read only at mid-distance)
-                float wide = 1.0 - smoothstep(0.55, 0.97, shoreWide);   // 60–120 m shelf (round 50)
-                float3 lit = ambient * 0.8 + u.sunColour.rgb * max(0.0, toSun.z) * 0.35;
-                body = mix(body, float3(0.05, 0.11, 0.10) * lit, shallow * 0.8);   // 0.6 (round 40: shore still abrupt)
-                body = mix(body, float3(0.035, 0.14, 0.13) * lit, wide * 0.65 * (1.0 - shallow * 0.8));   // turquoise shelf
-                body *= 1.0 + 0.2 * max(shallow, wide);            // near-shore water ~20 % lighter (round 50)
-                // Broad sheen toward the sun from many small wave facets (the 900/60 lobes are single glints).
-                refl += u.sunColour.rgb * pow(max(0.0, dot(r, toSun)), 12.0) * 0.12 * vis;
-            }
-            float reflScale = imageryWater ? 0.85 : 1.0;         // lakes mirror most of the sky (0.6 left them navy)
-            col = mix(body, refl * reflScale, min(1.0, 0.08 + fres * (imageryWater ? 0.9 : 1.0)));
-            // The same facets and streaks on the whole surface colour, reflection included (round 38: on the
-            // dark body alone the NZQN near lake's streaks and facets stayed invisible).
-            col *= clamp(1.0 - 1.6 * dot(slope, sunH), 0.7, 1.35) * mix(1.0, 0.82 + 0.36 * ruffle, wFar);
-            if (imageryWater) {
-                // Shoreline foam: the mask's transition band (wm 0.6–0.7), broken up by noise.
-                float band = 1.0 - smoothstep(0.6, 0.7, shoreWm);   // a thin line, not a white blob
-                float breakUp = smoothstep(-0.1, 0.4, groundNoise(ww + 77.0, 4.0)) * wNear + 0.35 * (1.0 - wNear);
-                float foam = band * breakUp * 0.18 * wNear;   // faint, and only where wavelets resolve (lakes have no surf)
-                col = mix(col, float3(0.85, 0.88, 0.88) * (u.sunColour.rgb * max(0.0, toSun.z) * vis + ambient), foam);
-            }
+        if (m == 1.0) {                                      // water (round 5: OceanShaders)
+            float h_ = 0.0, c_ = 0.0, sv_ = 0.0;
+            float3 nW = owWaveNormal(fieldW, ow, fieldFp, h_, c_, sv_);
+            float3 rr = reflect(dir, nW);
+            rr.z = abs(rr.z);
+            // Open ocean: deep, no shoreline. Imagery lakes: depth and waterline distance from the water mask.
+            float depthM = imageryWater ? mix(0.3, 12.0, smoothstep(0.6, 1.0, shoreWm)) : 200.0;
+            float shoreDistM = imageryWater ? (1.0 - smoothstep(0.6, 0.97, shoreWm)) * 6.0 : 1.0e3;
+            OWOut owo = owShade(fieldW, dir, toSun, ow, wakes, fieldFp, depthM, shoreDistM, float3(0.35, 0.30, 0.22),
+                                skyEnv(u, rr), u.sunColour.rgb, ambient, vis);
+            col = owo.colour;
         } else if (m == 2.0) {                               // foliage: wrap + back-scatter
             float wrap = max(0.0, ndl * 0.55 + 0.45);
             float back = pow(max(0.0, dot(dir, toSun)), 4.0) * 0.35;
