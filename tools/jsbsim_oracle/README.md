@@ -39,7 +39,7 @@ differs from the SF-1 by design in places).
 | `compare.py` | Bands, table, `RESULTS.md`, `oracle_results.json`. |
 | `whatif.py` | Single-coefficient sensitivity checks to confirm suspected causes. |
 | `check_mirror.py` | Diffs Swift-emitted JSON against the mirror. |
-| `SWIFT_EMITTER.md`, `OracleExportTests.swift.txt` | Spec and proposed Swift test that emits the same JSON from the real model. |
+| `SWIFT_EMITTER.md`, `OracleExportTests.swift` | Spec and proposed Swift test that emits the same JSON from the real model. |
 | `RESULTS.md`, `oracle_results.json`, `*_results.json` | Latest generated results. |
 
 ## Keeping the mirror honest
