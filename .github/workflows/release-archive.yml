@@ -27,7 +27,7 @@ jobs:
       matrix:
         platform: [ios, macos]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Select Xcode
         run: |
           if [ -d /Applications/Xcode_26.6.app ]; then sudo xcode-select -s /Applications/Xcode_26.6.app; fi
@@ -80,7 +80,7 @@ jobs:
             -exportOptionsPlist tools/appstore/ExportOptions-${{ matrix.platform }}.plist \
             -exportPath build/export-${{ matrix.platform }} $AUTH | tail -n 30
       - name: Upload archive
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: skyforge-${{ matrix.platform }}-${{ inputs.sign && 'signed' || 'unsigned' }}
           path: |
