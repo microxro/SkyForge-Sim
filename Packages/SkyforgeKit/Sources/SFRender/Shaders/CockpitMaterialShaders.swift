@@ -335,6 +335,18 @@ public enum CockpitMaterialShaders {
         float occ = mix(0.45, 1.0, saturate(winSun * 0.5 + 0.5));
         float3 sun = u.sunColour.rgb * winSun;
         float3 metalCol = ck_brushedMetal(n, t, v, toSun, f0, rough, aniso, sun, env * 0.6 + ambient * 0.5, ambient, occ);
+        // Rivets on flat panel plates (not rings or tubes): a 4 cm grid of 3 mm domes, each with a darker rim where
+        // the plate meets the dome. Plate coordinates are `along` and `across`, both in metres. The pattern fades
+        // out once a pixel is wider than a rivet, so it never shimmers at distance.
+        if (!ring && conf < 0.5) {
+            float2 rg = float2(along, across) / 0.04;
+            float2 rf = (fract(rg) - 0.5) * 0.04;                                 // metres from the nearest rivet centre
+            float rr = length(rf);
+            float seen = 1.0 - smoothstep(0.003, 0.006, fp);
+            float head = (1.0 - smoothstep(0.0025, 0.0032, rr)) * seen;
+            float rim = smoothstep(0.0032, 0.0040, rr) * (1.0 - smoothstep(0.0040, 0.0052, rr)) * seen;
+            metalCol *= (1.0 - 0.30 * rim) * (1.0 + 0.10 * head);
+        }
         // Dark `.metal` parts (the black throttle knob, switch caps) are anodised or moulded, not bare metal:
         // they take the dielectric lobe, so they are not mirrors that go black.
         float lum = dot(albedo, float3(0.2126, 0.7152, 0.0722));
