@@ -24,9 +24,11 @@ import Foundation
 
     @Test func missileHalvesThenDestroys() {
         var d = AircraftDamage()
-        #expect(!d.apply(source: .missile, zone: .airframe, amount: AircraftDamage.missileWarheadDamage))
+        let firstHit = d.apply(source: .missile, zone: .airframe, amount: AircraftDamage.missileWarheadDamage)
+        #expect(!firstHit)
         #expect(d.airframe == 0.5 && !d.destroyed)
-        #expect(d.apply(source: .missile, zone: .airframe, amount: AircraftDamage.missileWarheadDamage))
+        let secondHit = d.apply(source: .missile, zone: .airframe, amount: AircraftDamage.missileWarheadDamage)
+        #expect(secondHit)
         #expect(d.destroyed)
     }
 
@@ -35,16 +37,19 @@ import Foundation
         let before = d
         let amounts: [Double] = [-1.0, -0.001, Double.nan, Double.infinity, -Double.infinity]
         for amount in amounts {
-            #expect(!d.apply(source: .collision, zone: .airframe, amount: amount))
+            let rejected = d.apply(source: .collision, zone: .airframe, amount: amount)
+            #expect(!rejected)
             #expect(d == before)
         }
     }
 
     @Test func hitAfterDestructionChangesNothing() {
         var d = AircraftDamage()
-        #expect(d.apply(source: .collision, zone: .airframe, amount: AircraftDamage.collisionDamage))
+        let collisionHit = d.apply(source: .collision, zone: .airframe, amount: AircraftDamage.collisionDamage)
+        #expect(collisionHit)
         let wreck = d
-        #expect(!d.apply(source: .cannon, zone: .engine, amount: 0.5))
+        let ignoredHit = d.apply(source: .cannon, zone: .engine, amount: 0.5)
+        #expect(!ignoredHit)
         #expect(d == wreck)
         #expect(d.lastSource == .collision)
     }
@@ -53,7 +58,8 @@ import Foundation
         var d = AircraftDamage()
         var hits = 0
         while !d.engineOut && hits < 100 {
-            #expect(!d.apply(source: .cannon, zone: .engine, amount: AircraftDamage.cannonRoundDamage))
+            let engineHit = d.apply(source: .cannon, zone: .engine, amount: AircraftDamage.cannonRoundDamage)
+            #expect(!engineHit)
             hits += 1
         }
         #expect(d.engineOut && d.thrustFactor == 0)

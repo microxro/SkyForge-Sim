@@ -48,9 +48,11 @@ import SFMath
 
     @Test func lastFlareThenExhausted() {
         var cm = CountermeasureSystem(flares: 1, chaff: 0)
-        #expect(cm.update(dt: dt, ownship: own, input: CountermeasureInput(flare: true)) == [.deployed(.flare)])
+        let firstEvents = cm.update(dt: dt, ownship: own, input: CountermeasureInput(flare: true))
+        #expect(firstEvents == [.deployed(.flare)])
         _ = cm.update(dt: dt, ownship: own, input: CountermeasureInput())
-        #expect(cm.update(dt: dt, ownship: own, input: CountermeasureInput(flare: true)) == [.exhausted(.flare)])
+        let secondEvents = cm.update(dt: dt, ownship: own, input: CountermeasureInput(flare: true))
+        #expect(secondEvents == [.exhausted(.flare)])
         #expect(cm.flares == 0 && cm.decoys.count == 1)
     }
 
