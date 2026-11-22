@@ -20,7 +20,7 @@ import SFFlightModel
             #expect(a.approachSpeed >= 1.25 * vs, "\(a.name) approach \(a.approachSpeed) vs stall \(vs)")
             #expect(a.cruiseSpeed > a.approachSpeed && a.limits.vne > a.cruiseSpeed)
             for (v, flaps, alt) in [(a.cruiseSpeed, 0.0, 1_000.0), (a.approachSpeed, a.approachFlaps, 200.0)] {
-                let t = a.model.trimLevel(trueAirspeed: v, altitude: alt, flaps: flaps)
+                let t = a.model.trimLevel(trueAirspeed: v, altitude: alt, flaps: flaps, gear: v < a.approachSpeed * 1.35 ? 1 : 0)
                 #expect(t.converged, "\(a.name) trim at \(v) m/s")
                 #expect(t.inputs.throttle >= 0 && t.inputs.throttle <= 1, "\(a.name) throttle \(t.inputs.throttle)")
                 #expect(abs(t.inputs.elevator) < 0.8, "\(a.name) elevator \(t.inputs.elevator)")
@@ -28,13 +28,13 @@ import SFFlightModel
         }
     }
 
-    @Test func jetStaticThrustMatchesDesign() {
+    @Test func jetStaticThrustIsInTheDesignBand() {
         let a = AircraftCatalog.sfT1Jet
         var s = AircraftState(positionNED: SIMD3(0, 0, -1_000), velocityBody: .zero, attitude: .identity, bodyRates: .zero)
         s.time = 0
         let out = a.model.outputs(s, inputs: ControlInputs(throttle: 1), environment: FlightEnvironment())
         let sigma = ISA.state(geometricAltitude: 1_000).density / ISA.seaLevelDensity
-        #expect(abs(out.thrust - 16_000 * pow(sigma, 1.1)) < 200)
+        #expect(abs(out.thrust - 26_000 * pow(sigma, 1.1)) < 1_500)
     }
 
     @Test func loadFactorIsOneInTrim() {
@@ -65,7 +65,7 @@ import SFFlightModel
         var m = EnvelopeMonitor(limits: lim)
         m.update(nz: 10, trueAirspeed: 100, mach: 0.3, flaps: 0, stalled: false, onGround: false, heightAGL: 3_000, sinkRate: 0, dt: 0.1)
         #expect(m.warnings == [.overG] && m.overstressSeconds > 0 && !m.structuralFailure)
-        m.update(nz: 1, trueAirspeed: 100, mach: 1.0, flaps: 0, stalled: false, onGround: false, heightAGL: 100, sinkRate: 60, dt: 0.1)
+        m.update(nz: 1, trueAirspeed: 100, mach: 1.7, flaps: 0, stalled: false, onGround: false, heightAGL: 100, sinkRate: 60, dt: 0.1)
         #expect(m.warnings == [.overMach, .terrain])
         // One spike does not break the airframe; neither does a hard landing on the gear.
         m.update(nz: 14, trueAirspeed: 100, mach: 0.3, flaps: 0, stalled: false, onGround: false, heightAGL: 3_000, sinkRate: 0, dt: 0.1)

@@ -90,7 +90,8 @@ public struct GameplaySession: Sendable {
         }
         let p = frame.ned(along: spawn.along, right: spawn.right, up: spawn.up)
         // Trim in still air at this altitude, then add the wind so the airspeed stays what was asked.
-        let trim = aircraft.model.trimLevel(trueAirspeed: speed, altitude: -p.z, flaps: spawn.flaps)
+        let gearDown = speed < aircraft.approachSpeed * 1.35   // matches the automatic gear in `makeControlFilter`
+        let trim = aircraft.model.trimLevel(trueAirspeed: speed, altitude: -p.z, flaps: spawn.flaps, gear: gearDown ? 1 : 0)
         let attitude = Quaternion(roll: 0, pitch: trim.alpha, yaw: heading)
         let windBody = attitude.conjugate.rotate(wind)
         var s = AircraftState(positionNED: p, velocityBody: trim.state.velocityBody + windBody,

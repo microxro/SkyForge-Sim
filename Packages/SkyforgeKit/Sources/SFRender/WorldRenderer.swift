@@ -9,6 +9,7 @@ import SFPreview
 import SFAtmosphere
 import SFQuickFlight
 import SFWorldGen
+import SFWeather
 
 struct WorldUniforms {
     var viewProj: simd_float4x4
@@ -39,6 +40,7 @@ struct WorldUniforms {
     var runwayA: SIMD4<Float>         // low threshold x, y (region metres), direction x, y
     var runwayB: SIMD4<Float>         // length, width, low-end number, 1 if drawn
     var airportRect: SIMD4<Float>     // airport mask rectangle: centre x, y, half extent (region m), 1 if bound
+    var fogParams: SIMD4<Float>       // x = fog extinction beyond the clear-air haze (1/m, 0 = none), yzw unused
 }
 
 /// 16-byte vertex matching `TerrainVertex` (position + snorm normal; w = −127 marks bark).
@@ -211,6 +213,12 @@ public final class WorldRenderer {
     public var oceanWindDirection: Float = 0
     public var oceanTier: OceanTier = .high
     public var oceanWakes: [OceanWake] = []
+    /// Weather presentation (precipitation overlay, lightning, fog). `.clear` (the default) changes nothing: no overlay
+    /// pass and zero extra fog.
+    public var weatherEffects: WeatherEffects = .clear
+    /// True airspeed (m/s); rain streaks slant and speed up with it.
+    public var weatherAirspeed: Double = 0
+    private var weatherRenderer: WeatherRenderer?
     /// Contrast-adaptive sharpening of the final frame (0 = off; applied in the anti-aliasing pass).
     public var sharpen: Float = 0.5
     private var waterTex: MTLTexture?
@@ -251,7 +259,7 @@ public final class WorldRenderer {
     /// Sun shadows (two cascades). Low-tier devices may turn this off.
     public var shadowsEnabled = true
     /// Volumetric cumulus layer (coverage 0 disables the cloud passes).
-    public var clouds: CloudLayer = .clear
+    public var clouds: SFAtmosphere.CloudLayer = .clear
     /// Cloud march steps per ray (device tier knob).
     public var cloudSteps = 64
     /// Display grade strength (gentle filmic contrast and vibrance after the tone map; 0 = off).
@@ -900,6 +908,14 @@ public final class WorldRenderer {
                                        up: SIMD3<Float>(Float(c.up.x), Float(c.up.y), Float(c.up.z)),
                                        toSun: sunC, directShare: direct)
         }
+        // Precipitation, wet-air veil and lightning over the HDR scene, after the cloud composite and before post.
+        let lightning = weatherEffects.lightning(at: time)
+        if WeatherRenderer.needsOverlay(weatherEffects, lightning: lightning) {
+            if weatherRenderer == nil { weatherRenderer = try WeatherRenderer(device: device, colorFormat: .rgba16Float) }
+            let amb = (lighting.ambientSky + lighting.ambientGround) * 0.5
+            try weatherRenderer?.encode(cmd: cmd, colour: scene, effects: weatherEffects, time: time, airspeed: weatherAirspeed,
+                                        lightning: lightning, ambient: amb)
+        }
         func pass(_ t: MTLTexture, load: MTLLoadAction, label: String, _ body: (MTLRenderCommandEncoder) -> Void) throws {
             let pd = MTLRenderPassDescriptor()
             pd.colorAttachments[0].texture = t
@@ -1203,6 +1219,8 @@ public final class WorldRenderer {
             uRunwayA = SIMD4(Float(rw.threshold.x), Float(rw.threshold.y), Float(rw.direction.x), Float(rw.direction.y))
             uRunwayB = SIMD4(Float(rw.length), Float(rw.width), Float(rw.lowNumber), 1)
         }
+        // Fog beyond the clear-air haze the aerial-perspective tables already hold (Koschmieder, `WeatherEffects`).
+        let uFog = SIMD4<Float>(Float(max(0, weatherEffects.fogExtinction - WeatherEffects.clear.fogExtinction)), 0, 0, 0)
         func uniforms(model: simd_float4x4) -> WorldUniforms {
             WorldUniforms(viewProj: viewProj, model: model, sunDir: SIMD4<Float>(toSun, sunAz), sunColour: SIMD4<Float>(L.sunColour, L.exposure),
                           ambientSky: SIMD4<Float>(L.ambientSky, dims.w), ambientGround: SIMD4<Float>(L.ambientGround, fieldSeed),
@@ -1211,7 +1229,7 @@ public final class WorldRenderer {
                           cascadeSplits: uSplits, cascadeTexel: uTexel, cascadeDepth: uDepth,
                           cameraPos: uCameraPos, cameraLocal: uCameraLocal, imageryNear: uNear, imageryFar: uFar,
                           clouds: cloudLayer, fieldGrid: uFieldGrid, imageryDetail: uDetail, imageryMid: uMid,
-                          skyZenith: uZenith, quality: uQuality, runwayA: uRunwayA, runwayB: uRunwayB, airportRect: airportRect)
+                          skyZenith: uZenith, quality: uQuality, runwayA: uRunwayA, runwayB: uRunwayB, airportRect: airportRect, fogParams: uFog)
         }
         if let e = environment {
             let o = e.origin - c.position

@@ -275,11 +275,18 @@ public struct FlightModel: Sendable {
         var f = SIMD3<Double>(0, 0, 0), m = SIMD3<Double>(0, 0, 0)
         var wow = false
         // Gear up on the ground: the aircraft slides on its belly (shallow, scraping contact points).
-        let belly = config.retractableGear && input.gear < 0.95
+        // The contact points blend smoothly from belly to wheels as the gear travels (0.1 … 0.95), so
+        // toggling the gear on the ground does not pop the aircraft.
+        let gearTravel = config.retractableGear ? clamp((input.gear - 0.1) / 0.85, 0, 1) : 1.0
+        let belly = gearTravel < 1
         let mu = 0.85 * (env.surfaceFriction.isFinite ? min(1.2, max(0.02, env.surfaceFriction)) : 1)
         for legFull in config.gear {
             var leg = legFull
-            if belly { leg.position = SIMD3(legFull.position.x, legFull.position.y * 0.3, legFull.position.z * 0.45); leg.steerable = false; leg.braked = false }
+            if belly {
+                let k = gearTravel
+                leg.position = SIMD3(legFull.position.x, legFull.position.y * (0.3 + 0.7 * k), legFull.position.z * (0.45 + 0.55 * k))
+                leg.steerable = false; leg.braked = false
+            }
             let pNED = s.positionNED + s.attitude.rotate(leg.position)
             let groundDown = -env.terrain.elevation(north: pNED.x, east: pNED.y)
             let compression = pNED.z - groundDown

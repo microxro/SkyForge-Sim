@@ -39,7 +39,7 @@ public struct AeroCoefficients: Sendable, Codable, Equatable {
     public var cnBeta: Double = 0.065
     public var cnP: Double = -0.03
     public var cnR: Double = -0.099
-    public var cnAileron: Double = -0.053      // NOTE: JSBSim oracle suggests -0.0053 (10x slip); changing it needs instrument goldens re-blessed
+    public var cnAileron: Double = -0.0053     // was -0.053: a 10x slip found by the JSBSim oracle (c172p: -0.0053)
     public var cnRudder: Double = -0.0657
 
     public init() {}

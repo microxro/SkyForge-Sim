@@ -43,6 +43,7 @@ public enum WorldShaders {
         float4 runwayA;           // low threshold x, y (region metres), direction x, y (unit, toward the high end)
         float4 runwayB;           // length, width (m), low-end number (0 = none), 1 if a runway is drawn
         float4 airportRect;       // airport mask rectangle: centre x, y, half extent (region m), 1 if the mask is bound
+        float4 fogParams;         // x = fog extinction beyond the clear-air haze (1/m, 0 = none)
     };
 
     struct BuildingVertex { packed_float3 position; char4 normal; uchar4 colour; packed_float2 uv; uchar4 style; };
@@ -2070,6 +2071,14 @@ public enum WorldShaders {
             float3 hzc = u.skyHorizon.rgb * 0.92;
             hzc = mix(float3(dot(hzc, float3(0.2126, 0.7152, 0.0722))), hzc, mix(0.5, 0.7, smoothstep(5000.0, 14000.0, dist)));
             col = mix(col, hzc, hz);
+        }
+        if (u.fogParams.x > 0.0) {
+            // Weather fog (METAR visibility): Beer-Lambert transmittance toward the desaturated horizon colour, on top
+            // of the table's clear-air aerial perspective. Zero extinction (the default) skips it entirely.
+            float ft = exp(-u.fogParams.x * dist);
+            float3 fogc = u.skyHorizon.rgb * 0.92;
+            fogc = mix(float3(dot(fogc, float3(0.2126, 0.7152, 0.0722))), fogc, 0.5);
+            col = mix(fogc, col, ft);
         }
         return float4(col * u.sunColour.w, 1.0);    // linear HDR (× exposure); tone-mapped in post
     }

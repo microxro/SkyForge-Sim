@@ -104,21 +104,12 @@ public enum AircraftCatalog {
         cruiseSpeed: 46, approachSpeed: 34, rotateSpeed: 28, approachFlaps: 0.5,
         flyByWire: false, armament: [], unlock: .none)
 
-    public static let sfCruiser: PlaneSpec = {
-        var c = AircraftConfig.sf1Trainer
-        c.id = "org.skyforge.sfc"; c.name = "SF-C Cruiser"
-        c.mass = 1_150; c.inertia = SIMD3(1_480, 2_100, 3_070)
-        c.wingArea = 17.0; c.chord = 1.55
-        c.maxPower = 150_000
-        c.aero.cD0 = 0.027; c.aero.cLMaxClean = 1.5
-        c.gear = fleetGear(massFactor: 1.15, nose: SIMD3(1.35, 0, 1.30), main: SIMD3(-0.30, 1.15, 1.30))
-        return PlaneSpec(
-            config: c, role: .tourer,
-            summary: "Four-seat tourer with more power and a faster cruise. Stable and efficient.",
-            limits: EnvelopeLimits(vne: 74, mmo: 0.3, vfe: 40, nzMax: 3.8, nzMin: -1.5, alphaLimit: 0.30),
-            cruiseSpeed: 52, approachSpeed: 36, rotateSpeed: 29, approachFlaps: 0.5,
-            flyByWire: false, armament: [], unlock: .none)
-    }()
+    public static let sfCruiser = PlaneSpec(
+        config: .sf2Cruiser, role: .tourer,
+        summary: "Retractable-gear tourer with a constant-speed prop. Stable and efficient.",
+        limits: EnvelopeLimits(vne: 74, mmo: 0.3, vfe: 40, nzMax: 3.8, nzMin: -1.5, alphaLimit: 0.30),
+        cruiseSpeed: 52, approachSpeed: 38, rotateSpeed: 30, approachFlaps: 0.5,
+        flyByWire: false, armament: [], unlock: .none)
 
     public static let sfAerobat: PlaneSpec = {
         var c = AircraftConfig.sf1Trainer
@@ -138,46 +129,19 @@ public enum AircraftCatalog {
             flyByWire: false, armament: [], unlock: .mission("first-flight"))
     }()
 
-    public static let sfT1Jet: PlaneSpec = {
-        var c = AircraftConfig.sf1Trainer
-        c.id = "org.skyforge.sft1"; c.name = "SF-T1 Jet Trainer"
-        c.mass = 3_500; c.inertia = SIMD3(3_400, 11_500, 13_800)
-        c.wingArea = 17.0; c.wingSpan = 10.5; c.chord = 1.7
-        // 16 kN static thrust, flat to V0 = 220 m/s: k = eta/V0, P = T0/k.
-        let k = 0.8 / 220.0
-        c.staticThrustPerWatt = k; c.maxPower = 16_000 / k
-        c.elevatorMax = 25 * .pi / 180; c.aileronMax = 12 * .pi / 180
-        c.aero.cL0 = 0.15; c.aero.cLMaxClean = 1.4; c.aero.cLMaxFlaps = 1.9
-        c.aero.cD0 = 0.024; c.aero.oswald = 0.8; c.aero.cmAlpha = -0.9
-        c.gear = fleetGear(massFactor: 3.5, nose: SIMD3(2.6, 0, 1.55), main: SIMD3(-0.45, 1.3, 1.55))
-        return PlaneSpec(
-            config: c, role: .jetTrainer,
-            summary: "Twin-seat advanced jet trainer. Fast, agile, with a fly-by-wire g limiter.",
-            limits: EnvelopeLimits(vne: 226, mmo: 0.85, vfe: 100, nzMax: 7.3, nzMin: -3.0, alphaLimit: 0.26),
-            cruiseSpeed: 150, approachSpeed: 62, rotateSpeed: 60, approachFlaps: 1.0,
-            flyByWire: true, armament: [.cannon], unlock: .mission("pattern-landing"))
-    }()
+    public static let sfT1Jet = PlaneSpec(
+        config: .sf5Jet, role: .jetTrainer,
+        summary: "Twin-seat advanced jet trainer. Fast, agile, with a fly-by-wire g limiter.",
+        limits: EnvelopeLimits(vne: 226, mmo: 0.85, vfe: 100, nzMax: 7.3, nzMin: -3.0, alphaLimit: 0.26),
+        cruiseSpeed: 150, approachSpeed: 66, rotateSpeed: 62, approachFlaps: 1.0,
+        flyByWire: true, armament: [.cannon], unlock: .mission("pattern-landing"))
 
-    public static let sfF1Fighter: PlaneSpec = {
-        var c = AircraftConfig.sf1Trainer
-        c.id = "org.skyforge.sff1"; c.name = "SF-F1 Interceptor"
-        c.mass = 11_000; c.inertia = SIMD3(12_000, 65_000, 73_000)
-        c.wingArea = 38.0; c.wingSpan = 11.5; c.chord = 3.8
-        // 90 kN static thrust, flat to V0 = 300 m/s.
-        let k = 0.8 / 300.0
-        c.staticThrustPerWatt = k; c.maxPower = 90_000 / k
-        c.elevatorMax = 25 * .pi / 180; c.aileronMax = 10 * .pi / 180
-        c.aero.cL0 = 0.1; c.aero.cLAlpha = 3.6; c.aero.cLElevator = 0.35
-        c.aero.cLMaxClean = 1.3; c.aero.cLMaxFlaps = 1.6
-        c.aero.cD0 = 0.024; c.aero.oswald = 0.7; c.aero.cmAlpha = -0.8
-        c.gear = fleetGear(massFactor: 11, nose: SIMD3(4.5, 0, 1.9), main: SIMD3(-0.8, 1.5, 1.9))
-        return PlaneSpec(
-            config: c, role: .fighter,
-            summary: "Single-seat interceptor: 90 kN thrust, +9 g, cannon and heat-seeking missiles.",
-            limits: EnvelopeLimits(vne: 330, mmo: 0.95, vfe: 120, nzMax: 9.0, nzMin: -3.0, alphaLimit: 0.30),
-            cruiseSpeed: 220, approachSpeed: 72, rotateSpeed: 72, approachFlaps: 1.0,
-            flyByWire: true, armament: [.cannon, .heatMissile], unlock: .mission("wingman-formation"))
-    }()
+    public static let sfF1Fighter = PlaneSpec(
+        config: .sf9Fighter, role: .fighter,
+        summary: "Single-seat supersonic interceptor: afterburner, +9 g, cannon and heat-seeking missiles.",
+        limits: EnvelopeLimits(vne: 450, mmo: 1.6, vfe: 120, nzMax: 9.0, nzMin: -3.0, alphaLimit: 0.30),
+        cruiseSpeed: 220, approachSpeed: 80, rotateSpeed: 80, approachFlaps: 1.0,
+        flyByWire: true, armament: [.cannon, .heatMissile], unlock: .mission("wingman-formation"))
 
     public static let all: [PlaneSpec] = [sf1Trainer, sfCruiser, sfAerobat, sfT1Jet, sfF1Fighter]
 

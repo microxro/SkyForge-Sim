@@ -3,7 +3,7 @@
 Purpose: run the **real** `FlightModel` through the same scenarios as the Python mirror and JSBSim, so the
 comparison no longer depends on `sf1_mirror.py` being a faithful port.
 
-* Proposed test source: `OracleExportTests.swift.txt` (copy to
+* Proposed test source: `OracleExportTests.swift` (copy to
   `Packages/SkyforgeKit/Tests/SFFlightModelTests/OracleExportTests.swift`; it was written without a Swift
   toolchain and is not compiled yet). Swift Testing (`import Testing`), `@testable import SFFlightModel`.
 * Enabled only when `SF_ORACLE_OUT` is set (`@Test(.enabled(if:))`), so normal `swift test` runs skip it.

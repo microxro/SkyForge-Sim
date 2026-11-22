@@ -28,6 +28,24 @@ public struct CareerHubView: View {
     }
 }
 
+/// Loads the saved career, shows the hub and writes purchases back to disk.
+public struct CareerScreen: View {
+    @State private var career = CareerState()
+    @State private var loadError: String?
+    private let store = SaveStore(url: SaveStore.defaultURL)
+    public init() {}
+    public var body: some View {
+        Group {
+            if let loadError { Text(loadError).padding() }
+            else { CareerHubView(career: $career) { try? store.save(career) } }
+        }
+        .navigationTitle("Pilot career")
+        .task {
+            do { career = try store.load() } catch { loadError = "Your career file could not be read, so it was left untouched." }
+        }
+    }
+}
+
 struct CareerProfileView: View {
     let career: CareerState
     var body: some View {
