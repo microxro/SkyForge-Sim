@@ -120,6 +120,18 @@ import SFFlightModel
         #expect(s.state.isFinite)
     }
 
+    @Test func retractableGearFollowsTheAirspeedRule() {
+        // On the runway the jet's gear stays down; spawned in the air at cruise (above the gear-down speed) it stays up.
+        let onRunway = GameplaySession(world: world, aircraft: AircraftCatalog.sfT1Jet)
+        #expect(onRunway.gearPosition == 1)
+        var m = oneObjectiveMission(.flyTo(MissionWaypoint(9_000, 0, 800)))
+        m.spawn = MissionSpawn(along: 3_000, up: 800, speed: .cruise)
+        var airborne = GameplaySession(world: world, aircraft: AircraftCatalog.sfT1Jet, mission: m)
+        #expect(airborne.gearPosition == 0)
+        for _ in 0..<(120 * 2) { airborne.step(PilotControls()) }
+        #expect(airborne.gearPosition == 0, "gear \(airborne.gearPosition) at \(airborne.trueAirspeed) m/s")
+    }
+
     @Test func crashEndsTheMission() {
         // Nose-down with no power from 100 m: hits the ground well below the overspeed limit.
         let m = oneObjectiveMission(.flyTo(MissionWaypoint(9_000, 0, 100)))

@@ -45,6 +45,8 @@ public struct GameplaySession: Sendable {
     private let controlFilter: ControlFilter?
     private var accumulator = 0.0
     private var trimmedInputs = ControlInputs()
+    /// Landing-gear travel for retractable aircraft; `ControlInputs.gear` follows its position.
+    private var gear = GearActuator()
     private var crashReported = false
 
     /// Starts a mission, or a free flight on the runway when `mission` is nil.
@@ -66,8 +68,12 @@ public struct GameplaySession: Sendable {
         state = s
         trimmedInputs = trimmed
         effectiveInputs = trimmed
+        gear = GearActuator(position: trimmed.gear)
         onGround = spawn.onRunway
     }
+
+    /// Gear position (0 retracted … 1 extended) as it travels; 1 for fixed-gear aircraft.
+    public var gearPosition: Double { gear.position }
 
     /// Inputs that hold the spawn trim (throttle and elevator) until the pilot's first input.
     public var spawnTrim: ControlInputs { trimmedInputs }
@@ -90,7 +96,7 @@ public struct GameplaySession: Sendable {
         }
         let p = frame.ned(along: spawn.along, right: spawn.right, up: spawn.up)
         // Trim in still air at this altitude, then add the wind so the airspeed stays what was asked.
-        let gearDown = speed < aircraft.approachSpeed * 1.35   // matches the automatic gear in `makeControlFilter`
+        let gearDown = speed < GameplayDirector.gearDownSpeed(for: aircraft)
         let trim = aircraft.model.trimLevel(trueAirspeed: speed, altitude: -p.z, flaps: spawn.flaps, gear: gearDown ? 1 : 0)
         let attitude = Quaternion(roll: 0, pitch: trim.alpha, yaw: heading)
         let windBody = attitude.conjugate.rotate(wind)
@@ -140,7 +146,13 @@ public struct GameplaySession: Sendable {
     public mutating func step(_ controls: PilotControls) {
         let dt = Self.dt
         var input = controls.flight.sanitized
+        input.gear = gear.position
         let before = model.forcesAndMoments(state, input, environment).2
+        if aircraft.config.retractableGear {
+            // Automatic gear: commanded down on the ground or below the gear-down speed, and it travels over time.
+            let commandDown = before.weightOnWheels || before.trueAirspeed < GameplayDirector.gearDownSpeed(for: aircraft)
+            input.gear = gear.update(commandDown: commandDown, dt: dt)
+        }
         if let filter = controlFilter { input = filter(input, state, before) }
         effectiveInputs = input
         let sinkBefore = state.velocityNED.z

@@ -46,22 +46,20 @@ public struct GameplayDirector: Sendable {
         if let m = mission { runtime = MissionRuntime(mission: m, frame: frame, aircraftID: aircraft.id) }
     }
 
-    /// Control path for the flight model: the fly-by-wire limiter where fitted, and automatic gear for
-    /// retractable aircraft (down on the ground or below 1.35x approach speed, up otherwise). Nil when neither applies.
+    /// Airspeed (m/s) below which a retractable aircraft's gear is commanded down: 1.35x approach speed.
+    public static func gearDownSpeed(for aircraft: PlaneSpec) -> Double { aircraft.approachSpeed * 1.35 }
+
+    /// Fly-by-wire limiter for the flight model's control path; nil for aircraft with direct controls.
+    /// Gear is not set here: the session's `GearActuator` moves it over time and feeds `ControlInputs.gear`.
     public static func makeControlFilter(for aircraft: PlaneSpec) -> ControlFilter? {
-        let retractable = aircraft.config.retractableGear
-        guard aircraft.flyByWire || retractable else { return nil }
-        let law = aircraft.flyByWire ? FlightControlLaw(limits: aircraft.limits, config: aircraft.config) : nil
+        guard aircraft.flyByWire else { return nil }
+        let law = FlightControlLaw(limits: aircraft.limits, config: aircraft.config)
         let config = aircraft.config
-        let gearSpeed = aircraft.approachSpeed * 1.35
         return { input, state, out in
-            var u = input.sanitized
-            if retractable { u.gear = (out.weightOnWheels || out.trueAirspeed < gearSpeed) ? 1 : 0 }
-            guard let law else { return u }
             let rho = ISA.state(geometricAltitude: state.altitude).density
             let q = 0.5 * rho * out.trueAirspeed * out.trueAirspeed
             let nz = EnvelopeMath.loadFactor(state: state, outputs: out, config: config)
-            return law.apply(u, qbar: q, nz: nz)
+            return law.apply(input, qbar: q, nz: nz)
         }
     }
 

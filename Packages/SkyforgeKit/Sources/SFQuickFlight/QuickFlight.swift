@@ -464,6 +464,10 @@ public struct QuickFlightSession: Sendable {
     public static let dt = 1.0 / 120
     /// Optional control filter applied to the pilot's inputs before each step (a fly-by-wire limiter).
     public var inputFilter: (@Sendable (ControlInputs, AircraftState, FlightOutputs) -> ControlInputs)?
+    /// Airspeed (m/s) below which a retractable aircraft's gear is commanded down; nil leaves the gear alone.
+    public var gearDownBelowSpeed: Double?
+    /// Landing-gear travel: `inputs.gear` follows its position over time for retractable aircraft.
+    public private(set) var gearActuator = GearActuator()
     /// Lowest point of the gear below the centre of gravity (m).
     public var gearHeight: Double { aircraft.gear.map { $0.position.z }.max() ?? 1.25 }
 
@@ -497,6 +501,7 @@ public struct QuickFlightSession: Sendable {
             state = s
             inputs = trim.inputs
         }
+        gearActuator = GearActuator(position: inputs.gear)
     }
 
     public var data: InstrumentData { instruments.data }
@@ -535,6 +540,11 @@ public struct QuickFlightSession: Sendable {
     /// One fixed simulation step with the current inputs.
     public mutating func step() {
         var o = model.outputs(state, inputs: inputs, environment: environment)
+        if aircraft.retractableGear, let downBelow = gearDownBelowSpeed {
+            let commandDown = o.weightOnWheels || o.trueAirspeed < downBelow
+            inputs.gear = gearActuator.update(commandDown: commandDown, dt: Self.dt)
+            o = model.outputs(state, inputs: inputs, environment: environment)
+        }
         var applied = inputs
         if let filter = inputFilter { applied = filter(inputs, state, o); o = model.outputs(state, inputs: applied, environment: environment) }
         lastOutputs = o
@@ -555,6 +565,7 @@ public struct QuickFlightSession: Sendable {
     public mutating func place(state s: AircraftState, inputs i: ControlInputs) {
         state = s
         inputs = i.sanitized
+        gearActuator = GearActuator(position: inputs.gear, travelTime: gearActuator.travelTime)
         accumulator = 0
     }
 

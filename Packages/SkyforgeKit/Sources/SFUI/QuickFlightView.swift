@@ -118,6 +118,7 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
             s.place(state: state, inputs: inputs)
         }
         s.inputFilter = filter
+        s.gearDownBelowSpeed = GameplayDirector.gearDownSpeed(for: spec)
         return (s, GameplayDirector(aircraft: spec, frame: frame, mission: mission))
     }
 
