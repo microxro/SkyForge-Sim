@@ -7,6 +7,8 @@ import SFGameplayUI
 
 struct GameplayMenuView: View {
     let onStart: (PlaneSpec, MissionDefinition?) -> Void
+
+    init(onStart: @escaping (PlaneSpec, MissionDefinition?) -> Void) { self.onStart = onStart }
     @State private var progress = ProgressStore(url: ProgressStore.defaultURL).load()
     @State private var aircraftID = ProgressStore(url: ProgressStore.defaultURL).load().selectedAircraftID
     @State private var tab = 0

@@ -66,7 +66,7 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
     /// SkyWorld detail for this device tier (used directly, or as the offline fallback).
     private var skyWorldDetail: QuickFlightDetail = .phone
 
-    private(set) var world: any FlightWorld = QuickFlightWorld()
+    private(set) var world: any FlightWorld
     private(set) var session: QuickFlightSession
     /// Aircraft, AI, weapons and mission logic that run on top of the flight session.
     private(set) var director: GameplayDirector
@@ -94,10 +94,11 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
         self.location = location
         spec = aircraft
         self.mission = mission
-        controlFilter = GameplayDirector.makeControlFilter(for: aircraft)
+        let filter = GameplayDirector.makeControlFilter(for: aircraft)
+        controlFilter = filter
         let provisional = QuickFlightWorld()
         world = provisional
-        let built = Self.makeFlight(world: provisional, start: start, spec: aircraft, mission: mission, filter: controlFilter)
+        let built = Self.makeFlight(world: provisional, start: start, spec: aircraft, mission: mission, filter: filter)
         session = built.session
         director = built.director
         super.init()
