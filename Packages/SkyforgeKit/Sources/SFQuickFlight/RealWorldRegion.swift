@@ -135,6 +135,9 @@ public struct RealWorldRegion: FlightWorld {
 
     public func height(_ x: Double, _ y: Double) -> Double { terrainField.height(x, y) }
 
+    /// Height outside the near square (the mid and far mosaics blended); see `TerrainHeightField`.
+    func outerHeight(_ x: Double, _ y: Double) -> Double { terrainField.outerHeight(x, y) }
+
     /// Loads an airport region (network once, then the content-store cache).
     /// `bundledBuildings`: use the showcase pack's building footprints when no live OpenStreetMap data came back.
     /// `bundledLandCover`: use the showcase pack's land cover grid (water at any distance).
