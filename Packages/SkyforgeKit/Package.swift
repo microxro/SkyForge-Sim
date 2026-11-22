@@ -29,6 +29,7 @@ let package = Package(
         .target(name: "SFImagery", dependencies: ["SFMath", "SFContent", "SFTerrainCore"]),
         .target(name: "SFInstruments", dependencies: ["SFMath", "SFAtmosphere", "SFFlightModel"]),
         .target(name: "SFQuickFlight", dependencies: ["SFMath", "SFAtmosphere", "SFWeather", "SFFlightModel", "SFInstruments", "SFInput", "SFWorldGen", "SFPreview", "SFImagery", "SFNavData", "SFTerrainCore", "SFContent"], resources: [.copy("Resources")]),
+        .target(name: "SFCareer", dependencies: ["SFMath"]),
         .target(name: "SFATC", dependencies: ["SFMath", "SFWeather"]),
         .target(name: "SFSim", dependencies: ["SFMath", "SFAtmosphere", "SFFlightModel", "SFSystems", "SFWeather", "SFInput"]),
         // Apple-only code inside #if canImport(...) so these compile empty on Linux
@@ -38,6 +39,7 @@ let package = Package(
         .target(name: "SFUI", dependencies: ["SFSim", "SFRender", "SFAudio", "SFPlatform", "SFNavData", "SFContent", "SFInstruments", "SFInput", "SFQuickFlight", "SFAtmosphere", "SFWeather", "SFImagery"]),
         .executableTarget(name: "SFPreviewCLI", dependencies: ["SFPreview", "SFInstruments", "SFAtmosphere", "SFQuickFlight", "SFImagery", "SFContent", "SFWorldGen", "SFTerrainCore", "SFMath"]),
         // Tests (Swift Testing)
+        .testTarget(name: "SFCareerTests", dependencies: ["SFCareer", "SFMath"]),
         .testTarget(name: "SFMathTests", dependencies: ["SFMath"]),
         .testTarget(name: "SFAtmosphereTests", dependencies: ["SFAtmosphere"]),
         .testTarget(name: "SFFlightModelTests", dependencies: ["SFFlightModel"]),
