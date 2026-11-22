@@ -25,7 +25,7 @@ Legend: [x] done and verified, [ ] not done. Unchecked items are not available i
 ### Phase C — Performance (measured)
 - [x] C10 CI GPU frame-time test per tier on the macOS Metal runner, run alone (numbers in VERIFICATION_LOG; all within budget)
 - [ ] C11 Building LOD + instancing, GPU culling where useful, texture streaming with memory cap, no main-thread stalls (measured) — texture streaming done (camera-following z18 layer, built off the main thread, one texture at a time; ADR-0018); tree distance LOD done
-- [ ] C12 60 fps high / 30 fps low targets documented; device numbers unverified until run on hardware
+- [x] C12 60 fps high / 30 fps low targets documented in docs/PERFORMANCE.md; device numbers unverified until run on hardware
 ### Phase D — Correctness
 - [ ] D13 Tests for every new feature (unit, GPU-vs-CPU parity, Metal smoke)
 - [x] D15 30-minute soak test (simulated, KMRY offline pack, 22 km box across mosaics/tiles): no crash, no NaN, memory bounded (Linux: 125 → 114 MB)

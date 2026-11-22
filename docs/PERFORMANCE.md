@@ -6,6 +6,15 @@ Targets are in docs/MASTER_PROMPT.md §11. Only measured numbers go here; nothin
 |---|---|---|---|---|---|---|
 | — | — | not measurable in this sandbox (no Metal device) | — | — | — | — |
 
+## Frame-time targets (documented; device numbers unverified)
+
+| Tier | Target | Frame budget | Status |
+|---|---|---|---|
+| High | 60 fps | 16.67 ms | CI Metal frame-time test within budget (VERIFICATION_LOG); no device run yet |
+| Low | 30 fps | 33.3 ms | CI Metal frame-time test within budget; no device run yet |
+
+Pacing: p99 frame time <= 1.25x target, at most 1 hitch (> 2x target) per minute in steady cruise (MASTER_PROMPT section 11). Nothing here is measured on iPhone or iPad hardware; treat device fps as unverified until run on a device.
+
 ## Quick Flight mesh budgets (measured 2026-11-08, `sfpreview quickflight-stats`, 4-core Linux release build)
 | Tier | Triangles | Vertex memory (20 B/vertex, non-indexed) | CPU build time |
 |---|---|---|---|
