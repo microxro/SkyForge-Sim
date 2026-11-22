@@ -1,9 +1,10 @@
-LAST_UPDATE: 2026-11-22T16:30:00Z
+LAST_UPDATE: 2026-11-22T17:00:00Z
 
 # SKYFORGE state
 
 ## Phase
 - 2026-11-22: gate fast green on `claude/stoic-gates-3stdhw` (250 tests, Swift 6.3.3 via tools/setup_env.sh); no code changes this session.
+- 2026-11-22 blocker: the next item (LINZ aerial imagery for NZQN, `tools/fetch_linz_imagery.py`) cannot run here; the agent proxy returns 403 for basemaps.linz.govt.nz. Needs the host allowed in the environment network settings, or run the tool where it is reachable.
 - 2026-11-14 (PRs #6, #7 and #8 merged; work continues on `claude/ecstatic-davinci-tjahz4` in a new PR): art rounds resumed after PR #5 merged.
   - Scores (ultra tier, same reviewer):
 
