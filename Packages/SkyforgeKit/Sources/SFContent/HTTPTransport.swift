@@ -16,6 +16,18 @@ public enum TransportError: Error, Equatable {
     case tooLarge
 }
 
+/// Refuses redirects to any host outside `URLSessionTransport.allowedHosts` (or to non-https URLs),
+/// so an allowed host cannot bounce the app to an unlisted one. A refused redirect surfaces as a non-2xx status.
+final class RedirectGuard: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+    func urlSession(_ session: URLSession, task: URLSessionTask,
+                    willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest,
+                    completionHandler: @escaping (URLRequest?) -> Void) {
+        let host = request.url?.host?.lowercased() ?? ""
+        let ok = request.url?.scheme?.lowercased() == "https" && URLSessionTransport.allowedHosts.contains(host)
+        completionHandler(ok ? request : nil)
+    }
+}
+
 public struct URLSessionTransport: HTTPTransport {
     /// Hosts the app may contact, exactly as listed in docs/DATA_SOURCES.md. Any other host is refused.
     public static let allowedHosts: Set<String> = [
@@ -46,7 +58,7 @@ public struct URLSessionTransport: HTTPTransport {
         let cfg = URLSessionConfiguration.ephemeral
         cfg.timeoutIntervalForRequest = timeout
         cfg.timeoutIntervalForResource = timeout * 4
-        let session = URLSession(configuration: cfg)
+        let session = URLSession(configuration: cfg, delegate: RedirectGuard(), delegateQueue: nil)
         defer { session.finishTasksAndInvalidate() }
         var req = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: timeout)
         req.setValue(userAgent, forHTTPHeaderField: "User-Agent")
