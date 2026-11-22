@@ -29,7 +29,8 @@ Usage: fetch_buildings.py --lat 47.53 --lon -122.30 --half-km 6 --out KBFI/build
 """
 import argparse, math, os, struct, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from overture_common import (BUCKET, RangeFile, footer_index, parse_sources, polygons, region_box, row_groups_in_box, source_allowed, source_dataset)
+from overture_common import (BUCKET, RangeFile, box_or_exit, fnum, footer_index, parse_sources, polygons, project_ring,
+                             row_bbox_hit, row_groups_in_box, source_allowed, source_dataset, write_output)
 
 KINDS = ["yes", "house", "residential", "apartments", "commercial", "industrial", "retail", "office", "warehouse",
          "hangar", "garage", "shed", "church", "school", "hospital", "hotel", "civic", "transportation", "roof",
@@ -119,27 +120,33 @@ def infer_roof(kind, area, aspect, floors, height):
 
 
 def encode(rows, lat, lon, mlat, mlon, infer, stats):
+    """SFB1 bytes and the record count. Rows that cannot be encoded are counted in stats ("bad_geometry",
+    "bad_ring", "too_long") instead of aborting the run."""
     out = bytearray(b"SFB1") + struct.pack("<ddI", lat, lon, 0)
     count = 0
     for r in rows:
-        try: rings = polygons(r["geometry"])
-        except Exception: continue
-        kind = (r.get("class") or r.get("subtype") or "yes").lower()
+        geom = r.get("geometry")
+        if not geom: stats["bad_geometry"] += 1; continue
+        try: rings = polygons(geom)
+        except ValueError: stats["bad_geometry"] += 1; continue
+        kind = str(r.get("class") or r.get("subtype") or "yes").lower()
         ki = KINDS.index(kind) if kind in KINDS else 0
         kname = KINDS[ki]
-        ro = (r.get("roof_shape") or "").lower()
+        ro = str(r.get("roof_shape") or "").lower()
         ri = ROOFS.index(ro) if ro in ROOFS else 0
-        h = r.get("height"); floors = r.get("num_floors"); mh = r.get("min_height") or 0
+        h = fnum(r.get("height")); floors = fnum(r.get("num_floors")); mh = fnum(r.get("min_height")) or 0
         flags = (1 if h else 0) | (2 if r.get("has_parts") else 0)
         rc, wc = colour(r.get("roof_color")), colour(r.get("facade_color"))
         for ring in rings:
-            pts = [(round((lo - lon) * mlon * 10), round((la - lat) * mlat * 10)) for lo, la in ring]
+            pts = project_ring(ring, lat, lon, mlat, mlon)
+            if pts is None: stats["bad_ring"] += 1; continue
             if len(pts) > 1 and pts[0] == pts[-1]: pts = pts[:-1]
             ded = [pts[0]] if pts else []
             for p in pts[1:]:
                 if p != ded[-1]: ded.append(p)
-            if len(ded) < 3 or len(ded) > 4000: continue
-            if any(abs(ded[i][0] - ded[i - 1][0]) > 32767 or abs(ded[i][1] - ded[i - 1][1]) > 32767 for i in range(1, len(ded))): continue
+            if len(ded) < 3: continue
+            if len(ded) > 4000 or any(abs(ded[i][0] - ded[i - 1][0]) > 32767 or abs(ded[i][1] - ded[i - 1][1]) > 32767 for i in range(1, len(ded))):
+                stats["too_long"] += 1; continue
             hh, f2, rr = h, flags, ri
             if infer:
                 m = [(x / 10.0, y / 10.0) for x, y in ded]
@@ -174,18 +181,19 @@ def main():
     ap.add_argument("--sources", default="OpenStreetMap",
                     help='comma-separated Overture source datasets to keep ("any" keeps all); default OpenStreetMap only')
     ap.add_argument("--no-infer", action="store_true", help="write raw heights and roofs (no inference)")
+    ap.add_argument("--allow-empty", action="store_true", help="allow a zero-record result to replace an existing output")
     a = ap.parse_args()
     os.makedirs(a.cache, exist_ok=True)
     allow = parse_sources(a.sources)
     if allow != {"OpenStreetMap"}:
         print("WARNING: non-OSM sources selected; docs/DECISIONS.md forbids shipping them. Licences and attribution"
               " differ per dataset (see docs/rounds/ROUND2.md).", file=sys.stderr)
-    box0, box1, box2, box3, mlat, mlon = region_box(a.lat, a.lon, a.half_km)
+    box0, box1, box2, box3, mlat, mlon = box_or_exit(ap, a.lat, a.lon, a.half_km)
     box = (box0, box1, box2, box3)
     index = footer_index(a.release, a.cache)
     wanted = ["geometry", "bbox", "sources", "subtype", "class", "height", "num_floors", "min_height", "roof_shape",
               "roof_color", "facade_color", "roof_height", "has_parts", "is_underground"]
-    rows, kept, skipped = [], 0, Counter()
+    rows, kept, skipped, nobbox = [], 0, Counter(), 0
     for key, size, hit in row_groups_in_box(index, box):
         f = RangeFile(f"{BUCKET}/{key}", size, block=4 << 20)
         pf = pq.ParquetFile(f)
@@ -193,8 +201,8 @@ def main():
         cols = [c for c in wanted if c in have]
         for g in hit:
             for r in pf.read_row_group(g, columns=cols).to_pylist():
-                bb = r["bbox"]
-                if bb["xmax"] < box[0] or bb["xmin"] > box[1] or bb["ymax"] < box[2] or bb["ymin"] > box[3]: continue
+                inbox = row_bbox_hit(r, box)
+                if not inbox: nobbox += inbox is None; continue
                 ds = source_dataset(r)
                 if not source_allowed(r, allow): skipped[ds or "unknown"] += 1; continue
                 if r.get("is_underground"): continue
@@ -202,9 +210,10 @@ def main():
             print(f"  {os.path.basename(key)[:10]} group {g}: {kept} kept ({f.fetched >> 20} MiB)", file=sys.stderr, flush=True)
     stats = Counter()
     out, count = encode(rows, a.lat, a.lon, mlat, mlon, not a.no_infer, stats)
-    os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
-    open(a.out, "wb").write(out)
-    print(f"{a.out}: {count} footprints, {len(out) >> 10} KiB; skipped by source: {dict(skipped)}", file=sys.stderr)
+    write_output(a.out, out, count, a.allow_empty)
+    bad = {k: stats[k] for k in ("bad_geometry", "bad_ring", "too_long") if stats[k]}
+    print(f"{a.out}: {count} footprints, {len(out) >> 10} KiB; skipped by source: {dict(skipped)}"
+          f"{'; rows without a usable bbox: %d' % nobbox if nobbox else ''}{'; unencodable: %s' % bad if bad else ''}", file=sys.stderr)
     if not a.no_infer:
         print(f"inferred: {stats['height_inferred']} heights, {stats['roof_inferred']} roofs; roofs now: "
               f"flat {stats['roof_flat']}, gabled {stats['roof_gabled']}, hipped {stats['roof_hipped']}", file=sys.stderr)

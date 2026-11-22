@@ -87,3 +87,13 @@ Occlusion uses last frame's depth, so a newly revealed batch can appear one fram
   `encodeHiZ` runs after the pass. The CPU cell loop remains the fallback, and shadow cascades always use it.
   Call `resetBuildingCullHistory()` after a camera cut. `lastDrawnBuildingCells` counts submitted batches on this path.
 - Region glue: `RealWorldRegion.landUse` and `suburbMask(size:)` (`SFQuickFlight/RegionSuburbMask.swift`), `RealWorldRenderData.suburbMask`.
+
+## Tool hardening (PR #17 security review)
+
+- `tools/overture_common.py` is the one place for the S3 client, WKB parsing and output writing; `fetch_airport_surfaces.py` no longer carries its own copies.
+- A failed listing, an S3 error document, an empty listing or a repeated continuation token raises `FetchError`; range reads accept only a 206 of the exact length and do not retry 4xx answers.
+- Every `fetch_*.py` refuses to overwrite an existing output with a zero-record result (message on stderr, exit status 2). Pass `--allow-empty` when an empty pack is really intended.
+- `--half-km` must be in (0, 200] km; a box that crosses the antimeridian or a pole, or a latitude beyond 85 degrees, is rejected. `fetch_airport_surfaces.py --png-size` is limited to 64-8192.
+- WKB parsing raises `ValueError` only (no `struct.error`, `IndexError` or deep recursion); EWKB and ISO Z/M geometries are read in 2D. Rows with an unusable geometry, bbox or coordinates are counted in the summary line, not fatal. Edges longer than an i16 of decimetres are subdivided, never dropped.
+- Index caches are written atomically, reused only when the recorded size matches the listing, and rebuilt when corrupt.
+- `python3 tools/test_overture_tools.py` covers all of this offline, including a seeded WKB mutation fuzz loop.

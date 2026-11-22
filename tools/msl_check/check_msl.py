@@ -23,11 +23,22 @@ SHADERS = os.path.join(ROOT, "Packages/SkyforgeKit/Sources/SFRender/Shaders")
 SHIM = os.path.join(HERE, "msl_shim.h")
 
 
+_SPLICING = []                                          # (enum, name) pairs being expanded: the cycle guard
+MAX_SPLICE_DEPTH = 8
+
+
 def interpolated(enum, name, where):
+    key = (enum, name)
+    if key in _SPLICING:
+        raise SystemExit(f"{where}: interpolation cycle {' -> '.join(f'{e}.{n}' for e, n in _SPLICING + [key])}")
+    if len(_SPLICING) >= MAX_SPLICE_DEPTH:
+        raise SystemExit(f"{where}: interpolation nested deeper than {MAX_SPLICE_DEPTH} levels")
     for f in sorted(os.listdir(SHADERS)):
         path = os.path.join(SHADERS, f)
         if f.endswith(".swift") and re.search(r"enum\s+" + re.escape(enum) + r"\b", open(path, encoding="utf-8").read()):
-            return extract(path, name)[0]
+            _SPLICING.append(key)
+            try: return extract(path, name)[0]
+            finally: _SPLICING.pop()
     raise SystemExit(f"{where}: cannot resolve interpolation {enum}.{name}")
 
 

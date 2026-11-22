@@ -18,7 +18,8 @@ Usage: fetch_landuse.py --lat 47.53 --lon -122.30 --half-km 6 --out KBFI/landuse
 import argparse, math, os, struct, sys
 from collections import Counter
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from overture_common import BUCKET, RangeFile, dedup_split, footer_index, parse_sources, polygons, region_box, row_groups_in_box, source_allowed, source_dataset
+from overture_common import (BUCKET, RangeFile, box_or_exit, dedup_split, footer_index, parse_sources, polygons, project_ring,
+                             row_bbox_hit, row_groups_in_box, source_allowed, source_dataset, write_output)
 
 CATEGORIES = ["other", "residential", "commercial", "industrial", "park", "agricultural", "airport", "institutional",
               "cemetery", "golf", "natural", "transport"]
@@ -40,28 +41,35 @@ SUBTYPE_MAP = {"residential": 1, "agriculture": 5, "park": 4, "recreation": 4, "
 
 
 def category(rec):
-    c = (rec.get("class") or "").lower()
+    c = str(rec.get("class") or "").lower()
     if c in CLASS_MAP: return CLASS_MAP[c]
-    return SUBTYPE_MAP.get((rec.get("subtype") or "").lower(), 0)
+    return SUBTYPE_MAP.get(str(rec.get("subtype") or "").lower(), 0)
 
 
 def ring_area(pts):
     return abs(sum(pts[i][0] * pts[(i + 1) % len(pts)][1] - pts[(i + 1) % len(pts)][0] * pts[i][1] for i in range(len(pts)))) / 2
 
 
-def encode(rows, lat, lon, mlat, mlon):
+def encode(rows, lat, lon, mlat, mlon, stats=None):
+    """SFL1 bytes and the polygons written. Rows that cannot be encoded are counted in `stats` (a Counter) as
+    "bad_geometry", "bad_ring" or "bad_size" instead of aborting the run."""
+    stats = stats if stats is not None else Counter()
     polys = []
     for r in rows:
-        try: rings = polygons(r["geometry"])
-        except Exception: continue
+        geom = r.get("geometry")
+        if not geom: stats["bad_geometry"] += 1; continue
+        try: rings = polygons(geom)
+        except ValueError: stats["bad_geometry"] += 1; continue
         cat = category(r)
-        flags = 1 if (r.get("surface") or "") in ("paved", "asphalt", "concrete") else 0
+        flags = 1 if str(r.get("surface") or "") in ("paved", "asphalt", "concrete") else 0
         for ring in rings:
-            pts = [(round((lo - lon) * mlon * 10), round((la - lat) * mlat * 10)) for lo, la in ring]
+            pts = project_ring(ring, lat, lon, mlat, mlon)
+            if pts is None: stats["bad_ring"] += 1; continue
             if len(pts) > 1 and pts[0] == pts[-1]: pts = pts[:-1]
             ded = dedup_split(pts)                 # long edges are subdivided, not dropped (i16 decimetre deltas)
             if ded and ded[0] == ded[-1]: ded.pop()
-            if len(ded) < 3 or len(ded) > 20000: continue
+            if len(ded) < 3: continue
+            if len(ded) > 20000: stats["bad_size"] += 1; continue
             polys.append((ring_area(ded), cat, flags, ded))
     polys.sort(key=lambda p: -p[0])           # largest first, small categories draw on top
     out = bytearray(b"SFL1") + struct.pack("<ddI", lat, lon, len(polys))
@@ -81,24 +89,25 @@ def main():
     ap.add_argument("--release", default="2026-10-21.0")
     ap.add_argument("--cache", default=os.path.expanduser("~/.cache/skyforge-overture"))
     ap.add_argument("--sources", default="OpenStreetMap")
+    ap.add_argument("--allow-empty", action="store_true", help="allow a zero-polygon result to replace an existing output")
     ap.add_argument("--list-classes", action="store_true", help="print class/subtype/source counts and exit without writing")
     a = ap.parse_args()
     os.makedirs(a.cache, exist_ok=True)
     allow = parse_sources(a.sources)
     if allow != {"OpenStreetMap"}:
         print("WARNING: non-OSM sources selected; docs/DECISIONS.md forbids shipping them.", file=sys.stderr)
-    b0, b1, b2, b3, mlat, mlon = region_box(a.lat, a.lon, a.half_km)
+    b0, b1, b2, b3, mlat, mlon = box_or_exit(ap, a.lat, a.lon, a.half_km)
     box = (b0, b1, b2, b3)
     index = footer_index(a.release, a.cache, "base", "land_use")
-    rows, skipped, classes = [], Counter(), Counter()
+    rows, skipped, classes, nobbox = [], Counter(), Counter(), 0
     for key, size, hit in row_groups_in_box(index, box):
         pf = pq.ParquetFile(RangeFile(f"{BUCKET}/{key}", size, block=4 << 20))
         have = set(pf.schema_arrow.names)
         cols = [c for c in ("geometry", "bbox", "sources", "subtype", "class", "surface") if c in have]
         for g in hit:
             for r in pf.read_row_group(g, columns=cols).to_pylist():
-                bb = r["bbox"]
-                if bb["xmax"] < box[0] or bb["xmin"] > box[1] or bb["ymax"] < box[2] or bb["ymin"] > box[3]: continue
+                inbox = row_bbox_hit(r, box)
+                if not inbox: nobbox += inbox is None; continue
                 ds = source_dataset(r)
                 classes[(r.get("subtype"), r.get("class"), ds)] += 1
                 if not source_allowed(r, allow): skipped[ds or "unknown"] += 1; continue
@@ -106,11 +115,12 @@ def main():
     if a.list_classes:
         for k, v in sorted(classes.items(), key=lambda kv: -kv[1]): print(v, k)
         return
-    out, polys = encode(rows, a.lat, a.lon, mlat, mlon)
-    os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
-    open(a.out, "wb").write(out)
+    stats = Counter()
+    out, polys = encode(rows, a.lat, a.lon, mlat, mlon, stats)
+    write_output(a.out, out, len(polys), a.allow_empty)
     per = Counter(CATEGORIES[p[1]] for p in polys)
-    print(f"{a.out}: {len(polys)} polygons, {len(out) >> 10} KiB; {dict(per)}; skipped by source: {dict(skipped)}", file=sys.stderr)
+    print(f"{a.out}: {len(polys)} polygons, {len(out) >> 10} KiB; {dict(per)}; skipped by source: {dict(skipped)}"
+          f"{'; rows without a usable bbox: %d' % nobbox if nobbox else ''}{'; unencodable: %s' % dict(stats) if stats else ''}", file=sys.stderr)
 
 
 if __name__ == "__main__":

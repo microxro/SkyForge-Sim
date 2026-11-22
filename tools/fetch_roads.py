@@ -18,7 +18,8 @@ Usage: fetch_roads.py --lat 47.53 --lon -122.30 --half-km 6 --out KBFI/roads.sfr
 import argparse, os, struct, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from overture_common import BUCKET, RangeFile, footer_index, parse_sources, region_box, row_groups_in_box, source_allowed
+from overture_common import (BUCKET, RangeFile, box_or_exit, dedup_split, footer_index, lines, parse_sources, project_ring,
+                             row_bbox_hit, row_groups_in_box, source_allowed, write_output)
 
 CLASSES = ["motorway", "trunk", "primary", "secondary", "tertiary", "unclassified", "residential", "living_street",
            "service", "track"]
@@ -26,13 +27,10 @@ UNPAVED = {"unpaved", "dirt", "gravel", "ground", "earth", "sand", "grass", "com
 
 
 def linestring(wkb):
-    e = "<" if wkb[0] == 1 else ">"
-    t, = struct.unpack_from(e + "I", wkb, 1)
-    if t & 0xFF != 2:
-        raise ValueError(f"WKB type {t}")
-    n, = struct.unpack_from(e + "I", wkb, 5)
-    pts = struct.unpack_from(e + f"{2 * n}d", wkb, 9)
-    return [(pts[2 * j], pts[2 * j + 1]) for j in range(n)]
+    """The vertices of a single LineString (ValueError for anything else or for malformed bytes)."""
+    found = lines(wkb)
+    if len(found) != 1: raise ValueError("expected one LineString")
+    return found[0]
 
 
 def flagged(rules, name):
@@ -56,25 +54,27 @@ def main():
     ap.add_argument("--cache", default=os.path.expanduser("~/.cache/skyforge-overture"))
     ap.add_argument("--sources", default="OpenStreetMap",
                     help='comma-separated Overture source datasets to keep ("any" keeps all); default OpenStreetMap only')
+    ap.add_argument("--allow-empty", action="store_true", help="allow a zero-road result to replace an existing output")
     a = ap.parse_args()
     os.makedirs(a.cache, exist_ok=True)
     allow = parse_sources(a.sources)
     if allow != {"OpenStreetMap"}:
         print("WARNING: non-OSM sources selected; docs/DECISIONS.md forbids shipping them.", file=sys.stderr)
-    b0, b1, b2, b3, mlat, mlon = region_box(a.lat, a.lon, a.half_km)
+    b0, b1, b2, b3, mlat, mlon = box_or_exit(ap, a.lat, a.lon, a.half_km)
     box = (b0, b1, b2, b3)
     index = footer_index(a.release, a.cache, "transportation", "segment")
     wanted = ["geometry", "bbox", "sources", "subtype", "class", "subclass", "road_surface", "road_flags"]
     out = bytearray(b"SFR1") + struct.pack("<ddI", a.lat, a.lon, 0)
-    count = skipped = 0
+    count = skipped = nobbox = badgeom = 0
     for key, size, hit in row_groups_in_box(index, box):
         f = RangeFile(f"{BUCKET}/{key}", size, block=4 << 20)
         pf = pq.ParquetFile(f)
         cols = [c for c in wanted if c in set(pf.schema_arrow.names)]
         for g in hit:
             for r in pf.read_row_group(g, columns=cols).to_pylist():
-                bb = r["bbox"]
-                if bb["xmax"] < box[0] or bb["xmin"] > box[1] or bb["ymax"] < box[2] or bb["ymin"] > box[3]:
+                hit_box = row_bbox_hit(r, box)
+                if not hit_box:
+                    nobbox += hit_box is None
                     continue
                 if (r.get("subtype") or "") != "road":
                     continue
@@ -88,26 +88,20 @@ def main():
                     skipped += 1
                     continue
                 try:
-                    line = linestring(r["geometry"])
-                except Exception:
+                    line = linestring(r.get("geometry"))
+                except ValueError:
+                    badgeom += 1
                     continue
                 flags = (1 if sub == "link" else 0) | (2 if flagged(r.get("road_flags"), "is_bridge") else 0) \
                     | (4 if flagged(r.get("road_flags"), "is_tunnel") else 0)
                 surf = r.get("road_surface") or []
                 if any((s.get("value") or "") in UNPAVED and not s.get("between") for s in surf):
                     flags |= 8
-                pts = [(round((lo - a.lon) * mlon * 10), round((la - a.lat) * mlat * 10)) for lo, la in line]
+                pts = project_ring(line, a.lat, a.lon, mlat, mlon)
                 if not pts:
+                    badgeom += 1
                     continue
-                ded = [pts[0]]
-                for p in pts[1:]:
-                    # Steps longer than an i16 of decimetres are split.
-                    while max(abs(p[0] - ded[-1][0]), abs(p[1] - ded[-1][1])) > 30_000:
-                        q = ded[-1]
-                        k = 30_000 / max(abs(p[0] - q[0]), abs(p[1] - q[1]))
-                        ded.append((q[0] + round((p[0] - q[0]) * k), q[1] + round((p[1] - q[1]) * k)))
-                    if p != ded[-1]:
-                        ded.append(p)
+                ded = dedup_split(pts)          # steps longer than an i16 of decimetres are split
                 if len(ded) < 2 or len(ded) > 60_000:
                     continue
                 out += struct.pack("<BBHii", CLASSES.index(cls), flags, len(ded), ded[0][0], ded[0][1])
@@ -116,9 +110,8 @@ def main():
                 count += 1
             print(f"  {os.path.basename(key)[:10]} group {g}: {count} kept ({f.fetched >> 20} MiB)", file=sys.stderr, flush=True)
     struct.pack_into("<I", out, 20, count)
-    with open(a.out, "wb") as fh:
-        fh.write(out)
-    print(f"{a.out}: {count} roads, {len(out)} bytes ({skipped} records dropped by --sources)")
+    write_output(a.out, out, count, a.allow_empty)
+    print(f"{a.out}: {count} roads, {len(out)} bytes ({skipped} records dropped by --sources, {badgeom} unusable geometries, {nobbox} without a bbox)")
 
 
 if __name__ == "__main__":

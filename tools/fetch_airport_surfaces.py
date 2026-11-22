@@ -21,92 +21,10 @@ Rasterised by the renderer (`AirportSurfaces.rasterise`; `--png` writes a previe
 
 Usage: fetch_airport_surfaces.py --lat 36.5870 --lon -121.8430 --half-km 3 --out KMRY/airport.sfa [--png mask.png --png-size 2048]
 """
-import argparse, json, math, os, re, struct, sys
-import io, time
-import requests
-
-# Self-contained (range-request reader and WKB polygon parser as in tools/fetch_buildings.py).
-BUCKET = "https://overturemaps-us-west-2.s3.amazonaws.com"
-SESSION = requests.Session()
-
-
-class RangeFile(io.RawIOBase):
-    """Seekable read-only file over HTTP range requests with a small block cache."""
-
-    def __init__(self, url, size, block=1 << 20):
-        self.url, self.size, self.pos, self.block, self.cache, self.fetched = url, size, 0, block, {}, 0
-
-    def readable(self): return True
-    def seekable(self): return True
-    def tell(self): return self.pos
-
-    def seek(self, off, whence=0):
-        self.pos = off if whence == 0 else (self.pos + off if whence == 1 else self.size + off)
-        return self.pos
-
-    def _get(self, a, b):
-        for attempt in range(5):
-            try:
-                r = SESSION.get(self.url, headers={"Range": f"bytes={a}-{b - 1}"}, timeout=120)
-                if r.status_code in (200, 206):
-                    self.fetched += len(r.content)
-                    return r.content
-            except requests.RequestException:
-                pass
-            time.sleep(1.5 * (attempt + 1))
-        raise IOError(f"range request failed: {self.url} {a}-{b}")
-
-    def read(self, n=-1):
-        if n < 0: n = self.size - self.pos
-        n = min(n, self.size - self.pos)
-        if n <= 0: return b""
-        a, b = self.pos, self.pos + n
-        if n > 4 * self.block:                      # a whole column chunk: one request
-            data = self._get(a, b)
-        else:
-            out = bytearray()
-            k0, k1 = a // self.block, (b - 1) // self.block
-            missing = [k for k in range(k0, k1 + 1) if k not in self.cache]
-            if missing:
-                m0, m1 = missing[0], missing[-1]
-                blob = self._get(m0 * self.block, min(self.size, (m1 + 1) * self.block))
-                for k in range(m0, m1 + 1):
-                    self.cache[k] = blob[(k - m0) * self.block:(k - m0 + 1) * self.block]
-            for k in range(k0, k1 + 1): out += self.cache[k]
-            data = bytes(out[a - k0 * self.block:b - k0 * self.block])
-        self.pos = b
-        return data
-
-    def readinto(self, buf):
-        d = self.read(len(buf)); buf[:len(d)] = d; return len(d)
-
-
-def polygons(wkb):
-    """Outer rings (lon, lat lists) of a WKB Polygon / MultiPolygon (little- or big-endian)."""
-    out = []
-
-    def read(b, o):
-        e = "<" if b[o] == 1 else ">"
-        t, = struct.unpack_from(e + "I", b, o + 1)
-        t &= 0xFF
-        o += 5
-        if t == 3:
-            n, = struct.unpack_from(e + "I", b, o); o += 4
-            for i in range(n):
-                m, = struct.unpack_from(e + "I", b, o); o += 4
-                pts = struct.unpack_from(e + f"{2 * m}d", b, o); o += 16 * m
-                if i == 0: out.append([(pts[2 * j], pts[2 * j + 1]) for j in range(m)])
-            return o
-        if t == 6:
-            n, = struct.unpack_from(e + "I", b, o); o += 4
-            for _ in range(n): o = read(b, o)
-            return o
-        raise ValueError(f"WKB type {t}")
-
-    read(wkb, 0)
-    return out
-
-
+import argparse, math, os, re, struct, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from overture_common import (BUCKET, RangeFile, box_or_exit, dedup_split, footer_index, geom_kind, lines, parse_sources,
+                             polygons, project_ring, row_bbox_hit, row_groups_in_box, source_allowed, write_output)
 
 RELEASE = "2026-10-21.0"
 SURFACE = {"boundary": 0, "apron": 1, "taxiway": 2, "runway": 3}
@@ -114,15 +32,22 @@ DEFAULT_WIDTH_M = {"runway": 30.0, "taxiway": 15.0, "apron": 20.0}
 MASK_VALUE = {0: 0.10, 1: 0.33, 2: 0.66, 3: 1.0}
 
 
+_WIDTH = re.compile(r"^\s*(\d+(?:[.,]\d+)?)\s*(m|meters?|metres?|ft|feet|')?\s*$", re.I)
+
+
 def width_of(r):
     """Paved width (m) from the OSM `width` tag carried in source_tags (list of (key, value) or a dict); 0 = unknown, and the
-    renderer then uses the primary runway's own width or its per-surface default (runway 30 m, taxiway 15 m)."""
+    renderer then uses the primary runway's own width or its per-surface default (runway 30 m, taxiway 15 m). Understands
+    "30", "30 m", "98 ft" and "98'"; an empty, non-numeric or out-of-range value is unknown."""
     tags = r.get("source_tags") or {}
     items = tags.items() if isinstance(tags, dict) else tags
     for k, v in items:
         if k in ("width", "aeroway:width"):
-            try: return max(0.0, min(150.0, float(str(v).split()[0].replace(",", "."))))
-            except ValueError: return 0.0
+            m = _WIDTH.match(str(v))
+            if not m: return 0.0
+            w = float(m.group(1).replace(",", "."))
+            if (m.group(2) or "").lower() in ("ft", "feet", "'"): w *= 0.3048
+            return max(0.0, min(150.0, w))
     return 0.0
 
 
@@ -139,83 +64,23 @@ def is_unpaved(r):
     return any(v.strip().lower() in UNPAVED for v in vals)
 
 
-def list_files(theme_type):
-    out = []
-    x = SESSION.get(f"{BUCKET}/?list-type=2&prefix=release/{RELEASE}/theme={theme_type}/", timeout=60).text
-    for m in re.finditer(r"<Contents>(.*?)</Contents>", x, re.S):
-        k = re.search(r"<Key>([^<]+)</Key>", m.group(1)).group(1)
-        s = int(re.search(r"<Size>(\d+)</Size>", m.group(1)).group(1))
-        if k.endswith(".parquet"): out.append((k, s))
-    return out
-
-
-def footer_index(theme_type, cache_dir):
+def scan(box, cache, want, allow):
+    """Infrastructure rows in `box` accepted by `want` and the source allow-list: (rows, dropped by source, rows with
+    no usable bbox)."""
     import pyarrow.parquet as pq
-    path = os.path.join(cache_dir, f"overture-{theme_type.replace('/', '-').replace('=', '')}-{RELEASE}.index.json")
-    index = json.load(open(path)) if os.path.exists(path) else {}
-    files = list_files(theme_type)
-    for n, (key, size) in enumerate(files):
-        if key in index: continue
-        f = RangeFile(f"{BUCKET}/{key}", size, block=1 << 20)
-        md = pq.ParquetFile(f).metadata
-        names = {md.schema.column(i).path: i for i in range(md.num_columns)}
-        cols = [names[c] for c in ("bbox.xmin", "bbox.xmax", "bbox.ymin", "bbox.ymax")]
-        groups = []
-        for g in range(md.num_row_groups):
-            rg = md.row_group(g)
-            st = [rg.column(c).statistics for c in cols]
-            groups.append(None if any(s is None or not s.has_min_max for s in st) else [st[0].min, st[1].max, st[2].min, st[3].max])
-        index[key] = {"size": size, "groups": groups}
-        print(f"  footer {theme_type} {n + 1}/{len(files)} ({f.fetched >> 10} KiB)", file=sys.stderr, flush=True)
-        json.dump(index, open(path, "w"))
-    return [(k, index[k]["size"], index[k]["groups"]) for k, _ in files]
-
-
-def lines(wkb):
-    """Vertex lists (lon, lat) of a WKB LineString / MultiLineString."""
-    out = []
-
-    def read(b, o):
-        e = "<" if b[o] == 1 else ">"
-        t, = struct.unpack_from(e + "I", b, o + 1); t &= 0xFF; o += 5
-        if t == 2:
-            n, = struct.unpack_from(e + "I", b, o); o += 4
-            pts = struct.unpack_from(e + f"{2 * n}d", b, o); o += 16 * n
-            out.append([(pts[2 * j], pts[2 * j + 1]) for j in range(n)])
-            return o
-        if t == 5:
-            n, = struct.unpack_from(e + "I", b, o); o += 4
-            for _ in range(n): o = read(b, o)
-            return o
-        return None   # not a line
-
-    read(wkb, 0)
-    return out
-
-
-def geom_kind(wkb):
-    t = struct.unpack_from("<I" if wkb[0] == 1 else ">I", wkb, 1)[0] & 0xFF
-    return "line" if t in (2, 5) else ("polygon" if t in (3, 6) else None)
-
-
-def scan(theme_type, box, cache, want, all_sources):
-    import pyarrow.parquet as pq
-    rows, dropped = [], 0
-    for key, size, groups in footer_index(theme_type, cache):
-        hit = [g for g, b in enumerate(groups) if b is None or not (b[1] < box[0] or b[0] > box[1] or b[3] < box[2] or b[2] > box[3])]
-        if not hit: continue
+    rows, dropped, nobbox = [], 0, 0
+    for key, size, hit in row_groups_in_box(footer_index(RELEASE, cache, "base", "infrastructure"), box):
         f = RangeFile(f"{BUCKET}/{key}", size, block=4 << 20)
         pf = pq.ParquetFile(f)
         cols = [c for c in ("geometry", "bbox", "sources", "subtype", "class", "surface", "source_tags") if c in pf.schema_arrow.names]
         for g in hit:
             for r in pf.read_row_group(g, columns=cols).to_pylist():
-                bb = r["bbox"]
-                if bb["xmax"] < box[0] or bb["xmin"] > box[1] or bb["ymax"] < box[2] or bb["ymin"] > box[3]: continue
+                inbox = row_bbox_hit(r, box)
+                if not inbox: nobbox += inbox is None; continue
                 if not want(r): continue
-                src = r.get("sources") or []
-                if not all_sources and (not src or (src[0].get("dataset") or "") != "OpenStreetMap"): dropped += 1; continue
+                if not source_allowed(r, allow): dropped += 1; continue
                 rows.append(r)
-    return rows, dropped
+    return rows, dropped, nobbox
 
 
 def surface_of(cls):
@@ -226,54 +91,71 @@ def surface_of(cls):
     return "taxiway"     # taxiway, taxilane, helipad, parking positions, holding positions, ...
 
 
+def parts(r):
+    """[(surface name, kind, unpaved, points)] for one record, or None if its geometry is unusable."""
+    geom = r.get("geometry")
+    s, k, unpaved = surface_of(r.get("class")), geom_kind(geom), is_unpaved(r)
+    try:
+        if k == "polygon": return [(s, "polygon", unpaved, ring) for ring in polygons(geom)]
+        if k == "line": return [(s, "line", unpaved, ln) for ln in lines(geom)]
+    except ValueError:
+        return None
+    return []
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--lat", type=float, required=True); ap.add_argument("--lon", type=float, required=True)
     ap.add_argument("--half-km", type=float, default=3.0)
     ap.add_argument("--out", required=True)
     ap.add_argument("--all-sources", action="store_true", help="keep non-OSM Overture sources (NOT the project default; see DECISIONS.md)")
+    ap.add_argument("--allow-empty", action="store_true", help="allow a zero-feature result to replace an existing output")
     ap.add_argument("--survey", action="store_true", help="print class histograms of airport-related rows and exit")
     ap.add_argument("--png", help="also write the rasterised r8 mask (north up) to this PNG")
-    ap.add_argument("--png-size", type=int, default=2048)
+    ap.add_argument("--png-size", type=int, default=2048, help="PNG side in pixels, 64-8192")
     ap.add_argument("--cache", default=os.path.expanduser("~/.cache/skyforge-overture"))
     a = ap.parse_args()
+    if not 64 <= a.png_size <= 8192: ap.error("--png-size must be between 64 and 8192")
     os.makedirs(a.cache, exist_ok=True)
-    mlat = 111_132.0; mlon = 111_320.0 * math.cos(math.radians(a.lat))
-    dlat, dlon = a.half_km * 1000 / mlat, a.half_km * 1000 / mlon
-    box = (a.lon - dlon, a.lon + dlon, a.lat - dlat, a.lat + dlat)
+    b0, b1, b2, b3, mlat, mlon = box_or_exit(ap, a.lat, a.lon, a.half_km)
+    box = (b0, b1, b2, b3)
+    allow = None if a.all_sources else parse_sources("OpenStreetMap")
 
-    infra, d1 = scan("base/type=infrastructure", box, a.cache, lambda r: (r.get("subtype") or "") == "airport", a.all_sources)
+    infra, d1, nobbox = scan(box, a.cache, lambda r: (r.get("subtype") or "") == "airport", allow)
     if a.survey:
         from collections import Counter
-        print("infrastructure/airport classes:", Counter((r.get("class"), geom_kind(r["geometry"])) for r in infra))
+        print("infrastructure/airport classes:", Counter((r.get("class"), geom_kind(r.get("geometry"))) for r in infra))
         return
 
     out = bytearray(b"SFA1") + struct.pack("<ddI", a.lat, a.lon, 0)
-    counts = {}
+    counts, skipped = {}, {"bad_geometry": 0, "bad_ring": 0, "too_big": 0}
+
     def emit(surface, kind, width_m, pts, unpaved=False):
         nonlocal out
-        q = [(round((lo - a.lon) * mlon * 10), round((la - a.lat) * mlat * 10)) for lo, la in pts]
+        q = project_ring(pts, a.lat, a.lon, mlat, mlon)
+        if q is None: skipped["bad_ring"] += 1; return
         if kind == "polygon" and len(q) > 1 and q[0] == q[-1]: q = q[:-1]
-        ded = [q[0]] if q else []
-        for p in q[1:]:
-            if p != ded[-1]: ded.append(p)
-        if len(ded) < (3 if kind == "polygon" else 2) or len(ded) > 20000: return
-        if any(abs(ded[i][0] - ded[i - 1][0]) > 32767 or abs(ded[i][1] - ded[i - 1][1]) > 32767 for i in range(1, len(ded))): return
+        ded = dedup_split(q)                       # long edges are subdivided (i16 decimetre deltas), never dropped
+        if kind == "polygon" and len(ded) > 1 and ded[0] == ded[-1]: ded.pop()
+        if len(ded) < (3 if kind == "polygon" else 2): return
+        if len(ded) > 20000: skipped["too_big"] += 1; return
         out += struct.pack("<BBHHii", SURFACE[surface], (0 if kind == "polygon" else 1) | (2 if unpaved else 0), int(round(width_m * 10)), len(ded), *ded[0])
         for i in range(1, len(ded)): out += struct.pack("<hh", ded[i][0] - ded[i - 1][0], ded[i][1] - ded[i - 1][1])
         counts[(surface, kind)] = counts.get((surface, kind), 0) + 1
 
+    usable = []
     for r in infra:
-        s = surface_of(r.get("class")); k = geom_kind(r["geometry"])
-        if k == "polygon":
-            for ring in polygons(r["geometry"]): emit(s, "polygon", 0, ring, is_unpaved(r))
-        elif k == "line":
-            for ln in lines(r["geometry"]): emit(s, "line", width_of(r), ln, is_unpaved(r))
+        ps = parts(r)
+        if ps is None: skipped["bad_geometry"] += 1; continue
+        usable.append((r, ps))
+        for s, k, unpaved, pts in ps:
+            emit(s, k, width_of(r) if k == "line" else 0, pts, unpaved)
     n = sum(counts.values())
     struct.pack_into("<I", out, 20, n)
-    os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
-    open(a.out, "wb").write(out)
-    print(f"{a.out}: {n} features {dict(counts)}, {len(out)} B; {d1} non-OSM records skipped", file=sys.stderr)
+    write_output(a.out, out, n, a.allow_empty)
+    bad = {k: v for k, v in skipped.items() if v}
+    print(f"{a.out}: {n} features {dict(counts)}, {len(out)} B; {d1} non-OSM records skipped"
+          f"{'; rows without a usable bbox: %d' % nobbox if nobbox else ''}{'; unencodable: %s' % bad if bad else ''}", file=sys.stderr)
 
     if a.png:
         from PIL import Image, ImageDraw
@@ -281,13 +163,14 @@ def main():
         img = Image.new("L", (S, S), 0); dr = ImageDraw.Draw(img)
         def to_px(lon, lat): return ((lon - a.lon) * mlon / px + S / 2, S / 2 - (lat - a.lat) * mlat / px)
         items = []
-        for r in infra:
-            if is_unpaved(r): continue                  # unpaved strips are infield, not pavement
-            s = SURFACE[surface_of(r.get("class"))]; k = geom_kind(r["geometry"])
-            if k == "polygon": items += [(s, "polygon", 0, ring) for ring in polygons(r["geometry"])]
-            elif k == "line": items += [(s, "line", width_of(r) or DEFAULT_WIDTH_M.get(surface_of(r.get("class")), 15.0), ln) for ln in lines(r["geometry"])]
+        for r, ps in usable:
+            for s, k, unpaved, pts in ps:
+                if unpaved: continue                   # unpaved strips are infield, not pavement
+                w = width_of(r) or DEFAULT_WIDTH_M.get(s, 15.0) if k == "line" else 0
+                items.append((SURFACE[s], k, w, pts))
         for s, k, w, pts in sorted(items, key=lambda t: (t[0] == 3, t[0])):   # runway last (on top); boundary first
-            v = int(MASK_VALUE[s] * 255); p = [to_px(*q) for q in pts]
+            v = int(MASK_VALUE[s] * 255); p = [to_px(*q) for q in pts if all(math.isfinite(c) for c in q)]
+            if len(p) < 2: continue
             if k == "polygon": dr.polygon(p, fill=v)
             else: dr.line(p, fill=v, width=max(1, round(w / px)))
         img.save(a.png); print(f"{a.png}: {S}² at {px:.2f} m/px", file=sys.stderr)

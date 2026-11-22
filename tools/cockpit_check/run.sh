@@ -2,7 +2,8 @@
 # Syntax-checks the cockpit MSL on any machine with clang++ and runs the anisotropic-GGX numeric checks.
 set -e
 cd "$(dirname "$0")"
-OUT=${TMPDIR:-/tmp}/cockpit_check
+OUT=$(mktemp -d "${TMPDIR:-/tmp}/cockpit_check.XXXXXX")
+trap 'rm -rf "$OUT"' EXIT
 python3 extract_msl.py ../../Packages/SkyforgeKit/Sources/SFRender/Shaders/CockpitMaterialShaders.swift "$OUT"
 cp metal_shim.h stubs.h aniso_check.cpp "$OUT"/
 cd "$OUT"
