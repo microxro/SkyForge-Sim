@@ -159,7 +159,7 @@ jobs:
           persist-credentials: false
       - name: Download frames
         id: download
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         continue-on-error: true
         with:
           name: skyforge-frames
