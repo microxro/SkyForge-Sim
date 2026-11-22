@@ -424,6 +424,28 @@ public struct QuickFlightWorld: FlightWorld {
         _ = accent
         return soup
     }
+
+    /// Mesh for a fleet aircraft id (`AircraftCatalog`): the SF-1 keeps its per-pixel livery; the other types use
+    /// plain paint per part (`AircraftVariants`), with a dark glazed canopy. Unknown ids fall back to the SF-1.
+    public static func aircraftMesh(for id: String, accent: SIMD3<Float> = AircraftLivery.navy) -> TriangleSoup {
+        guard let variant = AircraftVariants.build(id: id) else { return aircraftMesh(accent: accent) }
+        var soup = TriangleSoup(origin: .zero)
+        func f(_ n: SIMD3<Double>) -> SIMD3<Float> { SIMD3(Float(n.x), Float(n.y), Float(n.z)) }
+        let style = variant.style
+        for t in variant.triangles {
+            let colour: SIMD3<Float>, mat: Material
+            switch t.part {
+            case .fuselage: colour = style.skin; mat = .paint
+            case .surface: colour = style.surface; mat = .paint
+            case .glass: colour = style.canopy; mat = .glass
+            case .metal: colour = SIMD3(0.62, 0.63, 0.64); mat = .metal
+            case .tyre: colour = SIMD3(0.012, 0.012, 0.013); mat = .opaque
+            case .prop: colour = SIMD3(0.016, 0.016, 0.018); mat = .prop
+            }
+            soup.add(t.a, t.b, t.c, na: f(t.na), nb: f(t.nb), nc: f(t.nc), colour: colour, material: mat)
+        }
+        return soup
+    }
 }
 
 public struct QuickFlightSession: Sendable {
