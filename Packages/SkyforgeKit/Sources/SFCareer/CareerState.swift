@@ -26,6 +26,7 @@ public struct CareerState: Codable, Sendable, Equatable {
     public var challenges: [String: ChallengeRecord] = [:]
     public var completedMissions: Set<String> = []
     public var completedJobIDs: Set<String> = []
+    public var claimedCampaignStages: Set<String> = []
     public var activeJob: Job?
     public var log: [FlightLogEntry] = []        // most recent last, capped
     public init() {}
@@ -179,6 +180,8 @@ public enum CareerEngine {
             for l in (levelBefore + 1)...levelAfter { let b = Economy.levelUpCreditBonus(l); state.credits += b; credits += b }
         }
 
+        let camp = state.claimCampaignRewards()
+        xp += camp.xp; credits += camp.credits
         state.log.append(FlightLogEntry(report: r, xpGained: xp, creditsDelta: credits))
         if state.log.count > CareerState.maxLogEntries { state.log.removeFirst(state.log.count - CareerState.maxLogEntries) }
 

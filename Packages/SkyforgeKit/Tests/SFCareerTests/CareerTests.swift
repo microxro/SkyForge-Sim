@@ -208,3 +208,26 @@ func isFailure(_ r: Result<Void, JobRejection>, _ e: JobRejection) -> Bool {
         #expect(throws: SaveStore.SaveError.newerThanApp(999)) { try store.load() }
     }
 }
+
+@Suite struct CampaignTests {
+    @Test func rewardsPayOnceAndUnlockAircraft() {
+        var s = CareerState()
+        #expect(s.progress(in: .airWing).completed == 0)
+        s.completedMissions = ["wingman-formation", "intercept-bogey", "gunnery-range", "low-level-nav", "air-combat-training"]
+        let first = s.claimCampaignRewards()
+        #expect(first.credits == 17_500 && first.unlocked == ["org.skyforge.sff1"])
+        #expect(s.progress(in: .airWing).isComplete)
+        let again = s.claimCampaignRewards()
+        #expect(again.credits == 0 && again.xp == 0 && again.unlocked.isEmpty)
+    }
+    @Test func nextStageIsFirstIncomplete() {
+        var s = CareerState(); s.completedMissions = ["first-flight"]
+        #expect(s.progress(in: .flightSchool).nextStage?.missionID == "pattern-landing")
+    }
+    @Test func missionAdapterFeedsEngine() {
+        var s = CareerState()
+        let r = FlightReport.fromMission(id: "first-flight", aircraftID: "org.skyforge.sf1", success: true, score: 300, elapsed: 400, kills: 0, crashed: false, endedAt: 5)
+        CareerEngine.apply(r, to: &s)
+        #expect(s.completedMissions.contains("first-flight"))
+    }
+}
