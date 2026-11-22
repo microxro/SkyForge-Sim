@@ -4,7 +4,7 @@ import Foundation
 
 public struct ChallengeRecord: Codable, Sendable, Equatable {
     public var bestScore: Double
-    public var medal: Medal
+    public var medal: AwardMedal
     public var attempts: Int
 }
 
@@ -30,6 +30,53 @@ public struct CareerState: Codable, Sendable, Equatable {
     public var activeJob: Job?
     public var log: [FlightLogEntry] = []        // most recent last, capped
     public init() {}
+
+    enum CodingKeys: String, CodingKey {
+        case version, pilotName, xp, credits, ownedAircraft, unlockedAchievements, stats, challenges
+        case completedMissions, completedJobIDs, claimedCampaignStages, activeJob, log
+    }
+
+    /// Tolerant decoding: every field optional so old saves survive new fields; result is always sanitised.
+    public init(from d: Decoder) throws {
+        let c = try d.container(keyedBy: CodingKeys.self)
+        let def = CareerState()
+        version = try c.decodeIfPresent(Int.self, forKey: .version) ?? def.version
+        pilotName = try c.decodeIfPresent(String.self, forKey: .pilotName) ?? def.pilotName
+        xp = try c.decodeIfPresent(Int.self, forKey: .xp) ?? 0
+        credits = try c.decodeIfPresent(Int.self, forKey: .credits) ?? def.credits
+        ownedAircraft = try c.decodeIfPresent(Set<String>.self, forKey: .ownedAircraft) ?? def.ownedAircraft
+        unlockedAchievements = try c.decodeIfPresent(Set<String>.self, forKey: .unlockedAchievements) ?? []
+        stats = try c.decodeIfPresent(CareerStats.self, forKey: .stats) ?? CareerStats()
+        challenges = try c.decodeIfPresent([String: ChallengeRecord].self, forKey: .challenges) ?? [:]
+        completedMissions = try c.decodeIfPresent(Set<String>.self, forKey: .completedMissions) ?? []
+        completedJobIDs = try c.decodeIfPresent(Set<String>.self, forKey: .completedJobIDs) ?? []
+        claimedCampaignStages = try c.decodeIfPresent(Set<String>.self, forKey: .claimedCampaignStages) ?? []
+        activeJob = try c.decodeIfPresent(Job.self, forKey: .activeJob)
+        log = try c.decodeIfPresent([FlightLogEntry].self, forKey: .log) ?? []
+        sanitize()
+    }
+
+    public static let maxCredits = 2_000_000_000
+    public static let maxXP = 1_000_000_000
+    static func validID(_ s: String) -> Bool {
+        !s.isEmpty && s.utf8.count <= 64 && s.utf8.allSatisfy { ($0 >= 97 && $0 <= 122) || ($0 >= 48 && $0 <= 57) || $0 == 45 || $0 == 46 || $0 == 95 }
+    }
+
+    /// Clamps numbers and bounds collections so a tampered or corrupt save can never trap or bloat memory.
+    public mutating func sanitize() {
+        xp = min(max(xp, 0), Self.maxXP)
+        credits = min(max(credits, 0), Self.maxCredits)
+        pilotName = String(pilotName.prefix(32))
+        completedMissions = Set(completedMissions.filter(Self.validID).prefix(1_000))
+        completedJobIDs = Set(completedJobIDs.prefix(5_000))
+        claimedCampaignStages = Set(claimedCampaignStages.prefix(1_000))
+        unlockedAchievements = unlockedAchievements.filter { id in AchievementCatalog.all.contains { $0.id == id } }
+        ownedAircraft = ownedAircraft.filter { Economy.spec($0) != nil }
+        ownedAircraft.insert("org.skyforge.sf1")
+        stats.sanitize()
+        if log.count > Self.maxLogEntries { log.removeFirst(log.count - Self.maxLogEntries) }
+        if let j = activeJob, !(j.distanceKm.isFinite && j.basePay >= 0 && j.basePay < 10_000_000 && j.deadlineMinutes.isFinite) { activeJob = nil }
+    }
 
     public var level: Int { Progression.level(forXP: xp) }
     public var rank: PilotRank { PilotRank.forLevel(level) }
@@ -68,7 +115,7 @@ public struct FlightOutcome: Sendable, Equatable {
     public var creditsDelta: Int
     public var leveledUpTo: Int?
     public var newAchievements: [String]
-    public var medal: Medal?
+    public var medal: AwardMedal?
     public var score: Double?
     public var settlement: JobSettlement?
 }
@@ -81,7 +128,7 @@ public enum CareerEngine {
         let r = raw.sanitized()
         let levelBefore = state.level
         var xp = 0, credits = 0
-        var medal: Medal? = nil, score: Double? = nil, settlement: JobSettlement? = nil
+        var medal: AwardMedal? = nil, score: Double? = nil, settlement: JobSettlement? = nil
 
         // --- base xp: time aloft, distance, landing ---
         xp += Int(r.durationS / 60) * 2 + Int(r.distanceM / 1000 / 5)
@@ -128,7 +175,7 @@ public enum CareerEngine {
             }
         case .mission(let id):
             score = r.rawScore
-            if r.missionSuccess && !r.crashed && r.durationS >= 60 {
+            if CareerState.validID(id) && r.missionSuccess && !r.crashed && r.durationS >= 60 && (state.completedMissions.contains(id) || state.completedMissions.count < 1_000) {
                 let first = state.completedMissions.insert(id).inserted
                 xp += first ? 250 : 40
                 credits += first ? 1_500 : 150
@@ -159,8 +206,11 @@ public enum CareerEngine {
         state.stats = st
 
         xp = max(0, xp)
-        state.xp = min(state.xp + xp, 1_000_000_000)
-        state.credits = max(0, state.credits + credits)
+        state.xp = min(state.xp + xp, CareerState.maxXP)
+        state.credits = min(max(0, state.credits + credits), CareerState.maxCredits)
+
+        let camp = state.claimCampaignRewards()
+        xp += camp.xp; credits += camp.credits
 
         // --- level-up bonus, then achievements (which may add more xp) ---
         var newAch: [String] = []
@@ -180,8 +230,6 @@ public enum CareerEngine {
             for l in (levelBefore + 1)...levelAfter { let b = Economy.levelUpCreditBonus(l); state.credits += b; credits += b }
         }
 
-        let camp = state.claimCampaignRewards()
-        xp += camp.xp; credits += camp.credits
         state.log.append(FlightLogEntry(report: r, xpGained: xp, creditsDelta: credits))
         if state.log.count > CareerState.maxLogEntries { state.log.removeFirst(state.log.count - CareerState.maxLogEntries) }
 

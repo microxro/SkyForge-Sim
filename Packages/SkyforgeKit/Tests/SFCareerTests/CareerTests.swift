@@ -56,9 +56,9 @@ let airports = [kmry, ksfo, klax]
         #expect(ChallengeScoring.timeTrial(missed, parSeconds: 100) < 1_000)
     }
     @Test func medalThresholds() {
-        #expect(Medal.forScore(949, thresholds: [500, 700, 850, 950]) == .gold)
-        #expect(Medal.forScore(950, thresholds: [500, 700, 850, 950]) == .platinum)
-        #expect(Medal.forScore(10, thresholds: [500, 700, 850, 950]) == .none)
+        #expect(AwardMedal.forScore(949, thresholds: [500, 700, 850, 950]) == .gold)
+        #expect(AwardMedal.forScore(950, thresholds: [500, 700, 850, 950]) == .platinum)
+        #expect(AwardMedal.forScore(10, thresholds: [500, 700, 850, 950]) == .none)
     }
     @Test func nonFiniteReportIsSanitised() {
         var r = good(); r.maxG = .nan; r.durationS = .infinity; r.touchdownSinkFPM = -Double.infinity
@@ -138,8 +138,8 @@ func isFailure(_ r: Result<Void, JobRejection>, _ e: JobRejection) -> Bool {
         let first = CareerEngine.apply(r, to: &s, challenge: c)
         let second = CareerEngine.apply(r, to: &s, challenge: c)
         #expect(first.medal == .platinum)
-        #expect(first.creditsDelta >= Medal.platinum.credits)
-        #expect(second.creditsDelta < Medal.bronze.credits)   // no second payout for the same medal
+        #expect(first.creditsDelta >= AwardMedal.platinum.credits)
+        #expect(second.creditsDelta < AwardMedal.bronze.credits)   // no second payout for the same medal
         #expect(s.challenges["c1"]?.attempts == 2)
         #expect(s.stats.goldMedals == 1)
     }
@@ -184,6 +184,22 @@ func isFailure(_ r: Result<Void, JobRejection>, _ e: JobRejection) -> Bool {
         var s = CareerState(); s.pilotName = "Ada"; s.xp = 999; s.stats.airportsVisited = ["KMRY"]
         try store.save(s)
         #expect(try store.load() == s)
+    }
+    @Test func oldMinimalSaveStillLoads() throws {
+        let store = SaveStore(url: tmp())
+        try FileManager.default.createDirectory(at: store.url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(#"{"version":1,"xp":500,"credits":123}"#.utf8).write(to: store.url)
+        let s = try store.load()
+        #expect(s.xp == 500 && s.credits == 123 && s.ownedAircraft.contains("org.skyforge.sf1"))
+    }
+    @Test func tamperedSaveIsClamped() throws {
+        let store = SaveStore(url: tmp())
+        try FileManager.default.createDirectory(at: store.url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(#"{"version":1,"xp":9223372036854775807,"credits":-5}"#.utf8).write(to: store.url)
+        let s = try store.load()
+        #expect(s.xp == CareerState.maxXP && s.credits == 0)
+        var t = s; CareerEngine.apply(FlightReport(aircraftID: "org.skyforge.sf1", durationS: 600), to: &t)
+        #expect(t.xp <= CareerState.maxXP)
     }
     @Test func missingFileGivesFreshProfile() throws { #expect(try SaveStore(url: tmp()).load() == CareerState()) }
     @Test func corruptMainFallsBackToBackup() throws {

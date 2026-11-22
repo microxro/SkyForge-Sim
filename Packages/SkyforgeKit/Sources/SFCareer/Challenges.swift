@@ -3,12 +3,12 @@
 import Foundation
 import SFMath
 
-public enum Medal: Int, Codable, Sendable, Comparable, CaseIterable {
+public enum AwardMedal: Int, Codable, Sendable, Comparable, CaseIterable {
     case none, bronze, silver, gold, platinum
-    public static func < (a: Medal, b: Medal) -> Bool { a.rawValue < b.rawValue }
+    public static func < (a: AwardMedal, b: AwardMedal) -> Bool { a.rawValue < b.rawValue }
     public var xp: Int { [0, 60, 120, 220, 400][rawValue] }
     public var credits: Int { [0, 200, 450, 900, 2_000][rawValue] }
-    public static func forScore(_ score: Double, thresholds t: [Double]) -> Medal {
+    public static func forScore(_ score: Double, thresholds t: [Double]) -> AwardMedal {
         // t = [bronze, silver, gold, platinum]
         guard t.count == 4 else { return .none }
         if score >= t[3] { return .platinum }
@@ -120,7 +120,7 @@ public struct Challenge: Codable, Sendable, Equatable, Identifiable {
         case .combat: return ChallengeScoring.combat(r)
         }
     }
-    public func medal(for r: FlightReport) -> Medal { Medal.forScore(score(r), thresholds: medalThresholds) }
+    public func medal(for r: FlightReport) -> AwardMedal { AwardMedal.forScore(score(r), thresholds: medalThresholds) }
 }
 
 public enum DailyChallenge {

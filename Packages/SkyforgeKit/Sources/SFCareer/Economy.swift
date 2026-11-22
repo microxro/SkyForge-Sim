@@ -95,7 +95,7 @@ public enum JobBoard {
     /// Deterministic job board for an origin on a given UTC day index (epoch/86400). Same inputs → same board on every device,
     /// so players can compare notes and tests are exact.
     public static func generate(origin: AirportRef, airports: [AirportRef], dayIndex: Int, playerLevel: Int, count: Int = 8) -> [Job] {
-        let others = airports.filter { $0.icao != origin.icao }
+        let others = airports.filter { $0.icao != origin.icao }.sorted { $0.icao < $1.icao }
         guard !others.isEmpty, count > 0 else { return [] }
         var rng = Xoshiro256(seed: Hash.mix(UInt64(bitPattern: Int64(dayIndex))) ^ hashString(origin.icao))
         var jobs: [Job] = []

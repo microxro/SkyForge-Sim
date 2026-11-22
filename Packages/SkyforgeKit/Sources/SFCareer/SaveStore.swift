@@ -6,8 +6,10 @@ public struct SaveStore: Sendable {
     public let url: URL
     public init(url: URL) { self.url = url }
     var backupURL: URL { url.appendingPathExtension("bak") }
+    var quarantineURL: URL { url.appendingPathExtension("corrupt") }
 
     public enum SaveError: Error, Sendable, Equatable { case newerThanApp(Int), unreadable }
+    public static let maxFileBytes = 1_048_576
 
     static func encoder() -> JSONEncoder {
         let e = JSONEncoder(); e.outputFormatting = [.sortedKeys]; return e
@@ -32,12 +34,15 @@ public struct SaveStore: Sendable {
         guard fm.fileExists(atPath: url.path) else { return CareerState() }
 
         for u in [url, backupURL] {
-            guard let data = try? Data(contentsOf: u) else { continue }
+            guard let data = try? Data(contentsOf: u), data.count <= Self.maxFileBytes else { continue }
             do { return try decode(data) }
             catch let e as SaveError { throw e }   // newer-than-app must never fall back to a stale backup
             catch { continue }
         }
 
+        // Keep the unreadable file for recovery instead of letting the next save destroy it.
+        try? fm.removeItem(at: quarantineURL)
+        try? fm.moveItem(at: url, to: quarantineURL)
         throw SaveError.unreadable
     }
 

@@ -24,6 +24,41 @@ public struct CareerStats: Codable, Sendable, Equatable {
     public var aircraftFlown: Set<String> = []
     public var highestG = 1.0
     public init() {}
+
+    enum CodingKeys: String, CodingKey {
+        case flights, landings, crashes, smoothLandings, flightSeconds, distanceKm, jobsCompleted, jobsFailed, creditsEarned
+        case kills, missionsWon, challengesPlayed, goldMedals, aerobaticFigures, dailyStreak, bestDailyStreak, lastDailyDay
+        case airportsVisited, aircraftFlown, highestG
+    }
+    public init(from d: Decoder) throws {
+        let c = try d.container(keyedBy: CodingKeys.self)
+        func i(_ k: CodingKeys, _ def: Int = 0) throws -> Int { try c.decodeIfPresent(Int.self, forKey: k) ?? def }
+        func f(_ k: CodingKeys, _ def: Double = 0) throws -> Double { try c.decodeIfPresent(Double.self, forKey: k) ?? def }
+        flights = try i(.flights); landings = try i(.landings); crashes = try i(.crashes); smoothLandings = try i(.smoothLandings)
+        flightSeconds = try f(.flightSeconds); distanceKm = try f(.distanceKm); jobsCompleted = try i(.jobsCompleted)
+        jobsFailed = try i(.jobsFailed); creditsEarned = try i(.creditsEarned); kills = try i(.kills); missionsWon = try i(.missionsWon)
+        challengesPlayed = try i(.challengesPlayed); goldMedals = try i(.goldMedals); aerobaticFigures = try i(.aerobaticFigures)
+        dailyStreak = try i(.dailyStreak); bestDailyStreak = try i(.bestDailyStreak); lastDailyDay = try i(.lastDailyDay, -1)
+        airportsVisited = try c.decodeIfPresent(Set<String>.self, forKey: .airportsVisited) ?? []
+        aircraftFlown = try c.decodeIfPresent(Set<String>.self, forKey: .aircraftFlown) ?? []
+        highestG = try f(.highestG, 1)
+        sanitize()
+    }
+
+    mutating func sanitize() {
+        let cap = 2_000_000_000
+        func ci(_ v: Int) -> Int { min(max(v, 0), cap) }
+        func cd(_ v: Double) -> Double { v.isFinite ? min(max(v, 0), 1.0e12) : 0 }
+        flights = ci(flights); landings = ci(landings); crashes = ci(crashes); smoothLandings = ci(smoothLandings)
+        jobsCompleted = ci(jobsCompleted); jobsFailed = ci(jobsFailed); creditsEarned = ci(creditsEarned); kills = ci(kills)
+        missionsWon = ci(missionsWon); challengesPlayed = ci(challengesPlayed); goldMedals = ci(goldMedals)
+        aerobaticFigures = ci(aerobaticFigures); dailyStreak = ci(dailyStreak); bestDailyStreak = ci(bestDailyStreak)
+        lastDailyDay = min(max(lastDailyDay, -1), cap)
+        flightSeconds = cd(flightSeconds); distanceKm = cd(distanceKm)
+        highestG = highestG.isFinite ? min(max(highestG, -20), 30) : 1
+        airportsVisited = Set(airportsVisited.filter { $0.utf8.count <= 8 }.prefix(5_000))
+        aircraftFlown = aircraftFlown.filter { Economy.spec($0) != nil }
+    }
 }
 
 public struct Achievement: Sendable, Identifiable {
