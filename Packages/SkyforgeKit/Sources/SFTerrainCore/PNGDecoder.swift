@@ -25,10 +25,11 @@ public enum PNGDecoder {
         while i + 8 <= bytes.count {
             let len = be32(i)
             let type = String(decoding: bytes[(i + 4)..<(i + 8)], as: UTF8.self)
-            guard len >= 0, i + 12 + len <= bytes.count else { throw PNGDecodeError.corrupt("chunk length") }
+            guard len >= 0, len <= bytes.count, i + 12 + len <= bytes.count else { throw PNGDecodeError.corrupt("chunk length") }
             let body = i + 8
             switch type {
             case "IHDR":
+                guard len >= 13 else { throw PNGDecodeError.corrupt("short IHDR") }
                 width = be32(body); height = be32(body + 4)
                 let depth = bytes[body + 8], colour = bytes[body + 9], interlace = bytes[body + 12]
                 guard depth == 8 else { throw PNGDecodeError.unsupported("bit depth \(depth)") }
@@ -41,6 +42,8 @@ public enum PNGDecoder {
                 default: throw PNGDecodeError.unsupported("colour type \(colour)")
                 }
                 guard width > 0, height > 0, width <= 16_384, height <= 16_384 else { throw PNGDecodeError.corrupt("size") }
+                let (px, ov) = width.multipliedReportingOverflow(by: height)
+                guard !ov, px <= 64_000_000 else { throw PNGDecodeError.corrupt("image too large") }
             case "IDAT":
                 idat.append(contentsOf: bytes[body..<(body + len)])
             case "IEND":
@@ -52,6 +55,7 @@ public enum PNGDecoder {
             i += 12 + len
         }
         guard channels > 0 else { throw PNGDecodeError.corrupt("missing IHDR") }
+        guard width > 0, height > 0 else { throw PNGDecodeError.corrupt("missing IHDR") }
         let stride = width * channels
         let raw: [UInt8]
         do { raw = try Inflate.zlib(idat, expectedSize: (stride + 1) * height) } catch {

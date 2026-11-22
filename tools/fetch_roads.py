@@ -14,7 +14,7 @@ Output: a compact binary (`SFR1`) read by `SFQuickFlight.RoadPack`:
 
 Usage: fetch_roads.py --lat 47.53 --lon -122.30 --half-km 6 --out KBFI/roads.sfr [--release 2026-10-21.0]
 """
-import argparse, json, math, os, re, struct, sys
+import argparse, json, math, os, struct, sys
 
 import fetch_buildings as fb
 
@@ -24,21 +24,7 @@ UNPAVED = {"unpaved", "dirt", "gravel", "ground", "earth", "sand", "grass", "com
 
 
 def list_files(release):
-    keys, token = [], None
-    while True:
-        url = f"{fb.BUCKET}/?list-type=2&prefix=release/{release}/theme=transportation/type=segment/&max-keys=1000"
-        if token:
-            url += "&continuation-token=" + fb.requests.utils.quote(token)
-        x = fb.SESSION.get(url, timeout=60).text
-        for m in re.finditer(r"<Contents>(.*?)</Contents>", x, re.S):
-            k = re.search(r"<Key>([^<]+)</Key>", m.group(1)).group(1)
-            s = int(re.search(r"<Size>(\d+)</Size>", m.group(1)).group(1))
-            if k.endswith(".parquet"):
-                keys.append((k, s))
-        t = re.search(r"<NextContinuationToken>([^<]+)</NextContinuationToken>", x)
-        if not t:
-            return keys
-        token = t.group(1)
+    return fb.list_prefix(f"release/{release}/theme=transportation/type=segment/")
 
 
 def footer_index(release, cache_dir):
