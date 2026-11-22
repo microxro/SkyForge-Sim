@@ -36,8 +36,8 @@ import Foundation
     }
     @Test func appliesToReport() {
         var r = FlightReport(aircraftID: "org.skyforge.sf1", landed: false)
-        r.applyTouchdown(TouchdownEvent(time: 1, sinkFPM: 120, offsetM: 0.4, distancePastThresholdM: 300))
-        #expect(r.landed && r.touchdownSinkFPM == 120)
+        r.applyTouchdown(TouchdownEvent(time: 1, sinkFPM: 100, offsetM: 0.4, distancePastThresholdM: 300))
+        #expect(r.landed && r.touchdownSinkFPM == 100)
         var c = CareerState()
         CareerEngine.apply(r, to: &c)
         #expect(c.stats.smoothLandings == 1)
