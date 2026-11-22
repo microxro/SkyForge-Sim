@@ -76,12 +76,12 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
     @Published var gameplayHUD: GameplayHUD?
     @Published var missionResult: MissionResult?
     @Published var unlockMessage: String?
-    /// AI traffic and the tower, for free flight only (missions keep their own rules).
-    private(set) var traffic: TrafficSystem?
-    private(set) var atc: ATCController?
-    private var atcClock = 0.0
+    /// AI traffic, the tower and ownship in the tower's picture, for free flight only (missions keep their own rules).
+    private(set) var tower: TowerSession?
     /// The tower's last messages, shown under the HUD.
     @Published var atcLines: [String] = []
+    /// The clearance the tower is waiting on from the pilot, with its readback choices.
+    @Published private(set) var ownshipPrompt: OwnshipPrompt?
     /// Speaks the tower's messages with Apple's on-device voice. Off until the pilot turns it on.
     @Published var atcVoice = false
     private let speaker = AVSpeechATCSpeaker()
@@ -113,18 +113,16 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
         let built = Self.makeFlight(world: provisional, start: start, spec: aircraft, mission: mission, filter: filter)
         session = built.session
         director = built.director
-        let trafficSetup = Self.makeTraffic(world: provisional, mission: mission)
-        traffic = trafficSetup?.system
-        atc = trafficSetup?.tower
+        tower = Self.makeTower(world: provisional, mission: mission, onRunway: start == .runway)
         super.init()
     }
 
-    /// AI traffic and the tower for a free flight at this world's runway. Missions get none.
-    private static func makeTraffic(world: any FlightWorld, mission: MissionDefinition?) -> (system: TrafficSystem, tower: ATCController)? {
+    /// The traffic and the tower for a free flight at this world's runway. Missions get none.
+    private static func makeTower(world: any FlightWorld, mission: MissionDefinition?, onRunway: Bool) -> TowerSession? {
         guard mission == nil else { return nil }
         let runway = TrafficRunway(threshold: world.runwayThreshold, heading: world.runwayHeading,
                                    length: world.runwayLengthMetres, elevation: world.runwayElevation)
-        return (TrafficSystem(runway: runway), ATCController(runwayDesignator: runway.designator))
+        return TowerSession(runway: runway, startsOnRunway: onRunway)
     }
 
     /// A flight session and director for a world: the aircraft, its wind and (for missions) the airborne start.
@@ -150,11 +148,9 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
         director = built.director
         gameplayHUD = nil; missionResult = nil; unlockMessage = nil; resultSaved = false
         fireHeld = false
-        let trafficSetup = Self.makeTraffic(world: world, mission: mission)
-        traffic = trafficSetup?.system
-        atc = trafficSetup?.tower
-        atcClock = 0
+        tower = Self.makeTower(world: world, mission: mission, onRunway: start == .runway)
         atcLines = []
+        ownshipPrompt = nil
     }
 
     func launchMissile() { launchRequested = true }
@@ -329,23 +325,25 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
 
     /// Steps AI traffic and the tower, and gives the aircraft the wakes of the heavy traffic near it.
     private func stepTraffic(dt: Double) {
-        guard traffic != nil else { return }
-        traffic?.step(dt: dt)
-        _ = traffic?.drainEvents()   // nothing reads these yet; drain so the buffer stays short
-        atcClock += dt
-        if atcClock >= GameplaySession.atcInterval {
-            atcClock = 0
-            let simTime = traffic?.time ?? 0
-            let snapshots = traffic?.snapshots ?? []
-            let wind = ATCWind(windNED: session.environment.windNED)
-            let instructions = atc?.update(time: simTime, traffic: snapshots, wind: wind) ?? []
-            for instruction in instructions {
-                if let clearance = instruction.clearance { _ = traffic?.issue(clearance, to: instruction.aircraftID) }
-                if atcVoice { speaker.speak(instruction.text) }
+        guard tower != nil else { return }
+        let report = OwnshipReport(config: session.aircraft, positionNED: session.state.positionNED,
+                                   velocityNED: session.state.velocityNED,
+                                   onGround: session.lastOutputs?.weightOnWheels ?? false)
+        if let decided = tower?.step(dt: dt, ownship: report, wind: ATCWind(windNED: session.environment.windNED)) {
+            if atcVoice {
+                for instruction in decided { speaker.speak(instruction.text) }
             }
-            atcLines = atc?.recentLines(3) ?? []
+            atcLines = tower?.lines ?? []
+            ownshipPrompt = tower?.prompt
         }
-        session.setWakes(traffic?.wakesNear(session.state.positionNED) ?? [])
+        session.setWakes(tower?.traffic.wakesNear(session.state.positionNED) ?? [])
+    }
+
+    /// The pilot's readback choice for the tower's prompt. The tap that answers it.
+    func answerTower(choice: Int) {
+        _ = tower?.readback(choice: choice)
+        atcLines = tower?.lines ?? []
+        ownshipPrompt = tower?.prompt
     }
 
     /// Runs AI, weapons, the envelope monitor and the mission against the flight, once per frame.
@@ -446,7 +444,7 @@ public struct QuickFlightView: View {
                     .buttonStyle(.bordered)
                     Button(controller.cockpit ? "Chase view" : "Cockpit view") { controller.cockpit.toggle() }
                         .buttonStyle(.bordered)
-                    if controller.atc != nil {
+                    if controller.tower != nil {
                         Button(controller.atcVoice ? "Tower voice on" : "Tower voice off") { controller.atcVoice.toggle() }
                             .buttonStyle(.bordered)
                     }
@@ -463,6 +461,20 @@ public struct QuickFlightView: View {
                         MissionHUDView(hud: hud).frame(maxWidth: 380)
                         Spacer()
                     }
+                    .padding(.horizontal)
+                }
+                if let prompt = controller.ownshipPrompt {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Tower: \(prompt.text)").font(.caption).foregroundStyle(.white)
+                        Text("Read back the clearance:").font(.caption2).foregroundStyle(Color.white.opacity(0.8))
+                        ForEach(Array(prompt.options.enumerated()), id: \.offset) { index, option in
+                            Button(option) { controller.answerTower(choice: index) }
+                                .buttonStyle(.bordered)
+                        }
+                    }
+                    .padding(8)
+                    .background(.black.opacity(0.55))
+                    .frame(maxWidth: 380, alignment: .leading)
                     .padding(.horizontal)
                 }
                 if !controller.atcLines.isEmpty {
