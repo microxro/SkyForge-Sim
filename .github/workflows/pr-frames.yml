@@ -32,12 +32,12 @@ jobs:
       RUN_URL: ${{ github.event.workflow_run.html_url }}
     steps:
       # Main's checkout: the default branch, which holds the trusted tools/ci_frames.py.
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Download frames from the CI run
         id: download
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         continue-on-error: true
         with:
           name: skyforge-frames

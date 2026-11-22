@@ -182,7 +182,29 @@ public enum MissionCatalog {
         ],
         parTime: 200, timeLimit: 420, areaRadius: 25_000, unlock: .mission("coastal-survey"))
 
-    public static let all: [MissionDefinition] = [firstFlight, patternLanding, precisionLanding, wingman, intercept, gunnery, lowLevel, dogfight, coastalSurvey, twinBandits, bushStrip, airportTour, valleyRun]
+    public static let waterDropRun = MissionDefinition(
+        id: "water-drop-run", title: "Water Drop Run", category: .training,
+        briefing: "A grass fire is burning 3 km out. Fly to the fire line, then make a low, steady run through it at 30 m or less and 45 to 70 m/s.",
+        difficulty: 3, recommendedAircraft: AircraftCatalog.sfAerobat.id, allowedRoles: civil,
+        spawn: MissionSpawn(along: -1_000, up: 300, speed: .cruise),
+        objectives: [
+            MissionObjective(id: "approach", title: "Fly to the fire line", kind: .flyTo(MissionWaypoint(3_000, 0, 150, radius: 500)), points: 150),
+            MissionObjective(id: "drop", title: "Make the drop run", kind: .dropRun(MissionWaypoint(3_000, 0, 30, radius: 250), maxAGL: 30, minSpeed: 45, maxSpeed: 70), points: 350),
+        ],
+        parTime: 240, timeLimit: 480, areaRadius: 20_000, unlock: .mission("pattern-landing"))
+
+    public static let all: [MissionDefinition] = [firstFlight, patternLanding, precisionLanding, wingman, intercept, gunnery, lowLevel, dogfight, coastalSurvey, twinBandits, bushStrip, airportTour, valleyRun, waterDropRun, rescuePickup]
+    public static let rescuePickup = MissionDefinition(
+        id: "rescue-pickup", title: "Rescue Pickup", category: .navigation,
+        briefing: "A hiker is waiting on a meadow strip about 1.5 km down the field. Land, stop beside them for three seconds, then fly the casualty to the hospital at the far end.",
+        difficulty: 3, recommendedAircraft: AircraftCatalog.sfCruiser.id, allowedRoles: civil,
+        spawn: MissionSpawn(along: -2_000, up: 150, speed: .approach),
+        objectives: [
+            MissionObjective(id: "pickup", title: "Land and stop beside the hiker", kind: .pickup(MissionWaypoint(1_500, 120, 0, radius: 60), maxSpeed: 8, hold: 3), points: 250),
+            MissionObjective(id: "hospital", title: "Fly to the hospital", kind: .flyTo(MissionWaypoint(7_000, -600, 400, radius: 500)), points: 250),
+        ],
+        parTime: 300, timeLimit: 600, areaRadius: 30_000, unlock: .mission("bush-strip"))
+
 
     public static func mission(id: String) -> MissionDefinition? { all.first { $0.id == id } }
     public static func missions(in category: MissionCategory) -> [MissionDefinition] { all.filter { $0.category == category } }

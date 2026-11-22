@@ -286,10 +286,12 @@ public enum BuildingMeshBuilder {
                 let nrm = SIMD3(d.y / len, -d.x / len, 0)
                 let st = wallStyle(len / 2)
                 let vb = (bottom - (floating ? bottom : base)) / fh, vt = Double(storeys) + parapet / fh
-                let a = vertex(SIMD3(p.x, p.y, bottom), nrm, wall, .wall, uv: SIMD2(-len / 2, vb), style: st)
-                let c1 = vertex(SIMD3(pn.x, pn.y, bottom), nrm, wall, .wall, uv: SIMD2(len / 2, vb), style: st)
-                let c2 = vertex(SIMD3(pn.x, pn.y, top + parapet), nrm, wall, .wall, uv: SIMD2(len / 2, vt), style: st)
-                let e = vertex(SIMD3(p.x, p.y, top + parapet), nrm, wall, .wall, uv: SIMD2(-len / 2, vt), style: st)
+                // Each facade takes its own tint (±7 %): one flat colour per house reads as a toy block at 2–6 km.
+                let facade = wall * Float(0.93 + 0.14 * rnd(UInt64(1_000 + i)))
+                let a = vertex(SIMD3(p.x, p.y, bottom), nrm, facade, .wall, uv: SIMD2(-len / 2, vb), style: st)
+                let c1 = vertex(SIMD3(pn.x, pn.y, bottom), nrm, facade, .wall, uv: SIMD2(len / 2, vb), style: st)
+                let c2 = vertex(SIMD3(pn.x, pn.y, top + parapet), nrm, facade, .wall, uv: SIMD2(len / 2, vt), style: st)
+                let e = vertex(SIMD3(p.x, p.y, top + parapet), nrm, facade, .wall, uv: SIMD2(-len / 2, vt), style: st)
                 quad(a, c1, c2, e)
             }
 
@@ -316,8 +318,10 @@ public enum BuildingMeshBuilder {
                     guard l > 1e-9 else { continue }
                     nn /= l
                     if nn.z < 0 { nn = -nn }
-                    let v0 = vertex(a, nn, roof, .roof, uv: outer[i] - it.centre, style: st), v1 = vertex(bq, nn, roof, .roof, uv: outer[j] - it.centre, style: st)
-                    let v2 = vertex(c, nn, roof, .roof, uv: pr.ring[j] - it.centre, style: st), v3 = vertex(e, nn, roof, .roof, uv: pr.ring[i] - it.centre, style: st)
+                    // Each roof plane takes its own tone (±6 %), as re-roofed and weathered planes do.
+                    let plane = roof * Float(0.94 + 0.12 * rnd(UInt64(2_000 + i)))
+                    let v0 = vertex(a, nn, plane, .roof, uv: outer[i] - it.centre, style: st), v1 = vertex(bq, nn, plane, .roof, uv: outer[j] - it.centre, style: st)
+                    let v2 = vertex(c, nn, plane, .roof, uv: pr.ring[j] - it.centre, style: st), v3 = vertex(e, nn, plane, .roof, uv: pr.ring[i] - it.centre, style: st)
                     quad(v0, v1, v2, v3)
                 }
                 cap(pr.ring, z: top + pr.rise, colour: roof, st: st)

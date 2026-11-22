@@ -81,6 +81,41 @@ import SFInstruments
         #expect(Self.contrast(img) > 60, "\(ident) ground contrast")
     }
 
+    /// CDLOD morph check, numeric so it needs no eyes. Ten low-resolution frames while the camera steps 60 m along
+    /// the approach each frame, which carries the terrain nodes through their morph bands. A geomorph seam or a
+    /// popping node shows as one frame-to-frame change far above the rest, so the largest per-pixel change is
+    /// compared with the median change. The 4× bound is a first guess until CI logs the real values.
+    @Test(.enabled(if: SkyRegressionTests.hasDevice, "no Metal device on this host"))
+    func cdlodMorphSequenceHasNoPops() async throws {
+        let ident = "KMRY"
+        guard Self.wanted(ident) else { return }
+        let region = try await RealWorldRegion.load(airport: ident, detail: .phone,
+                                                    transport: Showcase.transport(for: ident, fallback: nil), cache: nil)
+        let data = RealWorldRenderData(region: region, chunkQuads: 32)
+        let session = QuickFlightSession(world: region, start: .final)
+        let cam = session.chaseCamera()
+        let r = try WorldRenderer(lighting: LightingSetup.physicalPreset(.midday, azimuthDegrees: 200, cameraHeightMetres: cam.position.z))
+        try r.setRealWorld(data)
+        r.clouds = .clear
+        let w = 320, h = 180
+        let track = SIMD3<Double>(sin(region.runwayHeading), cos(region.runwayHeading), 0)
+        var frames: [[UInt8]] = []
+        for k in 0..<10 {
+            let shift = track * (60 * Double(k))
+            frames.append(try r.render(width: w, height: h, camera: WorldCamera(position: cam.position + shift, target: cam.target + shift)))
+            #expect(r.lastDrawnChunks > 0, "CDLOD drew no nodes at step \(k)")
+        }
+        var changes: [Int] = []
+        for k in 1..<frames.count {
+            var largest = 0
+            for i in 0..<frames[k].count { largest = max(largest, abs(Int(frames[k][i]) - Int(frames[k - 1][i]))) }
+            changes.append(largest)
+        }
+        let sorted = changes.sorted(), median = max(1, sorted[sorted.count / 2]), worst = sorted.last ?? 0
+        print("SKYFORGE_MORPH \(ident) largest_per_pixel=\(changes) median=\(median) ratio=\(String(format: "%.2f", Double(worst) / Double(median)))")
+        #expect(worst <= 4 * median, "largest per-pixel change \(worst) against median \(median): a pop")
+    }
+
     /// The look review: every showcase airport at the ultra tier from several cameras.
     @Test(.enabled(if: SkyRegressionTests.hasDevice, "no Metal device on this host"),
           arguments: ["KMRY", "KASE", "KBFI", "LSZS", "NZQN"])

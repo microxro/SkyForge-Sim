@@ -63,6 +63,17 @@ public enum WorldShaders {
         return u.lightViewProj * (u.model * float4(float3(v[vid].position), 1.0));
     }
 
+    // The shadow pass morphs exactly as the colour pass does, so cascades match the visible terrain.
+    vertex float4 shadow_terrain_lod_vertex(const device TerrainVertex* v [[buffer(0)]], constant ShadowUniforms& u [[buffer(1)]],
+                                            const device float* morphZ [[buffer(2)]], constant float2& morph [[buffer(3)]],
+                                            uint vid [[vertex_id]]) {
+        float3 lp = float3(v[vid].position);
+        float dist = length((u.model * float4(lp, 1.0)).xyz);
+        float t = clamp((dist - morph.x) / max(morph.y - morph.x, 1e-3), 0.0, 1.0);
+        lp.z = mix(lp.z, morphZ[vid], t);
+        return u.lightViewProj * (u.model * float4(lp, 1.0));
+    }
+
     vertex float4 shadow_building_vertex(const device BuildingVertex* v [[buffer(0)]], constant ShadowUniforms& u [[buffer(1)]],
                                          uint vid [[vertex_id]]) {
         return u.lightViewProj * (u.model * float4(float3(v[vid].position), 1.0));
@@ -159,6 +170,29 @@ public enum WorldShaders {
                                        uint vid [[vertex_id]]) {
         TerrainVertex w = v[vid];
         float4 p = u.model * float4(float3(w.position), 1.0);
+        WorldVarying o;
+        o.position = u.viewProj * p;
+        o.rel = p.xyz;
+        o.normal = normalize(float3(w.normal.xyz) / 127.0);
+        o.albedo = float3(0.15, 0.17, 0.12);
+        o.material = 8.0;                       // real terrain: albedo from imagery in the fragment shader
+        o.field = 0.0;
+        o.local = float3(0.0);
+        o.uv = float2(0.0); o.style = float4(0.0);
+        return o;
+    }
+
+    // Real terrain on CDLOD nodes (Strugar 2009): each vertex geomorphs toward its parent surface as the camera moves
+    // through the node's morph band. `morph` is the band in metres from the camera; `morphZ` the parent heights.
+    vertex WorldVarying terrain_lod_vertex(const device TerrainVertex* v [[buffer(0)]], constant WorldUniforms& u [[buffer(1)]],
+                                           const device float* morphZ [[buffer(2)]], constant float2& morph [[buffer(3)]],
+                                           uint vid [[vertex_id]]) {
+        TerrainVertex w = v[vid];
+        float3 lp = float3(w.position);
+        float dist = length((u.model * float4(lp, 1.0)).xyz);
+        float t = clamp((dist - morph.x) / max(morph.y - morph.x, 1e-3), 0.0, 1.0);
+        lp.z = mix(lp.z, morphZ[vid], t);
+        float4 p = u.model * float4(lp, 1.0);
         WorldVarying o;
         o.position = u.viewProj * p;
         o.rel = p.xyz;
