@@ -224,9 +224,23 @@ def test_region_and_index():
     assert list(oc.row_groups_in_box(idx, (0.5, 2, 0.5, 2))) == [("a", 1, [0, 2])]
 
 
+class FakeRaw:
+    def __init__(self, data): self.data = data
+    def read(self, n=-1, decode_content=False): return self.data if n < 0 else self.data[:n]
+
+
 class FakeResp:
-    def __init__(self, status=200, text="", content=b""):
-        self.status_code, self.text, self.content = status, text, content
+    def __init__(self, status=200, text="", content=b"", headers=None):
+        if text and not content: content = text.encode()
+        self.status_code, self.text, self.content, self.headers = status, text, content, headers or {}
+        self.raw = FakeRaw(content)
+    def close(self): pass
+
+
+def ranged(headers, body):
+    """A 206 answer whose Content-Range matches the request's Range header."""
+    a, b = headers["Range"].split("=")[1].split("-")
+    return FakeResp(206, content=body, headers={"Content-Range": f"bytes {a}-{b}/100"})
 
 
 def with_session(fake, fn):
@@ -275,7 +289,7 @@ def test_rangefile_hardening():
     f = oc.RangeFile("http://x/o", 100, block=16)
     calls = []
     def ok(url, headers=None, **k):
-        calls.append(headers["Range"]); return FakeResp(206, content=b"x" * 16)
+        calls.append(headers["Range"]); return ranged(headers, b"x" * 16)
     assert with_session(ok, lambda: f.read(10)) == b"x" * 10
     # 200 = the server ignored Range: fail at once
     calls.clear()
@@ -287,12 +301,23 @@ def test_rangefile_hardening():
     assert raises(IOError, lambda: with_session(nf, lambda: oc.RangeFile("http://x/o", 100, 16).read(10))) and len(calls) == 1
     # 503 and short bodies are retried (5 tries) then fail
     calls.clear()
-    def bad(url, headers=None, **k): calls.append(1); return FakeResp(206, content=b"z" * 3)
+    def bad(url, headers=None, **k): calls.append(1); return ranged(headers, b"z" * 3)
     assert raises(IOError, lambda: with_session(bad, lambda: oc.RangeFile("http://x/o", 100, 16).read(10))) and len(calls) == 5
     calls.clear()
     def flaky(url, headers=None, **k):
-        calls.append(1); return FakeResp(503) if len(calls) < 3 else FakeResp(206, content=b"k" * 16)
+        calls.append(1); return FakeResp(503) if len(calls) < 3 else ranged(headers, b"k" * 16)
     assert with_session(flaky, lambda: oc.RangeFile("http://x/o", 100, 16).read(4)) == b"k" * 4 and len(calls) == 3
+
+
+def test_rangefile_content_range_and_bounds():
+    # a 206 whose Content-Range is for another span is refused, not trusted
+    def wrong(url, headers=None, **k): return FakeResp(206, content=b"x" * 16, headers={"Content-Range": "bytes 16-31/100"})
+    assert raises(IOError, lambda: with_session(wrong, lambda: oc.RangeFile("http://x/o", 100, 16).read(10)))
+    # a body longer than requested is not accepted as the span
+    def long(url, headers=None, **k): return ranged(headers, b"x" * 40)
+    assert raises(IOError, lambda: with_session(long, lambda: oc.RangeFile("http://x/o", 100, 16).read(10)))
+    # an absurd span is refused before any request
+    assert raises(ValueError, lambda: oc.RangeFile("http://x/o", 1 << 40, 1 << 20)._get(0, 1 << 33))
 
 
 def test_write_output_and_cache():

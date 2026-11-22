@@ -61,6 +61,17 @@ import SFImagery
         #expect(throws: AirportPack.ParseError.truncated) { try AirportPack.parse(cut, origin: Self.origin) }
     }
 
+    /// Hostile headers (as the security pass did for BuildingPack and RoadPack): a count the file cannot hold and a
+    /// non-finite or out-of-range origin are refused before anything is allocated.
+    @Test func hostileHeadersAreRefused() {
+        var huge = Self.sample(); huge.replaceSubrange(20..<24, with: [0xFF, 0xFF, 0xFF, 0xFF])
+        #expect(throws: AirportPack.ParseError.truncated) { try AirportPack.parse(huge, origin: Self.origin) }
+        var nan = Self.sample(); nan.replaceSubrange(4..<12, with: withUnsafeBytes(of: Double.nan.bitPattern.littleEndian) { Data($0) })
+        #expect(throws: AirportPack.ParseError.truncated) { try AirportPack.parse(nan, origin: Self.origin) }
+        var far = Self.sample(); far.replaceSubrange(12..<20, with: withUnsafeBytes(of: (400.0).bitPattern.littleEndian) { Data($0) })
+        #expect(throws: AirportPack.ParseError.truncated) { try AirportPack.parse(far, origin: Self.origin) }
+    }
+
     @Test func rasterisesClassesAndRunwayWidth() throws {
         let a = try AirportPack.parse(Self.sample(), origin: Self.origin)
         let r = try #require(a.rasterise())

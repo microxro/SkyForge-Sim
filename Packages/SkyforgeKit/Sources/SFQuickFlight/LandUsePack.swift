@@ -25,6 +25,9 @@ public enum LandUsePack {
     public static let attribution = "Land use: © OpenStreetMap contributors, ODbL 1.0 (via Overture Maps Foundation)"
     public static let fileName = "landuse.sfl"
 
+    /// Smallest possible record in bytes (fixed fields plus a 3-point ring), as BuildingPack.minRecordSize.
+    static let minRecordSize = 20
+
     public enum ParseError: Error, Equatable { case badMagic, truncated }
 
     /// Polygons in metres around `origin`; `keep(category, centre)` filters before the ring is converted.
@@ -41,6 +44,7 @@ public enum LandUsePack {
             }
             let lat0 = Double(bitPattern: UInt64(littleEndian: try read(UInt64.self)))
             let lon0 = Double(bitPattern: UInt64(littleEndian: try read(UInt64.self)))
+            guard lat0.isFinite, lon0.isFinite, abs(lat0) <= 90, abs(lon0) <= 180 else { throw ParseError.truncated }
             let count = Int(UInt32(littleEndian: try read(UInt32.self)))
             // Same affine pack-metres → region-metres map as BuildingPack / RoadPack.
             let mlat = 111_132.0, mlon = 111_320.0 * cos(lat0 * .pi / 180)
@@ -50,7 +54,9 @@ public enum LandUsePack {
             }
             let p0 = region(0, 0), ex = (region(1_000, 0) - p0) / 1_000, ey = (region(0, 1_000) - p0) / 1_000
             var out: [LandUsePolygon] = []
-            out.reserveCapacity(min(count, raw.count / 12))
+            // Smallest record: 12-byte header plus a 3-point ring (two 4-byte deltas).
+            guard count <= (raw.count - o) / minRecordSize else { throw ParseError.truncated }
+            out.reserveCapacity(count)
             for _ in 0..<count {
                 let cat = try read(UInt8.self), flags = try read(UInt8.self)
                 let n = Int(UInt16(littleEndian: try read(UInt16.self)))

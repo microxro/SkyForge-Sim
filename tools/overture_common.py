@@ -12,8 +12,11 @@ Hardening rules every tool relies on (see docs/rounds/ROUND2.md):
     non-finite or out-of-range coordinates are rejected before they reach `round()` or `struct.pack`;
   * index caches are written atomically and a corrupt cache is rebuilt, not trusted.
 """
-import io, json, math, os, struct, sys, tempfile, time, re
+import io, json, math, os, struct, sys, tempfile, time
+import xml.etree.ElementTree as ET
 import requests
+
+from _net import MAX_BYTES
 
 BUCKET = "https://overturemaps-us-west-2.s3.amazonaws.com"
 SESSION = requests.Session()
@@ -118,21 +121,33 @@ class RangeFile(io.RawIOBase):
 
     def _get(self, a, b):
         want = b - a
+        if want <= 0 or want > MAX_BYTES:
+            raise ValueError(f"refusing range request of {want} bytes")
         last = "no response"
         for attempt in range(5):
             try:
-                r = SESSION.get(self.url, headers={"Range": f"bytes={a}-{b - 1}"}, timeout=120)
+                r = SESSION.get(self.url, headers={"Range": f"bytes={a}-{b - 1}"}, timeout=120, stream=True)
             except requests.RequestException as e:
                 last = f"{type(e).__name__}"
             else:
-                if r.status_code == 206 and len(r.content) == want:
-                    self.fetched += len(r.content)
-                    return r.content
-                if r.status_code == 200:
-                    raise IOError(f"server ignored the Range header (200): {self.url}")
-                if 400 <= r.status_code < 500 and r.status_code not in (408, 429):
-                    raise IOError(f"range request refused (HTTP {r.status_code}): {self.url} {a}-{b}")
-                last = f"HTTP {r.status_code}, {len(r.content)} of {want} bytes"
+                try:
+                    if r.status_code == 206:
+                        cr = r.headers.get("Content-Range", "")
+                        if not cr.startswith(f"bytes {a}-{b - 1}/"):
+                            raise IOError(f"bad Content-Range {cr!r} for {self.url} {a}-{b}")
+                        body = r.raw.read(want + 1, decode_content=True)     # bounded: never more than want + 1 bytes
+                        if len(body) == want:
+                            self.fetched += want
+                            return body
+                        last = f"HTTP 206, {len(body)} of {want} bytes"
+                    elif r.status_code == 200:
+                        raise IOError(f"server ignored the Range header (200): {self.url}")
+                    elif 400 <= r.status_code < 500 and r.status_code not in (408, 429):
+                        raise IOError(f"range request refused (HTTP {r.status_code}): {self.url} {a}-{b}")
+                    else:
+                        last = f"HTTP {r.status_code}"
+                finally:
+                    r.close()
             time.sleep(1.5 * (attempt + 1))
         raise IOError(f"range request failed ({last}): {self.url} {a}-{b}")
 
@@ -172,16 +187,18 @@ def list_files(release, theme="buildings", typ="building"):
         try: r = SESSION.get(url, timeout=60)
         except requests.RequestException as e: raise FetchError(f"listing failed: {type(e).__name__}") from e
         if r.status_code != 200: raise FetchError(f"listing failed: HTTP {r.status_code} for {url}")
-        x = r.text
-        if "<Error>" in x or "<ListBucketResult" not in x: raise FetchError(f"listing returned an error document for {url}")
-        for m in re.finditer(r"<Contents>(.*?)</Contents>", x, re.S):
-            k = re.search(r"<Key>([^<]+)</Key>", m.group(1)); s = re.search(r"<Size>(\d+)</Size>", m.group(1))
-            if not k or not s: raise FetchError(f"malformed <Contents> entry in listing of {url}")
-            if k.group(1).endswith(".parquet"): keys.append((k.group(1), int(s.group(1))))
-        t = re.search(r"<NextContinuationToken>([^<]+)</NextContinuationToken>", x)
+        try: root = ET.fromstring(r.content)            # parsed, not pattern-matched (as the security pass did for the tools)
+        except ET.ParseError as e: raise FetchError(f"listing is not valid XML for {url}") from e
+        ns = root.tag.partition("}")[0] + "}" if root.tag.startswith("{") else ""
+        if root.tag != ns + "ListBucketResult": raise FetchError(f"listing returned an error document for {url}")
+        for c in root.iter(ns + "Contents"):
+            k, sz = c.findtext(ns + "Key"), c.findtext(ns + "Size")
+            if not k or not sz or not sz.isdigit(): raise FetchError(f"malformed <Contents> entry in listing of {url}")
+            if k.endswith(".parquet"): keys.append((k, int(sz)))
+        t = root.findtext(ns + "NextContinuationToken")
         if not t: break
-        if t.group(1) in seen: raise FetchError("listing continuation token repeated")
-        seen.add(t.group(1)); token = t.group(1)
+        if t in seen: raise FetchError("listing continuation token repeated")
+        seen.add(t); token = t
     else:
         raise FetchError(f"listing exceeded {MAX_LIST_PAGES} pages")
     if not keys: raise FetchError(f"no parquet files under release {release} theme={theme}/type={typ} (wrong release?)")

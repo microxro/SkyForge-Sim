@@ -31,6 +31,18 @@ import SFImagery
         #expect(throws: LandUsePack.ParseError.badMagic) { try LandUsePack.parse(Data("nope".utf8) + Data(count: 40), origin: origin) }
         #expect(throws: LandUsePack.ParseError.truncated) { try LandUsePack.parse(Self.pack().prefix(30), origin: origin) }
     }
+
+    /// Hostile headers (as the security pass did for BuildingPack and RoadPack): a count the file cannot hold and a
+    /// non-finite or out-of-range origin are refused before anything is allocated.
+    @Test func hostileHeadersAreRefused() {
+        let origin = GeoOrigin(latitude: 47.53, longitude: -122.30)
+        var huge = Self.pack(); huge.replaceSubrange(20..<24, with: [0xFF, 0xFF, 0xFF, 0xFF])
+        #expect(throws: LandUsePack.ParseError.truncated) { try LandUsePack.parse(huge, origin: origin) }
+        var nan = Self.pack(); nan.replaceSubrange(4..<12, with: withUnsafeBytes(of: Double.nan.bitPattern.littleEndian) { Data($0) })
+        #expect(throws: LandUsePack.ParseError.truncated) { try LandUsePack.parse(nan, origin: origin) }
+        var far = Self.pack(); far.replaceSubrange(12..<20, with: withUnsafeBytes(of: (400.0).bitPattern.littleEndian) { Data($0) })
+        #expect(throws: LandUsePack.ParseError.truncated) { try LandUsePack.parse(far, origin: origin) }
+    }
 }
 
 @Suite struct SuburbMaskTests {
