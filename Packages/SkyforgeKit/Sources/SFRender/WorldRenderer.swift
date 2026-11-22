@@ -209,6 +209,12 @@ public final class WorldRenderer {
     public var shadowMapSize = 2_048
     /// Shadow filter half width in taps (1 = 3 × 3 PCF, 2 = 5 × 5).
     public var shadowFilter = 1
+    /// Vegetation instance density multiplier (1 = full). Set by the quality ladder; scene builders read it.
+    public var vegetationDensity: Float = 1
+    /// Draw distance multiplier for vegetation and buildings (1 = full). Set by the quality ladder.
+    public var drawDistanceScale: Float = 1
+    /// Terrain CDLOD screen-space-error multiplier (>1 = coarser terrain). Set by the quality ladder.
+    public var terrainSSEScale: Float = 1
     /// Animation time (s) for water and other moving surfaces.
     public var time: Double = 0
     /// Round 5 ocean: wind (m/s, direction the wind blows toward in radians), quality tier and live wake sources
@@ -282,6 +288,8 @@ public final class WorldRenderer {
     /// Dynamic resolution: the scene renders at this fraction of the output size and is upscaled
     /// in the tone-map pass (FXAA runs at the output size).
     public var renderScale: Float = 1
+    /// Last GPU frame time, fed by `recordFrameTiming` for the quality governor.
+    public let frameTelemetry = FrameTelemetry()
     private var scaledDepth: MTLTexture?
 
     /// Per-device-tier render settings (the app and the CI frame-time test use the same presets).
@@ -291,10 +299,15 @@ public final class WorldRenderer {
         public var cloudLightSteps: Int
         /// Shadow map edge (texels) and PCF half width (taps).
         public var shadowMapSize: Int, shadowFilter: Int
+        /// Scene-density settings (see `WorldRenderer.vegetationDensity` and friends). 1 = full.
+        public var vegetationDensity: Float, drawDistanceScale: Float, terrainSSEScale: Float
         public init(renderScale: Float, cloudSteps: Int, cloudDownsample: Int, bloomIntensity: Float, ssaoStrength: Float,
-                    cloudLightSteps: Int = 6, shadowMapSize: Int = 2_048, shadowFilter: Int = 1) {
+                    cloudLightSteps: Int = 6, shadowMapSize: Int = 2_048, shadowFilter: Int = 1,
+                    vegetationDensity: Float = 1, drawDistanceScale: Float = 1, terrainSSEScale: Float = 1) {
             self.cloudLightSteps = cloudLightSteps
             self.shadowMapSize = shadowMapSize; self.shadowFilter = shadowFilter
+            self.vegetationDensity = vegetationDensity; self.drawDistanceScale = drawDistanceScale
+            self.terrainSSEScale = terrainSSEScale
             self.renderScale = renderScale; self.cloudSteps = cloudSteps; self.cloudDownsample = cloudDownsample
             self.bloomIntensity = bloomIntensity; self.ssaoStrength = ssaoStrength
         }
@@ -318,6 +331,7 @@ public final class WorldRenderer {
         bloomIntensity = s.bloomIntensity; ssaoStrength = s.ssaoStrength
         cloudDetail = s.renderScale >= 2 ? 1 : 0
         shadowMapSize = s.shadowMapSize; shadowFilter = s.shadowFilter
+        vegetationDensity = s.vegetationDensity; drawDistanceScale = s.drawDistanceScale; terrainSSEScale = s.terrainSSEScale
     }
     private var cloudRenderer: CloudRenderer?
     private let sky: PhysicalSkyRenderer
@@ -890,6 +904,7 @@ public final class WorldRenderer {
     /// Encodes sky + world + aircraft into a pass whose colour attachment is already set.
     public func encode(cmd: MTLCommandBuffer, colour: MTLTexture, depth: MTLTexture, camera c: WorldCamera,
                        aircraftPosition: SIMD3<Double>?, aircraftBodyToENU: simd_double3x3?) throws {
+        recordFrameTiming(cmd)
         func target(_ t: MTLTexture?, _ format: MTLPixelFormat, _ w: Int, _ h: Int) -> MTLTexture? {
             if let t, t.width == w, t.height == h, t.pixelFormat == format { return t }
             let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: format, width: w, height: h, mipmapped: false)
