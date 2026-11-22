@@ -192,23 +192,25 @@ public struct GameplaySession: Sendable {
     /// Snapshots of the AI aircraft, for the renderer and HUD.
     public var trafficSnapshots: [TrafficSnapshot] { traffic?.snapshots ?? [] }
 
-    /// Steps the traffic, lets the tower clear it, and gives ownship the wakes of the heavy aircraft.
+    /// Steps the traffic in place, lets the tower clear it, and gives ownship the wakes of the heavy aircraft near it.
     private mutating func updateTraffic(dt: Double) {
-        guard var system = traffic, var controller = atc else { return }
-        system.step(dt: dt)
+        guard traffic != nil else { return }
+        traffic?.step(dt: dt)
+        _ = traffic?.drainEvents()   // nothing reads these yet; drain so the buffer stays short
         atcClock += dt
         if atcClock >= Self.atcInterval {
             atcClock = 0
+            let simTime = traffic?.time ?? 0
+            let snapshots = traffic?.snapshots ?? []
             let wind = ATCWind(windNED: environment.windNED)
-            for instruction in controller.update(time: system.time, traffic: system.snapshots, wind: wind) {
+            let instructions = atc?.update(time: simTime, traffic: snapshots, wind: wind) ?? []
+            for instruction in instructions {
                 if let clearance = instruction.clearance {
-                    _ = system.issue(clearance, to: instruction.aircraftID)
+                    _ = traffic?.issue(clearance, to: instruction.aircraftID)
                 }
             }
         }
-        environment.wakes = system.wakes.active
-        traffic = system
-        atc = controller
+        environment.wakes = traffic?.wakesNear(state.positionNED) ?? []
     }
 
     private mutating func fail(_ reason: String) {

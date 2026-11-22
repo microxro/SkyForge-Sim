@@ -27,7 +27,7 @@ public struct TrafficSystem: Sendable {
     private var nextDeparture: Double
     private var serial = 0
 
-    /// Seconds between wake pairs from a heavy aircraft (about 120 m of track at approach speed).
+    /// Seconds between wake pairs from a heavy aircraft (about 170 to 240 m of track at heavy approach speeds).
     public static let wakeInterval = 4.0
     /// Types flown as traffic: the civil fleet, from the 1 kg trainer to the 4.5 t jet.
     public static let defaultFleet: [AircraftConfig] = [.sf1Trainer, .sf2Cruiser, .sf3Twin, .sf5Jet]
@@ -59,7 +59,25 @@ public struct TrafficSystem: Sendable {
                                heightAboveRunway: local.z, alongRunway: local.x,
                                distanceToTouchdown: (dn * dn + de * de + dd * dd).squareRoot(),
                                isHeavy: TrafficPerformance.isHeavy(a.config),
-                               clearedToLand: a.clearedToLand, clearedToTakeoff: a.clearedToTakeoff)
+                               clearedToLand: a.clearedToLand, clearedToTakeoff: a.clearedToTakeoff,
+                               takeoffFits: departureFits(a.config))
+    }
+
+    /// True when this type reaches rotation speed on this runway at the takeoff acceleration, with 150 m to spare.
+    public func departureFits(_ config: AircraftConfig) -> Bool {
+        let rotate = TrafficPerformance.speeds(config, density: density).rotate
+        let distance = rotate * rotate / (2 * TrafficPerformance.groundAcceleration)
+        return distance <= runway.length - 150
+    }
+
+    /// Wake pairs close enough to matter to ownship: younger than `maxAge` seconds and within `radius` metres.
+    /// The model's vortices are infinite straight lines with no along-track decay, so distant pairs are culled here.
+    public func wakesNear(_ ownship: SIMD3<Double>, radius: Double = 1_500, maxAge: Double = 90) -> [WakeVortexPair] {
+        let limit = radius * radius
+        return wakes.active.filter { p in
+            let d = p.centerNED - ownship
+            return p.age < maxAge && (d.x * d.x + d.y * d.y + d.z * d.z) < limit
+        }
     }
 
     /// Returns and clears the events raised since the last call.
@@ -79,7 +97,8 @@ public struct TrafficSystem: Sendable {
             aircraft[index].clearedToLand = true
             return true
         case .takeoff:
-            guard aircraft[index].kind == .departure, aircraft[index].phase == .holdShort else { return false }
+            guard aircraft[index].kind == .departure, aircraft[index].phase == .holdShort,
+                  departureFits(aircraft[index].config) else { return false }
             aircraft[index].clearedToTakeoff = true
             return true
         }
@@ -259,7 +278,7 @@ public struct TrafficSystem: Sendable {
             return nil
         case .final:
             let local = runway.local(a.position)
-            guard local.z <= 0.5 || local.x >= pattern.touchdownAlong else { return nil }
+            guard local.z <= 0.5 || local.x >= pattern.touchdownAlong + 300 else { return nil }
             a.position = runway.ned(along: local.x, right: local.y, up: 0)
             a.phase = .landing
             return .touchedDown(id: a.id)

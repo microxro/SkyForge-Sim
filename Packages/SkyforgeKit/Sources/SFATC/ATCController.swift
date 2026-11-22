@@ -21,7 +21,11 @@ public struct ATCWind: Sendable, Equatable {
 
     /// From a NED wind vector (m/s).
     public init(windNED w: SIMD3<Double>) {
-        let speed = (w.x * w.x + w.y * w.y).squareRoot()
+        guard w.x.isFinite, w.y.isFinite else {
+            self.init(fromDegrees: 0, knots: 0)
+            return
+        }
+        let speed = min((w.x * w.x + w.y * w.y).squareRoot(), 1_000)
         var degrees = atan2(-w.y, -w.x) * 180 / Double.pi
         if degrees < 0 { degrees += 360 }
         self.init(fromDegrees: Int((degrees / 10).rounded()) * 10, knots: Int((speed * 1.943_844).rounded()))
@@ -159,6 +163,7 @@ public struct ATCController: Sendable {
         lastPhase = lastPhase.filter { present.contains($0.key) }
 
         // 2. Landing clearance: the first base-leg arrival, once spacing and the runway allow it.
+        var landingCleared = false
         let takeoffRolling = traffic.contains { $0.kind == .departure && $0.phase == .takeoffRoll }
         let arrivals = traffic
             .filter { $0.kind == .arrival && $0.phase == .base && !$0.clearedToLand }
@@ -171,15 +176,16 @@ public struct ATCController: Sendable {
             out.append(ATCInstruction(aircraftID: next.id, clearance: .land, text: text))
             lastLandingTime = time
             lastLandingHeavy = next.isHeavy
+            landingCleared = true
         }
 
         // 3. Takeoff clearance: the first departure holding short, when no arrival is on or near the runway.
-        let arrivalOnRunway = traffic.contains { a in
+        let arrivalOnRunway = landingCleared || traffic.contains { a in
             a.kind == .arrival && (a.phase == .final || a.phase == .landing || (a.clearedToLand && a.phase == .base))
         }
         let takeoffSpacingMet = lastTakeoffTime.map { time - $0 >= Self.takeoffSpacing } ?? true
         if !arrivalOnRunway, !takeoffRolling, takeoffSpacingMet,
-           let departure = traffic.first(where: { $0.kind == .departure && $0.phase == .holdShort && !$0.clearedToTakeoff }) {
+           let departure = traffic.first(where: { $0.kind == .departure && $0.phase == .holdShort && !$0.clearedToTakeoff && $0.takeoffFits }) {
             let cs = ATCPhrase.callsign(departure.callsign)
             out.append(ATCInstruction(aircraftID: departure.id, clearance: .takeoff,
                                       text: "\(cs), \(rwy), cleared for takeoff, \(windText)."))

@@ -140,6 +140,8 @@ public struct TrafficSnapshot: Sendable, Equatable, Identifiable {
     public var isHeavy: Bool
     public var clearedToLand: Bool
     public var clearedToTakeoff: Bool
+    /// False when this departure cannot reach rotation speed on the runway, so the tower must not clear it.
+    public var takeoffFits: Bool = true
 }
 
 /// Things that happened in the last step, for logs and effects.

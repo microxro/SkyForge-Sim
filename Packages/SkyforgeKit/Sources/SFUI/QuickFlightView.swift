@@ -327,26 +327,28 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
         EnvelopeMath.mach(trueAirspeed: session.lastOutputs?.trueAirspeed ?? 0, altitudeMSL: session.state.altitude)
     }
 
-    /// Runs AI, weapons, the envelope monitor and the mission against the flight, once per frame.
-    /// Steps AI traffic and the tower, and gives the aircraft the wakes of the heavy traffic.
+    /// Steps AI traffic and the tower, and gives the aircraft the wakes of the heavy traffic near it.
     private func stepTraffic(dt: Double) {
-        guard var system = traffic, var tower = atc else { return }
-        system.step(dt: dt)
+        guard traffic != nil else { return }
+        traffic?.step(dt: dt)
+        _ = traffic?.drainEvents()   // nothing reads these yet; drain so the buffer stays short
         atcClock += dt
         if atcClock >= GameplaySession.atcInterval {
             atcClock = 0
+            let simTime = traffic?.time ?? 0
+            let snapshots = traffic?.snapshots ?? []
             let wind = ATCWind(windNED: session.environment.windNED)
-            for instruction in tower.update(time: system.time, traffic: system.snapshots, wind: wind) {
-                if let clearance = instruction.clearance { _ = system.issue(clearance, to: instruction.aircraftID) }
+            let instructions = atc?.update(time: simTime, traffic: snapshots, wind: wind) ?? []
+            for instruction in instructions {
+                if let clearance = instruction.clearance { _ = traffic?.issue(clearance, to: instruction.aircraftID) }
                 if atcVoice { speaker.speak(instruction.text) }
             }
-            atcLines = tower.recentLines(3)
+            atcLines = atc?.recentLines(3) ?? []
         }
-        session.setWakes(system.wakes.active)
-        traffic = system
-        atc = tower
+        session.setWakes(traffic?.wakesNear(session.state.positionNED) ?? [])
     }
 
+    /// Runs AI, weapons, the envelope monitor and the mission against the flight, once per frame.
     private func stepGameplay(dt: Double) {
         guard !director.isFinished, let outputs = session.lastOutputs else { return }
         let snapshot = FlightSnapshot(time: session.time, state: session.state, outputs: outputs,

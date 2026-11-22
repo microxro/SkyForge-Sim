@@ -37,7 +37,7 @@ let package = Package(
         .target(name: "SFGameplayUI", dependencies: ["SFGameplay"]),
         // AI traffic (point-mass arrivals and departures, wake shedding) and rule-based ATC on top of it.
         .target(name: "SFTraffic", dependencies: ["SFAtmosphere", "SFFlightModel"]),
-        .target(name: "SFATC", dependencies: ["SFMath", "SFWeather", "SFTraffic"]),
+        .target(name: "SFATC", dependencies: ["SFTraffic"]),
         .target(name: "SFSim", dependencies: ["SFMath", "SFAtmosphere", "SFFlightModel", "SFSystems", "SFWeather", "SFInput"]),
         // Apple-only code inside #if canImport(...) so these compile empty on Linux
         .target(name: "SFRender", dependencies: ["SFPerf", "SFMath", "SFSim", "SFWeather", "SFTerrainCore", "SFWorldGen", "SFAtmosphere", "SFPreview", "SFQuickFlight"]),
