@@ -107,20 +107,20 @@ import SFMath
     }
 
     @Test func seasonsFollowHemispheresAndTropics() {
-        let nSummer = Season.state(dayOfYear: 200, latitude: 45)
+        let nSummer = VegetationSeason.state(dayOfYear: 200, latitude: 45)
         #expect(nSummer.autumn < 0.01 && nSummer.leafDrop < 0.01)
-        let nOct = Season.state(dayOfYear: 295, latitude: 45)
+        let nOct = VegetationSeason.state(dayOfYear: 295, latitude: 45)
         #expect(nOct.autumn > 0.3)
-        let nJan = Season.state(dayOfYear: 15, latitude: 45)
+        let nJan = VegetationSeason.state(dayOfYear: 15, latitude: 45)
         #expect(nJan.leafDrop > 0.8)
-        let sJan = Season.state(dayOfYear: 15, latitude: -45)
+        let sJan = VegetationSeason.state(dayOfYear: 15, latitude: -45)
         #expect(sJan.leafDrop < 0.05)
-        let tropics = Season.state(dayOfYear: 15, latitude: 5)
+        let tropics = VegetationSeason.state(dayOfYear: 15, latitude: 5)
         #expect(tropics.leafDrop == 0 && tropics.autumn == 0)
-        #expect(Season.leafTint(nOct, treeHash: 0.5, deciduous: false) == SIMD3(1, 1, 1))
-        let t = Season.leafTint(nOct, treeHash: 0.1, deciduous: true)
+        #expect(VegetationSeason.leafTint(nOct, treeHash: 0.5, deciduous: false) == SIMD3(1, 1, 1))
+        let t = VegetationSeason.leafTint(nOct, treeHash: 0.1, deciduous: true)
         #expect(t.x > t.z)
-        #expect(Season.cardDropped(nJan, hash: 0.1) && !Season.cardDropped(nSummer, hash: 0.1))
+        #expect(VegetationSeason.cardDropped(nJan, hash: 0.1) && !VegetationSeason.cardDropped(nSummer, hash: 0.1))
     }
 
     @Test func grassScatterDeterministicInCellAndExcludes() {

@@ -1,7 +1,7 @@
 # Round 5: vegetation integration notes
 
 New files (nothing existing edited):
-- `Sources/SFWorldGen/VegetationModels.swift`: tiers, `VegVertex`, five species (birch 5, cypress 6, willow 7, acacia 8, palm 9) grown from branch skeletons with leaf cards, `detail` 0 full / 1 card LOD, `VegetationLOD` weights + dither, `ImpostorLayout`, `WindSway`, `Season`, `GroundCover`.
+- `Sources/SFWorldGen/VegetationModels.swift`: tiers, `VegVertex`, five species (birch 5, cypress 6, willow 7, acacia 8, palm 9) grown from branch skeletons with leaf cards, `detail` 0 full / 1 card LOD, `VegetationLOD` weights + dither, `ImpostorLayout`, `WindSway`, `VegetationSeason`, `GroundCover`.
 - `Sources/SFRender/Shaders/VegetationShaders.swift`: `common` (helpers + `veg_keep`) and `source` (`veg_vertex`, `shadow_veg_vertex`, `veg_billboard_vertex`, `grass_vertex`).
 - `Tests/SFWorldGenTests/VegetationTests.swift`.
 `msl_check`: `python3 tools/msl_check/check_msl.py VegetationShaders.swift:common VegetationShaders.swift` passes (the checker places `common` after World, which hides the ordering requirement below).
@@ -31,10 +31,10 @@ shadowVegPipeline = try pso("shadow_veg_vertex", nil, label: "ShadowVeg", colour
 
 ## VegUniforms values
 - `wind`: (dir.x, dir.y, speed m/s, gustiness) from the weather state. `timeFade`: (time s, `tier.cardStart`, `tier.billboardStart`, `tier.fadeWidth`).
-- `season`: from `Season.state(dayOfYear:latitude:)`: (autumn, leafDrop, spring, sway enabled = `tier.swayEnabled`).
+- `season`: from `VegetationSeason.state(dayOfYear:latitude:)`: (autumn, leafDrop, spring, sway enabled = `tier.swayEnabled`).
 - `species`: (index, `SpeciesKind.stiffness`, `deciduous` 0/1, representation). Species 0-4 may use `veg_vertex` too only after conversion to `VegVertex`; leave them on `tree_vertex` for now (`TreeModels` is untouched).
 - `board`: (half width, half height, crown centre y, crown radius y), e.g. `ImpostorLayout.quadHalfSize(species:)` with centre ~0.62 and radius ~0.36 (birch 0.66/0.34, willow 0.58/0.40, acacia 0.80/0.16).
-- `grass`: (rgb ~ (0.12, 0.2, 0.05), radius m); `grassParams`: (0.55, dryness from `Season`, width scale 0.12, 0).
+- `grass`: (rgb ~ (0.12, 0.2, 0.05), radius m); `grassParams`: (0.55, dryness from `VegetationSeason`, width scale 0.12, 0).
 - Instance colour `TreeInstanceGPU.colour`: use `SpeciesKind.leafColour`; mean leaf albedo must stay >= 0.05 like existing tints.
 - Species pick: `VegetationModels.species(x:y:climate:)` for new variants; optionally route 25 % of trees there.
 

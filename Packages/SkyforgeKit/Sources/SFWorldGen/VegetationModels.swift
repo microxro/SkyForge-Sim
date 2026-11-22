@@ -389,7 +389,7 @@ public struct SeasonState: Sendable, Equatable {
     public var spring: Float
 }
 
-public enum Season {
+public enum VegetationSeason {
     static func smooth(_ a: Float, _ b: Float, _ x: Float) -> Float {
         let t = max(0, min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t)
     }
@@ -470,7 +470,7 @@ public enum GroundCover {
     public static func keepFraction(distance d: Float, tier: VegetationTier) -> Float {
         let r = tier.grassRadius
         guard r > 0 else { return 0 }
-        return 1 - Season.smooth(r * 0.55, r, d)
+        return 1 - VegetationSeason.smooth(r * 0.55, r, d)
     }
 }
 
