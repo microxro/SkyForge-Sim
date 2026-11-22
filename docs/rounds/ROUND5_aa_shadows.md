@@ -5,7 +5,7 @@ New files (no existing file edited):
 - `Packages/SkyforgeKit/Sources/SFRender/Shaders/AAShadowShaders.swift`: `AAShadowShaders.source` (taa_resolve_fragment, smaa_lite_fragment, cascadedShadowVisibility).
 - `Packages/SkyforgeKit/Tests/SFRenderTests/AAShadowMathTests.swift` (pure Swift, runs on Linux).
 
-Library order (needs `PostVarying` and `shadowCmp`): `CloudShaders.common + WorldShaders.source + PostShaders.source + AAShadowShaders.source`. Checked with `check_msl.py PostShaders.swift AAShadowShaders.swift`.
+Library order (as wired in WorldRenderer): `CloudShaders.common + MacroColourShaders.source + OceanShaders.source + AAShadowShaders.source + WorldShaders.source`. AAShadowShaders must come BEFORE WorldShaders because world_fragment calls `cascadedShadowVisibility`. It is self-contained (own `AAVarying`, `aa_vertex` and `casCmp` sampler), so it no longer needs `PostVarying` or `shadowCmp`. Checked with `check_msl.py` (default baseline now includes Macro, Ocean and AAShadow).
 
 ## TAA (medium/high/ultra)
 1. Per frame: `let j = TAAJitter.pixelJitter(frame: n, length: tier.jitterLength)`; `let o = TAAJitter.ndcOffset(pixelJitter: j, width: w, height: h)`; add `o.x`, `o.y` to the projection's column-2 x/y entries (`proj[2][0] += o.x; proj[2][1] += o.y`) for the scene pass only. Keep the shadow passes and the reprojection matrices jitter-free.
@@ -35,3 +35,11 @@ Replace `fxaa_fragment` with `smaa_lite_fragment` (one texture, same `post_verte
 Shadow memory (cascades x size^2 x bytes): low 8 MiB, medium 48 MiB, high 64 MiB, ultra 128 MiB (4096^2 x 4 layers x 16-bit; 32-bit would be 256 MiB). Budget is 128 MiB, enforced by `shadowMemoryBytes` in tests. PCF/PCSS tap counts are clamped to at least 1 on CPU and in `casPCF` (0 taps previously gave 0/0 = NaN).
 
 Not verified by a compiler: no Swift toolchain here; MSL passed only the shim syntax check.
+
+## Wiring (as merged)
+- `WorldRenderer.aaTier: AAShadowTier?`, default nil: FXAA frame, hero + distance cascades, no jitter, no extra passes. A tier allocates `AAShadowPasses` (AAShadowPasses.swift) on first use.
+- Low: SMAA-lite replaces the FXAA draw. No jitter, no history. Shadows use 2 cascades.
+- Medium and up: scene jitter (`aaJitterClip * viewProj`), TAA resolve from scene and depth into a ping-pong history, then a blit back over `scene` before bloom and tone map. History resets on first frame, resize, tier change and teleport (`TAAHistoryState`).
+- Tier shadows: `CascadeMath.splits` view-depth cascades, texel-snapped, in the existing 4-layer map (layer count = tier count). The airframe casts into every cascade because there is no hero column in this mode. Map size is still `shadowMapSize`, not the tier table, so memory is unchanged.
+- Parameters: `CascadeShadowGPU` at fragment buffer 12 on the main world encoder. `fwd.w = 0` (the default) selects the legacy `shadowVisibility`.
+- Not done: velocity buffer for moving objects, tier shadow map sizes and depth16 on ultra, the separate hero min() term. Not compiled here (no Swift toolchain); MSL passed `check_msl.py`.
