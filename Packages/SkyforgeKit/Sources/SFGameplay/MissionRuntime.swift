@@ -61,6 +61,7 @@ public struct MissionRuntime: Sendable {
     private var loopRef: SIMD2<Double>?
     private var loopPrev: Double?
     private var loopAngle = 0.0
+    private var glideOutTime = 0.0
     private var belowTime = 0.0
     private var outOfBandTime = 0.0
     private var errorSum = 0.0
@@ -135,7 +136,7 @@ public struct MissionRuntime: Sendable {
 
     private mutating func beginObjective(sample: FlightSample, targets: [AITarget]) {
         hold = 0; routeIndex = 0; belowTime = 0; outOfBandTime = 0
-        loopRef = nil; loopPrev = nil; loopAngle = 0
+        loopRef = nil; loopPrev = nil; loopAngle = 0; glideOutTime = 0
         errorSum = 0; errorSamples = 0; lostTime = 0; progress = 0
         touchedDown = false; touchdownQuality = 1; bounces = 0
         if let obj = currentObjective, case .flyTo(let wp) = obj.kind {
@@ -219,6 +220,20 @@ public struct MissionRuntime: Sendable {
                 return .completed(quality: 1)
             }
             progress = initialDistance > 1 ? max(0, min(1, 1 - d / initialDistance)) : 0
+            return .running
+        case .ifrApproach(let gate, let slopeDeg, let tol, let grace):
+            let l = frame.local(s.positionNED)
+            if l.along < -gate { progress = 0; return .running }
+            if l.along >= 0 { return .completed(quality: 1) }
+            let glideHeight = -l.along * tan(slopeDeg * .pi / 180)
+            let deviation = max(abs(l.right), abs(l.up - glideHeight))
+            if deviation > tol {
+                glideOutTime += dt
+                if glideOutTime > grace { return .failed("Off the glidepath") }
+            } else {
+                glideOutTime = 0
+            }
+            progress = max(0, min(1, (l.along + gate) / gate))
             return .running
         case .loop(let minAGL, let minSpeed):
             if !s.onGround && s.heightAGL < minAGL { return .failed("Too low for the loop") }
