@@ -77,6 +77,7 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
     @Published var gameplayHUD: GameplayHUD?
     @Published var missionResult: MissionResult?
     @Published var unlockMessage: String?
+    private var touchdownDetector = TouchdownDetector()
     /// AI traffic and the tower, for free flight only (missions keep their own rules).
     private(set) var traffic: TrafficSystem?
     private(set) var atc: ATCController?
@@ -151,6 +152,7 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
         let built = Self.makeFlight(world: world, start: start, spec: spec, mission: mission, filter: controlFilter)
         session = built.session
         director = built.director
+        touchdownDetector = TouchdownDetector()
         gameplayHUD = nil; missionResult = nil; unlockMessage = nil; resultSaved = false
         fireHeld = false
         let trafficSetup = Self.makeTraffic(world: world, mission: mission)
@@ -310,7 +312,27 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
             let cam = session.chaseCamera()
             camera = WorldCamera(position: cam.position, target: cam.target)
         }
+        // Round 5 ocean inputs, live each frame: wind from the flight environment and this aircraft as a wake on
+        // water. ENU convention: x east, y north; headings are radians from east, counter-clockwise.
+        do {
+            let w = session.environment.windNED
+            r.oceanWindSpeed = Float((w.x * w.x + w.y * w.y).squareRoot())
+            r.oceanWindDirection = Float(atan2(w.x, w.y))   // NED wind (north, east) to ENU heading of the air mass
+            let v = session.state.velocityNED
+            let groundSpeed = (v.x * v.x + v.y * v.y).squareRoot()
+            let wake = OceanWake.aircraft(position: SIMD2(Float(session.positionENU.x), Float(session.positionENU.y)),
+                                          heading: Float(atan2(v.x, v.y)), speed: Float(groundSpeed),
+                                          wingspan: Float(spec.config.wingSpan))
+            r.oceanWakes = wake.map { [$0] } ?? []
+        }
         let c = session.bodyToENUColumns
+        // AI traffic: NED snapshots to ENU poses. Heading is NED (0 = north), so body x is (sin h, cos h, 0) in ENU.
+        r.trafficPoses = (traffic?.snapshots ?? []).map { t in
+            let h = t.heading
+            return WorldRenderer.TrafficPose(position: SIMD3(t.positionNED.y, t.positionNED.x, -t.positionNED.z),
+                                             bodyToENU: simd_double3x3(columns: (SIMD3(sin(h), cos(h), 0),
+                                                                                 SIMD3(cos(h), -sin(h), 0),
+                                                                                 SIMD3(0, 0, -1))))
         // AI traffic lights: nav red and green at the wingtips, white at the tail, strobe on top. Offsets are body
         // metres (x forward, y right, z down), approximate for the traffic types. Drawn by the night-light pass.
         r.trafficLights = r.trafficPoses.enumerated().flatMap { (i, pose) -> [NightLight] in
@@ -374,7 +396,24 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
     }
 
     /// Runs AI, weapons, the envelope monitor and the mission against the flight, once per frame.
+    /// Feeds the landing detector while the aircraft is low. Logs the touchdown rate once per flight.
+    private func trackTouchdown() {
+        guard touchdownDetector.event == nil, session.heightAboveGround < 50, !session.crashed else { return }
+        let frame = RunwayFrame(world: world)
+        let s = session.state
+        let pos = SIMD2(s.positionNED.y, s.positionNED.x)          // ENU: east, north
+        let h = frame.heading
+        let along = (pos.x - frame.threshold.x) * sin(h) + (pos.y - frame.threshold.y) * cos(h)
+        let lateral = (pos.x - frame.threshold.x) * cos(h) - (pos.y - frame.threshold.y) * sin(h)
+        let sample = TouchdownSample(time: session.time, heightAGLM: session.heightAboveGround, sinkMPS: s.velocityNED.z,
+                                     offsetM: lateral, distancePastThresholdM: along)
+        if let e = touchdownDetector.feed(sample) {
+            attribution.append(String(format: "Touchdown: %.0f fpm sink, %.0f m off centreline", e.sinkFPM, abs(e.offsetM)))
+        }
+    }
+
     private func stepGameplay(dt: Double) {
+        trackTouchdown()
         guard !director.isFinished, let outputs = session.lastOutputs else { return }
         let snapshot = FlightSnapshot(time: session.time, state: session.state, outputs: outputs,
                                       flaps: session.inputs.flaps, heightAGL: session.heightAboveGround,

@@ -207,6 +207,22 @@ public struct MissionRuntime: Sendable {
             progress = initialDistance > 1 ? max(0, min(1, 1 - d / initialDistance)) : 0
             return d <= wp.radius ? .completed(quality: 1) : .running
 
+        case .dropRun(let wp, let maxAGL, let minSpeed, let maxSpeed):
+            let d = Self.distance(s.positionNED, wp.ned(frame))
+            let speed = Self.distance(s.velocityNED, .zero)
+            if d <= wp.radius && !s.onGround && s.heightAGL <= maxAGL && speed >= minSpeed && speed <= maxSpeed {
+                return .completed(quality: 1)
+            }
+            progress = initialDistance > 1 ? max(0, min(1, 1 - d / initialDistance)) : 0
+            return .running
+        case .pickup(let wp, let maxSpeed, let holdTime):
+            let d = Self.distance(s.positionNED, wp.ned(frame))
+            let speed = Self.distance(s.velocityNED, .zero)
+            let stopped = (s.onGround || s.heightAGL < 5) && speed <= maxSpeed && d <= wp.radius
+            if stopped { hold += dt } else { hold = 0 }
+            progress = max(0, min(1, hold / max(0.1, holdTime)))
+            return hold >= holdTime ? .completed(quality: 1) : .running
+
         case .lowLevelRoute(let points, let minAGL, let maxAGL):
             guard routeIndex < points.count else { return .completed(quality: bandQuality()) }
             if !s.onGround {

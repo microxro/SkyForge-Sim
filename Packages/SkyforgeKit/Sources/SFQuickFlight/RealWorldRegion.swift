@@ -115,48 +115,28 @@ public struct RealWorldRegion: FlightWorld {
     public var runwayLowNumber = 0
     /// Procedural buildings placed on built-up imagery where OSM has none (empty when OSM has buildings).
     public var fallbackBuildings: [OSMBuilding] = []
+    /// Procedural houses where built-up imagery has no surveyed footprint nearby (OSM present but thin; empty otherwise).
+    public var gapBuildings: [OSMBuilding] = []
 
-    /// Buildings to draw and to keep trees out of: OSM where available, otherwise the procedural fallback.
-    public var buildings: [OSMBuilding] { (osm?.buildings.isEmpty == false) ? osm!.buildings : fallbackBuildings }
+    /// Buildings to draw and to keep trees out of: OSM where available (plus procedural gap houses), otherwise the fallback.
+    public var buildings: [OSMBuilding] {
+        guard let surveyed = osm?.buildings, !surveyed.isEmpty else { return fallbackBuildings }
+        return surveyed + gapBuildings
+    }
 
     public enum LoadError: Error, Equatable { case unknownAirport(String), noRunwayGeometry(String) }
 
-    /// Height outside the near square: the mid mosaic, blended into the far one over its outer 15 %.
-    func outerHeight(_ x: Double, _ y: Double) -> Double {
-        guard let mid = midHeights else { return farHeights.height(x, y) }
-        let ex = mid.halfExtent - max(abs(x - mid.centre.x), abs(y - mid.centre.y))
-        if ex <= 0 { return farHeights.height(x, y) }
-        let band = 0.15 * mid.halfExtent
-        if ex >= band { return mid.height(x, y) }
-        let t = ex / band, w = t * t * (3 - 2 * t)
-        let f = farHeights.height(x, y)
-        return f + (mid.height(x, y) - f) * w
+    /// The ground's elevation as a value the renderer can sample too (the same surface trees and buildings stand on).
+    public var terrainField: TerrainHeightField {
+        TerrainHeightField(near: nearHeights, far: farHeights, mid: midHeights, runwayThreshold: runwayThreshold,
+                           runwayDirection: runwayDirection, runwayLengthMetres: runwayLengthMetres,
+                           runwayWidthMetres: runwayWidthMetres, runwayElevation: runwayElevation)
     }
 
-    public func height(_ x: Double, _ y: Double) -> Double {
-        // Runways are flat: hold the published elevation over the paved area and blend 60 m out.
-        let d = SIMD2(x, y) - runwayThreshold
-        let along = (d * runwayDirection).sum()
-        let across = abs(d.x * runwayDirection.y - d.y * runwayDirection.x)
-        let over = max(max(-along, along - runwayLengthMetres), across - runwayWidthMetres)
-        // Near (z14) heights blend into the far (z10) mosaic over the outer 15 % of the near square, so
-        // there is no cliff where the two elevation models disagree (mountains: tens of metres).
-        let ex = nearHeights.halfExtent - max(abs(x - nearHeights.centre.x), abs(y - nearHeights.centre.y))
-        let blendWidth = 0.15 * nearHeights.halfExtent
-        let natural: Double
-        if ex <= 0 {
-            natural = max(0, outerHeight(x, y))
-        } else if ex >= blendWidth {
-            natural = max(0, nearHeights.height(x, y))
-        } else {
-            let t = ex / blendWidth, w = t * t * (3 - 2 * t)
-            let o = outerHeight(x, y)
-            natural = max(0, o + (nearHeights.height(x, y) - o) * w)
-        }
-        if over <= 0 { return runwayElevation }
-        let t = min(1, over / 60)
-        return runwayElevation + (natural - runwayElevation) * (t * t * (3 - 2 * t))
-    }
+    public func height(_ x: Double, _ y: Double) -> Double { terrainField.height(x, y) }
+
+    /// Height outside the near square (the mid and far mosaics blended); see `TerrainHeightField`.
+    func outerHeight(_ x: Double, _ y: Double) -> Double { terrainField.outerHeight(x, y) }
 
     /// Loads an airport region (network once, then the content-store cache).
     /// `bundledBuildings`: use the showcase pack's building footprints when no live OpenStreetMap data came back.
@@ -301,7 +281,16 @@ public struct RealWorldRegion: FlightWorld {
             ImageryGrading.match(far: &m, to: region.ground.near)
             region.midImagery = m
         }
-        if osm?.buildings.isEmpty != false { region.fallbackBuildings = region.proceduralBuildings() }
+        if let surveyed = osm?.buildings, !surveyed.isEmpty {
+            // Where the survey thins out (a park, a quarter it missed), built-up imagery gets the same procedural houses,
+            // kept clear of every surveyed building. Radius: the full-detail band, where a house is visible, measured
+            // from the origin like the surveyed and bundled footprints (not from the mosaic, which sits 900 m out).
+            region.gapBuildings = region.proceduralBuildings(radius: region.detail.buildingFullRadius,
+                                                             clearOf: BuildingGapIndex(footprints: surveyed.map(\.footprint)),
+                                                             disc: .zero)
+        } else {
+            region.fallbackBuildings = region.proceduralBuildings()
+        }
         return region
     }
 
@@ -434,21 +423,29 @@ public struct RealWorldRegion: FlightWorld {
     /// Procedural fallback: low buildings on built-up imagery that shows building texture (local contrast)
     /// and a nearby cast shadow, so parking lots and concrete aprons stay flat. Roofs take the photo's
     /// colour and footprints follow the local edge direction. Deterministic.
-    public func proceduralBuildings(radius: Double = 2_400, cell: Double = 18, maxCount: Int = 6_000) -> [OSMBuilding] {
+    /// Houses lie within `radius` of `disc` (nil: the near mosaic's centre). Only the mosaic can be sampled, so the
+    /// search square stays centred on the mosaic and widens to cover the whole disc.
+    public func proceduralBuildings(radius: Double = 2_400, cell: Double = 18, maxCount: Int = 6_000,
+                                    clearOf surveyed: BuildingGapIndex? = nil, disc: SIMD2<Double>? = nil) -> [OSMBuilding] {
         let near = ground.near
         var out: [OSMBuilding] = []
         func lum(_ c: SIMD3<Float>) -> Float { 0.2126 * c.x + 0.7152 * c.y + 0.0722 * c.z }
         let c0 = nearHeights.centre
-        var y = -radius
-        while y < radius {
-            var x = -radius
-            while x < radius {
+        let centre = disc ?? c0
+        // Any point within `radius` of `centre` lies within `reach` of c0, so the square covers the whole disc.
+        let reach = radius + hypot(centre.x - c0.x, centre.y - c0.y)
+        var y = -reach
+        while y < reach {
+            var x = -reach
+            while x < reach {
                 defer { x += cell }
                 let px = c0.x + x, py = c0.y + y
-                if x * x + y * y > radius * radius || out.count >= maxCount { continue }
+                let dx = px - centre.x, dy = py - centre.y
+                if dx * dx + dy * dy > radius * radius || out.count >= maxCount { continue }
                 guard let c = near.sample(px, py) else { continue }
                 let lc = LandCover.classify(c)
                 if lc.urban < 0.5 || lc.water > 0.2 || lc.forest > 0.3 { continue }
+                if let surveyed, !surveyed.isClear(SIMD2(px, py), clearance: 34) { continue }
                 if let g = ground.ground(px, py), g.water > 0.2 { continue }        // the renderer's smoothed water mask
                 if apronOrRunway(px, py) { continue }
                 // 5 × 5 samples at 3 m: contrast, darkest value, structure tensor.
@@ -472,6 +469,8 @@ public struct RealWorldRegion: FlightWorld {
                 let hx = 4.5 + Hash.unit(rng.next()) * 3.5, hy = 4.5 + Hash.unit(rng.next()) * 3.5
                 let jx = (Hash.unit(rng.next()) - 0.5) * (cell - 2 * hx) * 0.8, jy = (Hash.unit(rng.next()) - 0.5) * (cell - 2 * hy) * 0.8
                 let cx = px + jx, cy = py + jy, ch = cos(heading), sh = sin(heading)
+                // 30 m from every surveyed outline: the house's corners (≤ 11.3 m from its centre) then clear it too.
+                if let surveyed, !surveyed.isClear(SIMD2(cx, cy), clearance: 30) { continue }
                 let fp = [(-hx, -hy), (hx, -hy), (hx, hy), (-hx, hy)].map { SIMD2(cx + ch * $0.0 - sh * $0.1, cy + sh * $0.0 + ch * $0.1) }
                 // Roof: the same photo→albedo conversion as the terrain (ImageryGround), so a roof is exactly
                 // as bright as the photo around it (×0.9 made every box read 25 % paler than the ground).

@@ -5,6 +5,7 @@ import SFQuickFlight
 import SFImagery
 import SFPreview
 import SFWorldGen
+import SFTerrainCore
 
 /// GPU-agnostic description of a real-world region for `WorldRenderer.setRealWorld`.
 public struct RealWorldRenderData: Sendable {
@@ -55,6 +56,11 @@ public struct RealWorldRenderData: Sendable {
     public var buildingMesh: BuildingMesh?
     /// Middle-distance imagery between the near and far layers.
     public var mid: Imagery?
+    /// Real terrain as CDLOD nodes: the height field and its quadtree layout (nil: the static `chunks`).
+    public var terrainField: TerrainHeightField? = nil
+    public var terrainLayout: CDLODLayout? = nil
+    /// Distance (m) at which the finest CDLOD level stops; each coarser level doubles it.
+    public var terrainFinestRange: Double = 3_000
     public init(chunks: [Chunk], trees: [Tree], near: Imagery?, far: Imagery?, waterMask: (size: Int, values: [Float])?) {
         self.chunks = chunks; self.trees = trees; self.near = near; self.far = far; self.waterMask = waterMask
     }
@@ -67,9 +73,10 @@ extension RealWorldRenderData {
                         conifer: $0.conifer, colour: $0.colour) }
     }
 
-    /// Terrain chunks, trees, near/far orthoimagery and the smoothed water mask for `region`.
-    public init(region: RealWorldRegion, chunkQuads: Int = 48) {
-        let chunks = region.terrainChunks(quads: chunkQuads).map {
+    /// Terrain chunks (or, with `cdlod`, the height field and layout for the renderer's CDLOD nodes), trees,
+    /// near/far orthoimagery and the smoothed water mask for `region`.
+    public init(region: RealWorldRegion, chunkQuads: Int = 48, cdlod: Bool = true) {
+        let chunks: [Chunk] = cdlod ? [] : region.terrainChunks(quads: chunkQuads).map {
             Chunk(positions: $0.positions, normals: $0.normals, indices: $0.indices, boundsMin: $0.boundsMin, boundsMax: $0.boundsMax)
         }
         let placed = region.trees()
@@ -107,6 +114,11 @@ extension RealWorldRenderData {
         airportMask = region.airportMask()
         suburbMask = region.suburbMask()
         buildingMesh = region.buildingMesh()
+        if cdlod, let layout = CDLODLayout.covering(halfExtent: region.farHeights.halfExtent, nearStep: region.detail.nearStep) {
+            terrainField = region.terrainField
+            terrainLayout = layout
+            terrainFinestRange = region.detail.nearHalf
+        }
         mid = withWater(region.midImagery)
         runway = Runway(threshold: region.runwayThreshold, direction: region.runwayDirection, length: region.runwayLengthMetres,
                         width: region.runwayWidthMetres, lowNumber: region.runwayLowNumber)
