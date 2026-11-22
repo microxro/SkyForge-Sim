@@ -123,7 +123,7 @@ import SFFlightModel
             }
             for _ in 0..<3 { air(250) }
             ground(300, 40)
-            if bounce { for _ in 0..<6 { air(340) }; ground(380, 38) }
+            if bounce { for _ in 0..<8 { air(340) }; ground(380, 38) }
             var v = 38.0, a = 380.0
             while v > 0.5 && !rt.isFinished { v = max(0, v - 0.5); a += v * 0.1; ground(a, v) }
             return rt.result?.success == true ? rt.result?.score : nil

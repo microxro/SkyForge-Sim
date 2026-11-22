@@ -96,7 +96,8 @@ import SFMath
 
     @Test func destroyAndIdentify() {
         let drone = AITarget(id: "d", role: .hostile, position: testFrame.ned(along: 1_000, right: 0, up: 100), heading: 0, speed: 0)
-        var rt = MissionRuntime(mission: oneObjectiveMission(.identify(targetID: "d", within: 500, hold: 2)), frame: testFrame, aircraftID: "x")
+        let spawn = [TargetSpawn(id: "d", role: .hostile, along: 1_000, right: 0, up: 100, speed: 0)]
+        var rt = MissionRuntime(mission: oneObjectiveMission(.identify(targetID: "d", within: 500, hold: 2), targets: spawn), frame: testFrame, aircraftID: "x")
         var t = 0.0
         for _ in 0..<10 { rt.update(sample: airborne(along: 400, t: t), targets: [drone]); t += 0.1 }
         #expect(rt.status == .inProgress)
@@ -104,7 +105,7 @@ import SFMath
         #expect(rt.status == .succeeded)
 
         var dead = drone; dead.health = 0
-        var kill = MissionRuntime(mission: oneObjectiveMission(.destroy(targetIDs: ["d"])), frame: testFrame, aircraftID: "x")
+        var kill = MissionRuntime(mission: oneObjectiveMission(.destroy(targetIDs: ["d"]), targets: spawn), frame: testFrame, aircraftID: "x")
         kill.update(sample: airborne(t: 0), targets: [drone]); #expect(kill.progress == 0)
         kill.update(sample: airborne(t: 1), targets: [dead]); #expect(kill.status == .succeeded)
     }
@@ -114,7 +115,8 @@ import SFMath
         let slotNED = FormationGeometry.slotPosition(leaderPosition: leader.position, heading: 0, slot: .echelonRight, spacing: 60)
         #expect(abs(slotNED.x - (leader.position.x - 60)) < 1e-9 && abs(slotNED.y - (leader.position.y + 60)) < 1e-9)
         let kind = ObjectiveKind.formation(leaderID: "l", slot: .echelonRight, spacing: 60, tolerance: 30, hold: 10)
-        var rt = MissionRuntime(mission: oneObjectiveMission(kind), frame: testFrame, aircraftID: "x")
+        let lead = [TargetSpawn(id: "l", role: .friendly, along: 1_000, right: 0, up: 500, speed: 0)]
+        var rt = MissionRuntime(mission: oneObjectiveMission(kind, targets: lead), frame: testFrame, aircraftID: "x")
         var t = 0.0
         let atSlot = FlightSample(time: 0, positionNED: slotNED, velocityNED: .zero, heightAGL: 500, onGround: false)
         for _ in 0..<60 { var s = atSlot; s.time = t; rt.update(sample: s, targets: [leader]); t += 0.1 }
