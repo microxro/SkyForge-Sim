@@ -275,7 +275,7 @@ public struct FlightModel: Sendable {
         var wow = false
         // Gear up on the ground: the aircraft slides on its belly (shallow, scraping contact points).
         let belly = config.retractableGear && input.gear < 0.95
-        let mu = 0.85 * env.surfaceFriction
+        let mu = 0.85 * (env.surfaceFriction.isFinite ? min(1.2, max(0.02, env.surfaceFriction)) : 1)
         for legFull in config.gear {
             var leg = legFull
             if belly { leg.position = SIMD3(legFull.position.x, legFull.position.y * 0.3, legFull.position.z * 0.45); leg.steerable = false; leg.braked = false }

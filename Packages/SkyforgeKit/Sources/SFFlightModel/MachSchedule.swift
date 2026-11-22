@@ -22,6 +22,11 @@ public struct MachSchedule: Sendable, Codable, Equatable {
     /// Points sorted by ascending Mach.
     public var points: [Point]
     public init(points: [Point]) { self.points = points.sorted { $0.mach < $1.mach } }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(points: try c.decode([Point].self, forKey: .points))   // re-sorts unsorted JSON
+    }
+    private enum CodingKeys: String, CodingKey { case points }
     public static let incompressible = MachSchedule(points: [])
 
     public func evaluate(_ m: Double) -> Point {

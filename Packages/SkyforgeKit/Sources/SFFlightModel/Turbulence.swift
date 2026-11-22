@@ -9,6 +9,8 @@ import SFMath
 public struct DrydenTurbulence: Sendable {
     public enum Severity: Double, Sendable, CaseIterable {
         case none = 0, light = 0.9, moderate = 2.1, severe = 4.0   // sigma (m/s) above 600 m AGL
+        /// Scales the low-level (wind20-based) intensity so severity also matters on takeoff and approach.
+        var lowLevelScale: Double { rawValue / Severity.moderate.rawValue }
     }
 
     private var rng: Xoshiro256
@@ -33,14 +35,14 @@ public struct DrydenTurbulence: Sendable {
         let low = 0.177 + 0.000823 * hFt
         if hFt < 1_000 {
             let lh = hm / pow(low, 1.2)
-            let sw = 0.1 * wind20 * (severity == .none ? 0 : 1)
+            let sw = 0.1 * wind20 * severity.lowLevelScale
             let sh = sw / pow(low, 0.4)
             return (hm, lh, sw, sh)
         }
         let sigma = severity.rawValue
         let l = 533.0   // 1750 ft
         // Blend the low-altitude sigma into the mid-altitude value between 1,000 and 2,000 ft.
-        let sw0 = 0.1 * wind20 * (severity == .none ? 0 : 1)
+        let sw0 = 0.1 * wind20 * severity.lowLevelScale
         let t = min(1, (hFt - 1_000) / 1_000)
         let sw = sw0 + (sigma - sw0) * t
         return (l, l, sw, sw)
