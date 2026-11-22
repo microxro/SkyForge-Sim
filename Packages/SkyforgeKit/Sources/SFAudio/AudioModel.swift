@@ -34,6 +34,16 @@ public struct AudioParameters: Sendable, Equatable {
     /// 0 = headset/closed cabin … 1 = wide open (raises the low-pass cutoff on engine and wind).
     public var cabinOpenness: Double = 0.15
     public init() {}
+
+    /// Copy with every value finite and in range (NaN becomes 0), safe to hand to the audio thread.
+    public var sanitized: AudioParameters {
+        func f(_ x: Double, _ hi: Double) -> Double { x.isFinite ? min(max(x, 0), hi) : 0 }
+        var p = self
+        p.engineRPM = f(engineRPM, 20_000); p.engineLoad = f(engineLoad, 1); p.engineGain = f(engineGain, 1)
+        p.windGain = f(windGain, 1); p.turbulence = f(turbulence, 1); p.rainGain = f(rainGain, 1)
+        p.rumbleGain = f(rumbleGain, 1); p.cabinOpenness = f(cabinOpenness, 1)
+        return p
+    }
 }
 
 /// Turns the simulation state into `AudioParameters` and edge-triggered `AudioEvent`s.
@@ -45,7 +55,11 @@ public struct AudioModel: Sendable {
     private var lastSink = 0.0
     private var wasOnGround = true
     private var lastFlaps = 0.0
-    private var nextThunder: Double?
+    private var flapsWereMoving = false
+    private var lastUpdateTime = 0.0
+    private var lastTouchdownTime = -Double.infinity
+    private var lastScheduledFlash = -1.0
+    private var thunderQueue: [(time: Double, distance: Double)] = []
 
     public init(config: AircraftConfig = .sf1Trainer) {
         self.config = config
@@ -70,14 +84,23 @@ public struct AudioModel: Sendable {
     public mutating func update(dt: Double, time: Double, state s: AircraftState, outputs o: FlightOutputs,
                                 inputs c: ControlInputs, weather w: WeatherEffects, eventSeed: UInt64 = 1) -> [AudioEvent] {
         var events: [AudioEvent] = []
-        let dt = min(max(dt, 0), 0.25)
-        let tas = max(0, o.trueAirspeed)
+        // Non-finite inputs (NaN throttle, inf dt...) must never reach the filters: NaN would persist forever.
+        let dt = dt.isFinite ? min(max(dt, 0), 0.25) : 0
+        let time = time.isFinite ? time : lastUpdateTime
+        let tas = o.trueAirspeed.isFinite ? max(0, o.trueAirspeed) : 0
+        let throttle = c.throttle.isFinite ? min(max(c.throttle, 0), 1) : 0
+        let flaps = c.flaps.isFinite ? c.flaps : lastFlaps
+        let alpha = o.alpha.isFinite ? o.alpha : 0
+        let sinkNow = s.velocityNED.z.isFinite ? s.velocityNED.z : 0
+        let ground = hypot(s.velocityNED.x.isFinite ? s.velocityNED.x : 0, s.velocityNED.y.isFinite ? s.velocityNED.y : 0)
+        if time < lastUpdateTime { thunderQueue.removeAll(); lastScheduledFlash = -1; lastTouchdownTime = -.infinity }   // clock went backwards
+        lastUpdateTime = time
 
         // Engine: first-order lag toward the target (the crank and prop have inertia).
-        let target = Self.targetRPM(throttle: c.throttle, trueAirspeed: tas, maxRPM: config.maxRPM)
+        let target = Self.targetRPM(throttle: throttle, trueAirspeed: tas, maxRPM: config.maxRPM)
         rpm += (target - rpm) * (1 - exp(-dt / 0.55))
         params.engineRPM = rpm
-        params.engineLoad = min(1, max(0, c.throttle))
+        params.engineLoad = throttle
         params.engineGain = 0.55 + 0.35 * params.engineLoad
 
         // Wind: relative airflow plus ambient wind and gusts when parked or slow.
@@ -96,37 +119,39 @@ public struct AudioModel: Sendable {
         }
 
         // Ground rumble scales with ground speed while on the wheels.
-        let ground = hypot(s.velocityNED.x, s.velocityNED.y)
         params.rumbleGain = o.weightOnWheels ? min(1, ground / 40) : 0
 
         // Stall horn from 92 % of the stall angle of attack in flight.
-        params.stallHorn = !o.weightOnWheels && (o.alpha > config.stallAlpha * 0.92 || o.stalled)
+        params.stallHorn = !o.weightOnWheels && (alpha > config.stallAlpha * 0.92 || o.stalled)
 
         // Touchdown: rising edge of weight-on-wheels, using the previous frame's sink rate.
-        if o.weightOnWheels && !wasOnGround {
+        if o.weightOnWheels && !wasOnGround && time - lastTouchdownTime > 0.5 {   // cooldown: gear chatter
             events.append(.touchdown(intensity: min(1, max(0.05, lastSink / 3))))
+            lastTouchdownTime = time
         }
-        if !o.weightOnWheels { lastSink = max(0, s.velocityNED.z) }
+        if !o.weightOnWheels { lastSink = max(0, sinkNow) }
         wasOnGround = o.weightOnWheels
 
         // Flap motor.
-        if abs(c.flaps - lastFlaps) > 0.03 { events.append(.flapMotor); lastFlaps = c.flaps }
+        let moving = abs(flaps - lastFlaps) > 0.0005
+        if moving && !flapsWereMoving { events.append(.flapMotor) }
+        flapsWereMoving = moving
+        lastFlaps = flaps
 
-        // Thunder: speed of sound delay after each flash, distance 1–6 km from the hash sequence.
+        // Thunder: each flash is scheduled once; the clap arrives after distance / speed of sound.
         if w.thunderstorm {
-            if nextThunder == nil, let f = w.nextLightning(after: time, seed: eventSeed) {
+            if let f = w.nextLightning(after: time, seed: eventSeed), f > lastScheduledFlash {
+                lastScheduledFlash = f
                 let dist = 1_000 + 5_000 * WeatherEffects.unit(eventSeed ^ 0xA5A5, UInt64(f * 10))
-                nextThunder = f + dist / 343
-                pendingDistance = dist
+                if thunderQueue.count < 8 { thunderQueue.append((f + dist / 343, dist)) }
             }
-            if let t = nextThunder, time >= t {
-                events.append(.thunder(distance: pendingDistance))
-                nextThunder = nil
+            while let first = thunderQueue.first, time >= first.time {
+                events.append(.thunder(distance: first.distance))
+                thunderQueue.removeFirst()
             }
         } else {
-            nextThunder = nil
+            thunderQueue.removeAll()
         }
         return events
     }
-    private var pendingDistance = 3_000.0
 }

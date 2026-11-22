@@ -85,6 +85,54 @@ import SFWeather
     }
 }
 
+@Suite struct AudioRobustnessTests {
+    @Test func nonFiniteInputsNeverPoisonTheModel() {
+        var m = AudioModel()
+        var c = ControlInputs(); c.throttle = .nan; c.flaps = .infinity
+        var o = FlightOutputs(); o.trueAirspeed = .nan; o.alpha = .nan
+        _ = m.update(dt: .nan, time: .nan, state: AudioModelTests.state(), outputs: o, inputs: c, weather: .clear)
+        _ = m.update(dt: -1, time: .infinity, state: AudioModelTests.state(), outputs: o, inputs: c, weather: .clear)
+        #expect(m.params.engineRPM.isFinite && m.params.windGain.isFinite)
+        #expect(m.params.sanitized == m.params)
+    }
+
+    @Test func touchdownCooldownSuppressesGearChatter() {
+        var m = AudioModel()
+        var count = 0
+        for i in 0..<20 {
+            let wow = i % 2 == 1
+            let ev = m.update(dt: 0.02, time: Double(i) * 0.02, state: AudioModelTests.state(sinkMps: 1), outputs: AudioModelTests.outputs(wow: wow), inputs: ControlInputs(), weather: .clear)
+            count += ev.filter { if case .touchdown = $0 { return true } else { return false } }.count
+        }
+        #expect(count == 1)
+    }
+
+    @Test func flapMotorFiresOncePerMovementNotPerStep() {
+        var m = AudioModel()
+        var c = ControlInputs()
+        var count = 0
+        for i in 0..<100 {
+            c.flaps = min(1, Double(i) * 0.01)
+            count += m.update(dt: 0.02, time: Double(i) * 0.02, state: AudioModelTests.state(), outputs: AudioModelTests.outputs(), inputs: c, weather: .clear).filter { $0 == .flapMotor }.count
+        }
+        #expect(count == 1)
+    }
+
+    @Test func synthSurvivesNaNParameters() {
+        var s = ProceduralSynth()
+        var p = AudioParameters(); p.engineRPM = .nan; p.windGain = .infinity; p.engineGain = .nan
+        var out = [Float](repeating: 0, count: 1_024)
+        out.withUnsafeMutableBufferPointer { s.render($0.baseAddress!, frames: 1_024, params: p) }
+        #expect(out.allSatisfy { $0.isFinite })
+    }
+
+    @Test func lightningHandlesNonFiniteTime() throws {
+        let ts = WeatherEffects(metar: try METARParser.parse("KMCO 221656Z 18015G28KT 3SM +TSRA BKN025CB 27/23 A2992"))
+        #expect(ts.lightning(at: .infinity) == 0)
+        #expect(ts.nextLightning(after: .nan) == nil)
+    }
+}
+
 @Suite struct ProceduralSynthTests {
     static func render(_ synth: inout ProceduralSynth, frames: Int, params: AudioParameters) -> [Float] {
         var out = [Float](repeating: 0, count: frames)

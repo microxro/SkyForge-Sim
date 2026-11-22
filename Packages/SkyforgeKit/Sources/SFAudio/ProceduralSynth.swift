@@ -15,6 +15,7 @@ public struct ProceduralSynth: Sendable {
     private var cabinLP = 0.0
     private var gustPhase = 0.0
     private var smoothed = AudioParameters()
+    private var hornGain = 0.0
     private var voices: [Voice] = Array(repeating: Voice(), count: 8)
 
     private struct Voice: Sendable {
@@ -42,7 +43,10 @@ public struct ProceduralSynth: Sendable {
     }
 
     /// Fills `out[0..<frames]` with samples in [-1, 1].
-    public mutating func render(_ out: UnsafeMutablePointer<Float>, frames: Int, params p: AudioParameters) {
+    public mutating func render(_ out: UnsafeMutablePointer<Float>, frames: Int, params raw: AudioParameters) {
+        var p = raw.sanitized
+        p.engineRPM = min(p.engineRPM, 20_000)
+        guard frames > 0 else { return }
         let dt = 1 / sampleRate
         let twoPi = 2 * Double.pi
         // Per-buffer smoothing so parameter steps never click.
@@ -107,9 +111,10 @@ public struct ProceduralSynth: Sendable {
             x += smoothed.rumbleGain * 0.9 * rumbleLP
 
             // Stall horn: ~1.8 kHz with a 3rd harmonic, 4 Hz warble.
-            if p.stallHorn {
+            hornGain += ((p.stallHorn ? 1 : 0) - hornGain) * 0.002
+            if hornGain > 0.001 {
                 hornPhase += twoPi * 1_800 * dt * (1 + 0.02 * sin(gustPhase * 10))
-                x += 0.12 * (sin(hornPhase) + 0.4 * sin(3 * hornPhase))
+                x += 0.12 * hornGain * (sin(hornPhase) + 0.4 * sin(3 * hornPhase))
             }
 
             // One-shot voices.

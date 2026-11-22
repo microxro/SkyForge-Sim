@@ -62,7 +62,7 @@ public enum WeatherShaders {
                 float colHash = wx_hash(col, layer * 977);
                 float fallRate = fall * 0.045 * speedScale / depthK * (0.75 + 0.5 * colHash);
                 float rows = (kind == 3) ? cols * 0.9 : 5.0 / depthK; // snow: square cells; rain: tall cells
-                float yy = (p.y + time * fallRate + colHash * 7.0) * rows;
+                float yy = (p.y - time * fallRate + colHash * 7.0)   // y grows downward, so subtracting moves the pattern down * rows;
                 int row = int(floor(yy));
                 float fy = fract(yy);
                 float present = step(wx_hash(col + layer * 31, row), density / depthK * 1.6);
@@ -78,8 +78,8 @@ public enum WeatherShaders {
                     float along = (len * 6.0 < 0.9) ? len * 6.0 : 0.9;
                     float head = clamp(fy / along, 0.0, 1.0);
                     float inside = step(fy, along);
-                    float width = 0.05 + 0.06 * (1.0 - head);
-                    shape = inside * (1.0 - smoothstep(0.0, width, abs(fx))) * (1.0 - head);
+                    float width = 0.05 + 0.06 * head;               // thin tail at the top, bright leading end at the bottom
+                    shape = inside * (1.0 - smoothstep(0.0, width, abs(fx))) * head;
                 }
                 float a = present * shape * (0.55 / depthK);
                 acc += u.tint.rgb * a;

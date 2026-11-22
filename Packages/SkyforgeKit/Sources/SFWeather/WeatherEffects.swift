@@ -54,6 +54,8 @@ public struct WeatherEffects: Sendable, Equatable {
             if t.hasPrefix("-") { level = 0.25; t = t.dropFirst() }
             else if t.hasPrefix("+") { level = 0.9; t = t.dropFirst() }
             if t.hasPrefix("VC") { continue }                 // in the vicinity: not over the field
+            if t.hasPrefix("RE") { t = t.dropFirst(2) }       // recent weather
+            if t.hasPrefix("BL") || t.hasPrefix("DR") { continue }   // blowing/drifting snow, sand, dust: not falling precipitation
             if t.contains("TS") { ts = true; level = max(level, 0.7) }
             // Order matters: the most severe form present wins.
             let found: PrecipitationKind
@@ -107,10 +109,10 @@ public struct WeatherEffects: Sendable, Equatable {
     /// Lightning flash brightness 0…1 at `time` (0 when no thunderstorm). Flashes recur every ~7–19 s
     /// from a fixed hash sequence, each a 2-pulse flicker lasting ~0.35 s.
     public func lightning(at time: Double, seed: UInt64 = 1) -> Double {
-        guard thunderstorm else { return 0 }
+        guard thunderstorm, time.isFinite, time >= 0 else { return 0 }
         var t = 0.0
         var i: UInt64 = 0
-        while t < time + 20 {
+        while t < time + 20, i < 20_000 {
             let gap = 7 + 12 * Self.unit(seed, i)
             t += gap
             let dt = time - t
@@ -127,10 +129,11 @@ public struct WeatherEffects: Sendable, Equatable {
 
     /// Next flash start time at or after `time` (used to schedule the delayed thunder clap).
     public func nextLightning(after time: Double, seed: UInt64 = 1) -> Double? {
-        guard thunderstorm else { return nil }
+        guard thunderstorm, time.isFinite else { return nil }
+        let time = max(time, 0)
         var t = 0.0
         var i: UInt64 = 0
-        while t <= time + 40 {
+        while t <= time + 40, i < 20_000 {
             t += 7 + 12 * Self.unit(seed, i)
             if t >= time { return t }
             i += 1
