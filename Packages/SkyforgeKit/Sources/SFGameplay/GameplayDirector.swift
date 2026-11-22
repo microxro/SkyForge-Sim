@@ -36,6 +36,16 @@ public struct GameplayDirector: Sendable {
     public private(set) var loadFactor = 1.0
     public private(set) var kills = 0
     public private(set) var pendingEvents: [GameEvent] = []
+    /// The player's airframe, engine and control-surface health.
+    public private(set) var damage: AircraftDamage = AircraftDamage()
+    /// Combat statistics for the flight, passed to the mission runtime.
+    public private(set) var combat: CombatTally = CombatTally()
+    public private(set) var radar: RadarSet = RadarSet()
+    public private(set) var countermeasures: CountermeasureSystem = CountermeasureSystem()
+    /// Guns and missiles fired by hostile AI aircraft at the player.
+    public private(set) var hostileWeapons: HostileWeapons = HostileWeapons()
+    /// The id of the aircraft whose hit destroyed the player's airframe; nil while intact or if the source is unknown.
+    public private(set) var destroyedBy: String? = nil
     private var previousWarnings: Set<EnvelopeWarning> = []
 
     public init(aircraft: PlaneSpec, frame: RunwayFrame, mission: MissionDefinition?) {
@@ -71,21 +81,59 @@ public struct GameplayDirector: Sendable {
         return pendingEvents
     }
 
-    /// Advances AI, weapons, the envelope and the mission by `dt` using the flight's snapshot.
-    public mutating func advance(dt: Double, snapshot: FlightSnapshot, weaponInput: WeaponInput) {
-        let s = snapshot.state, o = snapshot.outputs
+    /// Advances countermeasures, AI, radar, weapons, hostile fire, the envelope and the mission by `dt`
+    /// using the flight's snapshot. The radar and countermeasure inputs default to "nothing pressed", so
+    /// callers without those controls behave as before.
+    public mutating func advance(dt: Double, snapshot: FlightSnapshot, weaponInput: WeaponInput,
+                                 radarInput: RadarInput = RadarInput(),
+                                 countermeasureInput: CountermeasureInput = CountermeasureInput()) {
+        let s: AircraftState = snapshot.state
+        let o: FlightOutputs = snapshot.outputs
         loadFactor = EnvelopeMath.loadFactor(state: s, outputs: o, config: aircraft.config)
+        let own = Ownship(position: s.positionNED, velocity: s.velocityNED,
+                          forward: s.attitude.rotate(SIMD3<Double>(1, 0, 0)))
 
-        for i in targets.indices { targets[i].step(dt: dt, threat: s.positionNED) }
-        let own = Ownship(position: s.positionNED, velocity: s.velocityNED, forward: s.attitude.rotate(SIMD3(1, 0, 0)))
-        for e in weapons.update(dt: dt, ownship: own, input: weaponInput, targets: &targets) {
+        // 1. Countermeasures: flares and chaff on the input's rising edges.
+        let cmEvents: [CountermeasureEvent] = countermeasures.update(dt: dt, ownship: own, input: countermeasureInput)
+        for e in cmEvents {
+            if case .deployed = e { combat.countermeasuresUsed += 1 }
+            pendingEvents.append(.countermeasure(e))
+        }
+
+        // 2. AI aircraft, reacting to the player's position and velocity.
+        for i in targets.indices { targets[i].step(dt: dt, threat: s.positionNED, threatVelocity: s.velocityNED) }
+
+        // 3. Radar, blinded by live chaff.
+        let radarEvents: [RadarEvent] = radar.update(dt: dt, ownship: own, targets: targets, input: radarInput,
+                                                     chaffClouds: countermeasures.chaffClouds)
+        for e in radarEvents { pendingEvents.append(.radar(e)) }
+
+        // 4. The player's weapons.
+        let weaponEvents: [WeaponEvent] = weapons.update(dt: dt, ownship: own, input: weaponInput, targets: &targets,
+                                                         radarLockID: radar.lockedTargetID,
+                                                         decoys: countermeasures.decoys)
+        for e in weaponEvents {
             pendingEvents.append(.weapon(e))
             if case .destroyed(let id, _) = e, targets.first(where: { $0.id == id })?.role == .hostile {
                 kills += 1
                 runtime?.noteKill()
             }
+            switch e {
+            case .missileLaunched, .radarMissileLaunched:
+                combat.missilesFired += 1
+            case .hit(_, let weapon):
+                if weapon == .heatMissile || weapon == .radarMissile { combat.missilesHit += 1 }
+            default:
+                break
+            }
         }
 
+        // 5. Hostile fire at the player.
+        let hostile: [HostileWeaponEvent] = hostileWeapons.update(dt: dt, targets: targets, player: own,
+                                                                  decoys: countermeasures.decoys)
+        applyHostileEvents(hostile)
+
+        // 6. Envelope monitor.
         let mach = EnvelopeMath.mach(trueAirspeed: o.trueAirspeed, altitudeMSL: s.altitude)
         monitor.update(nz: loadFactor, trueAirspeed: o.trueAirspeed, mach: mach, flaps: snapshot.flaps,
                        stalled: o.stalled, onGround: o.weightOnWheels, heightAGL: snapshot.heightAGL,
@@ -93,15 +141,70 @@ public struct GameplayDirector: Sendable {
         for w in monitor.warnings.subtracting(previousWarnings).sorted() { pendingEvents.append(.warning(w)) }
         previousWarnings = monitor.warnings
 
+        // 7. Mission runtime. A shot-down airframe ends the mission like a crash.
         if runtime != nil {
-            let failed = monitor.structuralFailure
+            let failed: Bool = monitor.structuralFailure
+            let shotDown: Bool = damage.destroyed
+            let reason: String?
+            if snapshot.crashed {
+                reason = snapshot.crashReason
+            } else if failed {
+                reason = "Airframe overstressed"
+            } else if shotDown {
+                reason = shotDownReason
+            } else {
+                reason = nil
+            }
             let sample = FlightSample(time: snapshot.time, positionNED: s.positionNED, velocityNED: s.velocityNED,
                                       heightAGL: snapshot.heightAGL - aircraft.gearHeight, onGround: o.weightOnWheels,
-                                      crashed: snapshot.crashed || failed,
-                                      crashReason: snapshot.crashed ? snapshot.crashReason : (failed ? "Airframe overstressed" : nil))
-            for e in runtime!.update(sample: sample, targets: targets, overstressSeconds: monitor.overstressSeconds) {
-                pendingEvents.append(.mission(e))
+                                      crashed: snapshot.crashed || failed || shotDown,
+                                      crashReason: reason)
+            let missionEvents: [MissionEvent] = runtime!.update(sample: sample, targets: targets,
+                                                                overstressSeconds: monitor.overstressSeconds,
+                                                                combat: combat, radarLockedID: radar.lockedTargetID)
+            for e in missionEvents { pendingEvents.append(.mission(e)) }
+        }
+    }
+
+    /// "Shot down by <id>" when the destroying hit's source is known, else "Shot down".
+    var shotDownReason: String {
+        if let id = destroyedBy { return "Shot down by \(id)" }
+        return "Shot down"
+    }
+
+    /// Hit zone for the player's hit number `hitIndex` (0-based, taken from `combat.hitsTaken`). The rule is
+    /// deterministic, with no randomness: every fifth hit (index 4, 9, 14, ...) strikes the engine, every
+    /// seventh hit (index 6, 13, 20, ...) strikes the controls, and all other hits strike the airframe. When
+    /// both rules match (index 34, 69, ...) the engine wins. Over a long fight that is 20% engine, about 11%
+    /// controls and the rest airframe.
+    static func hitZone(hitIndex: Int) -> DamageZone {
+        let n: Int = max(0, hitIndex)
+        if n % 5 == 4 { return .engine }
+        if n % 7 == 6 { return .controls }
+        return .airframe
+    }
+
+    /// Records hostile weapon events and applies the damage of each hit on the player. Internal so tests can
+    /// drive a known sequence of hits without depending on the hostile AI's aim.
+    mutating func applyHostileEvents(_ events: [HostileWeaponEvent]) {
+        for e in events {
+            pendingEvents.append(.hostile(e))
+            if case .cannonHit(let id) = e {
+                applyHit(source: .cannon, amount: AircraftDamage.cannonRoundDamage, sourceID: id)
+            } else if case .missileHit(let id) = e {
+                applyHit(source: .missile, amount: AircraftDamage.missileWarheadDamage, sourceID: id)
             }
         }
+    }
+
+    private mutating func applyHit(source: DamageSource, amount: Double, sourceID: String) {
+        // A destroyed airframe takes no more damage, so the tally only counts damage actually applied.
+        guard !damage.destroyed else { return }
+        let zone: DamageZone = Self.hitZone(hitIndex: combat.hitsTaken)
+        let killed: Bool = damage.apply(source: source, zone: zone, amount: amount)
+        combat.hitsTaken += 1
+        combat.damageTaken += amount
+        pendingEvents.append(.playerDamaged(source: source, amount: amount))
+        if killed && destroyedBy == nil { destroyedBy = sourceID }
     }
 }

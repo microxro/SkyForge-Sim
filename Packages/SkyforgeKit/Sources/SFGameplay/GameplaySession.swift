@@ -11,8 +11,12 @@ import SFQuickFlight
 public struct PilotControls: Sendable, Equatable {
     public var flight = ControlInputs()
     public var weapons = WeaponInput()
-    public init(flight: ControlInputs = ControlInputs(), weapons: WeaponInput = WeaponInput()) {
+    public var radar = RadarInput()
+    public var countermeasures = CountermeasureInput()
+    public init(flight: ControlInputs = ControlInputs(), weapons: WeaponInput = WeaponInput(),
+                radar: RadarInput = RadarInput(), countermeasures: CountermeasureInput = CountermeasureInput()) {
         self.flight = flight; self.weapons = weapons
+        self.radar = radar; self.countermeasures = countermeasures
     }
 }
 
@@ -21,6 +25,10 @@ public enum GameEvent: Sendable, Equatable {
     case mission(MissionEvent)
     case warning(EnvelopeWarning)
     case crashed(String)
+    case radar(RadarEvent)
+    case countermeasure(CountermeasureEvent)
+    case hostile(HostileWeaponEvent)
+    case playerDamaged(source: DamageSource, amount: Double)
 }
 
 public struct GameplaySession: Sendable {
@@ -120,6 +128,10 @@ public struct GameplaySession: Sendable {
     public var runtime: MissionRuntime? { director.runtime }
     public var loadFactor: Double { director.loadFactor }
     public var missionResult: MissionResult? { director.runtime?.result }
+    public var damage: AircraftDamage { director.damage }
+    public var radar: RadarSet { director.radar }
+    public var countermeasures: CountermeasureSystem { director.countermeasures }
+    public var combat: CombatTally { director.combat }
     public var isFinished: Bool { crashed || director.isFinished }
     /// Position in world coordinates (x east, y north, z up), as the renderer uses.
     public var positionENU: SIMD3<Double> { SIMD3(state.positionNED.y, state.positionNED.x, -state.positionNED.z) }
@@ -154,6 +166,9 @@ public struct GameplaySession: Sendable {
             input.gear = gear.update(commandDown: commandDown, dt: dt)
         }
         if let filter = controlFilter { input = filter(input, state, before) }
+        // Battle damage: a hurt engine gives less thrust and hurt surfaces less authority. Both factors are
+        // exactly 1 while undamaged, so this is a no-op then.
+        input = Self.applyDamageScaling(input, damage: director.damage)
         effectiveInputs = input
         let sinkBefore = state.velocityNED.z
 
@@ -168,8 +183,37 @@ public struct GameplaySession: Sendable {
 
         director.advance(dt: dt, snapshot: FlightSnapshot(time: time, state: state, outputs: before, flaps: input.flaps,
                                                           heightAGL: heightAGL, crashed: crashed, crashReason: crashReason),
-                         weaponInput: controls.weapons)
+                         weaponInput: controls.weapons, radarInput: controls.radar,
+                         countermeasureInput: controls.countermeasures)
         if director.monitor.structuralFailure { fail("Airframe overstressed") }
+        checkShotDown()
+    }
+
+    /// Scales the final control inputs by the battle damage: throttle by `thrustFactor`, and elevator,
+    /// aileron and rudder by `controlFactor`. Gear, flaps and everything else pass through. With intact
+    /// damage both factors are exactly 1.0, and x * 1.0 == x in IEEE arithmetic, so the inputs come back
+    /// unchanged.
+    public static func applyDamageScaling(_ inputs: ControlInputs, damage: AircraftDamage) -> ControlInputs {
+        let thrust: Double = damage.thrustFactor
+        let authority: Double = damage.controlFactor
+        var out: ControlInputs = inputs
+        out.throttle = inputs.throttle * thrust
+        out.elevator = inputs.elevator * authority
+        out.aileron = inputs.aileron * authority
+        out.rudder = inputs.rudder * authority
+        return out
+    }
+
+    /// Feeds hostile weapon events straight into the director, as if hostile fire had produced them, then
+    /// applies the shot-down check. Internal: for tests and scripted sequences.
+    mutating func receiveHostileEvents(_ events: [HostileWeaponEvent]) {
+        director.applyHostileEvents(events)
+        checkShotDown()
+    }
+
+    /// Ends the flight when hostile fire has destroyed the airframe.
+    private mutating func checkShotDown() {
+        if director.damage.destroyed { fail(director.shotDownReason) }
     }
 
     private mutating func fail(_ reason: String) {
