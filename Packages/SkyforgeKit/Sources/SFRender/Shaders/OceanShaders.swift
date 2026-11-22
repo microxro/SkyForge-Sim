@@ -152,7 +152,7 @@ public enum OceanShaders {
     // MARK: foam
     // Whitecaps: crest measure beyond a wind-dependent threshold, broken up by noise.
     static float owWhitecap(float2 p, float crest, float wind, float footprint) {
-        float thr = mix(0.92, 0.55, saturate((wind - 5.0) / 14.0));
+        float thr = mix(0.97, 0.72, saturate((wind - 6.0) / 14.0));   // fewer, real whitecaps: at 8 m/s the old 0.83 speckled the whole surface
         float lace = owFbm(p * 0.9 + 3.0) * 0.6 + owFbm(p * 3.7) * 0.4;
         float f = smoothstep(thr, thr + 0.18, crest + (lace - 0.5) * 0.35);
         return f * saturate(1.2 - footprint * 0.15);
@@ -227,16 +227,16 @@ public enum OceanShaders {
         float F = owFresnel(cosT);
 
         float3 light = ambient * 0.5 + sunRad * max(0.0, toSun.z) * 0.18 * sunVis;
-        float3 body = owDepthColour(depth, bed, light, float3(0.010, 0.050, 0.060));
+        float3 body = owDepthColour(depth, bed, light, float3(0.004, 0.026, 0.034));   // darker deep-water tint
         body += owCrestSSS(dir, toSun, n, crest, height, sunRad * sunVis, float3(0.02, 0.14, 0.10));
 
         float3 col = mix(body, skyRefl, F);
-        col += sunRad * sunVis * owGlitter(dir, toSun, n, slopeVar) * F * 6.0;
+        col += sunRad * sunVis * owGlitter(dir, toSun, n, slopeVar) * F * 10.0;     // stronger sun glint
 
         float foam = max(owWhitecap(p, crest, P.windSpeed, footprint), owShoreFoam(p, shoreDist, P.time, footprint));
         foam = max(foam, wake);
         float3 foamCol = float3(0.90, 0.93, 0.94) * (ambient * 0.9 + sunRad * max(0.0, toSun.z) * 0.5 * sunVis);
-        col = mix(col, foamCol, foam * 0.85);
+        col = mix(col, foamCol, foam * 0.6);
 
         OWOut o; o.colour = col; o.normal = n; o.foam = foam;
         return o;
