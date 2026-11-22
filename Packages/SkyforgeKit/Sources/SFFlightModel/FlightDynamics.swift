@@ -94,6 +94,7 @@ public struct FlightOutputs: Sendable, Equatable {
     public var stalled: Bool = false
     public var forceBody: SIMD3<Double> = .zero
     public var momentBody: SIMD3<Double> = .zero
+    public init() {}
 }
 
 struct StateDerivative {
