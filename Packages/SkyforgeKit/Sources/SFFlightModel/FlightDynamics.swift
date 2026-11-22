@@ -127,6 +127,7 @@ public struct FlightOutputs: Sendable, Equatable {
     public var loadFactor: Double = 0
     /// 0 … 1 stall-warning / buffet intensity, rising toward the stall break.
     public var stallWarning: Double = 0
+    public init() {}
 }
 
 struct StateDerivative {
