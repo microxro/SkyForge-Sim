@@ -257,10 +257,14 @@ public struct WeaponSystem: Sendable {
     }
 
     private mutating func updateSelection(input: WeaponInput, own: Ownship, targets: [AITarget]) {
-        let live = targets.filter { !$0.destroyed && $0.role != .friendly }
         let edge = input.cycleTarget && !previousCycle
         previousCycle = input.cycleTarget
-        if let s = selectedTarget, !live.contains(where: { $0.id == s }) { selectedTarget = nil }
+        // Runs every frame: only build the filtered list when the selection can change.
+        if let s = selectedTarget, !targets.contains(where: { $0.id == s && !$0.destroyed && $0.role != .friendly }) {
+            selectedTarget = nil
+        }
+        guard edge || selectedTarget == nil else { return }
+        let live = targets.filter { !$0.destroyed && $0.role != .friendly }
         if edge, !live.isEmpty {
             let sorted = live.sorted { Self.distance($0.position, own.position) < Self.distance($1.position, own.position) }
             if let s = selectedTarget, let i = sorted.firstIndex(where: { $0.id == s }) {
