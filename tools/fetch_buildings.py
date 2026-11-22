@@ -15,160 +15,31 @@ Output: a compact binary (`SFB1`) read by `SFQuickFlight.BuildingPack`:
           u16 min_height_dm | u8 kind | u8 roof | u8 levels | u8 flags | u8 r,g,b (roof, 0 = none) |
           u8 r,g,b (wall, 0 = none) | u16 n | n-1 × (i16 dx_dm, i16 dy_dm) relative to the previous vertex
 
+Source filter: --sources (default "OpenStreetMap"). docs/DECISIONS.md forbids shipping Microsoft ML / Google Open
+Buildings / Esri footprints, so the default drops them; pass e.g. --sources OpenStreetMap,"Microsoft ML Buildings"
+only after that decision is revisited (licences and attribution differ per source; see docs/rounds/ROUND2.md).
+
+Height and roof inference (on by default, --no-infer restores the raw attributes): a record with no height gets
+one from its storeys, else from class, footprint area and aspect ratio, with a deterministic ±jitter keyed on its
+position; a record with no roof:shape gets gabled or hipped (small houses, sheds, churches) or flat (everything
+else). Flags byte: bit0 height present in the source (left clear for inferred heights so Swift keeps its own estimate), bit1 has parts, bit2 height inferred, bit3 roof inferred. SFB1 layout is
+unchanged, so BuildingPack reads it as before.
+
 Usage: fetch_buildings.py --lat 47.53 --lon -122.30 --half-km 6 --out KBFI/buildings.sfb [--release 2026-10-21.0]
 """
-import argparse, io, json, math, os, struct, sys, time
-import xml.etree.ElementTree as ET
-import requests
+import argparse, math, os, struct, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from overture_common import (BUCKET, RangeFile, box_or_exit, fnum, footer_index, parse_sources, polygons, project_ring,
+                             row_bbox_hit, row_groups_in_box, source_allowed, source_dataset, write_output)
 
-from _net import MAX_BYTES
-
-BUCKET = "https://overturemaps-us-west-2.s3.amazonaws.com"
-SESSION = requests.Session()
 KINDS = ["yes", "house", "residential", "apartments", "commercial", "industrial", "retail", "office", "warehouse",
          "hangar", "garage", "shed", "church", "school", "hospital", "hotel", "civic", "transportation", "roof",
          "agricultural", "service", "religious", "education", "medical", "entertainment", "military", "outbuilding"]
 ROOFS = ["", "flat", "gabled", "hipped", "pyramidal", "skillion", "gambrel", "mansard", "dome", "round", "onion", "saltbox",
          "half_hipped", "sawtooth", "cone", "spherical"]
-
-
-class RangeFile(io.RawIOBase):
-    """Seekable read-only file over HTTP range requests with a small block cache."""
-
-    def __init__(self, url, size, block=1 << 20):
-        self.url, self.size, self.pos, self.block, self.cache, self.fetched = url, size, 0, block, {}, 0
-
-    def readable(self): return True
-    def seekable(self): return True
-    def tell(self): return self.pos
-
-    def seek(self, off, whence=0):
-        self.pos = off if whence == 0 else (self.pos + off if whence == 1 else self.size + off)
-        return self.pos
-
-    def _get(self, a, b):
-        if b <= a or b - a > MAX_BYTES:
-            raise ValueError(f"refusing range request of {b - a} bytes")
-        for attempt in range(5):
-            try:
-                r = SESSION.get(self.url, headers={"Range": f"bytes={a}-{b - 1}"}, timeout=120, stream=True)
-                if r.status_code == 206:
-                    cr = r.headers.get("Content-Range", "")
-                    ok = cr.startswith(f"bytes {a}-{b - 1}/")
-                    if ok:
-                        body = r.raw.read(b - a + 1, decode_content=True)
-                        if len(body) == b - a and not r.raw.read(1):
-                            self.fetched += len(body)
-                            return body
-                    r.close()
-                    raise IOError(f"bad range response (Content-Range {cr!r}) for {self.url} {a}-{b}")
-                r.close()
-                if r.status_code == 200:                # server ignored Range: refuse, never buffer a whole object
-                    raise IOError(f"server ignored Range request: {self.url}")
-            except requests.RequestException:
-                pass
-            time.sleep(1.5 * (attempt + 1))
-        raise IOError(f"range request failed: {self.url} {a}-{b}")
-
-    def read(self, n=-1):
-        if n < 0: n = self.size - self.pos
-        n = min(n, self.size - self.pos)
-        if n <= 0: return b""
-        a, b = self.pos, self.pos + n
-        if n > 4 * self.block:                      # a whole column chunk: one request
-            data = self._get(a, b)
-        else:
-            out = bytearray()
-            k0, k1 = a // self.block, (b - 1) // self.block
-            missing = [k for k in range(k0, k1 + 1) if k not in self.cache]
-            if missing:
-                m0, m1 = missing[0], missing[-1]
-                blob = self._get(m0 * self.block, min(self.size, (m1 + 1) * self.block))
-                for k in range(m0, m1 + 1):
-                    self.cache[k] = blob[(k - m0) * self.block:(k - m0 + 1) * self.block]
-            for k in range(k0, k1 + 1): out += self.cache[k]
-            data = bytes(out[a - k0 * self.block:b - k0 * self.block])
-        self.pos = b
-        return data
-
-    def readinto(self, buf):
-        d = self.read(len(buf)); buf[:len(d)] = d; return len(d)
-
-
-def list_files(release):
-    return list_prefix(f"release/{release}/theme=buildings/type=building/")
-
-
-def list_prefix(prefix):
-    """(key, size) of every .parquet under an S3 prefix; the listing XML is parsed, not pattern-matched."""
-    keys, token = [], None
-    while True:
-        url = f"{BUCKET}/?list-type=2&prefix={prefix}&max-keys=1000"
-        if token: url += "&continuation-token=" + requests.utils.quote(token)
-        resp = SESSION.get(url, timeout=60)
-        resp.raise_for_status()
-        root = ET.fromstring(resp.content)
-        ns = root.tag.partition("}")[0] + "}" if root.tag.startswith("{") else ""
-        for c in root.iter(ns + "Contents"):
-            k, s = c.findtext(ns + "Key"), c.findtext(ns + "Size")
-            if k and s and s.isdigit() and k.endswith(".parquet"): keys.append((k, int(s)))
-        t = root.findtext(ns + "NextContinuationToken")
-        if not t: break
-        token = t
-    return keys
-
-
-def footer_index(release, cache_dir):
-    """[(key, size, [(xmin, xmax, ymin, ymax) per row group])], cached on disk."""
-    import pyarrow.parquet as pq
-    path = os.path.join(cache_dir, f"overture-buildings-{release}.index.json")
-    index = json.load(open(path)) if os.path.exists(path) else {}
-    files = list_files(release)
-    dirty = 0
-    for n, (key, size) in enumerate(files):
-        if key in index: continue
-        f = RangeFile(f"{BUCKET}/{key}", size, block=1 << 20)
-        md = pq.ParquetFile(f).metadata
-        names = {md.schema.column(i).path: i for i in range(md.num_columns)}
-        cols = [names["bbox.xmin"], names["bbox.xmax"], names["bbox.ymin"], names["bbox.ymax"]]
-        groups = []
-        for g in range(md.num_row_groups):
-            rg = md.row_group(g)
-            st = [rg.column(c).statistics for c in cols]
-            if any(s is None or not s.has_min_max for s in st): groups.append(None); continue
-            groups.append([st[0].min, st[1].max, st[2].min, st[3].max])
-        index[key] = {"size": size, "groups": groups}
-        dirty += 1
-        print(f"  footer {n + 1}/{len(files)} {md.num_row_groups} groups ({f.fetched >> 10} KiB)", file=sys.stderr, flush=True)
-        if dirty % 16 == 0: json.dump(index, open(path, "w"))
-    if dirty: json.dump(index, open(path, "w"))
-    return [(k, index[k]["size"], index[k]["groups"]) for k, _ in files]
-
-
-def polygons(wkb):
-    """Outer rings (lon, lat lists) of a WKB Polygon / MultiPolygon (little- or big-endian)."""
-    out = []
-
-    def read(b, o):
-        e = "<" if b[o] == 1 else ">"
-        t, = struct.unpack_from(e + "I", b, o + 1)
-        t &= 0xFF
-        o += 5
-        if t == 3:
-            n, = struct.unpack_from(e + "I", b, o); o += 4
-            for i in range(n):
-                m, = struct.unpack_from(e + "I", b, o); o += 4
-                pts = struct.unpack_from(e + f"{2 * m}d", b, o); o += 16 * m
-                if i == 0: out.append([(pts[2 * j], pts[2 * j + 1]) for j in range(m)])
-            return o
-        if t == 6:
-            n, = struct.unpack_from(e + "I", b, o); o += 4
-            for _ in range(n): o = read(b, o)
-            return o
-        raise ValueError(f"WKB type {t}")
-
-    read(wkb, 0)
-    return out
+FLAT_ROOF_KINDS = {"apartments", "commercial", "industrial", "retail", "office", "warehouse", "hangar", "hotel", "civic",
+                   "school", "hospital", "education", "medical", "transportation", "entertainment", "military", "agricultural"}
+PITCHED_KINDS = {"house", "residential", "garage", "shed", "outbuilding", "church", "religious", "yes", "service", "roof"}
 
 
 def colour(s):
@@ -180,71 +51,172 @@ def colour(s):
     return (0, 0, 0)
 
 
+def ring_area(pts):
+    return abs(sum(pts[i][0] * pts[(i + 1) % len(pts)][1] - pts[(i + 1) % len(pts)][0] * pts[i][1] for i in range(len(pts)))) / 2
+
+
+def convex_hull(pts):
+    pts = sorted(set(pts))
+    if len(pts) < 3: return pts
+    def half(seq):
+        h = []
+        for p in seq:
+            while len(h) >= 2 and (h[-1][0] - h[-2][0]) * (p[1] - h[-2][1]) - (h[-1][1] - h[-2][1]) * (p[0] - h[-2][0]) <= 0: h.pop()
+            h.append(p)
+        return h
+    lo, up = half(pts), half(reversed(pts))
+    return lo[:-1] + up[:-1]
+
+
+def aspect_ratio(pts):
+    """Long side / short side of the minimum-area oriented bounding box (metres in, >= 1 out)."""
+    hull = convex_hull(pts)
+    if len(hull) < 3: return 1.0
+    best = None
+    for i in range(len(hull)):
+        a, b = hull[i], hull[(i + 1) % len(hull)]
+        dx, dy = b[0] - a[0], b[1] - a[1]
+        l = math.hypot(dx, dy)
+        if l < 1e-6: continue
+        ux, uy = dx / l, dy / l
+        us = [p[0] * ux + p[1] * uy for p in hull]; vs = [-p[0] * uy + p[1] * ux for p in hull]
+        w, h = max(us) - min(us), max(vs) - min(vs)
+        if best is None or w * h < best[0]: best = (w * h, max(w, h), max(1e-3, min(w, h)))
+    return 1.0 if best is None else best[1] / best[2]
+
+
+def jitter(x_dm, y_dm):
+    """Deterministic 0..1 from the first vertex, so reruns and neighbouring releases give the same heights."""
+    h = (x_dm * 0x9E3779B1 + y_dm * 0x85EBCA6B) & 0xFFFFFFFF
+    h ^= h >> 15; h = (h * 0x2C1B3C6D) & 0xFFFFFFFF; h ^= h >> 12
+    return (h & 0xFFFF) / 65535.0
+
+
+def infer_height(kind, area, floors, u):
+    """Metres. Calibrated on typical US suburban stock: houses 5-8 m, strip retail 5-7 m, apartments 3-5 storeys."""
+    if floors: return floors * 3.2 + 1.0
+    if kind in ("garage", "shed", "outbuilding", "roof") or area < 28: return 3.0 + 0.4 * u
+    if kind in ("house", "residential") or (kind in ("yes", "service") and area < 420):
+        return 5.0 + 3.0 * u if area < 220 else 6.0 + 2.5 * u
+    if kind in ("apartments", "hotel"):
+        step = min(2, int(u * 3))                   # u == 1.0 must not push past the top storey count
+        return 3.2 * (3 + step) + 1.0 if area < 1800 else 3.2 * (2 + step) + 1.0
+    if kind in ("church", "religious"): return 10 + 4 * u
+    if kind in ("school", "hospital", "education", "medical", "civic"): return 7.5 + 4 * u
+    if kind in ("industrial", "warehouse", "hangar"): return 7 + 5 * u if area < 4000 else 9 + 4 * u
+    if kind in ("commercial", "retail", "office"): return 5 + 2 * u if area > 2500 else 6 + 8 * u * (1 if area < 800 else 0.5)
+    if area < 120: return 4.0 + 2.0 * u
+    if area < 420: return 5.5 + 2.5 * u
+    return 7.0 + 4.0 * u if area < 2500 else 8.0 + 3.0 * u
+
+
+def infer_roof(kind, area, aspect, floors, height):
+    """Index into ROOFS: gabled (elongated) or hipped (squat) on small pitched stock, flat on everything large."""
+    if area > 650 or (kind in FLAT_ROOF_KINDS and area > 90): return ROOFS.index("flat")
+    if kind in PITCHED_KINDS or kind in ("yes",) or area < 650:
+        if area < 20: return ROOFS.index("flat")
+        return ROOFS.index("gabled" if aspect >= 1.35 else "hipped")
+    return ROOFS.index("flat")
+
+
+def encode(rows, lat, lon, mlat, mlon, infer, stats):
+    """SFB1 bytes and the record count. Rows that cannot be encoded are counted in stats ("bad_geometry",
+    "bad_ring", "too_long") instead of aborting the run."""
+    out = bytearray(b"SFB1") + struct.pack("<ddI", lat, lon, 0)
+    count = 0
+    for r in rows:
+        geom = r.get("geometry")
+        if not geom: stats["bad_geometry"] += 1; continue
+        try: rings = polygons(geom)
+        except ValueError: stats["bad_geometry"] += 1; continue
+        kind = str(r.get("class") or r.get("subtype") or "yes").lower()
+        ki = KINDS.index(kind) if kind in KINDS else 0
+        kname = KINDS[ki]
+        ro = str(r.get("roof_shape") or "").lower()
+        ri = ROOFS.index(ro) if ro in ROOFS else 0
+        h = fnum(r.get("height")); floors = fnum(r.get("num_floors")); mh = fnum(r.get("min_height")) or 0
+        flags = (1 if h else 0) | (2 if r.get("has_parts") else 0)
+        rc, wc = colour(r.get("roof_color")), colour(r.get("facade_color"))
+        for ring in rings:
+            pts = project_ring(ring, lat, lon, mlat, mlon)
+            if pts is None: stats["bad_ring"] += 1; continue
+            if len(pts) > 1 and pts[0] == pts[-1]: pts = pts[:-1]
+            ded = [pts[0]] if pts else []
+            for p in pts[1:]:
+                if p != ded[-1]: ded.append(p)
+            if len(ded) < 3: continue
+            if len(ded) > 4000 or any(abs(ded[i][0] - ded[i - 1][0]) > 32767 or abs(ded[i][1] - ded[i - 1][1]) > 32767 for i in range(1, len(ded))):
+                stats["too_long"] += 1; continue
+            hh, f2, rr = h, flags, ri
+            if infer:
+                m = [(x / 10.0, y / 10.0) for x, y in ded]
+                area = ring_area(m)
+                asp = aspect_ratio(m) if (not ri or not hh) else 1.0
+                if not hh:
+                    hh = infer_height(kname, area, floors, jitter(*ded[0])); f2 |= 4
+                    stats["height_inferred"] += 1
+                if not ri:
+                    rr = infer_roof(kname, area, asp, floors, hh); f2 |= 8
+                    stats["roof_inferred"] += 1
+                stats["roof_" + ROOFS[rr]] += 1
+            hd = int(max(0, min(65535, round((hh or 0) * 10))))
+            out += struct.pack("<iiHHBBBB3B3BH", ded[0][0], ded[0][1], hd, int(max(0, min(65535, round(mh * 10)))), ki, rr,
+                               int(max(0, min(255, floors or 0))), f2, *rc, *wc, len(ded))
+            for i in range(1, len(ded)):
+                out += struct.pack("<hh", ded[i][0] - ded[i - 1][0], ded[i][1] - ded[i - 1][1])
+            count += 1
+    struct.pack_into("<I", out, 20, count)
+    return out, count
+
+
 def main():
     import pyarrow.parquet as pq
+    from collections import Counter
     ap = argparse.ArgumentParser()
     ap.add_argument("--lat", type=float, required=True); ap.add_argument("--lon", type=float, required=True)
     ap.add_argument("--half-km", type=float, default=6.0)
     ap.add_argument("--out", required=True)
     ap.add_argument("--release", default="2026-10-21.0")
     ap.add_argument("--cache", default=os.path.expanduser("~/.cache/skyforge-overture"))
+    ap.add_argument("--sources", default="OpenStreetMap",
+                    help='comma-separated Overture source datasets to keep ("any" keeps all); default OpenStreetMap only')
+    ap.add_argument("--no-infer", action="store_true", help="write raw heights and roofs (no inference)")
+    ap.add_argument("--allow-empty", action="store_true", help="allow a zero-record result to replace an existing output")
     a = ap.parse_args()
     os.makedirs(a.cache, exist_ok=True)
-    mlat = 111_132.0
-    mlon = 111_320.0 * math.cos(math.radians(a.lat))
-    dlat, dlon = a.half_km * 1000 / mlat, a.half_km * 1000 / mlon
-    box = (a.lon - dlon, a.lon + dlon, a.lat - dlat, a.lat + dlat)
+    allow = parse_sources(a.sources)
+    if allow != {"OpenStreetMap"}:
+        print("WARNING: non-OSM sources selected; docs/DECISIONS.md forbids shipping them. Licences and attribution"
+              " differ per dataset (see docs/rounds/ROUND2.md).", file=sys.stderr)
+    box0, box1, box2, box3, mlat, mlon = box_or_exit(ap, a.lat, a.lon, a.half_km)
+    box = (box0, box1, box2, box3)
     index = footer_index(a.release, a.cache)
     wanted = ["geometry", "bbox", "sources", "subtype", "class", "height", "num_floors", "min_height", "roof_shape",
               "roof_color", "facade_color", "roof_height", "has_parts", "is_underground"]
-    rows, kept, skipped_src = [], 0, 0
-    for key, size, groups in index:
-        hit = [g for g, b in enumerate(groups) if b is None or not (b[1] < box[0] or b[0] > box[1] or b[3] < box[2] or b[2] > box[3])]
-        if not hit: continue
+    rows, kept, skipped, nobbox = [], 0, Counter(), 0
+    for key, size, hit in row_groups_in_box(index, box):
         f = RangeFile(f"{BUCKET}/{key}", size, block=4 << 20)
         pf = pq.ParquetFile(f)
         have = set(pf.schema_arrow.names)
         cols = [c for c in wanted if c in have]
         for g in hit:
-            t = pf.read_row_group(g, columns=cols).to_pylist()
-            for r in t:
-                bb = r["bbox"]
-                if bb["xmax"] < box[0] or bb["xmin"] > box[1] or bb["ymax"] < box[2] or bb["ymin"] > box[3]: continue
-                src = r.get("sources") or []
-                if not src or (src[0].get("dataset") or "") != "OpenStreetMap": skipped_src += 1; continue
+            for r in pf.read_row_group(g, columns=cols).to_pylist():
+                inbox = row_bbox_hit(r, box)
+                if not inbox: nobbox += inbox is None; continue
+                ds = source_dataset(r)
+                if not source_allowed(r, allow): skipped[ds or "unknown"] += 1; continue
                 if r.get("is_underground"): continue
                 rows.append(r); kept += 1
             print(f"  {os.path.basename(key)[:10]} group {g}: {kept} kept ({f.fetched >> 20} MiB)", file=sys.stderr, flush=True)
-    out = bytearray(b"SFB1") + struct.pack("<ddI", a.lat, a.lon, 0)
-    count = 0
-    for r in rows:
-        try: rings = polygons(r["geometry"])
-        except Exception: continue
-        kind = (r.get("class") or r.get("subtype") or "yes").lower()
-        ki = KINDS.index(kind) if kind in KINDS else 0
-        ro = (r.get("roof_shape") or "").lower()
-        ri = ROOFS.index(ro) if ro in ROOFS else 0
-        h = r.get("height"); floors = r.get("num_floors"); mh = r.get("min_height") or 0
-        flags = (1 if h else 0) | (2 if r.get("has_parts") else 0)
-        hd = int(max(0, min(65535, round((h or 0) * 10))))
-        rc, wc = colour(r.get("roof_color")), colour(r.get("facade_color"))
-        for ring in rings:
-            pts = [(round((lo - a.lon) * mlon * 10), round((la - a.lat) * mlat * 10)) for lo, la in ring]
-            if len(pts) > 1 and pts[0] == pts[-1]: pts = pts[:-1]
-            ded = [pts[0]] if pts else []
-            for p in pts[1:]:
-                if p != ded[-1]: ded.append(p)
-            if len(ded) < 3 or len(ded) > 4000: continue
-            if any(abs(ded[i][0] - ded[i - 1][0]) > 32767 or abs(ded[i][1] - ded[i - 1][1]) > 32767 for i in range(1, len(ded))): continue
-            out += struct.pack("<iiHHBBBB3B3BH", ded[0][0], ded[0][1], hd, int(max(0, min(65535, round(mh * 10)))), ki, ri,
-                               int(max(0, min(255, floors or 0))), flags, *rc, *wc, len(ded))
-            for i in range(1, len(ded)):
-                out += struct.pack("<hh", ded[i][0] - ded[i - 1][0], ded[i][1] - ded[i - 1][1])
-            count += 1
-    struct.pack_into("<I", out, 20, count)
-    os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
-    open(a.out, "wb").write(out)
-    print(f"{a.out}: {count} footprints, {len(out) >> 10} KiB; {skipped_src} non-OSM records skipped", file=sys.stderr)
+    stats = Counter()
+    out, count = encode(rows, a.lat, a.lon, mlat, mlon, not a.no_infer, stats)
+    write_output(a.out, out, count, a.allow_empty)
+    bad = {k: stats[k] for k in ("bad_geometry", "bad_ring", "too_long") if stats[k]}
+    print(f"{a.out}: {count} footprints, {len(out) >> 10} KiB; skipped by source: {dict(skipped)}"
+          f"{'; rows without a usable bbox: %d' % nobbox if nobbox else ''}{'; unencodable: %s' % bad if bad else ''}", file=sys.stderr)
+    if not a.no_infer:
+        print(f"inferred: {stats['height_inferred']} heights, {stats['roof_inferred']} roofs; roofs now: "
+              f"flat {stats['roof_flat']}, gabled {stats['roof_gabled']}, hipped {stats['roof_hipped']}", file=sys.stderr)
 
 
 if __name__ == "__main__":

@@ -23,11 +23,22 @@ SHADERS = os.path.join(ROOT, "Packages/SkyforgeKit/Sources/SFRender/Shaders")
 SHIM = os.path.join(HERE, "msl_shim.h")
 
 
+_SPLICING = []                                          # (enum, name) pairs being expanded: the cycle guard
+MAX_SPLICE_DEPTH = 8
+
+
 def interpolated(enum, name, where):
+    key = (enum, name)
+    if key in _SPLICING:
+        raise SystemExit(f"{where}: interpolation cycle {' -> '.join(f'{e}.{n}' for e, n in _SPLICING + [key])}")
+    if len(_SPLICING) >= MAX_SPLICE_DEPTH:
+        raise SystemExit(f"{where}: interpolation nested deeper than {MAX_SPLICE_DEPTH} levels")
     for f in sorted(os.listdir(SHADERS)):
         path = os.path.join(SHADERS, f)
         if f.endswith(".swift") and re.search(r"enum\s+" + re.escape(enum) + r"\b", open(path, encoding="utf-8").read()):
-            return extract(path, name)[0]
+            _SPLICING.append(key)
+            try: return extract(path, name)[0]
+            finally: _SPLICING.pop()
     raise SystemExit(f"{where}: cannot resolve interpolation {enum}.{name}")
 
 
@@ -102,12 +113,19 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("files", nargs="*")
     ap.add_argument("--only", action="store_true", help="do not prepend the baseline (CloudShaders.common + WorldShaders.source)")
+    ap.add_argument("--before", action="append", default=[], metavar="FILE",
+                    help="a library part placed between CloudShaders.common and WorldShaders.source (MacroColourShaders.swift: world_fragment calls it)")
     ap.add_argument("--dump", metavar="PATH", help="write the concatenated translation unit here and keep it")
     ap.add_argument("--warnings", action="store_true", help="show clang warnings too (noisy: the shim is lax)")
     ap.add_argument("--clang", default=os.environ.get("CLANGXX", "clang++"))
     a = ap.parse_args()
 
-    units = [] if a.only else [(os.path.join(SHADERS, "CloudShaders.swift"), "common"), (os.path.join(SHADERS, "WorldShaders.swift"), "source")]
+    units = [] if a.only else [(os.path.join(SHADERS, "CloudShaders.swift"), "common")]
+    # world_fragment calls MacroColourShaders, which WorldRenderer places before WorldShaders: make that the default.
+    if not a.only and not any(os.path.basename(f) == "MacroColourShaders.swift" for f in a.before):
+        a.before = ["MacroColourShaders.swift"] + a.before
+    units += [resolve(f) for f in a.before]
+    units += [] if a.only else [(os.path.join(SHADERS, "WorldShaders.swift"), "source")]
     units += [resolve(f) for f in a.files]
     seen, parts = set(), ['#include "%s"\n' % SHIM]
     for path, name in units:

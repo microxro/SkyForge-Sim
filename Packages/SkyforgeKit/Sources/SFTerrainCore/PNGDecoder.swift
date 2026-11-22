@@ -64,28 +64,48 @@ public enum PNGDecoder {
         guard raw.count >= (stride + 1) * height else { throw PNGDecodeError.corrupt("short image data") }
         var out = [UInt8](repeating: 0, count: stride * height)
         let bpp = channels
-        for y in 0..<height {
-            let filter = raw[y * (stride + 1)]
-            let src = y * (stride + 1) + 1
-            let dst = y * stride
-            for x in 0..<stride {
-                let rawByte = Int(raw[src + x])
-                let a = x >= bpp ? Int(out[dst + x - bpp]) : 0
-                let b = y > 0 ? Int(out[dst - stride + x]) : 0
-                let c = (x >= bpp && y > 0) ? Int(out[dst - stride + x - bpp]) : 0
-                let v: Int
-                switch filter {
-                case 0: v = rawByte
-                case 1: v = rawByte + a
-                case 2: v = rawByte + b
-                case 3: v = rawByte + (a + b) / 2
-                case 4:
-                    let p = a + b - c
-                    let pa = abs(p - a), pb = abs(p - b), pc = abs(p - c)
-                    v = rawByte + ((pa <= pb && pa <= pc) ? a : (pb <= pc ? b : c))
-                default: throw PNGDecodeError.corrupt("filter \(filter)")
+        // Unfilter with the filter switch hoisted out of the per-byte loop and no bounds checks
+        // (every index below is derived from stride/height validated against raw.count above).
+        try raw.withUnsafeBufferPointer { src in
+            try out.withUnsafeMutableBufferPointer { o in
+                for y in 0..<height {
+                    let filter = src[y * (stride + 1)]
+                    let s0 = y * (stride + 1) + 1
+                    let d0 = y * stride
+                    let p0 = d0 - stride          // previous row (only read when y > 0)
+                    let hasPrev = y > 0
+                    switch filter {
+                    case 0:
+                        for x in 0..<stride { o[d0 + x] = src[s0 + x] }
+                    case 1:
+                        for x in 0..<stride {
+                            let a: UInt8 = x >= bpp ? o[d0 + x - bpp] : 0
+                            o[d0 + x] = src[s0 + x] &+ a
+                        }
+                    case 2:
+                        for x in 0..<stride {
+                            let b: UInt8 = hasPrev ? o[p0 + x] : 0
+                            o[d0 + x] = src[s0 + x] &+ b
+                        }
+                    case 3:
+                        for x in 0..<stride {
+                            let a = x >= bpp ? Int(o[d0 + x - bpp]) : 0
+                            let b = hasPrev ? Int(o[p0 + x]) : 0
+                            o[d0 + x] = src[s0 + x] &+ UInt8(truncatingIfNeeded: (a + b) / 2)
+                        }
+                    case 4:
+                        for x in 0..<stride {
+                            let a = x >= bpp ? Int(o[d0 + x - bpp]) : 0
+                            let b = hasPrev ? Int(o[p0 + x]) : 0
+                            let c = (x >= bpp && hasPrev) ? Int(o[p0 + x - bpp]) : 0
+                            let p = a + b - c
+                            let pa = abs(p - a), pb = abs(p - b), pc = abs(p - c)
+                            let pred = (pa <= pb && pa <= pc) ? a : (pb <= pc ? b : c)
+                            o[d0 + x] = src[s0 + x] &+ UInt8(truncatingIfNeeded: pred)
+                        }
+                    default: throw PNGDecodeError.corrupt("filter \(filter)")
+                    }
                 }
-                out[dst + x] = UInt8(truncatingIfNeeded: v)
             }
         }
         return DecodedImage(width: width, height: height, channels: channels, pixels: out)

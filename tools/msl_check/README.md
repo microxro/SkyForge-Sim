@@ -5,6 +5,7 @@ python3 tools/msl_check/check_msl.py                                  # baseline
 python3 tools/msl_check/check_msl.py AirportSurfaceShaders.swift ...  # baseline + each file's `source` literal
 python3 tools/msl_check/check_msl.py Foo.swift:snippet                # a literal other than `source`
 python3 tools/msl_check/check_msl.py --only Foo.swift                 # without the baseline
+python3 tools/msl_check/check_msl.py --before MacroColourShaders.swift   # a library part that precedes WorldShaders (the order WorldRenderer builds)
 python3 tools/msl_check/check_msl.py --dump /tmp/tu.cpp               # keep the translation unit
 ```
 
