@@ -77,6 +77,7 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
     @Published var gameplayHUD: GameplayHUD?
     @Published var missionResult: MissionResult?
     @Published var unlockMessage: String?
+    private var touchdownDetector = TouchdownDetector()
     /// AI traffic and the tower, for free flight only (missions keep their own rules).
     private(set) var traffic: TrafficSystem?
     private(set) var atc: ATCController?
@@ -151,6 +152,7 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
         let built = Self.makeFlight(world: world, start: start, spec: spec, mission: mission, filter: controlFilter)
         session = built.session
         director = built.director
+        touchdownDetector = TouchdownDetector()
         gameplayHUD = nil; missionResult = nil; unlockMessage = nil; resultSaved = false
         fireHeld = false
         let trafficSetup = Self.makeTraffic(world: world, mission: mission)
@@ -360,7 +362,24 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
     }
 
     /// Runs AI, weapons, the envelope monitor and the mission against the flight, once per frame.
+    /// Feeds the landing detector while the aircraft is low. Logs the touchdown rate once per flight.
+    private func trackTouchdown() {
+        guard touchdownDetector.event == nil, session.heightAboveGround < 50, !session.crashed else { return }
+        let frame = RunwayFrame(world: world)
+        let s = session.state
+        let pos = SIMD2(s.positionNED.y, s.positionNED.x)          // ENU: east, north
+        let h = frame.heading
+        let along = (pos.x - frame.threshold.x) * sin(h) + (pos.y - frame.threshold.y) * cos(h)
+        let lateral = (pos.x - frame.threshold.x) * cos(h) - (pos.y - frame.threshold.y) * sin(h)
+        let sample = TouchdownSample(time: session.time, heightAGLM: session.heightAboveGround, sinkMPS: s.velocityNED.z,
+                                     offsetM: lateral, distancePastThresholdM: along)
+        if let e = touchdownDetector.feed(sample) {
+            attribution.append(String(format: "Touchdown: %.0f fpm sink, %.0f m off centreline", e.sinkFPM, abs(e.offsetM)))
+        }
+    }
+
     private func stepGameplay(dt: Double) {
+        trackTouchdown()
         guard !director.isFinished, let outputs = session.lastOutputs else { return }
         let snapshot = FlightSnapshot(time: session.time, state: session.state, outputs: outputs,
                                       flaps: session.inputs.flaps, heightAGL: session.heightAboveGround,
