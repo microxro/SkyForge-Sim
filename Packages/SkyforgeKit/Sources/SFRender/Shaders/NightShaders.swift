@@ -66,8 +66,10 @@ public enum NightShaders {
         float3 e = float3(dot(u.eqE.xyz, a.xyz), dot(u.eqN.xyz, a.xyz), dot(u.eqU.xyz, a.xyz));
         float x = dot(e, u.camRight.xyz), y = dot(e, u.camUp.xyz), z = dot(e, u.camFwd.xyz);
         NTStarOut o;
-        o.position = float4(x / u.view.x, y / u.view.y, 0.5f * z, z);
-        float vis = smoothstep(u.sky.x + 0.6f, u.sky.x - 0.4f, a.w);       // fades in with twilight, per magnitude
+        // stars sit at infinity: reversed-Z depth 0. Drawn before terrain with depth test off (terrain overwrites them);
+        // if drawn after terrain, use depth compare .greaterEqual (never writes) so any geometry occludes them.
+        o.position = float4(x / u.view.x, y / u.view.y, 0.0f, z);
+        float vis = 1.0f - smoothstep(u.sky.x - 0.4f, u.sky.x + 0.6f, a.w);       // fades in with twilight, per magnitude
         float horizon = smoothstep(-0.02f, 0.06f, e.z);                      // below horizon: terrain hides them
         float flux = pow(10.0f, -0.4f * (a.w - 1.0f));                       // mag 1 = reference
         float px = clamp(1.4f + 0.9f * log2(max(flux, 1.0e-3f) + 1.0f), 1.5f, 6.0f);
@@ -99,7 +101,7 @@ public enum NightShaders {
             float3 e2 = cross(e1, m);
             float2 p = float2(dot(ray, e1), dot(ray, e2)) / (sin(R) * 1.0f);
             float r2 = dot(p, p);
-            float edge = smoothstep(1.0f + u.view.z / max(R, 1e-5f), 1.0f - u.view.z / max(R, 1e-5f), sqrt(r2));
+            float edge = 1.0f - smoothstep(1.0f - u.view.z / max(R, 1e-5f), 1.0f + u.view.z / max(R, 1e-5f), sqrt(r2));
             float3 n = normalize(p.x * e1 + p.y * e2 - sqrt(max(0.0f, 1.0f - r2)) * m);
             float lit = smoothstep(-0.02f, 0.22f, dot(n, u.sunDir.xyz));         // retro-reflective: flat to terminator
             float maria = 1.0f;
@@ -120,7 +122,7 @@ public enum NightShaders {
         float3 axis = normalize(cross(u.galPole.xyz, u.galCentre.xyz));
         float2 q = float2(atan2(dot(ray, axis), dot(ray, u.galCentre.xyz)) * 3.0f, b * 0.18f);
         float dust = smoothstep(0.25f, 0.85f, nt_fbm(q * 2.2f));
-        float glow = band * (0.5f + 0.9f * c * c) * (1.0f - 0.55f * dust * smoothstep(8.0f, 0.0f, abs(b)));
+        float glow = band * (0.5f + 0.9f * c * c) * (1.0f - 0.55f * dust * (1.0f - smoothstep(0.0f, 8.0f, abs(b))));
         return float3(0.55f, 0.6f, 0.75f) * glow * 0.006f * u.sky.w;
     }
 
@@ -177,9 +179,10 @@ public enum NightShaders {
         float dist = length(rel);
         // flicker-free sizing: min footprint in px, energy falls with area below it, smooth far fade
         float px = 2.0f * L.posRadius.w * u.sprite.z / dist;
-        float size = max(px, u.sprite.x);
+        float size = min(max(px, u.sprite.x), 128.0f);   // same 128 px cap as LightSprite.metrics
         float comp = px >= u.sprite.x ? 1.0f : (px / u.sprite.x) * (px / u.sprite.x);
-        float fade = smoothstep(0.0f, 0.25f * u.sprite.y, u.sprite.y - dist);
+        float fade = clamp((u.sprite.y - dist) / max(0.25f * u.sprite.y, 1e-3f), 0.0f, 1.0f);
+        fade = fade * fade * (3.0f - 2.0f * fade);
         // beam gain (smooth, no hard cone edge)
         float3 toCam = -rel / dist;
         float cs = dot(toCam, L.dirCosOuter.xyz);
@@ -193,7 +196,9 @@ public enum NightShaders {
         float halo = 3.0f;                                         // quad covers the glow tail
         float2 viewport2 = float2(u.sprite.z * u.view.x, u.sprite.z * u.view.y);   // half-extent in px
         float2 ndcOff = corner * (size * halo) / viewport2;
-        o.position = float4(float2(x / u.view.x, y / u.view.y) + ndcOff * z, 0.5f * z, z);
+        // reversed infinite-Z depth = near / z (WorldRenderer.reversedZProjection); u.sprite.w = near plane (m).
+        // The pass must depth-test (.greater, write off) against the scene depth so terrain occludes far lights.
+        o.position = float4(float2(x / u.view.x, y / u.view.y) + ndcOff * z, u.sprite.w, z);
         o.color = float4(L.colorIntensity.rgb * L.colorIntensity.w * comp * fade * gain * strobe, 1.0f);
         return o;
     }
@@ -203,7 +208,7 @@ public enum NightShaders {
         float core = exp(-r2 * 38.0f);                 // tight core
         float glow = exp(-r2 * 7.0f) * 0.22f;          // soft bloom sprite
         float tail = 0.02f / (1.0f + r2 * 40.0f);
-        float edge = smoothstep(1.0f, 0.7f, sqrt(r2));  // no visible quad edge
+        float edge = 1.0f - smoothstep(0.7f, 1.0f, sqrt(r2));  // no visible quad edge
         float3 c = in.color.rgb * (core + glow + tail) * edge;
         return float4(c, 0.0f);
     }

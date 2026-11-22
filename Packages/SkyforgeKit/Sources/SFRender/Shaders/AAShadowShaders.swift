@@ -1,6 +1,6 @@
 // SKYFORGE — Apache-2.0
 // Round 5: TAA resolve (Halton jitter, depth-based reprojection, YCoCg variance clipping), a low-tier
-// luma edge AA (SMAA-lite), and 4-cascade sun shadow lookup with blending and PCSS. Concatenate after
+// luma edge AA (SMAA-lite), and up-to-4-cascade (tier-bounded) sun shadow lookup with blending and PCSS. Concatenate after
 // PostShaders.source (for PostVarying) and WorldShaders.source (for shadowCmp).
 
 public enum AAShadowShaders {
@@ -74,13 +74,14 @@ public enum AAShadowShaders {
         return float4(mix(c, n, w), 1.0);
     }
 
-    // ---- 4-cascade sun shadows -------------------------------------------------------------------------
+    // ---- cascaded sun shadows (1…4 cascades, runtime count) -------------------------------------------------------------------------
     struct CascadeShadowParams {
         float4x4 vp[4];             // camera-relative world → cascade clip, texel-snapped on the CPU
         float4 splits;              // far edge (m) of cascades 0…3
         float4 texel;               // texel size (m) per cascade
         float4 depthRange;          // light-space depth range (m) per cascade
-        float4 q;                   // x = blend fraction, y = PCF radius / tap count scale, z = PCSS on, w = sun tan(angular radius)
+        float4 q;                   // x = blend fraction, y = PCF tap count (>= 1, guarded), z = PCSS on, w = sun tan(angular radius)
+        float4 fwd;                 // xyz = camera forward (unit, camera-relative space), w = active cascade count 1…4 (tier-bounded)
     };
 
     static float casIGN(float2 p) { return fract(52.9829189 * fract(dot(p, float2(0.06711056, 0.00583715)))); }
@@ -90,11 +91,12 @@ public enum AAShadowShaders {
         float2 ts = 1.0 / float2(sm.get_width(), sm.get_height());
         float rot = 6.2831853 * casIGN(pix);
         float lit = 0.0;
-        for (int i = 0; i < taps; i++) {
-            float r = sqrt((float(i) + 0.5) / float(taps)), a = 2.39996323 * float(i) + rot;
+        int n = max(taps, 1);   // a 0 tap count would divide 0 / 0 = NaN
+        for (int i = 0; i < n; i++) {
+            float r = sqrt((float(i) + 0.5) / float(n)), a = 2.39996323 * float(i) + rot;
             lit += sm.sample_compare(shadowCmp, uv + float2(cos(a), sin(a)) * r * radiusTexels * ts, layer, z);
         }
-        return lit / float(taps);
+        return lit / float(n);
     }
 
     // Average blocker depth (in cascade depth units 0…1) within a search radius, or -1 when none.
@@ -118,7 +120,7 @@ public enum AAShadowShaders {
         float2 uv = lp.xy * float2(0.5, -0.5) + 0.5;
         if (any(uv < 0.0) || any(uv > 1.0)) return -1.0;   // outside this cascade: caller falls back
         float z = lp.z - texel * (0.8 + min(16.0, tanT * 1.4)) / range;
-        int taps = int(cp.q.y);
+        int taps = max(1, int(cp.q.y));
         float radius = 1.5;
         if (cp.q.z > 0.5) {
             // PCSS: blocker distance (m) → penumbra width (m) → texels.
@@ -130,22 +132,28 @@ public enum AAShadowShaders {
         return casPCF(sm, uv, z, uint(c), radius, taps, pix);
     }
 
-    /// Sun visibility with up to 4 cascades and a cross-fade into the next cascade near each far edge. 1 = lit.
-    static float cascadedShadowVisibility(constant CascadeShadowParams& cp, depth2d_array<float> sm, float3 rel, float3 nrm, float dist, float ndl, float2 pix) {
-        int c = dist < cp.splits.x ? 0 : (dist < cp.splits.y ? 1 : (dist < cp.splits.z ? 2 : (dist < cp.splits.w ? 3 : -1)));
+    /// Sun visibility with `cp.fwd.w` cascades (1…4, per tier) and a cross-fade into the next near each far edge.
+    /// 1 = lit. Cascades are chosen by view-space depth (distance along the camera forward axis), matching the
+    /// CPU split scheme, not by radial distance.
+    static float cascadedShadowVisibility(constant CascadeShadowParams& cp, depth2d_array<float> sm, float3 rel, float3 nrm, float ndl, float2 pix) {
+        int count = clamp(int(cp.fwd.w), 1, 4);
+        int last = count - 1;
+        float depthV = dot(rel, cp.fwd.xyz);
+        int c = -1;
+        for (int i = 0; i < 4; i++) { if (i < count && c < 0 && depthV < cp.splits[i]) c = i; }
         if (c < 0) return 1.0;
         float vis = casCascadeVis(cp, sm, rel, nrm, ndl, c, pix);
-        if (vis < 0.0) { vis = c < 3 ? casCascadeVis(cp, sm, rel, nrm, ndl, c + 1, pix) : 1.0; if (vis < 0.0) vis = 1.0; return vis; }
+        if (vis < 0.0) { vis = c < last ? casCascadeVis(cp, sm, rel, nrm, ndl, c + 1, pix) : 1.0; if (vis < 0.0) vis = 1.0; return vis; }
         float start = c == 0 ? 0.0 : cp.splits[c - 1];
         float span = cp.splits[c] - start;
         float begin = cp.splits[c] - span * cp.q.x;
-        float t = clamp((dist - begin) / max(1e-4, cp.splits[c] - begin), 0.0, 1.0);
-        if (t > 0.0 && c < 3) {
+        float t = clamp((depthV - begin) / max(1e-4, cp.splits[c] - begin), 0.0, 1.0);
+        if (t > 0.0 && c < last) {
             float v2 = casCascadeVis(cp, sm, rel, nrm, ndl, c + 1, pix);
             if (v2 >= 0.0) vis = mix(vis, v2, t * t * (3.0 - 2.0 * t));
         }
         // Fade to lit over the last 5% of the final cascade so the far edge does not pop.
-        if (c == 3) vis = mix(vis, 1.0, clamp((dist - cp.splits.w * 0.95) / (cp.splits.w * 0.05), 0.0, 1.0));
+        if (c == last) { float far = cp.splits[last]; vis = mix(vis, 1.0, clamp((depthV - far * 0.95) / (far * 0.05), 0.0, 1.0)); }
         return vis;
     }
     """

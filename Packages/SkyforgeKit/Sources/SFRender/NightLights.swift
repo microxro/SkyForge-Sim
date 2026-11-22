@@ -72,13 +72,18 @@ public struct SpriteMetrics: Sendable, Equatable {
 /// proportion to area, so a sub-pixel point never pops between zero and one pixel as the camera moves.
 /// A far fade keeps total energy continuous with distance (no popping at the draw-distance edge).
 public enum LightSprite {
+    /// Maximum sprite size in pixels; the vertex shader applies the same cap.
+    public static let maxPixelSize: Float = 128
+
+    /// Reversed infinite-Z depth the light vertex shader outputs: `near / viewZ` (1 at the near plane, 0 at infinity).
+    public static func reversedDepth(near: Float, viewZ: Float) -> Float { near / max(viewZ, near) }
     public static func metrics(radiusMetres: Float, distance: Float, focalPixels: Float, minPixels: Float, maxDistance: Float) -> SpriteMetrics {
         let d = max(distance, 0.5)
         let px = 2 * radiusMetres * focalPixels / d
         let size = max(px, minPixels)
         let comp = px >= minPixels ? 1 : (px / minPixels) * (px / minPixels)
         let t = max(0, min(1, (maxDistance - d) / (0.25 * maxDistance)))
-        return SpriteMetrics(pixelSize: min(size, 128), energyScale: comp * t * t * (3 - 2 * t))
+        return SpriteMetrics(pixelSize: min(size, maxPixelSize), energyScale: comp * t * t * (3 - 2 * t))
     }
 
     /// Smooth directional gain: 1 inside 60% of the half-beam, 0 outside, smoothstep between (no hard cone edge).

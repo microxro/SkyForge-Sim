@@ -94,9 +94,12 @@ import Foundation
 
     @Test func cascadeSelectionAndBlend() {
         let sp: [Float] = [100, 400, 1_600, 6_400]
-        #expect(CascadeMath.cascade(forDistance: 50, splits: sp) == 0)
-        #expect(CascadeMath.cascade(forDistance: 400, splits: sp) == 2)
-        #expect(CascadeMath.cascade(forDistance: 7_000, splits: sp) == nil)
+        #expect(CascadeMath.cascade(forViewDepth: 50, splits: sp) == 0)
+        #expect(CascadeMath.cascade(forViewDepth: 400, splits: sp) == 2)
+        #expect(CascadeMath.cascade(forViewDepth: 7_000, splits: sp) == nil)
+        // Tier-bounded count: a 2-cascade tier never selects index 2 or 3.
+        #expect(CascadeMath.cascade(forViewDepth: 150, splits: sp, count: 2) == 1)
+        #expect(CascadeMath.cascade(forViewDepth: 500, splits: sp, count: 2) == nil)
         #expect(CascadeMath.blendToNext(distance: 50, index: 1, splits: sp, near: 1, blendFraction: 0.1) == 0)
         #expect(CascadeMath.blendToNext(distance: 399.9, index: 1, splits: sp, near: 1, blendFraction: 0.1) > 0.99)
         let mid = CascadeMath.blendToNext(distance: 385, index: 1, splits: sp, near: 1, blendFraction: 0.1)
@@ -116,5 +119,35 @@ import Foundation
         #expect(AAShadowTier.ultra.cascadeCount == 4 && AAShadowTier.low.cascadeCount == 2)
         #expect(!AAShadowTier.medium.usesPCSS && AAShadowTier.high.usesPCSS)
         #expect(AAShadowTier.allCases.map(\.shadowMapSize) == [1024, 2048, 2048, 4096])
+    }
+
+    @Test func viewDepthIgnoresLateralOffset() {
+        // A point 90 m ahead and 80 m to the side is radially 120 m away but only 90 m deep: cascade 0, not 1.
+        let rel = SIMD3<Float>(80, 90, 0), fwd = SIMD3<Float>(0, 1, 0)
+        let d = CascadeMath.viewDepth(rel: rel, forward: fwd)
+        #expect(d == 90)
+        #expect(CascadeMath.cascade(forViewDepth: d, splits: [100, 400]) == 0)
+        #expect(CascadeMath.cascade(forViewDepth: (rel * rel).sum().squareRoot(), splits: [100, 400]) == 1)
+    }
+
+    @Test func shadowMemoryWithinBudgetAndTapsPositive() {
+        for t in AAShadowTier.allCases {
+            #expect(t.shadowMemoryBytes <= AAShadowTier.shadowMemoryBudget)
+            #expect(t.pcfTaps >= 1 && t.cascadeCount <= AAShadowTier.maxCascades && t.cascadeCount >= 1)
+        }
+        #expect(AAShadowTier.ultra.shadowMemoryBytes == 128 * 1024 * 1024)
+    }
+
+    @Test func taaHistoryResetConditions() {
+        var h = TAAHistoryState()
+        let e = SIMD3<Double>(0, 0, 100)
+        #expect(h.beginFrame(width: 1920, height: 1080, eye: e) == .firstFrame)
+        #expect(h.beginFrame(width: 1920, height: 1080, eye: e + SIMD3(1, 0, 0)) == nil)
+        #expect(h.beginFrame(width: 2560, height: 1440, eye: e + SIMD3(1, 0, 0)) == .resize)
+        #expect(h.beginFrame(width: 2560, height: 1440, eye: e + SIMD3(1, 0, 0), cameraCut: true) == .cameraCut)
+        #expect(h.beginFrame(width: 2560, height: 1440, eye: e + SIMD3(50_000, 0, 0)) == .teleport)
+        #expect(h.beginFrame(width: 2560, height: 1440, eye: e + SIMD3(50_001, 0, 0)) == nil)
+        h.invalidate()
+        #expect(h.beginFrame(width: 2560, height: 1440, eye: e + SIMD3(50_001, 0, 0)) == .firstFrame)
     }
 }

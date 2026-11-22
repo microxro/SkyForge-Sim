@@ -476,15 +476,32 @@ public enum GroundCover {
 
 // MARK: GPU packing
 
+/// Tightly packed GPU vertex: 11 Floats, laid out exactly like the MSL `VegVertexGPU`
+/// (packed_float3 position, packed_float3 normal, shade, sway, card, packed_float2 uv) = 44 bytes.
+/// `VegVertex` itself holds SIMD3 fields (16 B aligned, 48+ B stride in memory) and must never be uploaded raw.
+public struct VegVertexGPU: Sendable, Equatable {
+    public var px, py, pz, nx, ny, nz, shade, sway, card, u, v: Float
+    public init(_ s: VegVertex) {
+        px = s.position.x; py = s.position.y; pz = s.position.z
+        nx = s.normal.x; ny = s.normal.y; nz = s.normal.z
+        shade = s.shade; sway = s.sway; card = s.card; u = s.uv.x; v = s.uv.y
+    }
+}
+
 public extension VegVertex {
-    /// Bytes per vertex in the `VegVertexGPU` MSL struct (11 tightly packed floats).
-    static let gpuStride = 44
+    /// Bytes per vertex in the `VegVertexGPU` MSL struct; derived from the Swift packed struct so they cannot drift.
+    static var gpuStride: Int { MemoryLayout<VegVertexGPU>.stride }
+    /// Floats per vertex in the packed layout.
+    static let gpuFloatCount = 11
     /// position(3) normal(3) shade sway card uv(2).
     var gpuFloats: [Float] { [position.x, position.y, position.z, normal.x, normal.y, normal.z, shade, sway, card, uv.x, uv.y] }
 
+    /// Typed upload array (stride 44). Prefer this over `gpuBuffer`.
+    static func gpuVertices(_ vertices: [VegVertex]) -> [VegVertexGPU] { vertices.map(VegVertexGPU.init) }
+
     static func gpuBuffer(_ vertices: [VegVertex]) -> [Float] {
         var out: [Float] = []
-        out.reserveCapacity(vertices.count * 11)
+        out.reserveCapacity(vertices.count * gpuFloatCount)
         for v in vertices { out += v.gpuFloats }
         return out
     }

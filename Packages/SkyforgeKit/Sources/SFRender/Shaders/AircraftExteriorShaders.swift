@@ -113,7 +113,7 @@ public enum AircraftExteriorShaders {
         float blur = smoothstep(0.15 * spacing, spacing, sweep);
         float solidity = min(1.0, float(blades) * 0.11 / (3.14159265 * 0.95));
         float ang = th - time * rpm / 60.0 * 6.2831853;
-        float bladeCov = smoothstep(0.35, 0.0, abs(sin(ang * float(blades) * 0.5))) ;   // sharp blades when slow
+        float bladeCov = (1.0 - smoothstep(0.0, 0.35, abs(sin(ang * float(blades) * 0.5))));   // sharp blades when slow
         float veil = solidity * (0.4 + 0.6 * smoothstep(0.15, 0.9, r));
         return mix(bladeCov * 0.9, veil, blur);
     }

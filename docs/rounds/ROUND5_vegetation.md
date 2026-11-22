@@ -24,7 +24,7 @@ shadowVegPipeline = try pso("shadow_veg_vertex", nil, label: "ShadowVeg", colour
 ```
 
 ## Draw calls (per species, per frame)
-- Buffers: 0 = packed `VegVertex.gpuBuffer(mesh)` (stride 44; the old `TerrainVertex` tree buffers are unchanged for species 0-4), 1 = `WorldUniforms`, 2 = existing `TreeInstanceGPU` buffer (same instances as the species' trees), 3 = `VegUniforms` (struct in the MSL; set per draw).
+- Buffers: 0 = packed `VegVertex.gpuVertices(mesh)` (typed `VegVertexGPU`, 11 Floats, stride 44 = `VegVertex.gpuStride`; never upload `[VegVertex]` raw, its SIMD3 fields give a 48 B+ stride; `gpuBuffer` returns the same bytes as `[Float]`; covered by `gpuLayoutMatchesMSL`; the old `TerrainVertex` tree buffers are unchanged for species 0-4), 1 = `WorldUniforms`, 2 = existing `TreeInstanceGPU` buffer (same instances as the species' trees), 3 = `VegUniforms` (struct in the MSL; set per draw).
 - Per species draw THREE times with the same instance buffer: full mesh `species=s, representation 0`, card mesh `rep 1`, billboard (6 vertices x instances, buffer 0 unused) `rep 2`. The vertex shader collapses instances whose slice at their distance is empty, so no CPU distance sorting is needed; add CPU culling beyond `tier.farCull`.
 - Grass: `GroundCover.scatter` per 4 m cell inside `tier.grassRadius` around the camera, fill `GrassInstanceGPU {x, y, z (sample terrain height), height, yaw, tone}`, draw `GroundCover.bladeMesh()` (15 verts) instanced. Skip cells where `exclude` says road/building/water/non-grass land cover. Tier low: no grass.
 - Shadow pass: `shadow_veg_vertex` with the same buffers (0, 2, 3) for rep 0 and 1 only.

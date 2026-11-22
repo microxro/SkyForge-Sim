@@ -14,9 +14,17 @@ public enum AAShadowTier: Int, Sendable, CaseIterable {
     /// Cascades drawn: low 2 (existing path), medium 3, high/ultra 4.
     public var cascadeCount: Int { self == .low ? 2 : (self == .medium ? 3 : 4) }
     public var shadowMapSize: Int { [1024, 2048, 2048, 4096][rawValue] }
+    /// Bytes per shadow texel: ultra uses 16-bit depth so its 4-layer 4096² array is 128 MiB (32-bit would be 256 MiB).
+    public var shadowDepthBytes: Int { self == .ultra ? 2 : 4 }
+    /// Total shadow-array memory: cascades × size² × bytes. Budget: ≤ `AAShadowTier.shadowMemoryBudget` on every tier.
+    public var shadowMemoryBytes: Int { cascadeCount * shadowMapSize * shadowMapSize * shadowDepthBytes }
+    public static let shadowMemoryBudget = 128 * 1024 * 1024
+    /// Maximum cascades any tier uses; the MSL arrays are sized for this, the runtime count is `cascadeCount`.
+    public static let maxCascades = 4
     /// PCSS blocker search + variable penumbra only on high and ultra.
     public var usesPCSS: Bool { self.rawValue >= AAShadowTier.high.rawValue }
-    public var pcfTaps: Int { [4, 9, 16, 24][rawValue] }
+    /// Always >= 1 (the shader also guards against 0).
+    public var pcfTaps: Int { max(1, [4, 9, 16, 24][rawValue]) }
     /// Fraction of the cascade (0…1) over which it cross-fades into the next.
     public var blendFraction: Float { self == .low ? 0 : 0.1 }
 }
@@ -46,6 +54,44 @@ public enum TAAJitter {
     public static func ndcOffset(pixelJitter j: SIMD2<Float>, width: Int, height: Int) -> SIMD2<Float> {
         SIMD2(2 * j.x / Float(width), -2 * j.y / Float(height))
     }
+}
+
+// MARK: - History reset
+
+/// Owns the TAA history validity. The resolve shader has no motion vectors: it reprojects with camera
+/// matrices only, so moving objects (other aircraft, vehicles, animated foliage) ghost or smear and rely on
+/// neighbourhood clipping alone. History must be explicitly reset (shader `TAAParams.p.z = 1`) whenever
+/// camera-based reprojection is meaningless.
+public struct TAAHistoryState: Sendable, Equatable {
+    public enum ResetReason: Sendable, Equatable { case firstFrame, resize, cameraCut, teleport, tierChange, depthConventionChange }
+    public private(set) var width = 0, height = 0
+    public private(set) var hasHistory = false
+    /// Camera jump (m) between frames beyond which reprojection is treated as a teleport.
+    public var teleportDistance: Double = 500
+    private var lastEye = SIMD3<Double>.zero
+    public init() {}
+
+    /// Call once per frame before the resolve. Returns the reset reason (history must be ignored, p.z = 1) or nil.
+    /// Pass `cameraCut: true` on scripted cuts / view switches; resizes and teleports are detected here.
+    public mutating func beginFrame(width w: Int, height h: Int, eye: SIMD3<Double>, cameraCut: Bool = false, tierChanged: Bool = false) -> ResetReason? {
+        var reason: ResetReason?
+        if !hasHistory { reason = .firstFrame }
+        else if w != width || h != height { reason = .resize }
+        else if tierChanged { reason = .tierChange }
+        else if cameraCut { reason = .cameraCut }
+        else {
+            let d = eye - lastEye
+            if (d * d).sum().squareRoot() > teleportDistance || !eye.x.isFinite || !eye.y.isFinite || !eye.z.isFinite { reason = .teleport }
+        }
+        width = w; height = h; lastEye = eye
+        hasHistory = reason == nil
+        // After a reset frame the freshly resolved image becomes valid history for the next frame.
+        if reason != nil { hasHistory = true }
+        return reason
+    }
+
+    /// Force the next frame to reset (e.g. device lost, history textures recreated).
+    public mutating func invalidate() { hasHistory = false }
 }
 
 // MARK: - Colour and history rectification
@@ -164,8 +210,18 @@ public enum CascadeMath {
     /// Texel size (m) for a cascade of bounding radius `radius` and map edge `size`.
     public static func texelSize(radius: Float, size: Int) -> Float { 2 * radius / Float(size) }
 
-    /// Cascade index for view distance `d` and the far edges; nil beyond the last.
-    public static func cascade(forDistance d: Float, splits: [Float]) -> Int? { splits.firstIndex { d < $0 } }
+    /// View-space depth (m along the camera forward axis) of a camera-relative point. Splits are depths, not
+    /// radial distances, so selection must use this; radial distance picks too-far cascades at screen edges
+    /// and makes cascade boundaries curve with the view.
+    public static func viewDepth(rel: SIMD3<Float>, forward: SIMD3<Float>) -> Float {
+        (rel * forward).sum()
+    }
+
+    /// Cascade index for view-space depth `d` and the far edges (only the first `count` are considered); nil beyond the last.
+    public static func cascade(forViewDepth d: Float, splits: [Float], count: Int? = nil) -> Int? {
+        let n = min(splits.count, count ?? splits.count)
+        return splits.prefix(max(0, n)).firstIndex { d < $0 }
+    }
 
     /// Cross-fade weight toward the next cascade: 0 well inside, ramps to 1 at the cascade's far edge over
     /// `blendFraction` of its depth span.

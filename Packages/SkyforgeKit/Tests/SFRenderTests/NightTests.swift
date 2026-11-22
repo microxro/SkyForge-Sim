@@ -133,6 +133,10 @@ import Foundation
         _ = prevS
         let edge = LightSprite.metrics(radiusMetres: 0.45, distance: 40_000, focalPixels: 1000, minPixels: 1.6, maxDistance: 40_000)
         #expect(edge.energyScale == 0)
+        #expect(LightSprite.metrics(radiusMetres: 50, distance: 1, focalPixels: 1000, minPixels: 1.6, maxDistance: 40_000).pixelSize == LightSprite.maxPixelSize)
+        // reversed-Z: nearer lights get larger depth, so a light behind terrain fails the .greater test
+        #expect(LightSprite.reversedDepth(near: 0.5, viewZ: 100) > LightSprite.reversedDepth(near: 0.5, viewZ: 5_000))
+        #expect(LightSprite.reversedDepth(near: 0.5, viewZ: 0.5) == 1)
         #expect(LightSprite.beamGain(cosAngle: 1, halfAngleDeg: 7.5) == 1)
         #expect(LightSprite.beamGain(cosAngle: 0, halfAngleDeg: 7.5) == 0)
         #expect(LightSprite.beamGain(cosAngle: -1, halfAngleDeg: 180) == 1)

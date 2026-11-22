@@ -54,7 +54,7 @@ public enum VegetationShaders {
     #include <metal_stdlib>
     using namespace metal;
 
-    // 44 bytes: position, normal, shade, sway, card, uv (all 4-byte aligned; Swift packs 11 floats).
+    // 44 bytes: position, normal, shade, sway, card, uv (all 4-byte aligned; Swift mirror: VegVertexGPU, 11 Floats, stride 44; keep in sync, see gpuLayoutMatchesMSL).
     struct VegVertexGPU { packed_float3 position; packed_float3 normal; float shade; float sway; float card; packed_float2 uv; };
     struct GrassInstanceGPU { packed_float3 position; float height; float yaw; float tone; };
 

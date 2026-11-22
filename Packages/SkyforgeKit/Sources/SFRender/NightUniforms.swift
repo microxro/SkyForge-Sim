@@ -24,7 +24,7 @@ public struct NightSkyUniforms: Sendable, Equatable {
 
     /// Camera basis in ENU (right, up, forward unit vectors), vertical FOV in radians, viewport in pixels.
     public init(state: NightSkyState, tier: NightTier, right: SIMD3<Float>, up: SIMD3<Float>, forward: SIMD3<Float>,
-                verticalFOV: Float, viewport: SIMD2<Float>, time: Float, maxLightDistance: Float = 40_000) {
+                verticalFOV: Float, viewport: SIMD2<Float>, time: Float, maxLightDistance: Float = 40_000, near: Float = 0.5) {
         let ty = tan(verticalFOV / 2), tx = ty * viewport.x / max(1, viewport.y)
         camRight = SIMD4(right, 0); camUp = SIMD4(up, 0); camFwd = SIMD4(forward, 0)
         view = SIMD4(tx, ty, 2 * ty / max(1, viewport.y), time)
@@ -40,7 +40,7 @@ public struct NightSkyUniforms: Sendable, Equatable {
         (eqE, eqN, eqU) = state.rows
         twWarm = SIMD4(state.twilight.horizonWarm, state.twilight.saturation)
         twCool = SIMD4(state.twilight.antiSolarTint, state.twilight.exposureBoost)
-        sprite = SIMD4(tier.minSpritePixels, maxLightDistance, viewport.y / (2 * ty), 0)
+        sprite = SIMD4(tier.minSpritePixels, maxLightDistance, viewport.y / (2 * ty), near)
     }
 }
 

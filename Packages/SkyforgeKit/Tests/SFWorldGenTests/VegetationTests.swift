@@ -146,4 +146,18 @@ import SFMath
         let m = VegetationModels.build(.cypress, detail: 1)
         #expect(VegVertex.gpuBuffer(m).count * 4 == m.count * VegVertex.gpuStride)
     }
+
+    @Test func gpuLayoutMatchesMSL() {
+        // MSL VegVertexGPU: packed_float3 + packed_float3 + 3 floats + packed_float2 = 44 bytes, 4-byte aligned.
+        #expect(MemoryLayout<VegVertexGPU>.stride == 44 && MemoryLayout<VegVertexGPU>.size == 44)
+        #expect(MemoryLayout<VegVertexGPU>.alignment == 4)
+        #expect(VegVertex.gpuStride == 44 && VegVertex.gpuFloatCount * 4 == VegVertex.gpuStride)
+        // The SIMD3-based CPU vertex is NOT the GPU layout (48 B or more); it must not be uploaded directly.
+        #expect(MemoryLayout<VegVertex>.stride != VegVertex.gpuStride)
+        let m = VegetationModels.build(.palm, detail: 1)
+        let g = VegVertex.gpuVertices(m)
+        #expect(g.count == m.count)
+        #expect(g[0].px == m[0].position.x && g[0].nz == m[0].normal.z && g[0].v == m[0].uv.y)
+        #expect(Array(VegVertex.gpuBuffer(m).prefix(11)) == m[0].gpuFloats)
+    }
 }
