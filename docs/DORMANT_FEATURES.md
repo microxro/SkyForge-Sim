@@ -1,15 +1,15 @@
 # Dormant features
 
-A dormant feature is code that merged to main but never runs, because nothing sets the value or calls the function that turns it on. This list is partial. Each row names the file where wiring is missing and the thread that owns it. Owners should confirm or correct their rows.
+A dormant feature is code that merged to main but never runs, because nothing sets the value or calls the function that turns it on. This list is partial. Each row names the file where wiring is missing and the thread that owns it.
 
-Status key: CONFIRMED means the gap was read in the source on main. UNVERIFIED means a suspected gap that still needs checking.
+Status key: CONFIRMED means the gap was read in source on main. WIRED means a live call site was read. REPORTED means the owning thread says it is fixed, and it has not been re-checked here. UNVERIFIED means a suspected gap that still needs checking.
 
 | Feature | Where it should be wired | Status | Owner |
 |---|---|---|---|
-| Round 5 AA: TAA resolve, SMAA-lite and tier cascades (PR #42) | `Packages/SkyforgeKit/Sources/SFRender/WorldRenderer.swift`: `public var aaTier: AAShadowTier?` (default nil, never assigned). The app or the scenery settings must set it. | CONFIRMED | Scenery thread (has the aaTier wiring) |
-| Quality ladder (`QualityGovernor`, `QualityLadder`, `QualityPlan`) | `Packages/SkyforgeKit/Sources/SFPerf/QualityGovernor.swift`. No caller in `SFQuickFlight/QuickFlight.swift`. The renderer should apply `QualityPlan` each frame. | UNVERIFIED (no caller found in the files read) | Performance thread |
-| Ocean wind and wake sources | `WorldRenderer.swift`: public ocean wind and wake properties. Check that the app or flight session writes them each frame. | UNVERIFIED | Ocean / visuals thread |
-| Aircraft wakes into flight model | `QuickFlight.swift`: `setWakes(_:)`. Check that a traffic or mission layer calls it. | UNVERIFIED | Flight model thread |
+| Round 5 AA: TAA resolve, SMAA-lite and tier cascades (PR #42) | `Packages/SkyforgeKit/Sources/SFRender/WorldRenderer.swift`: `public var aaTier: AAShadowTier?` (default nil, never assigned on main). | CONFIRMED on main; REPORTED fixed in PR #62 | Scenery thread |
+| Quality ladder (`QualityGovernor`, `QualityLadder`, `QualityPlan`) | `Packages/SkyforgeKit/Sources/SFPerf/QualityGovernor.swift`. No caller found in `SFQuickFlight/QuickFlight.swift`. The renderer should apply `QualityPlan` each frame. | UNVERIFIED | Airport frames thread (PR #38) |
+| Ocean wind and wake sources | `WorldRenderer.swift`: public ocean wind and wake properties. Check that the app writes them each frame. | UNVERIFIED | Scenery thread |
+| Aircraft wakes into flight model | `QuickFlightSession.setWakes(_:)` in `QuickFlight.swift`. | WIRED: `QuickFlightView.swift` calls `session.setWakes` each step; `GameplaySession` sets `environment.wakes` directly (PR #50, merged) | Flight model thread |
 
 ## Method
 
