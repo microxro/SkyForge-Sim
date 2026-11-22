@@ -41,7 +41,7 @@ First release.
 All "None": no violence, no mature content, no gambling, no user-generated content, no web browsing, no unrestricted web access. Expected rating 4+. Military aircraft are not in this build; revisit if added.
 
 ## App Privacy ("nutrition label")
-Data Not Collected. No tracking. See `PrivacyInfo.xcprivacy`.
+Data Not Collected. No tracking. Public-data downloads go straight to third-party hosts listed in `docs/DATA_SOURCES.md`; the developer receives nothing. See `PrivacyInfo.xcprivacy`.
 
 ## Export compliance
 Uses only exempt encryption (HTTPS via the system, SHA-256 hashing). `ITSAppUsesNonExemptEncryption` is NO.

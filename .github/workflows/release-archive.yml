@@ -17,6 +17,10 @@ permissions:
 
 jobs:
   archive:
+    # Signed runs: only from main, and only after the `release` environment's required reviewers approve.
+    # Create that environment in repo Settings > Environments and store the signing secrets there, not repo-wide.
+    if: ${{ !inputs.sign || github.ref == 'refs/heads/main' }}
+    environment: ${{ inputs.sign && 'release' || null }}
     runs-on: macos-26
     strategy:
       fail-fast: false
@@ -46,27 +50,32 @@ jobs:
           CERT: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
           P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
           ASC_KEY: ${{ secrets.ASC_KEY_BASE64 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
         run: |
           KC="$RUNNER_TEMP/build.keychain-db"; KCPW="$(uuidgen)"
           security create-keychain -p "$KCPW" "$KC"
           security set-keychain-settings -lut 21600 "$KC"
           security unlock-keychain -p "$KCPW" "$KC"
           echo "$CERT" | base64 --decode > "$RUNNER_TEMP/cert.p12"
-          security import "$RUNNER_TEMP/cert.p12" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$KC"
+          security import "$RUNNER_TEMP/cert.p12" -P "$P12_PASSWORD" -T /usr/bin/codesign -t cert -f pkcs12 -k "$KC"
           security set-key-partition-list -S apple-tool:,apple: -k "$KCPW" "$KC"
           security list-keychain -d user -s "$KC"
           mkdir -p "$RUNNER_TEMP/keys"
-          echo "$ASC_KEY" | base64 --decode > "$RUNNER_TEMP/keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8"
+          echo "$ASC_KEY" | base64 --decode > "$RUNNER_TEMP/keys/AuthKey_${ASC_KEY_ID}.p8"
       - name: Archive and export (signed)
         if: ${{ inputs.sign }}
+        env:
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
         run: |
           set -o pipefail
           DEST=$([ "${{ matrix.platform }}" = ios ] && echo 'generic/platform=iOS' || echo 'generic/platform=macOS')
-          AUTH="-allowProvisioningUpdates -authenticationKeyPath $RUNNER_TEMP/keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8 -authenticationKeyID ${{ secrets.ASC_KEY_ID }} -authenticationKeyIssuerID ${{ secrets.ASC_ISSUER_ID }}"
-          /usr/libexec/PlistBuddy -c "Set :teamID ${{ secrets.APPLE_TEAM_ID }}" tools/appstore/ExportOptions-macos.plist || true
+          AUTH="-allowProvisioningUpdates -authenticationKeyPath $RUNNER_TEMP/keys/AuthKey_${ASC_KEY_ID}.p8 -authenticationKeyID ${ASC_KEY_ID} -authenticationKeyIssuerID ${ASC_ISSUER_ID}"
+          /usr/libexec/PlistBuddy -c "Set :teamID ${TEAM_ID}" tools/appstore/ExportOptions-macos.plist || true
           xcodebuild archive -project SKYFORGE.xcodeproj -scheme SKYFORGE -configuration Release \
             -destination "$DEST" -archivePath build/SKYFORGE-${{ matrix.platform }}.xcarchive \
-            DEVELOPMENT_TEAM="${{ secrets.APPLE_TEAM_ID }}" CURRENT_PROJECT_VERSION="$BUILD_NUMBER" $AUTH | tail -n 60
+            DEVELOPMENT_TEAM="${TEAM_ID}" CURRENT_PROJECT_VERSION="$BUILD_NUMBER" $AUTH | tail -n 60
           xcodebuild -exportArchive -archivePath build/SKYFORGE-${{ matrix.platform }}.xcarchive \
             -exportOptionsPlist tools/appstore/ExportOptions-${{ matrix.platform }}.plist \
             -exportPath build/export-${{ matrix.platform }} $AUTH | tail -n 30

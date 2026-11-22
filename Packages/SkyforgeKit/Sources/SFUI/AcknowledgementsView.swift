@@ -44,7 +44,7 @@ public struct AcknowledgementsView: View {
                 Text("SKYFORGE is free and open source. Source code and full licence texts: https://github.com/microxro/SkyForge-Sim")
             }
             Section {
-                Text("SKYFORGE collects no personal data, has no accounts, and contains no analytics or tracking. Network requests fetch public map, elevation and weather data only.")
+                Text("SKYFORGE collects no personal data, has no accounts, and contains no analytics or tracking. Network requests fetch public map, elevation, airport and weather data only, directly from the providers listed here, which can see your IP address.")
                     .font(.footnote)
             } header: { Text("Privacy") }
         }
