@@ -1,0 +1,4 @@
+{
+  "_note": "Median frame time baselines (ms) per scene/tier, recorded from real CI runs of the FrameTimeTests step. Empty until a run is recorded; the gate does not fail on scenes without a baseline.",
+  "scenes": {}
+}

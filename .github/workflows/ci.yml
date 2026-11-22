@@ -74,7 +74,11 @@ jobs:
       - name: GPU frame time (run alone so no other test shares the GPU)
         env:
           SKYFORGE_FRAMETIME: "1"
-        run: swift test --disable-automatic-resolution -c release -Xswiftc -enable-testing --package-path Packages/SkyforgeKit --filter FrameTimeTests
+        run: |
+          set -o pipefail
+          swift test --disable-automatic-resolution -c release -Xswiftc -enable-testing --package-path Packages/SkyforgeKit --filter FrameTimeTests | tee frametime.log
+      - name: Frame-time gate (fails on regression against docs/perf_baseline.json)
+        run: python3 tools/perf_gate.py frametime.log docs/perf_baseline.json 0.10
       - name: Build iOS Simulator
         run: |
           set -o pipefail
