@@ -34,7 +34,8 @@ public struct MemoryBudget: Sendable, Equatable {
     public init(ceiling: Int, headroom: Int = 400 * MemoryBudget.mebibyte, shares: [MemoryCategory: Double]? = nil) {
         self.ceiling = max(0, ceiling)
         self.headroom = max(0, headroom)
-        self.shares = shares ?? [.imagery: 0.35, .terrain: 0.15, .geometry: 0.20, .targets: 0.20, .other: 0.10]
+        let raw = shares ?? [.imagery: 0.35, .terrain: 0.15, .geometry: 0.20, .targets: 0.20, .other: 0.10]
+        self.shares = raw.mapValues { $0.isFinite ? min(1, max(0, $0)) : 0 }
     }
 
     /// iPhone ≤ 1.5 GB (and ≤ 25 % of RAM), iPad ≤ 2.5 GB (≤ 35 %), Mac ≤ 4 GB (≤ 50 %).
@@ -59,8 +60,9 @@ public struct MemoryBudget: Sendable, Equatable {
     public func cacheLimit(_ category: MemoryCategory, pressure: MemoryPressure, currentlyResident: Int, osAvailable: Int?) -> Int {
         let scaled = Int(Double(limit(category)) * pressure.cacheScale)
         guard let osAvailable else { return scaled }
-        let spare = max(0, osAvailable - headroom)
-        return min(scaled, max(0, currentlyResident) + spare)
+        // Below the headroom the cache must give memory back, not merely stop growing.
+        let allowed = max(0, currentlyResident) + (osAvailable - headroom)
+        return min(scaled, max(0, allowed))
     }
 }
 
@@ -69,11 +71,12 @@ public struct MemoryLedger: Sendable, Equatable {
     public private(set) var used: [MemoryCategory: Int] = [:]
     public init() {}
 
-    public var total: Int { used.values.reduce(0, +) }
+    public var total: Int { used.values.reduce(0) { $0.addingReportingOverflow($1).overflow ? Int.max : $0 + $1 } }
     public func bytes(_ c: MemoryCategory) -> Int { used[c] ?? 0 }
 
     public mutating func add(_ bytes: Int, to c: MemoryCategory) {
-        used[c, default: 0] += max(0, bytes)
+        let (sum, overflow) = (used[c] ?? 0).addingReportingOverflow(max(0, bytes))
+        used[c] = overflow ? Int.max : sum
     }
 
     public mutating func remove(_ bytes: Int, from c: MemoryCategory) {
@@ -81,7 +84,7 @@ public struct MemoryLedger: Sendable, Equatable {
     }
 
     public func isOver(_ budget: MemoryBudget, pressure: MemoryPressure = .normal) -> Bool {
-        total > budget.ceiling
+        total >= Int.max / 2 || total > budget.ceiling
             || MemoryCategory.allCases.contains { c in
                 let cap = (c == .imagery || c == .terrain)
                     ? Int(Double(budget.limit(c)) * pressure.cacheScale) : budget.limit(c)

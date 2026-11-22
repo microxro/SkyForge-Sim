@@ -71,8 +71,7 @@ public enum QualityLadder {
         switch t {
         case .nominal: 0
         case .fair: 1
-        case .serious: 5
-        case .critical: maxLevel
+        case .serious, .critical: maxLevel   // 30 fps cap, matching RefreshPolicy
         }
     }
 }
@@ -114,9 +113,16 @@ public struct QualityGovernor: Sendable {
     /// Feed one frame. Returns the new plan only when the level changed.
     public mutating func update(_ s: GovernorSample, now: Double) -> QualityPlan? {
         // Smooth the worse of GPU and CPU time so a single spike does not move the ladder.
-        let cost = max(s.gpuMS, s.cpuMS)
+        // Non-finite or negative timings (timestamp glitches) are ignored rather than poisoning the average.
+        let g = s.gpuMS.isFinite ? max(0, s.gpuMS) : 0, c = s.cpuMS.isFinite ? max(0, s.cpuMS) : 0
+        let cost = max(g, c)
         ema = seeded ? ema + 0.1 * (cost - ema) : cost
         seeded = true
+        // A frame-rate cap widens the budget; leaving a capped level is judged against the uncapped budget,
+        // otherwise the governor would drop the cap, run over budget and put it straight back.
+        let capMS = plan.fpsCap > 0 ? RefreshPolicy.budgetMS(fps: plan.fpsCap) : 0
+        let overBudget = max(targetMS, capMS)
+        let recoverBudget = targetMS
 
         var floor = QualityLadder.thermalFloor(s.thermal)
         if s.lowPowerMode { floor = max(floor, 3) }
@@ -126,14 +132,14 @@ public struct QualityGovernor: Sendable {
             // Thermal and low-power floors apply at once; they protect the device.
             level = floor
         } else if now - lastChange >= holdSeconds {
-            if ema > targetMS * 1.0 {
+            if ema > overBudget {
                 overSince = overSince ?? now
                 underSince = nil
                 if now - (overSince ?? now) >= holdSeconds * 0.5, level < QualityLadder.maxLevel {
                     level += 1
                     overSince = nil
                 }
-            } else if ema < targetMS * 0.75, level > max(floor, QualityLadder.startLevel(tier)) {
+            } else if ema < recoverBudget * 0.75, level > max(floor, QualityLadder.startLevel(tier)) {
                 underSince = underSince ?? now
                 overSince = nil
                 if now - (underSince ?? now) >= holdSeconds * 2 {

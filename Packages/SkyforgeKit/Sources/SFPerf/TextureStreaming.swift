@@ -16,19 +16,31 @@ public enum ASTCBlock: String, Sendable, CaseIterable {
     }
     public var bitsPerPixel: Double { 128.0 / Double(footprint.w * footprint.h) }
 
+    /// Largest texture edge accepted. Dimensions come from tile headers, so they are clamped before any
+    /// multiplication (16384² at 4×4 is 256 MiB, far from overflowing Int).
+    public static let maxDimension = 16_384
+    static func clampDim(_ v: Int) -> Int { min(maxDimension, max(1, v)) }
+
     public func byteSize(width: Int, height: Int) -> Int {
         let f = footprint
-        let bw = (max(1, width) + f.w - 1) / f.w
-        let bh = (max(1, height) + f.h - 1) / f.h
+        let bw = (Self.clampDim(width) + f.w - 1) / f.w
+        let bh = (Self.clampDim(height) + f.h - 1) / f.h
         return bw * bh * 16
     }
 
     /// Row stride for `MTLTexture.replace(region:mipmapLevel:withBytes:bytesPerRow:)`.
-    public func bytesPerRow(width: Int) -> Int { ((max(1, width) + footprint.w - 1) / footprint.w) * 16 }
+    public func bytesPerRow(width: Int) -> Int { ((Self.clampDim(width) + footprint.w - 1) / footprint.w) * 16 }
+
+    /// Number of mips in a full chain for these dimensions.
+    public static func mipCount(width: Int, height: Int) -> Int {
+        var m = max(clampDim(width), clampDim(height)), n = 1
+        while m > 1 { m /= 2; n += 1 }
+        return n
+    }
 
     /// Total bytes for mips `firstMip...` of a full chain (mip 0 is `width × height`).
     public func chainByteSize(width: Int, height: Int, firstMip: Int = 0) -> Int {
-        var w = max(1, width), h = max(1, height), total = 0, level = 0
+        var w = Self.clampDim(width), h = Self.clampDim(height), total = 0, level = 0
         while true {
             if level >= firstMip { total += byteSize(width: w, height: h) }
             if w == 1 && h == 1 { break }
@@ -53,20 +65,24 @@ public enum StreamingPlanner {
     /// First mip each tile should keep resident. Starts from the mip whose texel density matches the
     /// screen footprint, then drops the least valuable tile's top mip until the total fits `budget`.
     /// Tiles never go below a 1×1 mip, so the result may exceed an unreachably small budget.
-    public static func firstMips(_ tiles: [StreamedTile], budget: Int) -> [UInt64: Int] {
+    public static func firstMips(_ input: [StreamedTile], budget: Int) -> [UInt64: Int] {
+        // Duplicate ids would share one entry in `first`, so only the first occurrence counts.
+        var seen = Set<UInt64>()
+        let tiles = input.filter { seen.insert($0.id).inserted }
         var first: [UInt64: Int] = [:]
+        func pixels(_ t: StreamedTile) -> Double { t.screenPixels.isFinite ? max(1, t.screenPixels) : 1 }
         for t in tiles {
-            let ratio = Double(max(t.width, t.height)) / max(1, t.screenPixels)
+            let ratio = Double(ASTCBlock.clampDim(max(t.width, t.height))) / pixels(t)
             first[t.id] = ratio <= 1 ? 0 : Int(log2(ratio).rounded(.down))
         }
         func bytes(_ t: StreamedTile) -> Int {
             t.block.chainByteSize(width: t.width, height: t.height, firstMip: first[t.id] ?? 0)
         }
-        func maxMip(_ t: StreamedTile) -> Int { Int(log2(Double(max(1, max(t.width, t.height))))) }
+        func maxMip(_ t: StreamedTile) -> Int { ASTCBlock.mipCount(width: t.width, height: t.height) - 1 }
         for t in tiles { first[t.id] = min(first[t.id] ?? 0, maxMip(t)) }
         var total = tiles.reduce(0) { $0 + bytes($1) }
         // Cheapest visual loss first: smallest on-screen tiles drop a mip before large ones.
-        let order = tiles.sorted { $0.screenPixels < $1.screenPixels }
+        let order = tiles.sorted { pixels($0) < pixels($1) }
         while total > budget {
             var progressed = false
             for t in order where total > budget {
@@ -125,12 +141,14 @@ public struct ResidencyCache: Sendable {
     @discardableResult
     public mutating func setBudget(_ newBudget: Int) -> [UInt64] {
         budget = max(0, newBudget)
-        return evict()
+        // A budget cut is a memory warning: protection of this frame's entries is lifted so the cut always
+        // lands (the owner re-requests what it still needs next frame).
+        return evict(includingPinned: true)
     }
 
-    private mutating func evict() -> [UInt64] {
+    private mutating func evict(includingPinned: Bool = false) -> [UInt64] {
         guard resident > budget else { return [] }
-        let victims = entries.filter { $0.value.lastUsed < pinnedTick || pinnedTick == 0 }
+        let victims = entries.filter { includingPinned || $0.value.lastUsed < pinnedTick || pinnedTick == 0 }
             .sorted { ($0.value.lastUsed, $0.key) < ($1.value.lastUsed, $1.key) }
         var out: [UInt64] = []
         for (id, e) in victims where resident > budget {
@@ -160,9 +178,12 @@ public struct LoadScheduler: Sendable {
 
     /// Replaces the wanted set: unseen ids are queued, reprioritised ones updated, dropped ones forgotten.
     /// Ids already loading finish regardless.
-    public mutating func want(_ requests: [Request]) {
+    public mutating func want(_ requests: [Request], resident: Set<UInt64> = []) {
         var next: [UInt64: Double] = [:]
-        for r in requests where !inFlight.contains(r.id) { next[r.id] = r.priority }
+        for r in requests where !inFlight.contains(r.id) && !resident.contains(r.id) {
+            // NaN sorts inconsistently; treat it as the lowest priority.
+            next[r.id] = r.priority.isNaN ? -Double.greatestFiniteMagnitude : r.priority
+        }
         queued = next
     }
 

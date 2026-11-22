@@ -144,6 +144,66 @@ import Foundation
     }
 }
 
+@Suite struct RobustnessTests {
+    @Test func hugeDimensionsClampInsteadOfTrapping() {
+        #expect(ASTCBlock.b4x4.byteSize(width: Int.max, height: Int.max) == (16_384 / 4) * (16_384 / 4) * 16)
+        #expect(ASTCBlock.b4x4.byteSize(width: -5, height: 0) == 16)
+        #expect(ASTCBlock.b4x4.chainByteSize(width: Int.max, height: 1) > 0)
+        #expect(ASTCBlock.mipCount(width: 256, height: 64) == 9)
+    }
+
+    @Test func plannerSurvivesNaNAndDuplicateIds() {
+        let tiles = [StreamedTile(id: 1, width: 512, height: 512, block: .b4x4, screenPixels: .nan),
+                     StreamedTile(id: 1, width: 512, height: 512, block: .b4x4, screenPixels: 512),
+                     StreamedTile(id: 2, width: 512, height: 512, block: .b4x4, screenPixels: .infinity)]
+        let first = StreamingPlanner.firstMips(tiles, budget: 1)
+        #expect(first.count == 2)
+    }
+
+    @Test func budgetCutEvictsEvenThisFramesEntries() {
+        var c = ResidencyCache(budget: 1_000)
+        c.beginFrame()
+        for i in 0..<5 { c.insert(UInt64(i), bytes: 100) }
+        let evicted = c.setBudget(200)
+        #expect(c.resident <= 200 && evicted.count == 3)
+    }
+
+    @Test func schedulerSkipsResidentAndNaNPriority() {
+        var s = LoadScheduler(maxInFlight: 4)
+        s.want([.init(id: 1, priority: .nan), .init(id: 2, priority: 1), .init(id: 3, priority: 2)], resident: [3])
+        #expect(s.next() == [2, 1])
+    }
+
+    @Test func governorIgnoresNonFiniteSamples() {
+        var g = QualityGovernor(tier: .high)
+        _ = g.update(GovernorSample(gpuMS: .nan, cpuMS: .infinity), now: 0)
+        var changes = 0
+        for i in 1..<600 where g.update(GovernorSample(gpuMS: 25, cpuMS: 4), now: Double(i) / 60) != nil { changes += 1 }
+        #expect(changes > 0)   // still reacts afterwards
+    }
+
+    @Test func cappedLevelDoesNotOscillate() {
+        // Hot device pinned at the 30 fps level; frames take 20 ms (fine for 30, over for 60).
+        var g = QualityGovernor(tier: .high)
+        var changes = 0
+        for i in 0..<(60 * 60) {
+            let s = GovernorSample(gpuMS: 20, cpuMS: 4, thermal: i < 60 * 30 ? .serious : .nominal)
+            if g.update(s, now: Double(i) / 60) != nil { changes += 1 }
+        }
+        #expect(g.level >= QualityLadder.maxLevel - 1)
+        #expect(changes <= 3)
+    }
+
+    @Test func cacheShrinksWhenOSIsBelowHeadroom() {
+        let b = MemoryBudget(ceiling: 1_000 * MemoryBudget.mebibyte)
+        let lim = b.cacheLimit(.imagery, pressure: .normal, currentlyResident: 200 * MemoryBudget.mebibyte,
+                               osAvailable: 300 * MemoryBudget.mebibyte)
+        #expect(lim == 100 * MemoryBudget.mebibyte)
+        let hostile = MemoryBudget(ceiling: 1_000, shares: [.imagery: .nan, .terrain: 1e300])
+        #expect(hostile.limit(.imagery) == 0 && hostile.limit(.terrain) == 1_000)
+    }
+}
+
 @Suite struct PacingTests {
     @Test func refreshPolicy() {
         #expect(RefreshPolicy.targetFPS(maxFPS: 120, platform: .phone, thermal: .nominal, lowPowerMode: false) == 60)
@@ -155,13 +215,14 @@ import Foundation
 
     @Test func statsPercentilesAndHitches() {
         var s = FrameStats(capacity: 100)
-        for _ in 0..<99 { s.record(frameMS: 16, targetMS: 16.67) }
+        for _ in 0..<98 { s.record(frameMS: 16, targetMS: 16.67) }
         s.record(frameMS: 40, targetMS: 16.67)   // > 2 × target
+        s.record(frameMS: 40, targetMS: 16.67)
         #expect(s.p50 == 16)
         #expect(s.percentile(0.95) == 16)
         #expect(s.percentile(1) == 40)
-        #expect(s.hitches == 1)
-        #expect(s.hitchesPerMinute > 1)          // 1 hitch in ~1.6 s
+        #expect(s.hitches == 2)
+        #expect(s.hitchesPerMinute > 1)          // 2 hitches, window under a minute: not extrapolated, still > 1
         #expect(!s.meetsPacingTarget(targetMS: 16.67))
     }
 

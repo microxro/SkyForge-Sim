@@ -41,6 +41,7 @@ public enum RefreshPolicy {
 public struct FrameStats: Sendable {
     public let capacity: Int
     private var ring: [Double] = []
+    private var hitchRing: [Bool] = []
     private var next = 0
     public private(set) var totalFrames = 0
     public private(set) var hitches = 0
@@ -55,12 +56,13 @@ public struct FrameStats: Sendable {
 
     /// Records one frame. A hitch is a frame longer than 2 × the target budget.
     public mutating func record(frameMS: Double, targetMS: Double) {
-        let ms = max(0, frameMS)
-        if ring.count < capacity { ring.append(ms) } else { ring[next] = ms }
+        let ms = frameMS.isFinite ? max(0, frameMS) : 0
+        let hit = ms > 2 * targetMS
+        if ring.count < capacity { ring.append(ms); hitchRing.append(hit) } else { ring[next] = ms; hitchRing[next] = hit }
         next = (next + 1) % capacity
         totalFrames += 1
         elapsedMS += ms
-        if ms > 2 * targetMS { hitches += 1 }
+        if hit { hitches += 1 }
     }
 
     /// Nearest-rank percentile over the window (0 when empty).
@@ -74,8 +76,13 @@ public struct FrameStats: Sendable {
     public var p50: Double { percentile(0.5) }
     public var p99: Double { percentile(0.99) }
 
+    /// Hitches inside the current window (the last `capacity` frames).
+    public var hitchesInWindow: Int { hitchRing.reduce(0) { $0 + ($1 ? 1 : 0) } }
+
+    /// Windowed rate, never extrapolated from less than a minute: an early hitch does not read as a huge rate.
     public var hitchesPerMinute: Double {
-        elapsedMS > 0 ? Double(hitches) / (elapsedMS / 60_000) : 0
+        let windowMS = ring.reduce(0, +)
+        return Double(hitchesInWindow) / max(1, windowMS / 60_000)
     }
 
     /// §11: p99 ≤ 1.25 × target and ≤ 1 hitch per minute.
