@@ -1,4 +1,5 @@
 // SKYFORGE — Apache-2.0
+#if canImport(Metal)
 import Testing
 @testable import SFRender
 
@@ -22,3 +23,4 @@ import Testing
         #expect(s.aaTier == nil)
     }
 }
+#endif
