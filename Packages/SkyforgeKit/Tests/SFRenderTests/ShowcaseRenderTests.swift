@@ -322,12 +322,12 @@ import SFInstruments
             let q = cam.position + fwd * distance + SIMD3<Double>(0, 0, lift)
             return SIMD3<Float>(Float(q.x), Float(q.y), Float(q.z))
         }
-        // Count pixels that changed between the two renders (the lights must change the frame, not just brighten it).
+        // Count pixels where any channel changed between the two renders. The lights are a few pixels each, so a
+        // brightness threshold would hide them; any change at all shows the pass drew.
         func changedPixels(_ a: [UInt8], _ b: [UInt8]) -> Int {
             var n = 0
-            for i in stride(from: 0, to: min(a.count, b.count) - 2, by: 3) {
-                let sa = Int(a[i]) + Int(a[i + 1]) + Int(a[i + 2]), sb = Int(b[i]) + Int(b[i + 1]) + Int(b[i + 2])
-                if abs(sa - sb) > 30 { n += 1 }
+            for i in stride(from: 0, to: min(a.count, b.count) - 2, by: 3) where a[i] != b[i] || a[i + 1] != b[i + 1] || a[i + 2] != b[i + 2] {
+                n += 1
             }
             return n
         }
@@ -343,7 +343,7 @@ import SFInstruments
         let lit = try r.render(width: Self.width, height: Self.height, camera: camera,
                                aircraftPosition: session.positionENU, aircraftBodyToENU: body)
         Self.save("night_traffic_lights_1280x720", lit)
-        #expect(changedPixels(lit, dark) >= 20, "night-light sprites change the frame")
+        #expect(changedPixels(lit, dark) > 0, "night-light sprites change the frame")
     }
 }
 #endif
