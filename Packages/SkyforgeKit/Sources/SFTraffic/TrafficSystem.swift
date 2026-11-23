@@ -32,6 +32,8 @@ public struct TrafficSystem: Sendable {
     /// Along-runway distance (m) at which a departure is handed from the tower to departure control. The same
     /// distance ends ownship's climb out in `OwnshipTracker`.
     public static let departureHandoffDistance = 3_000.0
+    /// Radius (m) of the orbit an arrival flies while held at the approach fix.
+    public static let holdRadius = 1_200.0
     /// Types flown as traffic: the civil fleet, from the 1 kg trainer to the 4.5 t jet.
     public static let defaultFleet: [AircraftConfig] = [.sf1Trainer, .sf2Cruiser, .sf3Twin, .sf5Jet]
 
@@ -63,7 +65,48 @@ public struct TrafficSystem: Sendable {
                                distanceToTouchdown: (dn * dn + de * de + dd * dd).squareRoot(),
                                isHeavy: TrafficPerformance.isHeavy(a.config),
                                clearedToLand: a.clearedToLand, clearedToTakeoff: a.clearedToTakeoff,
-                               takeoffFits: departureFits(a.config), facility: a.facility)
+                               takeoffFits: departureFits(a.config), facility: a.facility,
+                               holding: a.holding, vectored: a.vectorHeading != nil,
+                               distanceToApproachFix: distanceToApproachFix(a.position))
+    }
+
+    /// The approach fix in runway coordinates (along, right, up). It is the downwind entry: arrivals are vectored
+    /// to it, held around it, and released from it onto the pattern.
+    public var approachFix: SIMD3<Double> {
+        SIMD3(pattern.downwindStart, pattern.side * pattern.downwindOffset, pattern.patternAltitude)
+    }
+
+    /// Straight-line distance (m) from an NED position to the approach fix.
+    public func distanceToApproachFix(_ ned: SIMD3<Double>) -> Double {
+        let fix = runway.ned(along: approachFix.x, right: approachFix.y, up: approachFix.z)
+        let d = fix - ned
+        return (d.x * d.x + d.y * d.y + d.z * d.z).squareRoot()
+    }
+
+    /// Applies an approach control instruction to an arrival. Returns false when the aircraft is not in the system,
+    /// is not an arrival still inbound, or the instruction does not fit its state.
+    @discardableResult
+    public mutating func apply(_ control: TrafficControl, to id: String) -> Bool {
+        guard let index = aircraft.firstIndex(where: { $0.id == id }),
+              aircraft[index].kind == .arrival, aircraft[index].phase == .inbound else { return false }
+        switch control {
+        case .vectorToFix:
+            guard !aircraft[index].holding else { return false }
+            let fix = runway.ned(along: approachFix.x, right: approachFix.y, up: approachFix.z)
+            let dn = fix.x - aircraft[index].position.x
+            let de = fix.y - aircraft[index].position.y
+            aircraft[index].vectorHeading = atan2(de, dn)
+        case .direct:
+            aircraft[index].vectorHeading = nil
+        case .hold:
+            let local = runway.local(aircraft[index].position)
+            aircraft[index].holding = true
+            aircraft[index].vectorHeading = nil
+            aircraft[index].holdBearing = atan2(local.y - approachFix.y, local.x - approachFix.x)
+        case .release:
+            aircraft[index].holding = false
+        }
+        return true
     }
 
     /// True when this type reaches rotation speed on this runway at the takeoff acceleration, with 150 m to spare.
@@ -279,6 +322,10 @@ public struct TrafficSystem: Sendable {
         let target = (a.phase == .base || a.phase == .final) ? speeds.approach : speeds.downwind
         let change = TrafficPerformance.speedChangeRate * dt
         a.speed += max(-change, min(change, target - a.speed))
+        if a.phase == .inbound, a.holding || a.vectorHeading != nil {
+            flyControlled(&a, dt: dt, runway: runway, pattern: pattern)
+            return nil
+        }
         let waypoint = pattern.waypoint(for: a.phase)
         let climb = TrafficPerformance.maxClimbRate(a.config)
         let reached = guide(&a, toward: waypoint, runway: runway, dt: dt, climb: climb)
@@ -309,6 +356,25 @@ public struct TrafficSystem: Sendable {
         case .landing, .holdShort, .takeoffRoll, .departing, .complete:
             return nil
         }
+    }
+
+    /// Flies an arrival that approach control has vectored or held. A hold is an orbit of `holdRadius` around the
+    /// approach fix. A vector is a line on the heading given, flown by aiming at a point 3 km ahead on it.
+    private static func flyControlled(_ a: inout TrafficAircraft, dt: Double, runway: TrafficRunway,
+                                      pattern: TrafficPatternGeometry) {
+        let climb = TrafficPerformance.maxClimbRate(a.config)
+        if a.holding {
+            a.holdBearing += a.speed / Self.holdRadius * dt
+            let fix = SIMD3(pattern.downwindStart, pattern.side * pattern.downwindOffset, pattern.patternAltitude)
+            let point = SIMD3(fix.x + Self.holdRadius * cos(a.holdBearing),
+                              fix.y + Self.holdRadius * sin(a.holdBearing), fix.z)
+            _ = guide(&a, toward: point, runway: runway, dt: dt, climb: climb)
+            return
+        }
+        guard let heading = a.vectorHeading else { return }
+        let ahead = a.position + SIMD3(cos(heading), sin(heading), 0) * 3_000
+        let local = runway.local(ahead)
+        _ = guide(&a, toward: SIMD3(local.x, local.y, pattern.patternAltitude), runway: runway, dt: dt, climb: climb)
     }
 
     private static func advanceDeparture(_ a: inout TrafficAircraft, dt: Double, runway: TrafficRunway,

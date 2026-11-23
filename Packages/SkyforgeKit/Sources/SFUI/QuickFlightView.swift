@@ -127,9 +127,9 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
         super.init()
     }
 
-    /// The traffic and the tower for a free flight at this world's runway. Missions get none.
+    /// The traffic and the tower for a free flight at this world's runway. Missions get them only when they set `traffic`.
     private static func makeTower(world: any FlightWorld, mission: MissionDefinition?, onRunway: Bool) -> TowerSession? {
-        guard mission == nil else { return nil }
+        guard mission == nil || mission?.traffic == true else { return nil }
         let runway = TrafficRunway(threshold: world.runwayThreshold, heading: world.runwayHeading,
                                    length: world.runwayLengthMetres, elevation: world.runwayElevation)
         return TowerSession(runway: runway, startsOnRunway: onRunway)

@@ -193,16 +193,19 @@ public struct MissionDefinition: Sendable, Codable, Equatable, Identifiable {
     public var timeLimit: Double?
     public var areaRadius: Double?                  // fail beyond this distance from the threshold
     public var unlock: UnlockRequirement
+    /// True when the field has traffic and a tower: AI arrivals and departures, approach control, and readbacks.
+    public var traffic: Bool
 
     public init(id: String, title: String, category: MissionCategory, briefing: String, difficulty: Int,
                 recommendedAircraft: String, allowedRoles: [AircraftRole] = [], spawn: MissionSpawn,
                 wind: MissionWind = MissionWind(), targets: [TargetSpawn] = [], objectives: [MissionObjective],
-                parTime: Double, timeLimit: Double? = nil, areaRadius: Double? = 40_000, unlock: UnlockRequirement = .none) {
+                parTime: Double, timeLimit: Double? = nil, areaRadius: Double? = 40_000, unlock: UnlockRequirement = .none,
+                traffic: Bool = false) {
         self.id = id; self.title = title; self.category = category; self.briefing = briefing
         self.difficulty = difficulty; self.recommendedAircraft = recommendedAircraft
         self.allowedRoles = allowedRoles; self.spawn = spawn; self.wind = wind; self.targets = targets
         self.objectives = objectives; self.parTime = parTime; self.timeLimit = timeLimit
-        self.areaRadius = areaRadius; self.unlock = unlock
+        self.areaRadius = areaRadius; self.unlock = unlock; self.traffic = traffic
     }
 
     public var isMilitary: Bool { category == .military }
