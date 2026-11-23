@@ -129,6 +129,10 @@ def main():
         a.before = defaults + a.before
         if "AAShadowShaders.swift" not in given:
             a.before = a.before + ["AAShadowShaders.swift"]
+        # WorldShaders.world_fragment calls veg_keep, defined in VegetationShaders.common, which WorldRenderer places
+        # before WorldShaders (after AAShadowShaders).
+        if not any(g.startswith("VegetationShaders") for g in given):
+            a.before = a.before + ["VegetationShaders.swift:common"]
     units += [resolve(f) for f in a.before]
     units += [] if a.only else [(os.path.join(SHADERS, "WorldShaders.swift"), "source")]
     units += [resolve(f) for f in a.files]

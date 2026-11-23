@@ -217,14 +217,17 @@ public enum OceanShaders {
 
     static OWOut owShade(float2 p, float3 dir, float3 toSun, constant OWParams& P, constant OWWake* wakes,
                          float footprint, float depth, float shoreDist, float3 bed,
-                         float3 skyRefl, float3 sunRad, float3 ambient, float sunVis) {
+                         float3 skyRefl, float3 sunRad, float3 ambient, float sunVis, float lake) {
         float height, crest, slopeVar;
         float3 n = owWaveNormal(p, P, footprint, height, crest, slopeVar);
         float2 wakeSlope = float2(0.0);
         float wake = owWakeFoam(p, P.time, wakes, P.wakeCount, wakeSlope);
         n = normalize(n + float3(-wakeSlope, 0.0));
         float cosT = max(0.0, -dot(dir, n));
-        float F = owFresnel(cosT);
+        // Imagery lakes (lake = 1): a reflectance floor and a wider glint lobe, so the sky and sun show on flat water.
+        // The ocean (lake = 0) keeps the physical Fresnel and slope variance.
+        float F = max(owFresnel(cosT), 0.10 * lake);
+        slopeVar += 0.12 * lake;
 
         float3 light = ambient * 0.5 + sunRad * max(0.0, toSun.z) * 0.18 * sunVis;
         float3 body = owDepthColour(depth, bed, light, float3(0.004, 0.026, 0.034));   // darker deep-water tint

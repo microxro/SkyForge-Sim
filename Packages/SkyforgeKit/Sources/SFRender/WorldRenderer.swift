@@ -247,6 +247,8 @@ public final class WorldRenderer {
     /// (aircraft on the water; at most `oceanTier.maxWakes` are drawn).
     public var oceanWindSpeed: Float = 8
     public var oceanWindDirection: Float = 0
+    /// Vegetation sway wind (see `VegetationWind.uniform`): east, north, speed m/s, gustiness. Set each frame from the live wind.
+    public var vegetationWind: SIMD4<Float> = VegetationWind.fallback
     public var oceanTier: OceanTier = .high
     public var oceanWakes: [OceanWake] = []
     /// Weather presentation (precipitation overlay, lightning, fog). `.clear` (the default) changes nothing: no overlay
@@ -269,9 +271,9 @@ public final class WorldRenderer {
     /// CPU suburb mask waiting for its first use with `suburbParcels` on.
     private var pendingSuburb: SuburbMaskRaster?
     private lazy var zeroMacro: MTLTexture = MacroColourPass.zeroTexture(device: device)
-    /// Replace the near-ground tone-map stack with the macro-colour decoupling pass (round 3). Off by default, so the
-    /// art-tuned rounds 1–62 look is unchanged until the KBFI/KMRY/KASE/LSZS/NZQN frames are compared.
-    public var macroColourDecoupling = false
+    /// Replace the near-ground tone-map stack with the macro-colour decoupling pass (round 3). On by default from round 65, so the
+    /// frames show what players see. Rounds 1–64 were scored with it off.
+    public var macroColourDecoupling = true
     /// Round 2: suburban parcel fabric (kerbs, sidewalks, driveways, per-lot lawns) on near ground within 2 km, read from the
     /// RGBA8 mask at texture index 11. Off by default: the mask is then not bound (a zero texture is) and the shader's weight is 0,
     /// so the art-tuned frames are unchanged. Needs `landuse.sfl` in the airport's pack. docs/rounds/ROUND2.md.
@@ -1463,7 +1465,7 @@ public final class WorldRenderer {
             for b in vegBatches {
                 let kind = SpeciesKind(rawValue: b.species) ?? .birch
                 var vu = VegUniformsCPU(
-                    wind: SIMD4<Float>(1, 0, 3, 0.3),
+                    wind: vegetationWind,
                     timeFade: SIMD4<Float>(0, VegetationTier.high.cardStart, VegetationTier.high.billboardStart, VegetationTier.high.fadeWidth),
                     season: SIMD4<Float>(0, 0, 0, 1),
                     species: SIMD4<Float>(Float(b.species), kind.stiffness, kind.deciduous ? 1 : 0, 0),

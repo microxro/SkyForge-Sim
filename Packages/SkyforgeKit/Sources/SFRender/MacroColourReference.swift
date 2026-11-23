@@ -132,7 +132,9 @@ public enum MacroColourReference {
         if k.grass > 0.01 {
             let blades = n(w + 5.3, 0.125) * fade(fp, 0.125), clumps = n(w - 9.1, 1) * fade(fp, 1)
             let tufts = n(w + 41, 2) * fade(fp, 2), p4 = n(w - 63, 4) * fade(fp, 4), p8 = n(w + 23, 8) * fade(fp, 8)
+            let p16 = n(w - 117, 16) * fade(fp, 16), p32 = n(w + 201, 32) * fade(fp, 32)
             let g = 1 + 0.08 * blades + 0.08 * clumps + 0.06 * saturate(tufts) - 0.10 * saturate(-tufts) + 0.06 * p4 + 0.05 * p8
+                + 0.05 * p16 + 0.04 * p32
             f *= mix(1, g, k.grass)
         }
         if k.dry > 0.01 {

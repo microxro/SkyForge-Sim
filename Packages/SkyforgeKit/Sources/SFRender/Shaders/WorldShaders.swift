@@ -1899,7 +1899,7 @@ public enum WorldShaders {
             float depthM = imageryWater ? mix(0.3, 12.0, smoothstep(0.6, 1.0, shoreWm)) : 200.0;
             float shoreDistM = imageryWater ? (1.0 - smoothstep(0.6, 0.97, shoreWm)) * 6.0 : 1.0e3;
             OWOut owo = owShade(fieldW, dir, toSun, ow, wakes, fieldFp, depthM, shoreDistM, float3(0.35, 0.30, 0.22),
-                                skyEnv(u, rr), u.sunColour.rgb, ambient, vis);
+                                skyEnv(u, rr), u.sunColour.rgb, ambient, vis, imageryWater ? 1.0 : 0.0);
             col = owo.colour;
         } else if (m == 2.0) {                               // foliage: wrap + back-scatter
             float wrap = max(0.0, ndl * 0.55 + 0.45);

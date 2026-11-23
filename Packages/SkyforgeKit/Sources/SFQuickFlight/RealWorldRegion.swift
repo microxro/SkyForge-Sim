@@ -495,10 +495,18 @@ public struct RealWorldRegion: FlightWorld {
                 // Walls: painted stucco, siding or concrete (linear albedo 0.30–0.48) with a little of the
                 // roof's hue. Walls derived from the roof read as charcoal boxes (round 5).
                 // Darker siding and brick too: five pale tones read as uniform pale cubes (round 18, KBFI).
-                let palette: [SIMD3<Float>] = [SIMD3(0.46, 0.42, 0.35), SIMD3(0.40, 0.40, 0.38), SIMD3(0.48, 0.46, 0.43),
-                                               SIMD3(0.38, 0.32, 0.25), SIMD3(0.34, 0.36, 0.37), SIMD3(0.24, 0.20, 0.17),
-                                               SIMD3(0.28, 0.17, 0.12), SIMD3(0.22, 0.25, 0.27)]
-                let base = palette[Int(rng.next() % UInt64(palette.count))]
+                // Districts of about 240 m share one wall material (stucco, brick, painted siding or render), and each
+                // house varies within its district's tones, so a block reads as a neighbourhood, not a grey box per house.
+                let district = Hash.int(Int((px / 240).rounded(.down)), Int((py / 240).rounded(.down)), seed: 0xD157)
+                let families: [[SIMD3<Float>]] = [
+                    [SIMD3(0.46, 0.42, 0.35), SIMD3(0.40, 0.40, 0.38), SIMD3(0.48, 0.46, 0.43)],
+                    [SIMD3(0.28, 0.17, 0.12), SIMD3(0.32, 0.19, 0.13), SIMD3(0.24, 0.14, 0.11)],
+                    [SIMD3(0.34, 0.36, 0.37), SIMD3(0.30, 0.36, 0.30), SIMD3(0.44, 0.38, 0.30), SIMD3(0.22, 0.25, 0.27)],
+                    [SIMD3(0.38, 0.32, 0.25), SIMD3(0.42, 0.41, 0.40)],
+                ]
+                let family = families[Int(district % UInt64(families.count))]
+                let tone = Float(0.92 + 0.16 * Hash.unit(rng.next()))
+                let base = family[Int(rng.next() % UInt64(family.count))] * tone
                 let wall = base * (1 + (roof / max(lum(roof), 0.01) - 1) * 0.15)
                 out.append(OSMBuilding(id: -Int64(out.count + 1), footprint: fp, heightMetres: (4.5 + Hash.unit(rng.next()) * 3.5) * (Hash.unit(rng.next()) < 0.2 ? 1.6 : 1),   // a fifth two-storey
                                        kind: "house", roofColour: roof, wallColour: wall, tags: ["source": "procedural fallback"]))

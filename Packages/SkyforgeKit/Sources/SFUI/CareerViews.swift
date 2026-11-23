@@ -7,10 +7,12 @@ import SFCareer
 
 public struct CareerHubView: View {
     @Binding var career: CareerState
+    var logbook: Logbook
     var onChange: () -> Void
 
-    public init(career: Binding<CareerState>, onChange: @escaping () -> Void = {}) {
+    public init(career: Binding<CareerState>, logbook: Logbook = Logbook(), onChange: @escaping () -> Void = {}) {
         self._career = career
+        self.logbook = logbook
         self.onChange = onChange
     }
 
@@ -20,6 +22,8 @@ public struct CareerHubView: View {
                 .tabItem { Label("Pilot", systemImage: "person.crop.circle") }
             HangarView(career: $career, onChange: onChange)
                 .tabItem { Label("Hangar", systemImage: "airplane") }
+            LogbookView(logbook: logbook)
+                .tabItem { Label("Logbook", systemImage: "book.closed") }
             CampaignListView(career: career)
                 .tabItem { Label("Campaigns", systemImage: "flag.checkered") }
             AchievementListView(career: career)
@@ -31,17 +35,20 @@ public struct CareerHubView: View {
 /// Loads the saved career, shows the hub and writes purchases back to disk.
 public struct CareerScreen: View {
     @State private var career = CareerState()
+    @State private var logbook = Logbook()
     @State private var loadError: String?
     private let store = SaveStore(url: SaveStore.defaultURL)
     public init() {}
     public var body: some View {
         Group {
             if let loadError { Text(loadError).padding() }
-            else { CareerHubView(career: $career) { try? store.save(career) } }
+            else { CareerHubView(career: $career, logbook: logbook) { try? store.save(career) } }
         }
         .navigationTitle("Pilot career")
         .task {
             do { career = try store.load() } catch { loadError = "Your career file could not be read, so it was left untouched." }
+            // The logbook is read-only here. A missing or unreadable file just shows an empty logbook.
+            logbook = (try? LogbookStore(url: LogbookStore.defaultURL).load()) ?? Logbook()
         }
     }
 }
