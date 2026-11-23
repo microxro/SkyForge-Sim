@@ -70,13 +70,21 @@ public struct GameplaySession: Sendable {
     /// `trafficEnabled` adds AI arrivals and departures at this runway, with the tower clearing them.
     public init(world: any FlightWorld, aircraft: PlaneSpec, mission: MissionDefinition? = nil, trafficEnabled: Bool = false) {
         self.world = world
-        self.aircraft = aircraft
         self.mission = mission
         let frame = RunwayFrame(world: world)
         self.frame = frame
-        model = aircraft.model
+        // Carry the mission payload: the loaded mass, inertia and CG change the flight model.
+        let loaded: PlaneSpec = {
+            guard let load = mission?.payload, !load.isEmpty else { return aircraft }
+            var spec = aircraft
+            spec.config = WeightAndBalance(emptyMass: aircraft.config.mass, stations: load).applied(to: aircraft.config)
+            return spec
+        }()
+        self.aircraft = loaded
+        model = loaded.model
         let wind = mission?.wind.windNED(runwayHeading: frame.heading) ?? .zero
-        let env = FlightEnvironment(windNED: wind, terrain: FlightWorldTerrain(world))
+        var env = FlightEnvironment(windNED: wind, terrain: FlightWorldTerrain(world))
+        env.surface = mission?.surface ?? .paved
         environment = env
         controlFilter = GameplayDirector.makeControlFilter(for: aircraft)
         director = GameplayDirector(aircraft: aircraft, frame: frame, mission: mission)

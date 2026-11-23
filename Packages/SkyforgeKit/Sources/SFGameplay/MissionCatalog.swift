@@ -3,6 +3,7 @@
 // a military track (formation, intercept, gunnery, low-level navigation, air combat training).
 // All coordinates are runway-frame metres, so the missions run at any airport.
 import Foundation
+import SFFlightModel
 
 public enum MissionCatalog {
     private static let civil: [AircraftRole] = [.lightTrainer, .tourer, .aerobatic]
@@ -256,7 +257,17 @@ public enum MissionCatalog {
         ],
         parTime: 300, timeLimit: 600, areaRadius: 30_000, unlock: .mission("bush-strip"))
 
-    public static let all: [MissionDefinition] = [firstFlight, patternLanding, precisionLanding, wingman, intercept, gunnery, lowLevel, dogfight, coastalSurvey, twinBandits, bushStrip, airportTour, valleyRun, waterDropRun, rescuePickup, airshowLoop, radarIntercept, twoShipDefence, ifrApproach]
+    public static let cargoRun = MissionDefinition(
+        id: "cargo-run", title: "Cargo Run", category: .navigation,
+        briefing: "Load 180 kg of freight in the rear hold and fly it 4 km out to the grass strip. The load moves the centre of gravity aft, so keep the approach gentle.",
+        difficulty: 2, recommendedAircraft: AircraftCatalog.sfCruiser.id, allowedRoles: civil,
+        spawn: MissionSpawn(along: 0, onRunway: true),
+        objectives: [
+            MissionObjective(id: "deliver", title: "Fly the freight to the grass strip", kind: .flyTo(MissionWaypoint(4_000, 0, 60, radius: 400)), points: 300),
+        ],
+        parTime: 300, timeLimit: 600, areaRadius: 20_000, unlock: .mission("airshow-loop"),
+        payload: [PayloadStation(name: "Rear hold", mass: 180, arm: -0.3)], surface: .grass)
+    public static let all: [MissionDefinition] = [firstFlight, patternLanding, precisionLanding, wingman, intercept, gunnery, lowLevel, dogfight, coastalSurvey, twinBandits, bushStrip, airportTour, valleyRun, waterDropRun, rescuePickup, airshowLoop, radarIntercept, twoShipDefence, ifrApproach, cargoRun]
 
     public static func mission(id: String) -> MissionDefinition? { all.first { $0.id == id } }
     public static func missions(in category: MissionCategory) -> [MissionDefinition] { all.filter { $0.category == category } }
