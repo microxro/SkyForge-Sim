@@ -19,6 +19,7 @@ import SFFlightModel
                 lines.append(String(format: "t=%.0f v=%.1f h=%.2f g=%d z=%.2f vx=%.1f vz=%.2f", s.time, s.trueAirspeed, s.heightAGL, s.onGround ? 1 : 0, s.state.positionNED.z, s.state.velocityBody.x, s.state.velocityBody.z))
             }
         }
-        Issue.record("TRACE crashed=\(s.crashed) reason=\(s.crashReason ?? "-") :: " + lines.joined(separator: " | "))
+        let body = lines.joined(separator: " | ")
+        Issue.record("TRACE crashed=\(s.crashed) reason=\(s.crashReason ?? "-") :: \(body)")
     }
 }
