@@ -77,17 +77,32 @@ public struct ATCReadback: Sendable, Equatable {
     }
 }
 
-/// A clearance to ownship that is waiting for the pilot's readback.
+/// What a readback is for: a landing or takeoff clearance, or approach control's instruction to ownship.
+public enum OwnshipAction: Sendable, Equatable {
+    case clearance(TrafficClearance)
+    /// Turn to this NED heading (rad) and fly the vector to the approach fix.
+    case vector(heading: Double)
+    /// Hold at the approach fix until released.
+    case hold
+}
+
+/// An instruction to ownship that is waiting for the pilot's readback.
 public struct OwnshipPrompt: Sendable, Equatable {
-    /// The clearance as the tower said it.
+    /// The instruction as the tower said it.
     public var text: String
-    public var clearance: TrafficClearance
+    public var action: OwnshipAction
     /// The readbacks to choose from. Exactly one is correct.
     public var options: [String]
 
-    public init(text: String, clearance: TrafficClearance, options: [String]) {
+    /// The clearance, when the prompt is for a landing or takeoff clearance.
+    public var clearance: TrafficClearance? {
+        if case .clearance(let clearance) = action { return clearance }
+        return nil
+    }
+
+    public init(text: String, action: OwnshipAction, options: [String]) {
         self.text = text
-        self.clearance = clearance
+        self.action = action
         self.options = options
     }
 }
@@ -102,12 +117,35 @@ public struct OwnshipTowerStatus: Sendable, Equatable {
     public var unauthorizedTakeoffs: Int
     /// Touchdowns with no landing clearance read back.
     public var unclearedLandings: Int
+    /// Readbacks that were wrong and drew "say again".
+    public var readbackErrors: Int
+    /// Vectors to the approach fix that were flown: heading held for `ownshipVectorFlyTime` seconds.
+    public var vectorsFlown: Int
+    /// Vectors that were cut short (direct, or leaving approach) before they were flown.
+    public var vectorsIgnored: Int
+    /// Holds at the approach fix that were released after ownship reached the fix.
+    public var holdsFlown: Int
+    /// Holds where ownship never reached the fix in time.
+    public var holdsIgnored: Int
 
-    public init(landingCleared: Bool, takeoffCleared: Bool, unauthorizedTakeoffs: Int, unclearedLandings: Int) {
+    /// Everything the tower counts against the flight: wrong readbacks, flights without a clearance, and
+    /// vectors and holds that were not flown.
+    public var complianceErrors: Int {
+        unauthorizedTakeoffs + unclearedLandings + readbackErrors + vectorsIgnored + holdsIgnored
+    }
+
+    public init(landingCleared: Bool, takeoffCleared: Bool, unauthorizedTakeoffs: Int, unclearedLandings: Int,
+                readbackErrors: Int = 0, vectorsFlown: Int = 0, vectorsIgnored: Int = 0,
+                holdsFlown: Int = 0, holdsIgnored: Int = 0) {
         self.landingCleared = landingCleared
         self.takeoffCleared = takeoffCleared
         self.unauthorizedTakeoffs = unauthorizedTakeoffs
         self.unclearedLandings = unclearedLandings
+        self.readbackErrors = readbackErrors
+        self.vectorsFlown = vectorsFlown
+        self.vectorsIgnored = vectorsIgnored
+        self.holdsFlown = holdsFlown
+        self.holdsIgnored = holdsIgnored
     }
 }
 
@@ -185,6 +223,12 @@ public struct ATCController: Sendable {
     public static let directRange = 4_000.0
     /// Distance (m) from the approach fix within which an arrival can be held there.
     public static let holdRange = 1_500.0
+    /// Seconds a vector's heading must be held, within `vectorTolerance`, before the vector counts as flown.
+    public static let ownshipVectorFlyTime = 5.0
+    /// Heading error (rad) allowed while flying a vector.
+    public static let vectorTolerance = 30.0 * Double.pi / 180
+    /// Seconds ownship has to reach the approach fix after a hold is read back.
+    public static let holdTimeout = 120.0
 
     public let runwayDesignator: String
     /// Messages said so far, oldest first, capped at `logLimit`.
@@ -203,13 +247,41 @@ public struct ATCController: Sendable {
     public private(set) var unauthorizedTakeoffs = 0
     /// Touchdowns with no landing clearance read back.
     public private(set) var unclearedLandings = 0
-    /// The clearance to ownship waiting for a readback, if any.
+    /// The counts for approach control's instructions to ownship. See `OwnshipTowerStatus`.
+    public private(set) var readbackErrors = 0
+    public private(set) var vectorsFlown = 0
+    public private(set) var vectorsIgnored = 0
+    public private(set) var holdsFlown = 0
+    public private(set) var holdsIgnored = 0
+    /// The vector ownship has read back and is flying, if any.
+    private var ownshipVector: OwnshipVector?
+    /// The hold ownship has read back and is flying, if any.
+    private var ownshipHold: OwnshipHold?
+    /// True once ownship has been vectored on this approach, so the tower does not vector it again.
+    private var ownshipVectorIssued = false
+    /// True once ownship has been held on this approach, so the tower does not hold it again.
+    private var ownshipHoldIssued = false
+    /// The clearance or instruction to ownship waiting for a readback, if any.
     private var prompt: Prompt?
+    private var lastTime: Double?
 
-    /// A clearance to ownship waiting for its readback.
+    /// A vector ownship has read back. `flying` is the time its heading has held within tolerance.
+    private struct OwnshipVector: Sendable {
+        var heading: Double
+        var flying = 0.0
+        var flown = false
+    }
+
+    /// A hold ownship has read back. `reached` is true once it is within `holdRange` of the fix.
+    private struct OwnshipHold: Sendable {
+        var issuedAt: Double
+        var reached = false
+    }
+
+    /// An instruction to ownship waiting for its readback.
     private struct Prompt: Sendable {
         var callsign: String
-        var clearance: TrafficClearance
+        var action: OwnshipAction
         var text: String
         var readback: ATCReadback
     }
@@ -318,11 +390,96 @@ public struct ATCController: Sendable {
             }
         }
 
+        // 5. Approach control for ownship: a vector to the fix, a hold, and the release and direct calls that end them.
+        // Each one is read back first, except the calls that end it.
+        let dt = lastTime.map { max(0, time - $0) } ?? 0
+        lastTime = time
+        if let own = traffic.first(where: { $0.id == TrafficOwnship.id }),
+           let instruction = ownshipApproachControl(own, slotTaken: slotTaken, time: time, dt: dt, rwy: rwy) {
+            out.append(instruction)
+        }
+
         for instruction in out {
             log.append(ATCMessage(time: time, text: instruction.text))
         }
         if log.count > Self.logLimit { log.removeFirst(log.count - Self.logLimit) }
         return out
+    }
+
+    /// Approach control for ownship. It tracks the vector and hold it has read back, counts how the pilot flew
+    /// them, and returns at most one instruction for this tick.
+    private mutating func ownshipApproachControl(_ s: TrafficSnapshot, slotTaken: Bool, time: Double, dt: Double,
+                                                 rwy: String) -> ATCInstruction? {
+        let cs = ATCPhrase.callsign(s.callsign)
+        let onApproach = s.kind == .arrival && s.facility == .approach && s.phase == .inbound
+
+        // A vector ends when ownship goes direct to the fix or leaves approach. It counts as flown once the heading
+        // has held within tolerance for long enough.
+        if var vector = ownshipVector {
+            if !vector.flown {
+                if Self.headingError(s.heading, vector.heading) < Self.vectorTolerance {
+                    vector.flying += dt
+                } else {
+                    vector.flying = 0
+                }
+                if vector.flying >= Self.ownshipVectorFlyTime {
+                    vector.flown = true
+                    vectorsFlown += 1
+                }
+            }
+            if !onApproach || s.alongRunway <= Self.directRange {
+                if !vector.flown { vectorsIgnored += 1 }
+                ownshipVector = nil
+                if onApproach {
+                    return ATCInstruction(aircraftID: TrafficOwnship.id, clearance: nil,
+                                          text: "\(cs), proceed direct to the downwind entry.")
+                }
+            } else {
+                ownshipVector = vector
+            }
+        }
+
+        // A hold ends when it is released after ownship reached the fix, or times out, or ownship leaves approach.
+        if let hold = ownshipHold {
+            var reached = hold.reached || s.distanceToApproachFix < Self.holdRange
+            if reached, !slotTaken {
+                ownshipHold = nil
+                holdsFlown += 1
+                return ATCInstruction(aircraftID: TrafficOwnship.id, clearance: nil,
+                                      text: "\(cs), leave the hold, proceed to the downwind.")
+            }
+            if !onApproach || (!reached && time - hold.issuedAt > Self.holdTimeout) {
+                if reached { holdsFlown += 1 } else { holdsIgnored += 1 }
+                ownshipHold = nil
+            } else {
+                reached = hold.reached || reached
+                ownshipHold = OwnshipHold(issuedAt: hold.issuedAt, reached: reached)
+            }
+        }
+
+        // New instructions wait for the readback already open, and only happen on approach.
+        guard onApproach, prompt == nil else { return nil }
+        if ownshipHold == nil, !ownshipHoldIssued, slotTaken, s.distanceToApproachFix < Self.holdRange {
+            ownshipHoldIssued = true
+            let readback = makeReadback(correct: "hold at the approach fix",
+                                        wrong: ["cleared to land \(rwy)", "cleared for takeoff \(rwy)"], time: time)
+            let text = "\(cs), hold at the approach fix, expect further clearance."
+            prompt = Prompt(callsign: cs, action: .hold, text: text, readback: readback)
+            return ATCInstruction(aircraftID: TrafficOwnship.id, clearance: nil, text: text, readback: readback)
+        }
+        if ownshipVector == nil, !ownshipVectorIssued, s.alongRunway > Self.directRange {
+            ownshipVectorIssued = true
+            let heading = Self.compassDegrees(s.bearingToApproachFix)
+            let spoken = Self.spokenHeading(heading)
+            let readback = makeReadback(correct: "turn heading \(spoken)",
+                                        wrong: ["turn heading \(Self.spokenHeading((heading + 90) % 360))",
+                                                "turn heading \(Self.spokenHeading((heading + 180) % 360))"],
+                                        time: time)
+            let text = "\(cs), turn heading \(spoken), vectors for the downwind."
+            prompt = Prompt(callsign: cs, action: .vector(heading: s.bearingToApproachFix), text: text, readback: readback)
+            return ATCInstruction(aircraftID: TrafficOwnship.id, clearance: nil, text: text, readback: readback)
+        }
+        return nil
     }
 
     /// The pilot's answer to the readback prompt: `choice` indexes `ownshipPrompt.options`. Returns true when the
@@ -332,25 +489,35 @@ public struct ATCController: Sendable {
     public mutating func readback(choice: Int, time: Double) -> Bool? {
         guard let current = prompt, current.readback.options.indices.contains(choice) else { return nil }
         if choice == current.readback.correctIndex {
-            confirmedForOwnship.insert(current.clearance)
+            switch current.action {
+            case .clearance(let clearance):
+                confirmedForOwnship.insert(clearance)
+            case .vector(let heading):
+                ownshipVector = OwnshipVector(heading: heading)
+            case .hold:
+                ownshipHold = OwnshipHold(issuedAt: time)
+            }
             prompt = nil
             say("\(current.callsign), readback correct.", at: time)
             return true
         }
+        readbackErrors += 1
         say("\(current.callsign), negative, say again.", at: time)
         return false
     }
 
     /// The clearance waiting for a readback, if any.
     public var ownshipPrompt: OwnshipPrompt? {
-        prompt.map { OwnshipPrompt(text: $0.text, clearance: $0.clearance, options: $0.readback.options) }
+        prompt.map { OwnshipPrompt(text: $0.text, action: $0.action, options: $0.readback.options) }
     }
 
     /// What the tower has confirmed and counted for ownship.
     public var ownshipStatus: OwnshipTowerStatus {
         OwnshipTowerStatus(landingCleared: confirmedForOwnship.contains(.land),
                            takeoffCleared: confirmedForOwnship.contains(.takeoff),
-                           unauthorizedTakeoffs: unauthorizedTakeoffs, unclearedLandings: unclearedLandings)
+                           unauthorizedTakeoffs: unauthorizedTakeoffs, unclearedLandings: unclearedLandings,
+                           readbackErrors: readbackErrors, vectorsFlown: vectorsFlown,
+                           vectorsIgnored: vectorsIgnored, holdsFlown: holdsFlown, holdsIgnored: holdsIgnored)
     }
 
     /// Issues a clearance to ownship and opens a readback prompt for it.
@@ -358,7 +525,7 @@ public struct ATCController: Sendable {
                                        runway rwy: String, time: Double) -> ATCInstruction {
         let readback = readbackChoices(for: clearance, runway: rwy, time: time)
         issuedToOwnship.insert(clearance)
-        prompt = Prompt(callsign: callsign, clearance: clearance, text: text, readback: readback)
+        prompt = Prompt(callsign: callsign, action: .clearance(clearance), text: text, readback: readback)
         return ATCInstruction(aircraftID: TrafficOwnship.id, clearance: clearance, text: text, readback: readback)
     }
 
@@ -374,10 +541,35 @@ public struct ATCController: Sendable {
             correct = "cleared for takeoff \(rwy)"
             wrong = ["cleared to land \(rwy)", "hold short \(rwy)"]
         }
+        return makeReadback(correct: correct, wrong: wrong, time: time)
+    }
+
+    /// One correct readback among two wrong ones. The place of the correct one follows the time.
+    private func makeReadback(correct: String, wrong: [String], time: Double) -> ATCReadback {
         let slot = max(0, Int(time.rounded(.down))) % 3
         var options = wrong
         options.insert(correct, at: slot)
         return ATCReadback(options: options, correctIndex: slot)
+    }
+
+    /// A NED bearing (rad) as a compass heading in whole degrees, 0 to 359.
+    static func compassDegrees(_ bearing: Double) -> Int {
+        let degrees = Int((bearing * 180 / Double.pi).rounded())
+        return ((degrees % 360) + 360) % 360
+    }
+
+    /// A heading in degrees, to the nearest 10, spoken digit by digit: "two seven zero".
+    static func spokenHeading(_ degrees: Int) -> String {
+        let rounded = (Int((Double(degrees) / 10).rounded()) * 10) % 360
+        return ATCPhrase.digits(String(format: "%03ld", rounded))
+    }
+
+    /// The smallest angle (rad) between two headings.
+    static func headingError(_ a: Double, _ b: Double) -> Double {
+        var d = (a - b).truncatingRemainder(dividingBy: 2 * Double.pi)
+        if d > Double.pi { d -= 2 * Double.pi }
+        if d < -Double.pi { d += 2 * Double.pi }
+        return abs(d)
     }
 
     /// A warning when ownship rolls or touches down with no clearance read back. Each one is counted for missions.

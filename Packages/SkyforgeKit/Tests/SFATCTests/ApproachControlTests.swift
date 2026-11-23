@@ -57,12 +57,14 @@ private func approachView(_ id: String, callsign: String = "SKY417", kind: Traff
         #expect(out.contains { $0.control == .release && $0.aircraftID == "T1" })
     }
 
-    @Test func ownshipIsNeverHeldOrVectored() {
+    @Test func ownshipIsGivenReadbacksNotControls() {
+        // Ownship is vectored and held by readback prompts. The tower never sends it a TrafficControl directly.
         var atc = ATCController(runwayDesignator: "28")
         let own = approachView(TrafficOwnship.id, callsign: TrafficOwnship.callsign, phase: .inbound, along: 6_000,
                                distance: 800)
         let base = approachView("T2", callsign: "SKY500", phase: .base, facility: .tower, along: -1_000)
         let out = atc.update(time: 0, traffic: [own, base], wind: approachWind)
-        #expect(out.allSatisfy { $0.control == nil || $0.aircraftID != TrafficOwnship.id })
+        #expect(out.allSatisfy { $0.control == nil })
+        #expect(out.contains { $0.aircraftID == TrafficOwnship.id && $0.readback != nil })
     }
 }
