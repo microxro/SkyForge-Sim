@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 import SFMath
 @testable import SFWorldGen
@@ -5,7 +6,10 @@ import SFMath
 /// Gentle hills with a sea to the east and a lake to the west. Heights are finite everywhere.
 private struct HillTerrain: OpenWorldTerrain {
     func height(_ x: Double, _ y: Double) -> Double {
-        4 * sin(x / 1_700) + 3 * cos(y / 1_100) + 0.8 * sin((x + y) / 600)
+        let a: Double = 4 * sin(x / 1_700)
+        let b: Double = 3 * cos(y / 1_100)
+        let c: Double = 0.8 * sin((x + y) / 600)
+        return a + b + c
     }
     func isWater(_ x: Double, _ y: Double) -> Bool {
         x > 21_000 || (x < -20_000 && y > 8_000)
