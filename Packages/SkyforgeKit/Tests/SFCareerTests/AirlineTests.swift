@@ -104,10 +104,21 @@ struct AirlineScheduleTests {
         let sfc = Economy.spec("org.skyforge.sfc")!
         let sf3 = Economy.spec("org.skyforge.sf3")!
         let career = AirlineCareer()
-        #expect(AirlineSchedule.canAccept(alRoute(passengers: 2), aircraft: sfc, career: career) == nil)
-        #expect(AirlineSchedule.canAccept(alRoute(passengers: 2), aircraft: sf3, career: career) == .aircraftNotAllowed)
-        #expect(AirlineSchedule.canAccept(alRoute(passengers: 3), aircraft: sfc, career: career) == .notEnoughSeats)
-        #expect(AirlineSchedule.canAccept(alRoute(minimumRank: .regionalCaptain), aircraft: sfc, career: career)
+        #expect(AirlineSchedule.canAccept(alRoute(passengers: 2), aircraft: sfc, career: career, pilotRank: .commercial) == nil)
+        #expect(AirlineSchedule.canAccept(alRoute(passengers: 2), aircraft: sf3, career: career, pilotRank: .commercial) == .aircraftNotAllowed)
+        #expect(AirlineSchedule.canAccept(alRoute(passengers: 3), aircraft: sfc, career: career, pilotRank: .commercial) == .notEnoughSeats)
+        #expect(AirlineSchedule.canAccept(alRoute(minimumRank: .regionalCaptain), aircraft: sfc, career: career, pilotRank: .commercial)
+                == .rankTooLow(needed: .regionalCaptain))
+    }
+
+    @Test func pilotRankGatesScheduledLegs() {
+        let sfc = Economy.spec("org.skyforge.sfc")!
+        let career = AirlineCareer()
+        #expect(AirlineSchedule.canAccept(alRoute(), aircraft: sfc, career: career, pilotRank: .student)
+                == .pilotRankTooLow(needed: .privatePilot))
+        #expect(AirlineSchedule.canAccept(alRoute(), aircraft: sfc, career: career, pilotRank: .privatePilot) == nil)
+        #expect(AirlineSchedule.canAccept(alRoute(minimumRank: .regionalCaptain), aircraft: sfc,
+                                          career: AirlineCareer(), pilotRank: .privatePilot)
                 == .rankTooLow(needed: .regionalCaptain))
     }
 }

@@ -11,7 +11,7 @@ Pure-Swift, Linux-testable module that turns flights into long-term progression.
 - **Saves**: versioned JSON, atomic write, rolling `.bak`, falls back to the backup if the main file is corrupt, and throws rather than overwrite when both are unreadable or the save is from a newer app.
 
 ## Airline career (Airline.swift)
-- **Ranks**: Cadet First Officer → First Officer → Regional Captain → Senior Captain. Each rank needs scheduled legs and airline reputation (0–100). Ranks gate aircraft seats (3 seats until Regional Captain, then 6) and sector length. Military types never fly scheduled legs.
+- **Ranks**: Cadet First Officer → First Officer → Regional Captain → Senior Captain. Each rank needs scheduled legs and airline reputation (0–100). Airline rank is a separate track from pilot XP rank, but acceptance also needs a pilot rank (Private for the first two, Commercial for the top two). Ranks gate aircraft seats (3 seats until Regional Captain, then 6) and sector length. Military types never fly scheduled legs.
 - **Schedule**: `AirlineSchedule.generate` builds a deterministic day board out of a hub. A route converts to a `Job` with `asJob()`, so it flies through the existing job accept and settle pipeline and pays there.
 - **Scoring**: `AirlineEngine.score` weights on-time 50%, passenger comfort 25%, landing 15% and SOP checklist 10%. A leg that does not end at the scheduled destination scores zero.
 - **SOP checklist**: `SOPChecklist.standard` in flight order. Required steps are 80% of the SOP score.

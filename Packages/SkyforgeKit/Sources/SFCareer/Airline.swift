@@ -62,6 +62,15 @@ public enum AirlineRank: Int, Codable, Sendable, CaseIterable, Comparable {
 
     public var next: AirlineRank? { AirlineRank(rawValue: rawValue + 1) }
 
+    /// Pilot rank (XP progression in Progression.swift) needed before this airline rank may fly scheduled legs.
+    /// Airline rank is a separate track on purpose: it counts scheduled legs and reputation, not every flight.
+    public var minPilotRank: PilotRank {
+        switch self {
+        case .cadet, .firstOfficer: return .privatePilot
+        case .regionalCaptain, .seniorCaptain: return .commercial
+        }
+    }
+
     /// Whether a pilot at this rank may fly the aircraft on a scheduled leg. Military types never fly scheduled legs.
     public func allows(_ aircraft: HangarAircraft) -> Bool {
         !aircraft.isMilitary && aircraft.seats <= maxSeats
@@ -208,6 +217,7 @@ public enum AirlineRejection: Error, Sendable, Equatable {
     case rankTooLow(needed: AirlineRank)
     case aircraftNotAllowed
     case notEnoughSeats
+    case pilotRankTooLow(needed: PilotRank)
 }
 
 public enum AirlineSchedule {
@@ -245,8 +255,10 @@ public enum AirlineSchedule {
     }
 
     /// Checks rank, aircraft and seats before a scheduled leg is accepted.
-    public static func canAccept(_ route: AirlineRoute, aircraft: HangarAircraft, career: AirlineCareer) -> AirlineRejection? {
+    public static func canAccept(_ route: AirlineRoute, aircraft: HangarAircraft, career: AirlineCareer,
+                                 pilotRank: PilotRank) -> AirlineRejection? {
         if career.rank < route.minimumRank { return .rankTooLow(needed: route.minimumRank) }
+        if pilotRank < route.minimumRank.minPilotRank { return .pilotRankTooLow(needed: route.minimumRank.minPilotRank) }
         if !career.rank.allows(aircraft) { return .aircraftNotAllowed }
         if aircraft.seats - 1 < route.passengers { return .notEnoughSeats }
         return nil
