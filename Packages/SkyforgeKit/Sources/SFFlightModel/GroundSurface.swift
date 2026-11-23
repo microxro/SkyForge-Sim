@@ -1,11 +1,11 @@
 // SKYFORGE — Apache-2.0
-// Ground surface types for soft-field and bush-strip operations. Values are engineering-estimate
+// Ground surface types for soft-field, bush-strip and water operations. Values are engineering-estimate
 // figures in the spirit of public-domain textbook tables (rolling resistance and braking traction for
 // unpaved surfaces), not measurements of any real airstrip.
 import Foundation
 
 public enum GroundSurface: String, Sendable, Codable, CaseIterable, Equatable {
-    case paved, grass, gravel, softField, mud
+    case paved, grass, gravel, softField, mud, water
 
     /// Extra rolling-resistance coefficient added to every wheel on the ground (paved = 0).
     public var rollingCoefficient: Double {
@@ -15,6 +15,7 @@ public enum GroundSurface: String, Sendable, Codable, CaseIterable, Equatable {
         case .gravel: return 0.03
         case .softField: return 0.10
         case .mud: return 0.18
+        case .water: return 0.10
         }
     }
 
@@ -26,6 +27,7 @@ public enum GroundSurface: String, Sendable, Codable, CaseIterable, Equatable {
         case .gravel: return 0.85
         case .softField: return 0.65
         case .mud: return 0.45
+        case .water: return 0.25
         }
     }
 }
