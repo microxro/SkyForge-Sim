@@ -3,6 +3,7 @@ import Testing
 import Foundation
 @testable import SFQuickFlight
 import SFPreview
+import SFImagery
 
 /// Rivers, canals and lakes from OSM: parsing, the Overpass clauses that fetch them, and their environment mesh.
 @Suite struct OSMWaterTests {
@@ -29,8 +30,8 @@ import SFPreview
     static func parsed() throws -> OSMData { try OSMParser.parse(Data(json.utf8), origin: origin) }
 
     @Test func parsesRiversCanalsAndLakesAndSkipsTunnelsAndDegenerateRings() throws {
-        let d = try parsed()
-        #expect(d.water.map(\.id) == [901, 902, 904, 906])
+        let d = try Self.parsed()
+        #expect(d.water.map { $0.id } == [901, 902, 904, 906])
         let river = try #require(d.water.first { $0.id == 901 })
         #expect(river.kind == .river && river.widthMetres == 30 && river.points.count == 3)
         let canal = try #require(d.water.first { $0.id == 902 })
@@ -53,7 +54,7 @@ import SFPreview
     }
 
     @Test func lakesAreFlatAndRiversFollowTheGround() throws {
-        let d = try parsed()
+        let d = try Self.parsed()
         let slope: (Double, Double) -> Double = { x, y in 0.01 * x + 0.02 * y }
         let soup = OSMMeshBuilder.water(d.water, lift: 0.5, ground: slope)
         #expect(soup.triangleCount > 0)
@@ -73,7 +74,7 @@ import SFPreview
     }
 
     @Test func appendingWaterKeepsPerVertexChannelsAligned() throws {
-        let d = try parsed()
+        let d = try Self.parsed()
         var roads = TriangleSoup(origin: .zero)
         roads.add(SIMD3(0, 0, 1), SIMD3(10, 0, 1), SIMD3(0, 10, 1), na: SIMD3(0, 0, 1), nb: SIMD3(0, 0, 1), nc: SIMD3(0, 0, 1),
                   ca: SIMD3(0.2, 0.2, 0.2), cb: SIMD3(0.2, 0.2, 0.2), cc: SIMD3(0.2, 0.2, 0.2), material: .road, fields: SIMD3(1, 1, -1))
