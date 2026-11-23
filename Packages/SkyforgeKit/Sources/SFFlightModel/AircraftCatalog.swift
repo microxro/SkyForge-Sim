@@ -188,10 +188,10 @@ extension AircraftConfig {
             retractableGear: false)
     }()
 
-    /// SF-N Narrowbody (sfNarrowbody): ~58 t twin-turbofan airliner, 115 kN per engine, retractable gear.
+    /// SF-N Narrowbody (sfNarrowbody): ~58 t twin-turbofan airliner, 130 kN per engine, retractable gear.
     public static let sfNarrowbody: AircraftConfig = {
         var a = AeroCoefficients()
-        a.cL0 = 0.38; a.cLAlpha = 4.9; a.cLMaxClean = 1.50; a.cLMaxFlaps = 2.40
+        a.cL0 = 0.50; a.cLAlpha = 4.9; a.cLMaxClean = 1.50; a.cLMaxFlaps = 2.40
         a.cLQ = 3.0; a.cLElevator = 0.40; a.cLFlap = 0.60
         a.cD0 = 0.022; a.cDGear = 0.012; a.cDFlap = 0.060; a.cDSpeedbrake = 0.020; a.oswald = 0.82
         a.cYBeta = -0.45; a.cYRudder = 0.16
@@ -199,7 +199,7 @@ extension AircraftConfig {
         a.clBeta = -0.09; a.clP = -0.38; a.clR = 0.08; a.clAileron = 0.14; a.clRudder = 0.012
         a.cnBeta = 0.09; a.cnP = -0.025; a.cnR = -0.18; a.cnAileron = -0.02; a.cnRudder = -0.06
         var p = PropulsionConfig(kind: .turbojet, engineCount: 2, engineSpanOffset: 5.0)
-        p.dryThrust = 115_000; p.idleFraction = 0.04; p.windmillDragArea = 0.20
+        p.dryThrust = 130_000; p.idleFraction = 0.04; p.windmillDragArea = 0.20
         return AircraftConfig(
             id: "org.skyforge.sfn", name: "SF-N Narrowbody",
             mass: 58_000, inertia: SIMD3(720_000, 2_200_000, 2_800_000), ixz: 0,
