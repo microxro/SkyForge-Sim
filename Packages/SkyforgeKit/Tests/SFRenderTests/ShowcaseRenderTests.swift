@@ -179,7 +179,6 @@ import SFInstruments
             let lakeWake = OceanWake.aircraft(position: SIMD2(Float(p.x), Float(p.y)), heading: Float(atan2(dir.y, dir.x)),
                                               speed: 60, wingspan: 11)
             r.oceanWakes = lakeWake.map { [$0] } ?? []
-            print("WAKEDBG lakeWake=\(lakeWake == nil ? "nil" : "set") oceanWakes=\(r.oceanWakes.count) tier=\(r.oceanTier)")
             let lake = try r.render(width: w, height: h, camera: lakePose.chase(distance: 24, height: 6),
                                     aircraftPosition: lakePose.position, aircraftBodyToENU: lakePose.bodyToENU)
             Self.save("ultra_NZQN_lake", lake)
@@ -189,6 +188,8 @@ import SFInstruments
                                      aircraftPosition: lakePose.position, aircraftBodyToENU: lakePose.bodyToENU)
             r.debugView = 0
             Self.save("debug_NZQN_lake_water", proof)
+            // Frame names carry the wake state (the frames log does not echo prints): built = 1/0, wakes at the renderer = n.
+            Self.save("wakes_built\(lakeWake == nil ? 0 : 1)_renderer\(r.oceanWakes.count)_NZQN_lake", lake)
         }
 
         // Debug views (WorldRenderer.debugView) for the terms the reviews could not tell apart: the LSZS high
