@@ -139,6 +139,8 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
     private var flareRequested = false
     private var chaffRequested = false
     var touch = InputMapper.DeviceState()
+    /// Keyboard and mouse: held throttle and trim, mouse yoke, scroll, and mouse-look.
+    let keyboardMouse = KeyboardMouseInput()
     private var renderer: WorldRenderer?
     private var governor: QualityGovernor?
     private var qualityBase: WorldRenderer.Settings = .high
@@ -339,6 +341,11 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
         var device = GameControllerInput.poll()
         device.analog.merge(touch.analog) { a, b in abs(a) > abs(b) ? a : b }
         device.pressed.formUnion(touch.pressed)
+        let km = keyboardMouse.poll(dt: dt)
+        device.analog.merge(km.state.analog) { a, b in abs(a) > abs(b) ? a : b }
+        device.pressed.formUnion(km.state.pressed)
+        device.modifiers.formUnion(km.state.modifiers)
+        session.applyLook(km.look, dt: dt)
         session.update(realDt: dt, device: device)
         stepGameplay(dt: dt)
         stepTraffic(dt: dt)
