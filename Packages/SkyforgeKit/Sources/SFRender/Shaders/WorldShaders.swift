@@ -584,7 +584,13 @@ public enum WorldShaders {
             float jx = (fp_unit(h) - 0.5) * 3.0, jy = (fp_unit(h >> 8) - 0.5) * 4.0;
             bool built = fp_unit(h >> 16) < 0.86;
             if (built && abs(lx - jx) < 5.0 && abs(ly - jy) < 6.0) {
-                col = fpRoofs[h % 5u];
+                // Roof family per block, two tones each (mirror of FieldPattern.town).
+                uint fam = fp_hash(int(bu), int(bv), seed ^ 0xD15u) % 3u;
+                uint pick = (h >> 26) & 1u;
+                uint idx = fam == 0u ? (pick == 0u ? 0u : 2u) : (fam == 1u ? (pick == 0u ? 1u : 3u) : (pick == 0u ? 4u : 0u));
+                col = fpRoofs[idx];
+                float ux = lx - jx - 2.0, uy = ly - jy + 1.5;
+                if (((h >> 27) & 1u) == 0u && abs(ux) < 1.2 && abs(uy) < 1.2) col *= 0.45;
             } else {
                 col = lawn;
                 if (built && abs(lx - jx) < 5.0 && ly - jy > 6.0 && ly - jy < 9.0) col *= 0.55;
