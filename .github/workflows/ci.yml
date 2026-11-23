@@ -49,6 +49,7 @@ jobs:
           apt-get update -qq && apt-get install -y -qq python3 >/dev/null
           python3 tools/lint_pbxproj.py
           python3 tools/check_licenses.py
+          python3 tools/region_packs/validate_regions.py
           python3 tools/appstore_preflight.py
           python3 tools/test_ci_frames.py
 
