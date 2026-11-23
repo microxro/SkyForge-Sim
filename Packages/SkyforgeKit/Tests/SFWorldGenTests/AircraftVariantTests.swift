@@ -15,6 +15,9 @@ import SFMath
         case "org.skyforge.sfc": return Expected(gearZ: 1.30, span: 10.2, length: 8.0...9.6, prop: true)
         case "org.skyforge.sfa": return Expected(gearZ: 1.15, span: 9.0, length: 6.0...7.4, prop: true)
         case "org.skyforge.sft1": return Expected(gearZ: 1.35, span: 9.4, length: 11.5...13.5, prop: false)
+        case "org.skyforge.sfb": return Expected(gearZ: 1.30, span: 11.6, length: 7.2...8.6, prop: true)
+        case "org.skyforge.sfn": return Expected(gearZ: 3.30, span: 34.0, length: 37.0...41.0, prop: false)
+        case "org.skyforge.sfe": return Expected(gearZ: 1.60, span: 16.8, length: 13.8...15.8, prop: false)
         default: return Expected(gearZ: 1.70, span: 9.4, length: 14.5...16.0, prop: false)   // org.skyforge.sff1
         }
     }
@@ -65,6 +68,6 @@ import SFMath
     @Test func unknownIdsFallBack() {
         #expect(AircraftVariants.build(id: "org.skyforge.sf1") == nil)
         #expect(AircraftVariants.build(id: "nonsense") == nil)
-        #expect(AircraftVariants.ids.count == 4)
+        #expect(AircraftVariants.ids.count == 7)
     }
 }
