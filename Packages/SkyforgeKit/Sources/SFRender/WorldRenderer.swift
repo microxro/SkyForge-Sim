@@ -368,6 +368,7 @@ public final class WorldRenderer {
         vegetationDensity = s.vegetationDensity; drawDistanceScale = s.drawDistanceScale; terrainSSEScale = s.terrainSSEScale
     }
     private var cloudRenderer: CloudRenderer?
+    private var nightLightPass: NightLightPass?
     private let sky: PhysicalSkyRenderer
     private var environment: (buffer: MTLBuffer, count: Int, origin: SIMD3<Double>, cells: [MeshCell])?
     private var environmentCull: EnvironmentCullIndirect?
@@ -1010,6 +1011,14 @@ public final class WorldRenderer {
                                        forward: SIMD3<Float>(Float(fwdC.x), Float(fwdC.y), Float(fwdC.z)),
                                        up: SIMD3<Float>(Float(c.up.x), Float(c.up.y), Float(c.up.z)),
                                        toSun: sunC, directShare: direct)
+        }
+        // Night lights (traffic nav, strobe and beacon sprites): additive over the scene, depth-tested against it.
+        // They fade in as the sun drops below about 7 degrees (toSun.z ≈ 0.12 → 0).
+        let nightFade = min(1, max(0, (0.12 - lighting.toSun.z) / 0.15))
+        if nightFade > 0, !trafficLights.isEmpty {
+            if nightLightPass == nil { nightLightPass = try NightLightPass(device: device, colorFormat: .rgba16Float) }
+            try nightLightPass?.encode(cmd: cmd, device: device, colour: scene, depth: sceneDepth, camera: c,
+                                       lights: trafficLights, intensityScale: nightFade, time: Float(time))
         }
         // Precipitation, wet-air veil and lightning over the HDR scene, after the cloud composite and before post.
         let lightning = weatherEffects.lightning(at: time)
