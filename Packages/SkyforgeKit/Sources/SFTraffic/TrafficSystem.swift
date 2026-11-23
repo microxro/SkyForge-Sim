@@ -29,6 +29,9 @@ public struct TrafficSystem: Sendable {
 
     /// Seconds between wake pairs from a heavy aircraft (about 170 to 240 m of track at heavy approach speeds).
     public static let wakeInterval = 4.0
+    /// Along-runway distance (m) at which a departure is handed from the tower to departure control. The same
+    /// distance ends ownship's climb out in `OwnshipTracker`.
+    public static let departureHandoffDistance = 3_000.0
     /// Types flown as traffic: the civil fleet, from the 1 kg trainer to the 4.5 t jet.
     public static let defaultFleet: [AircraftConfig] = [.sf1Trainer, .sf2Cruiser, .sf3Twin, .sf5Jet]
 
@@ -60,7 +63,7 @@ public struct TrafficSystem: Sendable {
                                distanceToTouchdown: (dn * dn + de * de + dd * dd).squareRoot(),
                                isHeavy: TrafficPerformance.isHeavy(a.config),
                                clearedToLand: a.clearedToLand, clearedToTakeoff: a.clearedToTakeoff,
-                               takeoffFits: departureFits(a.config))
+                               takeoffFits: departureFits(a.config), facility: a.facility)
     }
 
     /// True when this type reaches rotation speed on this runway at the takeoff acceleration, with 150 m to spare.
@@ -118,6 +121,8 @@ public struct TrafficSystem: Sendable {
             if let event = Self.advance(&aircraft[i], dt: dt, runway: rwy, pattern: pat, density: rho) {
                 pendingEvents.append(event)
             }
+            aircraft[i].facility = Self.facility(current: aircraft[i].facility, phase: aircraft[i].phase,
+                                                 alongRunway: rwy.local(aircraft[i].position).x)
         }
         shedWakes(dt: dt)
         wakes.step(dt: dt)
@@ -202,6 +207,25 @@ public struct TrafficSystem: Sendable {
             aircraft[i].sinceWake = 0
             wakes.emit(WakeVortexPair.generated(by: a.config, tas: a.speed, density: rho,
                                                 centerNED: a.position, headingRad: a.heading))
+        }
+    }
+
+    // MARK: - Facilities
+
+    /// The controller that has an aircraft in `phase`, given the one that had it before. Inbound aircraft are with
+    /// approach. Ownship coming back inbound after its climb out stays with departure, so the change is not
+    /// repeated. A departure goes to departure control at `departureHandoffDistance` along the runway. Once an
+    /// aircraft is on the pattern or the runway, the tower has it.
+    public static func facility(current: TrafficFacility, phase: TrafficPhase, alongRunway: Double) -> TrafficFacility {
+        switch phase {
+        case .inbound:
+            return current == .approach ? .approach : .departure
+        case .downwind, .base, .extended, .final, .landing, .holdShort, .takeoffRoll:
+            return .tower
+        case .departing:
+            return (current == .departure || alongRunway >= departureHandoffDistance) ? .departure : .tower
+        case .complete:
+            return current
         }
     }
 

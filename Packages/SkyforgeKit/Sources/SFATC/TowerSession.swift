@@ -14,9 +14,11 @@ public struct TowerSession: Sendable {
     public private(set) var ownship: OwnshipTracker
     private var clock = 0.0
 
-    /// A field's traffic and tower. `startsOnRunway` is true when ownship begins on the runway and must hold short.
+    /// A field's traffic and tower. The traffic follows the field's `TrafficProfile`, so a busy field sees more
+    /// movements than a short strip. `startsOnRunway` is true when ownship begins on the runway and must hold short.
     public init(runway: TrafficRunway, startsOnRunway: Bool) {
-        traffic = TrafficSystem(runway: runway)
+        let profile = TrafficProfile(runway: runway)
+        traffic = TrafficSystem(runway: runway, seed: profile.seed, schedule: profile.schedule, fleet: profile.fleet)
         controller = ATCController(runwayDesignator: runway.designator)
         ownship = OwnshipTracker(startsOnRunway: startsOnRunway)
     }
