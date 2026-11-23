@@ -10,7 +10,7 @@
 //
 // Library order (WorldRenderer): `CloudShaders.common + MacroColourShaders.source + WorldShaders.source`; world_fragment
 // calls `mc_decoupleGround`, so this source must come BEFORE it. It has no dependency on WorldShaders (all helpers are
-// prefixed `mc_`). Runtime flag: `WorldRenderer.macroColourDecoupling` (u.quality.w), default off. CPU mirror:
+// prefixed `mc_`). Runtime flag: `WorldRenderer.macroColourDecoupling` (u.quality.w), default on (round 65). CPU mirror:
 // `MacroColourReference` (SFRender). Host: `MacroColourPass`. Integration notes: docs/rounds/ROUND3.md.
 
 public enum MacroColourShaders {

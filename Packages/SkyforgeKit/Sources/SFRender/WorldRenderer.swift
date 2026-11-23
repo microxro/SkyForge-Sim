@@ -271,7 +271,7 @@ public final class WorldRenderer {
     private lazy var zeroMacro: MTLTexture = MacroColourPass.zeroTexture(device: device)
     /// Replace the near-ground tone-map stack with the macro-colour decoupling pass (round 3). Off by default, so the
     /// art-tuned rounds 1–62 look is unchanged until the KBFI/KMRY/KASE/LSZS/NZQN frames are compared.
-    public var macroColourDecoupling = false
+    public var macroColourDecoupling = true
     /// Round 2: suburban parcel fabric (kerbs, sidewalks, driveways, per-lot lawns) on near ground within 2 km, read from the
     /// RGBA8 mask at texture index 11. Off by default: the mask is then not bound (a zero texture is) and the shader's weight is 0,
     /// so the art-tuned frames are unchanged. Needs `landuse.sfl` in the airport's pack. docs/rounds/ROUND2.md.
