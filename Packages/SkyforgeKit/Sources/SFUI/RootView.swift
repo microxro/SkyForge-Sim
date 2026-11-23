@@ -48,12 +48,12 @@ public struct SkyforgeRootView: View {
                     Button("Renderer preview (physically based sky, day to twilight)") { showingSky = true }
                     Button("Instruments demo (steam gauges and SF-1000 PFD)") { showingInstruments = true }
                     NavigationLink("Controls and bindings") { BindingsView() }
+                    NavigationLink("Settings: graphics, audio, controls, HUD, units, accessibility") { SettingsView() }
                 } header: {
                     Text("Available")
                 }
                 Section {
                     Text("World map: not yet available")
-                    Text("Settings: not yet available")
                 } header: {
                     Text("Coming in later phases")
                 }
