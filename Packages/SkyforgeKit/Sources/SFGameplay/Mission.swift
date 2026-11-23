@@ -193,6 +193,10 @@ public struct MissionDefinition: Sendable, Codable, Equatable, Identifiable {
     public var timeLimit: Double?
     public var areaRadius: Double?                  // fail beyond this distance from the threshold
     public var unlock: UnlockRequirement
+    /// Cargo or passengers carried from the start. Applied to the aircraft's mass, inertia and CG.
+    public var payload: [PayloadStation]
+    /// Ground surface at the mission's airstrip (affects braking and rolling).
+    public var surface: GroundSurface
     /// True when the field has traffic and a tower: AI arrivals and departures, approach control, and readbacks.
     public var traffic: Bool
 
@@ -200,12 +204,13 @@ public struct MissionDefinition: Sendable, Codable, Equatable, Identifiable {
                 recommendedAircraft: String, allowedRoles: [AircraftRole] = [], spawn: MissionSpawn,
                 wind: MissionWind = MissionWind(), targets: [TargetSpawn] = [], objectives: [MissionObjective],
                 parTime: Double, timeLimit: Double? = nil, areaRadius: Double? = 40_000, unlock: UnlockRequirement = .none,
-                traffic: Bool = false) {
+                payload: [PayloadStation] = [], surface: GroundSurface = .paved, traffic: Bool = false) {
         self.id = id; self.title = title; self.category = category; self.briefing = briefing
         self.difficulty = difficulty; self.recommendedAircraft = recommendedAircraft
         self.allowedRoles = allowedRoles; self.spawn = spawn; self.wind = wind; self.targets = targets
         self.objectives = objectives; self.parTime = parTime; self.timeLimit = timeLimit
-        self.areaRadius = areaRadius; self.unlock = unlock; self.traffic = traffic
+        self.areaRadius = areaRadius; self.unlock = unlock
+        self.payload = payload; self.surface = surface; self.traffic = traffic
     }
 
     public var isMilitary: Bool { category == .military }
