@@ -296,6 +296,26 @@ import SFInstruments
         #expect(r.lastDrawnEnvironmentCells > 0)
     }
 
+    /// SkyWorld at the ultra settings with the wide edge AA off and on, for the art review (default stays off).
+    @Test(.enabled(if: SkyRegressionTests.hasDevice, "no Metal device on this host"))
+    func skyWorldWideEdgeAAOnAndOff() throws {
+        guard Self.wanted("SKYWORLD") else { return }
+        let world = QuickFlightWorld()
+        let session = QuickFlightSession(world: world, start: .final)
+        let cam = session.chaseCamera()
+        let r = try WorldRenderer(lighting: LightingSetup.physicalPreset(.midday, azimuthDegrees: 200, cameraHeightMetres: cam.position.z))
+        r.apply(Self.presets[3].settings)
+        let env = world.buildEnvironmentInstanced(detail: Self.presets[3].sky)
+        try r.setEnvironment(env.soup)
+        try r.setTrees(RealWorldRenderData.trees(env.trees))
+        r.clouds = .fairWeather
+        let camera = WorldCamera(position: cam.position, target: cam.target)
+        r.wideEdgeAA = false
+        Self.save("skyworld_wideaa_off", try r.render(width: Self.width, height: Self.height, camera: camera))
+        r.wideEdgeAA = true
+        Self.save("skyworld_wideaa_on", try r.render(width: Self.width, height: Self.height, camera: camera))
+    }
+
     /// SkyWorld (the offline fallback) at phone detail and at the ultra render settings.
     @Test(.enabled(if: SkyRegressionTests.hasDevice, "no Metal device on this host"), arguments: [false, true])
     func skyWorldFrame(ultra: Bool) throws {

@@ -1,0 +1,153 @@
+name: Frames
+
+# Art-review frames live in their own workflow so cancelling or re-running them never cancels the CI checks
+# (linux, apple). Cancelling one job in a GitHub run cancels the whole run, so the two must not share one.
+#
+# The `changes` job decides per pull request whether frames are needed. Pushes to main always render, because
+# the art thread reads ci-frames/main/. A skipped `frames` job counts as passing for required checks.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: frames-${{ github.ref == 'refs/heads/main' && github.run_id || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+jobs:
+  # Decides whether the slow `frames` job is needed. A pull request runs it only when its changes touch rendering,
+  # scenery, shaders, assets or the frames tooling. Pushes to main and manual runs always render, because the art
+  # thread reads ci-frames/main/.
+  changes:
+    runs-on: ubuntu-24.04
+    outputs:
+      visual: ${{ steps.decide.outputs.visual }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Decide whether frames are needed
+        id: decide
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          # Paths whose changes can alter a rendered frame. Anything else (gameplay, input, career, settings, docs) skips frames.
+          VISUAL='^(Packages/SkyforgeKit/Sources/(SFRender|SFTerrainCore|SFWorldGen|SFImagery|SFAtmosphere|SFContent|SFPreview|SFPreviewCLI|SFQuickFlight|SFTraffic)/|Packages/SkyforgeKit/Tests/[^/]*(Render|Showcase|Frame|Visual|Terrain|Scenery|Building)[^/]*/|Packages/SkyforgeKit/Package\.swift$|App/|SKYFORGE\.xcodeproj/|\.github/workflows/|tools/(ci_frames|test_ci_frames|perf_gate|fetch_|overture)[^/]*$)|(^|/)(Assets|Resources|Shaders?|Textures?)/|\.(metal|metallib|msl|glsl)$|(WorldRenderer|Scenery|Terrain|Shader|Frame|Showcase)[^/]*\.swift$'
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "visual=true" >> "$GITHUB_OUTPUT"
+            echo "Event $EVENT always renders frames."
+            exit 0
+          fi
+          git diff --name-only "$BASE" "$HEAD" > changed.txt
+          echo "Changed files: $(wc -l < changed.txt)"
+          if grep -Eq "$VISUAL" changed.txt; then
+            echo "visual=true" >> "$GITHUB_OUTPUT"
+            echo "Rendering-related files changed; frames will run."
+          else
+            echo "visual=false" >> "$GITHUB_OUTPUT"
+            echo "No rendering-related files changed; frames skipped."
+          fi
+
+  # Art-review frames (five showcase airports and SkyWorld at 1280×720, Metal), logged as SKYFORGE_PNG
+  # lines in their own job so they can be read back without the rest of the test output.
+  # One job renders every scene in sequence: macOS runners are the scarce resource, so each PR needs 2, not 7.
+  frames:
+    needs: changes
+    if: ${{ needs.changes.outputs.visual == 'true' }}
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Select Xcode
+        run: |
+          if [ -d /Applications/Xcode_26.6.app ]; then sudo xcode-select -s /Applications/Xcode_26.6.app; fi
+      - name: Showcase frames
+        env:
+          SKYFORGE_VISUAL_LOG: "1"
+          SKYFORGE_FRAMES: KMRY,KBFI,KASE,LSZS,NZQN,SKYWORLD
+        run: |
+          set -o pipefail
+          swift test --disable-automatic-resolution -c release -Xswiftc -enable-testing --package-path Packages/SkyforgeKit --filter ShowcaseRenderTests 2>&1 | tee frames.log
+      - name: Frames as PNG files
+        if: ${{ always() }}
+        run: |
+          if [ -f frames.log ]; then python3 tools/ci_frames.py extract frames.log frames-out; else echo "::warning::No frames log"; fi
+      - name: Upload frames
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: skyforge-frames
+          path: frames-out
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # Publishes main's review frames to the `ci-frames` branch (raw.githubusercontent.com/<repo>/ci-frames/main/).
+  # Runs only on pushes to main, so it never executes code from a pull request with a write token.
+  # Pull-request frames are published and commented by .github/workflows/pr-frames.yml (workflow_run).
+  publish-frames:
+    needs: frames
+    if: ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    concurrency:
+      group: publish-frames
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      SHA: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Download frames
+        id: download
+        uses: actions/download-artifact@v8
+        continue-on-error: true
+        with:
+          name: skyforge-frames
+          path: frames-out
+      - name: Push main frames to ci-frames
+        run: |
+          set -euo pipefail
+          mkdir -p frames-out
+          AUTH="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          GIT=(git -c "http.https://github.com/.extraheader=$AUTH")
+          REMOTE="https://github.com/${REPO}.git"
+          WT="$RUNNER_TEMP/ci-frames"
+          rm -rf "$WT" && mkdir -p "$WT"
+          if "${GIT[@]}" ls-remote --exit-code --heads "$REMOTE" ci-frames >/dev/null 2>&1; then
+            "${GIT[@]}" fetch --depth 1 -q "$REMOTE" ci-frames
+            git archive FETCH_HEAD | tar -x -C "$WT"
+          fi
+          DEST="$WT/main"
+          rm -rf "$DEST" && mkdir -p "$DEST"
+          cp frames-out/*.png "$DEST/" 2>/dev/null || echo "::warning::No frames to publish for main"
+          printf '%s\n' "$SHA" > "$DEST/commit.txt"
+          cat > "$WT/README.md" <<'EOF'
+          # Review frames (generated)
+
+          Rewritten by .github/workflows/frames.yml (job publish-frames) on each push to main.
+
+          - main/: frames from the latest push to main. commit.txt names the commit.
+          - pr-<number>/: frames for open pull requests, published by .github/workflows/pr-frames.yml.
+
+          Raw link pattern: https://raw.githubusercontent.com/<owner>/<repo>/ci-frames/main/<name>.png
+          EOF
+          cd "$WT"
+          git init -q -b ci-frames
+          git add -A
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -q -m "Review frames for main (${SHA:0:7})"
+          "${GIT[@]}" push -q --force "$REMOTE" HEAD:refs/heads/ci-frames

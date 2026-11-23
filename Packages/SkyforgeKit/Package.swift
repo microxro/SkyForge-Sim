@@ -32,6 +32,8 @@ let package = Package(
         .target(name: "SFInstruments", dependencies: ["SFMath", "SFAtmosphere", "SFFlightModel"]),
         .target(name: "SFQuickFlight", dependencies: ["SFMath", "SFAtmosphere", "SFWeather", "SFFlightModel", "SFInstruments", "SFInput", "SFWorldGen", "SFPreview", "SFImagery", "SFNavData", "SFTerrainCore", "SFContent"], resources: [.copy("Resources")]),
         .target(name: "SFCareer", dependencies: ["SFMath"]),
+        // First-flight lessons for new players. Pure Swift; the UI overlays the prompts and feeds the checks.
+        .target(name: "SFTutorial"),
         // Missions, aircraft selection and military flight. Pure Swift on top of the flight model and Quick Flight worlds.
         .target(name: "SFGameplay", dependencies: ["SFMath", "SFAtmosphere", "SFFlightModel", "SFQuickFlight", "SFTraffic", "SFATC"]),
         .target(name: "SFGameplayUI", dependencies: ["SFGameplay"]),
@@ -43,10 +45,11 @@ let package = Package(
         .target(name: "SFRender", dependencies: ["SFPerf", "SFMath", "SFSim", "SFWeather", "SFTerrainCore", "SFWorldGen", "SFAtmosphere", "SFPreview", "SFQuickFlight"]),
         .target(name: "SFAudio", dependencies: ["SFSim", "SFMath", "SFFlightModel", "SFWeather"]),
         .target(name: "SFPlatform", dependencies: ["SFSim", "SFInput"]),
-        .target(name: "SFUI", dependencies: ["SFSim", "SFRender", "SFWorldGen", "SFPerf", "SFAudio", "SFPlatform", "SFNavData", "SFContent", "SFInstruments", "SFInput", "SFQuickFlight", "SFAtmosphere", "SFWeather", "SFImagery", "SFFlightModel", "SFGameplay", "SFGameplayUI", "SFCareer", "SFTraffic", "SFATC"]),
+        .target(name: "SFUI", dependencies: ["SFSim", "SFRender", "SFWorldGen", "SFPerf", "SFAudio", "SFPlatform", "SFNavData", "SFContent", "SFInstruments", "SFInput", "SFQuickFlight", "SFAtmosphere", "SFWeather", "SFImagery", "SFFlightModel", "SFGameplay", "SFGameplayUI", "SFCareer", "SFTraffic", "SFATC", "SFTutorial"]),
         .executableTarget(name: "SFPreviewCLI", dependencies: ["SFPreview", "SFInstruments", "SFAtmosphere", "SFQuickFlight", "SFImagery", "SFContent", "SFWorldGen", "SFTerrainCore", "SFMath"]),
         // Tests (Swift Testing)
         .testTarget(name: "SFCareerTests", dependencies: ["SFCareer", "SFMath"]),
+        .testTarget(name: "SFTutorialTests", dependencies: ["SFTutorial"]),
         .testTarget(name: "SFMathTests", dependencies: ["SFMath"]),
         .testTarget(name: "SFAtmosphereTests", dependencies: ["SFAtmosphere"]),
         .testTarget(name: "SFFlightModelTests", dependencies: ["SFFlightModel"]),
