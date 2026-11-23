@@ -1377,6 +1377,15 @@ public enum WorldShaders {
                         // Mid-scale mottle (9 m, ±8 %): the material octaves fade out by 8 m, which left the lawn one sheet of
                         // colour from a kilometre out. Fades by a 16 m footprint, so it cannot alias at distance.
                         albedo *= 1.0 + 0.16 * groundNoise(gw - 29.0, 9.0) * saturate(1.0 - fpw / 16.0) * lawnW;
+                        // Field-scale variation (round 65, art lead: one olive sheet at 1–3 km). A 48 m field tone, sharpened so
+                        // fields read as separate parcels rather than a cloud, ±10 %, out to a 40 m footprint.
+                        float fieldT = clamp(groundNoise(gw + 113.0, 48.0) * 2.5, -1.0, 1.0);
+                        albedo *= 1.0 + 0.10 * fieldT * saturate(1.0 - fpw / 40.0) * lawnW;
+                        // Mowed stripes (round 65): 30 m bands, ±8 %, one direction per 96 m block, faded by a 24 m footprint.
+                        float2 mBlk = floor(gw / 96.0) * 96.0;
+                        float mAng = 3.14159 * (0.5 + 0.5 * groundNoise(mBlk + 71.0, 8.0));
+                        float mStripe = sin(dot(gw, float2(cos(mAng), sin(mAng))) * (6.28318 / 30.0));
+                        albedo *= 1.0 + 0.08 * mStripe * saturate(1.0 - fpw / 24.0) * lawnW;
                     }
                 }
                 albedo *= 1.0 + (f - 1.0) * groundMat;
