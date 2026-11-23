@@ -285,7 +285,7 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
                 let aircraft = QuickFlightWorld.aircraftMesh(for: aircraftID)
                 await MainActor.run {
                     do {
-                        try self.renderer?.setRealWorld(data)
+                        try self.renderer?.applyRealAirport(data, fieldElevation: region.runwayElevation, clouds: weather?.layer)
                         try self.renderer?.setAircraft(aircraft)
                         self.world = region
                         self.realRegion = region
@@ -294,7 +294,6 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
                         self.tileCache = cache
                         self.resetFlight(start)
                         self.attribution = region.attribution + (weather.map { ["Weather: \($0.raw) (aviationweather.gov)"] } ?? [])
-                        self.renderer?.clouds = weather?.layer ?? .fairWeather(fieldElevation: Float(region.runwayElevation))
                         self.status = .ready
                     } catch { self.status = .failed("Upload: \(error)") }
                 }

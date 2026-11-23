@@ -71,9 +71,8 @@ import SFInstruments
         let session = QuickFlightSession(world: region, start: .final)
         let cam = session.chaseCamera()
         let r = try WorldRenderer(lighting: LightingSetup.physicalPreset(.midday, azimuthDegrees: 200, cameraHeightMetres: cam.position.z))
-        try r.setRealWorld(data)
+        try r.applyRealAirport(data, fieldElevation: region.runwayElevation)
         try r.setAircraft(QuickFlightWorld.aircraftMesh())
-        r.clouds = .fairWeather(fieldElevation: Float(region.runwayElevation))
         let c = session.bodyToENUColumns
         let img = try r.render(width: Self.width, height: Self.height, camera: WorldCamera(position: cam.position, target: cam.target),
                                aircraftPosition: session.positionENU, aircraftBodyToENU: simd_double3x3(columns: (c.0, c.1, c.2)))
@@ -95,7 +94,7 @@ import SFInstruments
         let session = QuickFlightSession(world: region, start: .final)
         let cam = session.chaseCamera()
         let r = try WorldRenderer(lighting: LightingSetup.physicalPreset(.midday, azimuthDegrees: 200, cameraHeightMetres: cam.position.z))
-        try r.setRealWorld(data)
+        try r.applyRealAirport(data, fieldElevation: region.runwayElevation)
         r.clouds = .clear
         let w = 320, h = 180
         let track = SIMD3<Double>(sin(region.runwayHeading), cos(region.runwayHeading), 0)
@@ -128,9 +127,8 @@ import SFInstruments
         let cam = session.chaseCamera()
         let r = try WorldRenderer(lighting: LightingSetup.physicalPreset(.midday, azimuthDegrees: 200, cameraHeightMetres: cam.position.z))
         r.apply(.ultra)
-        try r.setRealWorld(data)
+        try r.applyRealAirport(data, fieldElevation: region.runwayElevation)
         try r.setAircraft(QuickFlightWorld.aircraftMesh())
-        r.clouds = .fairWeather(fieldElevation: Float(region.runwayElevation))
         let w = Self.width, h = Self.height
         let c = session.bodyToENUColumns
         let body = simd_double3x3(columns: (c.0, c.1, c.2))
@@ -260,9 +258,8 @@ import SFInstruments
         let cam = session.chaseCamera()
         let r = try WorldRenderer(lighting: LightingSetup.physicalPreset(.midday, azimuthDegrees: 200, cameraHeightMetres: cam.position.z))
         r.apply(p.settings)
-        try r.setRealWorld(data)
+        try r.applyRealAirport(data, fieldElevation: region.runwayElevation)
         try r.setAircraft(QuickFlightWorld.aircraftMesh())
-        r.clouds = .fairWeather(fieldElevation: Float(region.runwayElevation))
         let c = session.bodyToENUColumns
         let img = try r.render(width: Self.width, height: Self.height, camera: WorldCamera(position: cam.position, target: cam.target),
                                aircraftPosition: session.positionENU, aircraftBodyToENU: simd_double3x3(columns: (c.0, c.1, c.2)))
