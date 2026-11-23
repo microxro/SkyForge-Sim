@@ -290,7 +290,30 @@ public enum MissionCatalog {
         parTime: 300, timeLimit: 600, areaRadius: 20_000, unlock: .mission("engine-out-landing"),
         surface: .water)
 
-    public static let all: [MissionDefinition] = [firstFlight, patternLanding, precisionLanding, wingman, intercept, gunnery, lowLevel, dogfight, coastalSurvey, twinBandits, bushStrip, airportTour, valleyRun, waterDropRun, rescuePickup, airshowLoop, radarIntercept, twoShipDefence, ifrApproach, cargoRun, engineOutLanding, scooperFirefight]
+    public static let gateRun = MissionDefinition(
+        id: "gate-run", title: "Gate Run", category: .training,
+        briefing: "Fly three gates in order. Pass through each ring at height; missing a gate ends the run.",
+        difficulty: 3, recommendedAircraft: AircraftCatalog.sfAerobat.id, allowedRoles: civil,
+        spawn: MissionSpawn(along: -1_000, up: 300, speed: .cruise),
+        objectives: [
+            MissionObjective(id: "gate-1", title: "Gate 1", kind: .gate(MissionWaypoint(2_000, 0, 300, radius: 150), headingDeg: 0), points: 150),
+            MissionObjective(id: "gate-2", title: "Gate 2", kind: .gate(MissionWaypoint(3_000, 600, 350, radius: 150), headingDeg: 20), points: 150),
+            MissionObjective(id: "gate-3", title: "Gate 3", kind: .gate(MissionWaypoint(4_000, -300, 300, radius: 150), headingDeg: -20), points: 200),
+        ],
+        parTime: 240, timeLimit: 480, areaRadius: 20_000, unlock: .mission("airshow-loop"))
+
+    public static let aileronRollPractice = MissionDefinition(
+        id: "aileron-roll", title: "Aileron Roll", category: .training,
+        briefing: "Set up on the display line at 2 km, then fly one aileron roll. Keep at least 150 m of height and 40 m/s of speed through it.",
+        difficulty: 2, recommendedAircraft: AircraftCatalog.sfAerobat.id, allowedRoles: civil,
+        spawn: MissionSpawn(along: -1_000, up: 300, speed: .cruise),
+        objectives: [
+            MissionObjective(id: "setup", title: "Set up on the display line", kind: .flyTo(MissionWaypoint(2_000, 0, 300, radius: 400)), points: 150),
+            MissionObjective(id: "roll", title: "Fly one aileron roll", kind: .aileronRoll(minAGL: 150, minSpeed: 40), points: 300),
+        ],
+        parTime: 240, timeLimit: 480, areaRadius: 20_000, unlock: .mission("airshow-loop"))
+
+    public static let all: [MissionDefinition] = [firstFlight, patternLanding, precisionLanding, wingman, intercept, gunnery, lowLevel, dogfight, coastalSurvey, twinBandits, bushStrip, airportTour, valleyRun, waterDropRun, rescuePickup, airshowLoop, radarIntercept, twoShipDefence, ifrApproach, cargoRun, engineOutLanding, scooperFirefight, gateRun, aileronRollPractice]
 
     public static func mission(id: String) -> MissionDefinition? { all.first { $0.id == id } }
     public static func missions(in category: MissionCategory) -> [MissionDefinition] { all.filter { $0.category == category } }

@@ -163,7 +163,7 @@ public struct GameplayDirector: Sendable {
             let sample = FlightSample(time: snapshot.time, positionNED: s.positionNED, velocityNED: s.velocityNED,
                                       heightAGL: snapshot.heightAGL - aircraft.gearHeight, onGround: o.weightOnWheels,
                                       crashed: snapshot.crashed || failed || shotDown,
-                                      crashReason: reason)
+                                      crashReason: reason, bodyRates: s.bodyRates)
             let missionEvents: [MissionEvent] = runtime!.update(sample: sample, targets: targets,
                                                                 overstressSeconds: monitor.overstressSeconds,
                                                                 combat: combat, radarLockedID: radar.lockedTargetID,

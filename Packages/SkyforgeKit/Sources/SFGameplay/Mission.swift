@@ -85,6 +85,12 @@ public enum ObjectiveKind: Sendable, Codable, Equatable {
     /// Fly a straight-in approach on a glidepath from `gateDistance` metres out to the threshold. Stay within
     /// `tolerance` metres of the centreline and the glidepath (`glideslopeDeg`); fail after `graceTime` seconds out of band.
     case ifrApproach(gateDistance: Double, glideslopeDeg: Double, tolerance: Double, graceTime: Double)
+    /// Pass through the disc of the waypoint's radius, in the plane perpendicular to `headingDeg` (direction of travel,
+    /// degrees from the runway heading, positive to the right). Crossing the plane outside the disc fails the mission.
+    case gate(MissionWaypoint, headingDeg: Double)
+    /// Roll through one full turn about the longitudinal axis, above `minAGL` and at or above `minSpeed` (m/s),
+    /// keeping the pitch drift under 30 degrees. Needs body rates in the flight sample.
+    case aileronRoll(minAGL: Double, minSpeed: Double)
 }
 
 public struct MissionObjective: Sendable, Codable, Equatable, Identifiable {
@@ -263,6 +269,10 @@ public struct MissionDefinition: Sendable, Codable, Equatable, Identifiable {
                 if gate <= 0 || slope <= 0 || slope > 6 || tol <= 0 || grace < 0 { out.append("\(o.id): bad approach limits") }
             case .loop(let minAGL, let minSpeed):
                 if minAGL <= 0 || minSpeed <= 0 { out.append("\(o.id): bad loop limits") }
+            case .gate(let wp, _):
+                if wp.radius <= 0 { out.append("\(o.id): bad gate radius") }
+            case .aileronRoll(let minAGL, let minSpeed):
+                if minAGL <= 0 || minSpeed <= 0 { out.append("\(o.id): bad roll limits") }
             case .takeoff, .flyTo: break
             }
         }
