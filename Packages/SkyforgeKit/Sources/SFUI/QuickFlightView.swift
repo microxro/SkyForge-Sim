@@ -6,15 +6,23 @@ import SwiftUI
 import MetalKit
 import simd
 import SFRender
+import SFWorldGen
 import SFPreview
 import SFInput
 import SFInstruments
 import SFQuickFlight
+import SFPerf
 import SFPlatform
 import SFContent
 import SFImagery
 import SFAtmosphere
 import SFWeather
+import SFFlightModel
+import SFGameplay
+import SFCareer
+import SFGameplayUI
+import SFTraffic
+import SFATC
 
 /// Where Quick Flight takes place.
 public enum QuickFlightLocation: Hashable, Sendable {
@@ -43,6 +51,30 @@ public enum QuickFlightLocation: Hashable, Sendable {
     }
 }
 
+/// The time of day a player picks in Quick Flight. Each maps to an SFPreview lighting preset, which sets the sun,
+/// the sky, the stars (night sky pass) and the exposure together.
+public enum FlightTimeOfDay: String, CaseIterable, Sendable {
+    case dawn, day, dusk, night
+
+    public var label: String {
+        switch self {
+        case .dawn: "Dawn"
+        case .day: "Day"
+        case .dusk: "Dusk"
+        case .night: "Night"
+        }
+    }
+
+    public var preset: TimePreset {
+        switch self {
+        case .dawn: .sunrise
+        case .day: .midday
+        case .dusk: .dusk
+        case .night: .night
+        }
+    }
+}
+
 @MainActor
 final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
     enum Status: Equatable { case loading(String), ready, failed(String) }
@@ -51,6 +83,16 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
     @Published var crashed = false
     /// In-cockpit view (3D panel with a live SF-1000 PFD) instead of the chase camera.
     @Published var cockpit = false
+    /// Time of day the player chose: sets the sun, sky, stars and exposure together.
+    @Published var timeOfDay: FlightTimeOfDay = .day {
+        didSet { if timeOfDay != oldValue { renderer?.setLighting(lightingForTimeOfDay()) } }
+    }
+    /// Sun azimuth and camera height for the lighting (the real airport and SkyWorld differ).
+    private var lightingAzimuth: Double = 200
+    private var lightingHeight: Double = 300
+    private func lightingForTimeOfDay() -> LightingSetup {
+        LightingSetup.physicalPreset(timeOfDay.preset, azimuthDegrees: lightingAzimuth, cameraHeightMetres: lightingHeight)
+    }
     private var pfdBusy = false
     /// Camera-following sharp imagery (texture streaming): the loaded region, its tile sources and state.
     private var realRegion: RealWorldRegion?
@@ -63,22 +105,109 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
     /// SkyWorld detail for this device tier (used directly, or as the offline fallback).
     private var skyWorldDetail: QuickFlightDetail = .phone
 
-    private(set) var world: any FlightWorld = QuickFlightWorld()
+    private(set) var world: any FlightWorld
     private(set) var session: QuickFlightSession
+    /// Aircraft, AI, weapons and mission logic that run on top of the flight session.
+    private(set) var director: GameplayDirector
+    @Published var gameplayHUD: GameplayHUD?
+    @Published var missionResult: MissionResult?
+    @Published var unlockMessage: String?
+    private var touchdownDetector = TouchdownDetector()
+    /// A free flight is recorded to the career once, at its first landing or crash.
+    private var careerRecorded = false
+    /// AI traffic, the tower and ownship in the tower's picture, for free flight only (missions keep their own rules).
+    private(set) var tower: TowerSession?
+    /// The tower's last messages, shown under the HUD.
+    @Published var atcLines: [String] = []
+    /// The clearance the tower is waiting on from the pilot, with its readback choices.
+    @Published private(set) var ownshipPrompt: OwnshipPrompt?
+    /// Speaks the tower's messages with Apple's on-device voice. Off until the pilot turns it on.
+    @Published var atcVoice = false
+    private let speaker = AVSpeechATCSpeaker()
+    let spec: PlaneSpec
+    let mission: MissionDefinition?
+    private let controlFilter: ControlFilter?
+    private var resultSaved = false
+    /// Weapon controls set by the on-screen buttons (cannon is held, launch and cycle are one-shot).
+    var fireHeld = false
+    private var launchRequested = false
+    private var cycleRequested = false
+    private var radarLaunchRequested = false
+    /// Radar and countermeasure buttons, one-shot like launch and cycle (the director sees rising edges).
+    private var radarCycleRequested = false
+    private var radarLockRequested = false
+    private var flareRequested = false
+    private var chaffRequested = false
     var touch = InputMapper.DeviceState()
     private var renderer: WorldRenderer?
+    private var governor: QualityGovernor?
+    private var qualityBase: WorldRenderer.Settings = .high
     private var depth: MTLTexture?
     private var last: CFTimeInterval?
     private var hudCounter = 0
     private let start: QuickFlightStart
     let location: QuickFlightLocation
 
-    init(start: QuickFlightStart, location: QuickFlightLocation) {
+    init(start: QuickFlightStart, location: QuickFlightLocation, aircraft: PlaneSpec, mission: MissionDefinition?) {
         self.start = start
         self.location = location
-        session = QuickFlightSession(world: world, start: start)
+        spec = aircraft
+        self.mission = mission
+        let filter = GameplayDirector.makeControlFilter(for: aircraft)
+        controlFilter = filter
+        let provisional = QuickFlightWorld()
+        world = provisional
+        let built = Self.makeFlight(world: provisional, start: start, spec: aircraft, mission: mission, filter: filter)
+        session = built.session
+        director = built.director
+        tower = Self.makeTower(world: provisional, mission: mission, onRunway: start == .runway)
         super.init()
     }
+
+    /// The traffic and the tower for a free flight at this world's runway. Missions get them only when they set `traffic`.
+    private static func makeTower(world: any FlightWorld, mission: MissionDefinition?, onRunway: Bool) -> TowerSession? {
+        guard mission == nil || mission?.traffic == true else { return nil }
+        let runway = TrafficRunway(threshold: world.runwayThreshold, heading: world.runwayHeading,
+                                   length: world.runwayLengthMetres, elevation: world.runwayElevation)
+        return TowerSession(runway: runway, startsOnRunway: onRunway)
+    }
+
+    /// A flight session and director for a world: the aircraft, its wind and (for missions) the airborne start.
+    private static func makeFlight(world: any FlightWorld, start: QuickFlightStart, spec: PlaneSpec,
+                                   mission: MissionDefinition?, filter: ControlFilter?) -> (session: QuickFlightSession, director: GameplayDirector) {
+        let frame = RunwayFrame(world: world)
+        let wind = mission?.wind.windNED(runwayHeading: frame.heading) ?? .zero
+        var s = QuickFlightSession(world: world, start: start, aircraft: spec.config, approachSpeed: spec.approachSpeed,
+                                   approachFlaps: spec.approachFlaps, wind: wind)
+        if let m = mission {
+            let (state, inputs) = GameplaySession.makeInitialState(spawn: m.spawn, aircraft: spec, frame: frame, wind: wind,
+                                                                   terrain: FlightWorldTerrain(world))
+            s.place(state: state, inputs: inputs)
+        }
+        s.inputFilter = filter
+        s.gearDownBelowSpeed = GameplayDirector.gearDownSpeed(for: spec)
+        return (s, GameplayDirector(aircraft: spec, frame: frame, mission: mission))
+    }
+
+    private func resetFlight(_ start: QuickFlightStart) {
+        let built = Self.makeFlight(world: world, start: start, spec: spec, mission: mission, filter: controlFilter)
+        session = built.session
+        director = built.director
+        touchdownDetector = TouchdownDetector()
+        gameplayHUD = nil; missionResult = nil; unlockMessage = nil; resultSaved = false
+        fireHeld = false
+        tower = Self.makeTower(world: world, mission: mission, onRunway: start == .runway)
+        atcLines = []
+        ownshipPrompt = nil
+    }
+
+    func launchMissile() { launchRequested = true }
+    func cycleTarget() { cycleRequested = true }
+    func launchRadarMissile() { radarLaunchRequested = true }
+    func cycleRadar() { radarCycleRequested = true }
+    func lockRadarTarget() { radarLockRequested = true }
+    func deployFlare() { flareRequested = true }
+    func deployChaff() { chaffRequested = true }
 
     func attach(_ view: MTKView) {
         guard let device = view.device ?? MTLCreateSystemDefaultDevice() else { status = .failed("No Metal device."); return }
@@ -92,15 +221,19 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
         skyWorldDetail = tier == .low ? .phone : (tier == .medium ? .tablet : .desktop)
         let real: Bool
         if case .realAirport = location { real = true } else { real = false }
-        let lighting = real ? LightingSetup.physicalPreset(.midday, azimuthDegrees: 200, cameraHeightMetres: 300)
-                            : LightingSetup.physicalPreset(.goldenHour, azimuthDegrees: 255, cameraHeightMetres: world.runwayElevation + 50)
+        lightingAzimuth = real ? 200 : 255
+        lightingHeight = real ? 300 : world.runwayElevation + 50
+        timeOfDay = real ? .day : .dusk
+        let lighting = lightingForTimeOfDay()
         do { renderer = try WorldRenderer(device: device, colorFormat: .bgra8Unorm, lighting: lighting) }
         catch { status = .failed("Renderer: \(error)"); return }
         do { try renderer?.setCockpit(Cockpit.mesh(), screen: Cockpit.pfdCorners.map { SIMD3<Float>(Float($0.x), Float($0.y), Float($0.z)) }) }
         catch { attribution.append("Cockpit view unavailable: \(error)") }
         // Fair-weather cumulus; march quality by device tier (the march runs at half resolution).
         renderer?.clouds = .fairWeather
-        renderer?.apply(tier == .low ? .low : (tier == .medium ? .medium : .high))
+        qualityBase = tier == .low ? .low : (tier == .medium ? .medium : .high)
+        renderer?.apply(qualityBase)
+        governor = QualityGovernor(tier: PerfTier(deviceTier: tier), targetFPS: 60)
         switch location {
         case .skyWorld:
             let detail: QuickFlightDetail = tier == .low ? .phone : (tier == .medium ? .tablet : .desktop)
@@ -113,10 +246,11 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
 
     private func loadSkyWorld(detail: QuickFlightDetail) {
         let world = QuickFlightWorld()
+        let aircraftID = spec.id
         Task.detached(priority: .userInitiated) {
             let env = world.buildEnvironmentInstanced(detail: detail)
             let trees = RealWorldRenderData.trees(env.trees)
-            let aircraft = QuickFlightWorld.aircraftMesh()
+            let aircraft = QuickFlightWorld.aircraftMesh(for: aircraftID)
             await MainActor.run {
                 do {
                     try self.renderer?.setEnvironment(env.soup)
@@ -131,6 +265,7 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
     private func loadRealAirport(ident: String, name: String, detail: RealWorldDetail) {
         status = .loading("Loading \(name)…")
         let start = self.start
+        let aircraftID = spec.id
         let stations = location.metarStations
         Task.detached(priority: .userInitiated) {
             do {
@@ -147,19 +282,18 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
                 // Live sky from the nearest METAR (keyless aviationweather.gov); fair-weather cumulus if none answers.
                 let weather = await WeatherClouds.live(stations: stations, fieldElevation: region.runwayElevation,
                                                        service: METARService(transport: URLSessionTransport(), cache: cache))
-                let aircraft = QuickFlightWorld.aircraftMesh()
+                let aircraft = QuickFlightWorld.aircraftMesh(for: aircraftID)
                 await MainActor.run {
                     do {
-                        try self.renderer?.setRealWorld(data)
+                        try self.renderer?.applyRealAirport(data, fieldElevation: region.runwayElevation, clouds: weather?.layer)
                         try self.renderer?.setAircraft(aircraft)
                         self.world = region
                         self.realRegion = region
                         self.photoCrowns = data.photoCrowns
                         self.tileTransport = transport
                         self.tileCache = cache
-                        self.session = QuickFlightSession(world: region, start: start)
+                        self.resetFlight(start)
                         self.attribution = region.attribution + (weather.map { ["Weather: \($0.raw) (aviationweather.gov)"] } ?? [])
-                        self.renderer?.clouds = weather?.layer ?? .fairWeather(fieldElevation: Float(region.runwayElevation))
                         self.status = .ready
                     } catch { self.status = .failed("Upload: \(error)") }
                 }
@@ -190,7 +324,7 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
     }
 
     func restart(_ s: QuickFlightStart) {
-        session = QuickFlightSession(world: world, start: s)
+        resetFlight(mission == nil ? s : start)
         crashed = false
     }
 
@@ -206,6 +340,8 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
         device.analog.merge(touch.analog) { a, b in abs(a) > abs(b) ? a : b }
         device.pressed.formUnion(touch.pressed)
         session.update(realDt: dt, device: device)
+        stepGameplay(dt: dt)
+        stepTraffic(dt: dt)
         let tex = drawable.texture
         if depth == nil || depth!.width != tex.width || depth!.height != tex.height {
             depth = try? r.makeDepth(width: tex.width, height: tex.height)
@@ -221,7 +357,44 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
             let cam = session.chaseCamera()
             camera = WorldCamera(position: cam.position, target: cam.target)
         }
+        // Round 5 ocean inputs, live each frame: wind from the flight environment and this aircraft as a wake on
+        // water. ENU convention: x east, y north; headings are radians from east, counter-clockwise.
+        do {
+            let w = session.environment.windNED
+            r.oceanWindSpeed = Float((w.x * w.x + w.y * w.y).squareRoot())
+            r.oceanWindDirection = Float(atan2(w.x, w.y))   // NED wind (north, east) to ENU heading of the air mass
+            r.vegetationWind = VegetationWind.uniform(windNED: w)   // trees and grass sway with the live wind
+            let v = session.state.velocityNED
+            let groundSpeed = (v.x * v.x + v.y * v.y).squareRoot()
+            let wake = OceanWake.aircraft(position: SIMD2(Float(session.positionENU.x), Float(session.positionENU.y)),
+                                          heading: Float(atan2(v.x, v.y)), speed: Float(groundSpeed),
+                                          wingspan: Float(spec.config.wingSpan))
+            r.oceanWakes = wake.map { [$0] } ?? []
+        }
         let c = session.bodyToENUColumns
+        // AI traffic: NED snapshots to ENU poses. Heading is NED (0 = north), so body x is (sin h, cos h, 0) in ENU.
+        r.trafficPoses = (tower?.aircraftSnapshots ?? []).map { t in
+            let h = t.heading
+            return WorldRenderer.TrafficPose(position: SIMD3(t.positionNED.y, t.positionNED.x, -t.positionNED.z),
+                                             bodyToENU: simd_double3x3(columns: (SIMD3(sin(h), cos(h), 0),
+                                                                                 SIMD3(cos(h), -sin(h), 0),
+                                                                                 SIMD3(0, 0, -1))))
+        }
+        // AI traffic lights: nav red and green at the wingtips, white at the tail, strobe on top. Offsets are body
+        // metres (x forward, y right, z down), approximate for the traffic types. Drawn by the night-light pass.
+        r.trafficLights = r.trafficPoses.enumerated().flatMap { (i, pose) -> [NightLight] in
+            let m = pose.bodyToENU
+            func at(_ b: SIMD3<Double>) -> SIMD3<Float> {
+                let e = m.columns.0 * b.x + m.columns.1 * b.y + m.columns.2 * b.z + pose.position
+                return SIMD3(Float(e.x), Float(e.y), Float(e.z))
+            }
+            let phase = Float((i * 37) % 100) / 100
+            return [NightLight(position: at(SIMD3(0, -6, 0)), kind: .navRed),
+                    NightLight(position: at(SIMD3(0, 6, 0)), kind: .navGreen),
+                    NightLight(position: at(SIMD3(-7, 0, 0)), kind: .navWhite),
+                    NightLight(position: at(SIMD3(0, 0, -1.5)), kind: .strobe, phase: phase)]
+        }
+        let encodeStart = CACurrentMediaTime()
         do {
             try r.encode(cmd: cmd, colour: tex, depth: depth, camera: camera,
                          aircraftPosition: session.positionENU, aircraftBodyToENU: simd_double3x3(columns: (c.0, c.1, c.2)))
@@ -231,9 +404,117 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
         }
         cmd.present(drawable)
         cmd.commit()
+        // Feed the governor: GPU time from the most recent completed frame, CPU time as this frame's encode cost.
+        let encodeMS = (CACurrentMediaTime() - encodeStart) * 1_000
+        if let plan = governor?.update(GovernorSample(gpuMS: r.frameTelemetry.lastGPUMS, cpuMS: encodeMS), now: now) {
+            r.applyQuality(plan, base: qualityBase)
+        }
         hudCounter += 1
-        if hudCounter % 2 == 0 { hud = session.data; crashed = session.crashed }
+        if hudCounter % 2 == 0 {
+            hud = session.data; crashed = session.crashed
+            if mission != nil || !spec.armament.isEmpty { gameplayHUD = director.hud(mach: machNumber, time: session.time) }
+        }
         if hudCounter % 60 == 0 { refreshDetail() }
+    }
+
+    private var machNumber: Double {
+        EnvelopeMath.mach(trueAirspeed: session.lastOutputs?.trueAirspeed ?? 0, altitudeMSL: session.state.altitude)
+    }
+
+    /// Steps AI traffic and the tower, and gives the aircraft the wakes of the heavy traffic near it.
+    private func stepTraffic(dt: Double) {
+        guard tower != nil else { return }
+        let report = OwnshipReport(config: session.aircraft, positionNED: session.state.positionNED,
+                                   velocityNED: session.state.velocityNED,
+                                   onGround: session.lastOutputs?.weightOnWheels ?? false)
+        if let decided = tower?.step(dt: dt, ownship: report, wind: ATCWind(windNED: session.environment.windNED)) {
+            if atcVoice {
+                for instruction in decided { speaker.speak(instruction.text) }
+            }
+            atcLines = tower?.lines ?? []
+            ownshipPrompt = tower?.prompt
+        }
+        session.setWakes(tower?.traffic.wakesNear(session.state.positionNED) ?? [])
+    }
+
+    /// The pilot's readback choice for the tower's prompt. The tap that answers it.
+    func answerTower(choice: Int) {
+        _ = tower?.readback(choice: choice)
+        atcLines = tower?.lines ?? []
+        ownshipPrompt = tower?.prompt
+    }
+
+    /// Runs AI, weapons, the envelope monitor and the mission against the flight, once per frame.
+    /// Feeds the landing detector while the aircraft is low. Logs the touchdown rate once per flight.
+    private func trackTouchdown() {
+        guard touchdownDetector.event == nil, session.heightAboveGround < 50, !session.crashed else { return }
+        let frame = RunwayFrame(world: world)
+        let s = session.state
+        let pos = SIMD2(s.positionNED.y, s.positionNED.x)          // ENU: east, north
+        let h = frame.heading
+        let along = (pos.x - frame.threshold.x) * sin(h) + (pos.y - frame.threshold.y) * cos(h)
+        let lateral = (pos.x - frame.threshold.x) * cos(h) - (pos.y - frame.threshold.y) * sin(h)
+        let sample = TouchdownSample(time: session.time, heightAGLM: session.heightAboveGround, sinkMPS: s.velocityNED.z,
+                                     offsetM: lateral, distancePastThresholdM: along)
+        if let e = touchdownDetector.feed(sample) {
+            attribution.append(String(format: "Touchdown: %.0f fpm sink, %.0f m off centreline", e.sinkFPM, abs(e.offsetM)))
+            recordFreeFlight(event: e)
+        }
+    }
+
+    /// Records a free flight (not a mission, which saves through saveResult) into the pilot's career.
+    private func recordFreeFlight(event: TouchdownEvent?) {
+        guard !careerRecorded, mission == nil else { return }
+        careerRecorded = true
+        var report = FlightReport(kind: .freeFlight, aircraftID: spec.id, durationS: session.time,
+                                  landed: event != nil, crashed: session.crashed,
+                                  endedAt: Int(Date().timeIntervalSince1970))
+        if let e = event { report.applyTouchdown(e) }
+        if let outcome = SaveStore(url: SaveStore.defaultURL).record(report) {
+            attribution.append("Career: +\(outcome.xpGained) XP\(outcome.leveledUpTo.map { ", level \($0)" } ?? "")")
+        }
+    }
+
+    private func stepGameplay(dt: Double) {
+        trackTouchdown()
+        if session.crashed { recordFreeFlight(event: nil) }
+        // Damage from the last step reaches the next flight step through the control path.
+        session.inputFilter = GameplaySession.damagedControlFilter(base: controlFilter, damage: director.damage)
+        guard !director.isFinished, let outputs = session.lastOutputs else { return }
+        let snapshot = FlightSnapshot(time: session.time, state: session.state, outputs: outputs,
+                                      flaps: session.inputs.flaps, heightAGL: session.heightAboveGround,
+                                      crashed: session.crashed, crashReason: session.crashed ? "Crashed into the ground" : nil)
+        director.advance(dt: dt, snapshot: snapshot,
+                         weaponInput: WeaponInput(fireGun: fireHeld, launchMissile: launchRequested, cycleTarget: cycleRequested,
+                                                  launchRadarMissile: radarLaunchRequested),
+                         radarInput: RadarInput(cycleMode: radarCycleRequested, lockNext: radarLockRequested),
+                         countermeasureInput: CountermeasureInput(flare: flareRequested, chaff: chaffRequested))
+        launchRequested = false; cycleRequested = false; radarLaunchRequested = false
+        radarCycleRequested = false; radarLockRequested = false
+        flareRequested = false; chaffRequested = false
+        if director.monitor.structuralFailure && !session.crashed { session.markCrashed() }
+        // A shot-down airframe ends the flight, as the headless session does, with or without a mission.
+        if director.damage.destroyed && !session.crashed { session.markCrashed() }
+        if let result = director.runtime?.result, !resultSaved { saveResult(result) }
+    }
+
+    /// Records a finished mission in the pilot's progress file and reports anything it unlocked.
+    private func saveResult(_ result: MissionResult) {
+        resultSaved = true
+        missionResult = result
+        let store = ProgressStore(url: ProgressStore.defaultURL)
+        var progress = store.load()
+        let unlocked = progress.record(result)
+        do { try store.save(progress) } catch { attribution.append("Could not save mission progress: \(error.localizedDescription)") }
+        let report = FlightReport.fromMission(id: result.missionID, aircraftID: result.aircraftID, success: result.success,
+                                              score: result.score, elapsed: result.elapsed, kills: result.kills,
+                                              crashed: session.crashed, endedAt: Int(Date().timeIntervalSince1970))
+        LogbookStore(url: LogbookStore.defaultURL).record(report)
+        if let outcome = SaveStore(url: SaveStore.defaultURL).record(report), let lvl = outcome.leveledUpTo {
+            attribution.append("Career: reached level \(lvl)")
+        }
+        let names = unlocked.aircraft.map(\.name) + unlocked.missions.map(\.title)
+        if result.success && !names.isEmpty { unlockMessage = "Unlocked: " + names.joined(separator: ", ") }
     }
 
     /// Re-centres the sharp imagery layer ahead of the aircraft once it has drifted 40 % of its half extent:
@@ -284,8 +565,10 @@ public struct QuickFlightView: View {
     @StateObject private var controller: QuickFlightController
     @Environment(\.dismiss) private var dismiss
 
-    public init(start: QuickFlightStart = .runway, location: QuickFlightLocation = .skyWorld) {
-        _controller = StateObject(wrappedValue: QuickFlightController(start: start, location: location))
+    public init(start: QuickFlightStart = .runway, location: QuickFlightLocation = .skyWorld,
+                aircraft: PlaneSpec = AircraftCatalog.sf1Trainer, mission: MissionDefinition? = nil) {
+        _controller = StateObject(wrappedValue: QuickFlightController(start: start, location: location,
+                                                                      aircraft: aircraft, mission: mission))
     }
 
     public var body: some View {
@@ -299,8 +582,18 @@ public struct QuickFlightView: View {
                         Button("On a 3° final") { controller.restart(.final) }
                     }
                     .buttonStyle(.bordered)
+                    Menu("Time: \(controller.timeOfDay.label)") {
+                        ForEach(FlightTimeOfDay.allCases, id: \.self) { t in
+                            Button(t.label) { controller.timeOfDay = t }
+                        }
+                    }
+                    .buttonStyle(.bordered)
                     Button(controller.cockpit ? "Chase view" : "Cockpit view") { controller.cockpit.toggle() }
                         .buttonStyle(.bordered)
+                    if controller.tower != nil {
+                        Button(controller.atcVoice ? "Tower voice on" : "Tower voice off") { controller.atcVoice.toggle() }
+                            .buttonStyle(.bordered)
+                    }
                     Spacer()
                     if !controller.cockpit {
                         InstrumentCanvas(PFD.draw(controller.hud, options: PFDOptions()))
@@ -309,7 +602,43 @@ public struct QuickFlightView: View {
                     }
                 }
                 .padding()
+                if let hud = controller.gameplayHUD {
+                    HStack(alignment: .top) {
+                        MissionHUDView(hud: hud).frame(maxWidth: 380)
+                        Spacer()
+                    }
+                    .padding(.horizontal)
+                }
+                if let prompt = controller.ownshipPrompt {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Tower: \(prompt.text)").font(.caption).foregroundStyle(.white)
+                        Text("Read back the clearance:").font(.caption2).foregroundStyle(Color.white.opacity(0.8))
+                        ForEach(Array(prompt.options.enumerated()), id: \.offset) { index, option in
+                            Button(option) { controller.answerTower(choice: index) }
+                                .buttonStyle(.bordered)
+                        }
+                    }
+                    .padding(8)
+                    .background(.black.opacity(0.55))
+                    .frame(maxWidth: 380, alignment: .leading)
+                    .padding(.horizontal)
+                }
+                if !controller.atcLines.isEmpty {
+                    VStack(alignment: .leading, spacing: 2) {
+                        ForEach(Array(controller.atcLines.enumerated()), id: \.offset) { _, line in
+                            Text(line).font(.caption).foregroundStyle(.white)
+                        }
+                    }
+                    .padding(6)
+                    .background(.black.opacity(0.45))
+                    .frame(maxWidth: 380, alignment: .leading)
+                    .padding(.horizontal)
+                }
                 Spacer()
+                if let hud = controller.gameplayHUD, !controller.spec.armament.isEmpty, hud.status == .inProgress || hud.status == nil {
+                    WeaponButtons(controller: controller, hasMissiles: controller.spec.armament.contains(.heatMissile),
+                                  hasRadarMissiles: controller.spec.armament.contains(.radarMissile))
+                }
                 if !controller.attribution.isEmpty {
                     Text(controller.attribution.joined(separator: " · "))
                         .font(.caption2).padding(6).background(.black.opacity(0.45)).foregroundStyle(.white)
@@ -327,7 +656,10 @@ public struct QuickFlightView: View {
             case .failed(let msg): Text(msg).padding().background(.red.opacity(0.8), in: RoundedRectangle(cornerRadius: 12))
             case .ready: EmptyView()
             }
-            if controller.crashed {
+            if let result = controller.missionResult {
+                MissionResultCard(result: result, unlock: controller.unlockMessage,
+                                  retry: { controller.restart(.runway) }, close: { dismiss() })
+            } else if controller.crashed {
                 VStack(spacing: 12) {
                     Text("Crashed").font(.title.bold())
                     Button("Restart on the runway") { controller.restart(.runway) }.buttonStyle(.borderedProminent)
@@ -337,4 +669,15 @@ public struct QuickFlightView: View {
         }
     }
 }
+private extension PerfTier {
+    init(deviceTier: DeviceTier) {
+        switch deviceTier {
+        case .low: self = .low
+        case .medium: self = .medium
+        case .high: self = .high
+        case .ultra: self = .ultra
+        }
+    }
+}
+
 #endif

@@ -16,7 +16,8 @@ public struct AeroCoefficients: Sendable, Codable, Equatable {
     // Drag
     public var cD0: Double = 0.031
     public var cDFlap: Double = 0.045          // full flap increment
-    public var cDGear: Double = 0.0            // fixed gear included in cD0
+    public var cDGear: Double = 0.0            // extended gear (retractable types); fixed gear is in cD0
+    public var cDSpeedbrake: Double = 0.0      // full speed-brake increment
     public var oswald: Double = 0.75
     // Side force
     public var cYBeta: Double = -0.31
@@ -38,7 +39,7 @@ public struct AeroCoefficients: Sendable, Codable, Equatable {
     public var cnBeta: Double = 0.065
     public var cnP: Double = -0.03
     public var cnR: Double = -0.099
-    public var cnAileron: Double = -0.053
+    public var cnAileron: Double = -0.0053     // was -0.053: a 10x slip found by the JSBSim oracle (c172p: -0.0053)
     public var cnRudder: Double = -0.0657
 
     public init() {}
@@ -51,9 +52,12 @@ public struct GearLeg: Sendable, Codable, Equatable {
     public var damping: Double        // N s/m
     public var steerable: Bool
     public var braked: Bool
-    public init(position: SIMD3<Double>, stiffness: Double, damping: Double, steerable: Bool, braked: Bool) {
+    /// Maximum nose-wheel steering angle (rad) at standstill; it fades with ground speed.
+    public var steerAngleMax: Double = 10 * Double.pi / 180
+    public init(position: SIMD3<Double>, stiffness: Double, damping: Double, steerable: Bool, braked: Bool,
+                steerAngleMax: Double = 10 * Double.pi / 180) {
         self.position = position; self.stiffness = stiffness; self.damping = damping
-        self.steerable = steerable; self.braked = braked
+        self.steerable = steerable; self.braked = braked; self.steerAngleMax = steerAngleMax
     }
 }
 
@@ -78,6 +82,13 @@ public struct AircraftConfig: Sendable, Codable, Equatable {
     public var flapMax: Double              // rad (for display)
     public var gear: [GearLeg]
     public var groundEffectSpanHeightRatio: Double = 1.0
+    /// Engine model. `nil` keeps the legacy single fixed-pitch piston model driven by `maxPower`.
+    public var propulsion: PropulsionConfig? = nil
+    /// Compressibility schedule (empty = incompressible).
+    public var mach: MachSchedule = .incompressible
+    public var stall: StallBehavior = .neutral
+    /// When true, `ControlInputs.gear` extends/retracts the gear (contact and drag follow it).
+    public var retractableGear: Bool = false
 
     public var aspectRatio: Double { wingSpan * wingSpan / wingArea }
 
@@ -96,6 +107,7 @@ public struct AircraftConfig: Sendable, Codable, Equatable {
             GearLeg(position: SIMD3(1.30, 0, 1.25), stiffness: 45_000, damping: 4_500, steerable: true, braked: false),
             GearLeg(position: SIMD3(-0.30, -1.10, 1.25), stiffness: 70_000, damping: 6_000, steerable: false, braked: true),
             GearLeg(position: SIMD3(-0.30, 1.10, 1.25), stiffness: 70_000, damping: 6_000, steerable: false, braked: true),
-        ]
+        ],
+        stall: StallBehavior(autorotation: 1.3, wingDropGain: 0.12, noseDrop: 0.10)
     )
 }

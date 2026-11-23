@@ -1,0 +1,101 @@
+name: PR review frames
+
+# Runs after the CI workflow finishes for a pull request. It runs the workflow file from main and never
+# checks out pull-request code, so the write token is never exposed to code a PR contains.
+# Same-repo PRs only: fork PRs get a read-only token and are skipped.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions: {}
+
+concurrency:
+  group: publish-frames
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    # Same-repo pull requests only, and never a run that was cancelled by a newer push.
+    if: ${{ github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.head_repository.full_name == github.repository && github.event.workflow_run.conclusion != 'cancelled' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      contents: write
+      pull-requests: write
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      PR: ${{ github.event.workflow_run.pull_requests[0].number }}
+      SHA: ${{ github.event.workflow_run.head_sha }}
+      RUN_ID: ${{ github.event.workflow_run.id }}
+      RUN_URL: ${{ github.event.workflow_run.html_url }}
+    steps:
+      # Main's checkout: the default branch, which holds the trusted tools/ci_frames.py.
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Download frames from the CI run
+        id: download
+        uses: actions/download-artifact@v8
+        continue-on-error: true
+        with:
+          name: skyforge-frames
+          path: frames-out
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+      - name: Publish PR frames and comment
+        run: |
+          set -euo pipefail
+          if [ -z "$PR" ]; then echo "::notice::No pull request attached to run $RUN_ID; nothing to publish"; exit 0; fi
+          mkdir -p frames-out
+          # A run with no frames (its frames job failed or was skipped) must not replace frames already
+          # published for this PR with an empty folder.
+          shopt -s nullglob
+          PNGS=(frames-out/*.png)
+          if [ "${#PNGS[@]}" -eq 0 ]; then
+            echo "::notice::Run $RUN_ID has no frames for PR #$PR; keeping the frames already published"
+            exit 0
+          fi
+          # Publish only the newest commit of the PR. A superseded run must not overwrite newer frames.
+          HEAD_NOW=$(gh api "repos/${REPO}/pulls/${PR}" --jq '.head.sha')
+          if [ "$HEAD_NOW" != "$SHA" ]; then
+            echo "::notice::PR #$PR moved from ${SHA:0:7} to ${HEAD_NOW:0:7}; skipping run $RUN_ID"
+            exit 0
+          fi
+          AUTH="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          GIT=(git -c "http.https://github.com/.extraheader=$AUTH")
+          REMOTE="https://github.com/${REPO}.git"
+          WT="$RUNNER_TEMP/ci-frames"
+          rm -rf "$WT" && mkdir -p "$WT"
+          if "${GIT[@]}" ls-remote --exit-code --heads "$REMOTE" ci-frames >/dev/null 2>&1; then
+            "${GIT[@]}" fetch --depth 1 -q "$REMOTE" ci-frames
+            git archive FETCH_HEAD | tar -x -C "$WT"
+          fi
+          OPEN=$(gh api --paginate "repos/${REPO}/pulls?state=open&per_page=100" --jq '.[].number')
+          for d in "$WT"/pr-*; do
+            [ -d "$d" ] || continue
+            n=${d##*/pr-}
+            grep -qx "$n" <<<"$OPEN" || rm -rf "$d"
+          done
+          DEST="$WT/pr-$PR"
+          rm -rf "$DEST" && mkdir -p "$DEST"
+          cp frames-out/*.png "$DEST/" 2>/dev/null || echo "::warning::No frames to publish for PR #$PR"
+          printf '%s\n' "$SHA" > "$DEST/commit.txt"
+          cd "$WT"
+          git init -q -b ci-frames
+          git add -A
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -q -m "Review frames for PR #$PR (${SHA:0:7})"
+          "${GIT[@]}" push -q --force "$REMOTE" HEAD:refs/heads/ci-frames
+          cd "$GITHUB_WORKSPACE"
+          python3 tools/ci_frames.py comment --repo "$REPO" --branch ci-frames --pr "$PR" --sha "$SHA" \
+            --run-id "$RUN_ID" --run-url "$RUN_URL" frames-out > comment.md
+          EXISTING=$(gh api --paginate "repos/${REPO}/issues/${PR}/comments" \
+            --jq '.[] | select(.body | contains("<!-- skyforge-frames -->")) | .id' | sed -n '1p')
+          if [ -n "$EXISTING" ]; then
+            gh api -X PATCH "repos/${REPO}/issues/comments/${EXISTING}" -F body=@comment.md >/dev/null
+          else
+            gh api -X POST "repos/${REPO}/issues/${PR}/comments" -F body=@comment.md >/dev/null
+          fi

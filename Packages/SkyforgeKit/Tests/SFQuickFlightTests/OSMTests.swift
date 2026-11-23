@@ -381,7 +381,7 @@ actor ScriptedOSMTransport: HTTPTransport {
 
     @Test func queryURLIsWellFormed() throws {
         let q = OverpassQuery(origin: Self.origin, halfExtent: 1_000)
-        #expect(q.cacheKey == "osm/28.330,-80.696,28.350,-80.674")
+        #expect(q.cacheKey == "osm/v2/28.330,-80.696,28.350,-80.674")
         #expect(q.south < 28.34 && q.north > 28.34 && q.west < -80.685 && q.east > -80.685)
         #expect(q.ql.hasPrefix("[out:json][timeout:60];"))
         #expect(q.ql.hasSuffix("out geom;"))
@@ -395,7 +395,7 @@ actor ScriptedOSMTransport: HTTPTransport {
         #expect(!s.contains(" ") && !s.contains("\"") && !s.contains("[") && !s.contains("\n") && !s.contains(";"))
         let items = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems)
         #expect(items.count == 1 && items[0].name == "data" && items[0].value == q.ql)
-        #expect(OSMData.attribution == "Buildings and roads: © OpenStreetMap contributors, ODbL 1.0")
+        #expect(OSMData.attribution == "Buildings, roads and water: © OpenStreetMap contributors, ODbL 1.0")
     }
 }
 

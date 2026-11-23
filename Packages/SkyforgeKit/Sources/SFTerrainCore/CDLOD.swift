@@ -58,6 +58,7 @@ public struct CDLODQuadtree: Sendable {
     /// within the coarsest range.
     public func select(camera: SIMD3<Double>, bounds: any HeightBoundsProvider) -> [CDLODNode] {
         var out: [CDLODNode] = []
+        out.reserveCapacity(256)
         _ = selectNode(minX: rootMinX, minY: rootMinY, size: rootSize, lod: settings.levels - 1,
                        camera: camera, bounds: bounds, out: &out)
         return out
@@ -96,7 +97,9 @@ public struct CDLODQuadtree: Sendable {
             return true
         }
         let h = size / 2
-        for (cx, cy) in [(minX, minY), (minX + h, minY), (minX, minY + h), (minX + h, minY + h)] {
+        // Unrolled over the four children: avoids a heap-allocated tuple array per visited node.
+        for i in 0..<4 {
+            let cx = minX + (i & 1 == 0 ? 0 : h), cy = minY + (i & 2 == 0 ? 0 : h)
             if !selectNode(minX: cx, minY: cy, size: h, lod: lod - 1, camera: camera, bounds: bounds, out: &out) {
                 add(cx, cy, h, lod, &out)
             }

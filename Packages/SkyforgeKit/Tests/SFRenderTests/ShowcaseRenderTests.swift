@@ -71,14 +71,48 @@ import SFInstruments
         let session = QuickFlightSession(world: region, start: .final)
         let cam = session.chaseCamera()
         let r = try WorldRenderer(lighting: LightingSetup.physicalPreset(.midday, azimuthDegrees: 200, cameraHeightMetres: cam.position.z))
-        try r.setRealWorld(data)
+        try r.applyRealAirport(data, fieldElevation: region.runwayElevation)
         try r.setAircraft(QuickFlightWorld.aircraftMesh())
-        r.clouds = .fairWeather(fieldElevation: Float(region.runwayElevation))
         let c = session.bodyToENUColumns
         let img = try r.render(width: Self.width, height: Self.height, camera: WorldCamera(position: cam.position, target: cam.target),
                                aircraftPosition: session.positionENU, aircraftBodyToENU: simd_double3x3(columns: (c.0, c.1, c.2)))
         Self.save("metal_real_\(ident)_1280x720", img)
         #expect(Self.contrast(img) > 60, "\(ident) ground contrast")
+    }
+
+    /// CDLOD morph check, numeric so it needs no eyes. Ten low-resolution frames while the camera steps 60 m along
+    /// the approach each frame, which carries the terrain nodes through their morph bands. A geomorph seam or a
+    /// popping node shows as one frame-to-frame change far above the rest, so the largest per-pixel change is
+    /// compared with the median change. The 4× bound is a first guess until CI logs the real values.
+    @Test(.enabled(if: SkyRegressionTests.hasDevice, "no Metal device on this host"))
+    func cdlodMorphSequenceHasNoPops() async throws {
+        let ident = "KMRY"
+        guard Self.wanted(ident) else { return }
+        let region = try await RealWorldRegion.load(airport: ident, detail: .phone,
+                                                    transport: Showcase.transport(for: ident, fallback: nil), cache: nil)
+        let data = RealWorldRenderData(region: region, chunkQuads: 32)
+        let session = QuickFlightSession(world: region, start: .final)
+        let cam = session.chaseCamera()
+        let r = try WorldRenderer(lighting: LightingSetup.physicalPreset(.midday, azimuthDegrees: 200, cameraHeightMetres: cam.position.z))
+        try r.applyRealAirport(data, fieldElevation: region.runwayElevation)
+        r.clouds = .clear
+        let w = 320, h = 180
+        let track = SIMD3<Double>(sin(region.runwayHeading), cos(region.runwayHeading), 0)
+        var frames: [[UInt8]] = []
+        for k in 0..<10 {
+            let shift = track * (60 * Double(k))
+            frames.append(try r.render(width: w, height: h, camera: WorldCamera(position: cam.position + shift, target: cam.target + shift)))
+            #expect(r.lastDrawnChunks > 0, "CDLOD drew no nodes at step \(k)")
+        }
+        var changes: [Int] = []
+        for k in 1..<frames.count {
+            var largest = 0
+            for i in 0..<frames[k].count { largest = max(largest, abs(Int(frames[k][i]) - Int(frames[k - 1][i]))) }
+            changes.append(largest)
+        }
+        let sorted = changes.sorted(), median = max(1, sorted[sorted.count / 2]), worst = sorted.last ?? 0
+        print("SKYFORGE_MORPH \(ident) largest_per_pixel=\(changes) median=\(median) ratio=\(String(format: "%.2f", Double(worst) / Double(median)))")
+        #expect(worst <= 4 * median, "largest per-pixel change \(worst) against median \(median): a pop")
     }
 
     /// The look review: every showcase airport at the ultra tier from several cameras.
@@ -93,9 +127,8 @@ import SFInstruments
         let cam = session.chaseCamera()
         let r = try WorldRenderer(lighting: LightingSetup.physicalPreset(.midday, azimuthDegrees: 200, cameraHeightMetres: cam.position.z))
         r.apply(.ultra)
-        try r.setRealWorld(data)
+        try r.applyRealAirport(data, fieldElevation: region.runwayElevation)
         try r.setAircraft(QuickFlightWorld.aircraftMesh())
-        r.clouds = .fairWeather(fieldElevation: Float(region.runwayElevation))
         let w = Self.width, h = Self.height
         let c = session.bodyToENUColumns
         let body = simd_double3x3(columns: (c.0, c.1, c.2))
@@ -135,6 +168,27 @@ import SFInstruments
         let wide = try r.render(width: w, height: h, camera: high.chase(distance: 24, height: 6),
                                 aircraftPosition: high.position, aircraftBodyToENU: high.bodyToENU)
         Self.save("ultra_\(ident)_high", wide)
+
+        // Lake pass (NZQN): 40 m above the lake surface, 1.5 km out along the Frankton Arm, same chase camera.
+        if ident == "NZQN" {
+            let p = region.runwayThreshold - dir * 1_500
+            let lakePose = Pose(position: SIMD3(p.x, p.y, ground(p) + 40), heading: hdg, roll: 0.0)
+            // The wake needs an aircraft speed; the static pose carries a 60 m/s wake along the arm so the lake shows it.
+            let lakeWake = OceanWake.aircraft(position: SIMD2(Float(p.x), Float(p.y)), heading: Float(atan2(dir.y, dir.x)),
+                                              speed: 60, wingspan: 11)
+            r.oceanWakes = lakeWake.map { [$0] } ?? []
+            let lake = try r.render(width: w, height: h, camera: lakePose.chase(distance: 24, height: 6),
+                                    aircraftPosition: lakePose.position, aircraftBodyToENU: lakePose.bodyToENU)
+            Self.save("ultra_NZQN_lake", lake)
+            // Water path proof (debugView 9): r = imagery-water branch, g = ocean shader, b = wakes reaching the shader.
+            r.debugView = 9
+            let proof = try r.render(width: w, height: h, camera: lakePose.chase(distance: 24, height: 6),
+                                     aircraftPosition: lakePose.position, aircraftBodyToENU: lakePose.bodyToENU)
+            r.debugView = 0
+            Self.save("debug_NZQN_lake_water", proof)
+            // Frame names carry the wake state (the frames log does not echo prints): built = 1/0, wakes at the renderer = n.
+            Self.save("wakes_built\(lakeWake == nil ? 0 : 1)_renderer\(r.oceanWakes.count)_NZQN_lake", lake)
+        }
 
         // Debug views (WorldRenderer.debugView) for the terms the reviews could not tell apart: the LSZS high
         // valley wall that stayed near black through four lighting changes, and the near-ground patches at
@@ -212,9 +266,8 @@ import SFInstruments
         let cam = session.chaseCamera()
         let r = try WorldRenderer(lighting: LightingSetup.physicalPreset(.midday, azimuthDegrees: 200, cameraHeightMetres: cam.position.z))
         r.apply(p.settings)
-        try r.setRealWorld(data)
+        try r.applyRealAirport(data, fieldElevation: region.runwayElevation)
         try r.setAircraft(QuickFlightWorld.aircraftMesh())
-        r.clouds = .fairWeather(fieldElevation: Float(region.runwayElevation))
         let c = session.bodyToENUColumns
         let img = try r.render(width: Self.width, height: Self.height, camera: WorldCamera(position: cam.position, target: cam.target),
                                aircraftPosition: session.positionENU, aircraftBodyToENU: simd_double3x3(columns: (c.0, c.1, c.2)))
@@ -262,6 +315,83 @@ import SFInstruments
                                aircraftPosition: session.positionENU, aircraftBodyToENU: simd_double3x3(columns: (c.0, c.1, c.2)))
         Self.save(ultra ? "ultra_skyworld_final" : "metal_skyworld_1280x720", img)
         #expect(r.lastDrawnEnvironmentCells > 0)
+    }
+
+    /// Night frame: traffic nav, strobe and beacon lights around the aircraft. The lights must add visible
+    /// light, so the frame with them differs from the same frame without them (the night-light pass is drawn).
+    @Test(.enabled(if: SkyRegressionTests.hasDevice, "no Metal device on this host"))
+    func nightTrafficLightsFrame() throws {
+        guard Self.wanted("SKYWORLD") else { return }
+        let world = QuickFlightWorld()
+        let session = QuickFlightSession(world: world, start: .final)
+        let cam = session.chaseCamera()
+        // The real .night preset (sun below the horizon), so the night-light pass fades in as it would in the app.
+        let r = try WorldRenderer(lighting: LightingSetup.physicalPreset(.night, azimuthDegrees: 200, cameraHeightMetres: cam.position.z))
+        let env = world.buildEnvironmentInstanced(detail: .phone)
+        try r.setEnvironment(env.soup)
+        try r.setTrees(RealWorldRenderData.trees(env.trees))
+        try r.setAircraft(QuickFlightWorld.aircraftMesh())
+        r.clouds = .clear
+        let c = session.bodyToENUColumns
+        let body = simd_double3x3(columns: (c.0, c.1, c.2))
+        let camera = WorldCamera(position: cam.position, target: cam.target)
+        // Lights on the view axis, so they land in the frame whatever the chase heading is.
+        let fwd = simd_normalize(cam.target - cam.position)
+        func onAxis(_ distance: Double, lift: Double) -> SIMD3<Float> {
+            let q = cam.position + fwd * distance + SIMD3<Double>(0, 0, lift)
+            return SIMD3<Float>(Float(q.x), Float(q.y), Float(q.z))
+        }
+        // Count pixels where any channel changed between the two renders. The lights are a few pixels each, so a
+        // brightness threshold would hide them; any change at all shows the pass drew.
+        func changedPixels(_ a: [UInt8], _ b: [UInt8]) -> Int {
+            var n = 0
+            for i in stride(from: 0, to: min(a.count, b.count) - 2, by: 3) where a[i] != b[i] || a[i + 1] != b[i + 1] || a[i + 2] != b[i + 2] {
+                n += 1
+            }
+            return n
+        }
+        r.trafficLights = []
+        let dark = try r.render(width: Self.width, height: Self.height, camera: camera,
+                                aircraftPosition: session.positionENU, aircraftBodyToENU: body)
+        r.trafficLights = [
+            NightLight(position: onAxis(300, lift: 0), kind: .navRed),
+            NightLight(position: onAxis(340, lift: 12), kind: .navGreen),
+            NightLight(position: onAxis(420, lift: 30), kind: .strobe),
+            NightLight(position: onAxis(900, lift: 200), kind: .beacon),
+        ]
+        let lit = try r.render(width: Self.width, height: Self.height, camera: camera,
+                               aircraftPosition: session.positionENU, aircraftBodyToENU: body)
+        Self.save("night_traffic_lights_1280x720", lit)
+        #expect(changedPixels(lit, dark) > 0, "night-light sprites change the frame")
+    }
+
+    /// Night sky frame: stars and the moon above the sunless horizon (the night lighting preset, fixed clock).
+    /// The upper half of the frame must hold light, which the night sky pass adds.
+    @Test(.enabled(if: SkyRegressionTests.hasDevice, "no Metal device on this host"))
+    func nightSkyFrame() throws {
+        guard Self.wanted("SKYWORLD") else { return }
+        let world = QuickFlightWorld()
+        let session = QuickFlightSession(world: world, start: .final)
+        let cam = session.chaseCamera()
+        let r = try WorldRenderer(lighting: LightingSetup.physicalPreset(.night, azimuthDegrees: 200, cameraHeightMetres: cam.position.z))
+        r.skyUnixTime = 1_795_000_000   // fixed clock so the star field is reproducible
+        let env = world.buildEnvironmentInstanced(detail: .phone)
+        try r.setEnvironment(env.soup)
+        try r.setTrees(RealWorldRenderData.trees(env.trees))
+        try r.setAircraft(QuickFlightWorld.aircraftMesh())
+        r.clouds = .clear
+        let c = session.bodyToENUColumns
+        let img = try r.render(width: Self.width, height: Self.height, camera: WorldCamera(position: cam.position, target: cam.target),
+                               aircraftPosition: session.positionENU, aircraftBodyToENU: simd_double3x3(columns: (c.0, c.1, c.2)))
+        Self.save("night_sky_1280x720", img)
+        var upperLight = 0
+        for y in 0..<(Self.height / 2) {
+            for x in 0..<Self.width {
+                let i = 3 * (y * Self.width + x)
+                if Int(img[i]) + Int(img[i + 1]) + Int(img[i + 2]) > 60 { upperLight += 1 }
+            }
+        }
+        #expect(upperLight > 30, "stars and moon light the night sky: \(upperLight)")
     }
 }
 #endif
