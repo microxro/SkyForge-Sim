@@ -4,9 +4,7 @@
 
 public enum AircraftExteriorShaders {
     public static let source = """
-    #include <metal_stdlib>
-    using namespace metal;
-
+    // No include directive here: this is spliced into the world library, which already includes metal_stdlib.
     struct AXParams {
         float4 a;   // x time (s), y rain coverage 0..1, z dirt age 0..1, w detail distance (m)
         float4 b;   // x rain streak angle (rad), y streak length (m), z flags bit0 rivets bit1 clearcoat bit2 dirt, w throttle
