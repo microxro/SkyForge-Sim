@@ -298,5 +298,43 @@ import SFInstruments
         Self.save(ultra ? "ultra_skyworld_final" : "metal_skyworld_1280x720", img)
         #expect(r.lastDrawnEnvironmentCells > 0)
     }
+
+    /// Night frame: traffic nav, strobe and beacon lights around the aircraft. The lights must add visible
+    /// light, so the frame with them is brighter than the same frame without them (the night-light pass is drawn).
+    @Test(.enabled(if: SkyRegressionTests.hasDevice, "no Metal device on this host"))
+    func nightTrafficLightsFrame() throws {
+        guard Self.wanted("SKYWORLD") else { return }
+        let world = QuickFlightWorld()
+        let session = QuickFlightSession(world: world, start: .final)
+        let cam = session.chaseCamera()
+        let r = try WorldRenderer(lighting: LightingSetup.physicalPreset(.night, azimuthDegrees: 200, cameraHeightMetres: cam.position.z))
+        let env = world.buildEnvironmentInstanced(detail: .phone)
+        try r.setEnvironment(env.soup)
+        try r.setTrees(RealWorldRenderData.trees(env.trees))
+        try r.setAircraft(QuickFlightWorld.aircraftMesh())
+        r.clouds = .clear
+        let c = session.bodyToENUColumns
+        let body = simd_double3x3(columns: (c.0, c.1, c.2))
+        let p = SIMD3<Float>(Float(session.positionENU.x), Float(session.positionENU.y), Float(session.positionENU.z))
+        let camera = WorldCamera(position: cam.position, target: cam.target)
+        func brightPixels(_ img: [UInt8]) -> Int {
+            var n = 0
+            for i in stride(from: 0, to: img.count - 2, by: 3) where Int(img[i]) + Int(img[i + 1]) + Int(img[i + 2]) > 600 { n += 1 }
+            return n
+        }
+        r.trafficLights = []
+        let dark = try r.render(width: Self.width, height: Self.height, camera: camera,
+                                aircraftPosition: session.positionENU, aircraftBodyToENU: body)
+        r.trafficLights = [
+            NightLight(position: p + SIMD3(-60, 300, 20), kind: .navRed),
+            NightLight(position: p + SIMD3(60, 300, 20), kind: .navGreen),
+            NightLight(position: p + SIMD3(0, 300, 25), kind: .strobe),
+            NightLight(position: p + SIMD3(0, 900, 40), kind: .beacon),
+        ]
+        let lit = try r.render(width: Self.width, height: Self.height, camera: camera,
+                               aircraftPosition: session.positionENU, aircraftBodyToENU: body)
+        Self.save("night_traffic_lights_1280x720", lit)
+        #expect(brightPixels(lit) > brightPixels(dark), "night-light sprites add visible light")
+    }
 }
 #endif
