@@ -77,6 +77,19 @@ public struct CareerState: Codable, Sendable, Equatable {
         ownedAircraft = ownedAircraft.filter { Economy.spec($0) != nil }
         ownedAircraft.insert("org.skyforge.sf1")
         stats.sanitize()
+        // A tampered attempt count of Int.max would trap on the next `attempts += 1`; scores must stay finite.
+        challenges = Dictionary(uniqueKeysWithValues: challenges.filter { Self.validID($0.key) }.prefix(500).map { entry -> (String, ChallengeRecord) in
+            var r = entry.value
+            r.bestScore = r.bestScore.isFinite ? min(max(r.bestScore, 0), 1_000_000) : 0
+            r.attempts = min(max(r.attempts, 0), 1_000_000)
+            return (entry.key, r)
+        })
+        // Each logged report is re-sanitised on load, not only when the next flight is applied.
+        log = log.map { entry in
+            var e = entry
+            e.report = e.report.sanitized()
+            return e
+        }
         if log.count > Self.maxLogEntries { log.removeFirst(log.count - Self.maxLogEntries) }
         if let j = activeJob, !(j.distanceKm.isFinite && j.basePay >= 0 && j.basePay < 10_000_000 && j.deadlineMinutes.isFinite) { activeJob = nil }
     }

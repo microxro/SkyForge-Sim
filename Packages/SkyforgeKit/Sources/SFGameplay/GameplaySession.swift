@@ -59,12 +59,12 @@ public struct GameplaySession: Sendable {
     /// Landing-gear travel for retractable aircraft; `ControlInputs.gear` follows its position.
     private var gear = GearActuator()
     private var crashReported = false
-    /// AI traffic and the tower, when the session has them. Nil by default, so headless tests run unchanged.
-    public private(set) var traffic: TrafficSystem?
-    public private(set) var atc: ATCController?
-    private var atcClock = 0.0
-    /// Seconds between tower decisions (s).
-    public static let atcInterval = 0.5
+    /// AI traffic, the tower and ownship's place in the tower's picture. Nil by default, so headless tests run unchanged.
+    public private(set) var tower: TowerSession?
+    /// The AI traffic, when the session has traffic.
+    public var traffic: TrafficSystem? { tower?.traffic }
+    /// The tower, when the session has traffic.
+    public var atc: ATCController? { tower?.controller }
 
     /// Starts a mission, or a free flight on the runway when `mission` is nil.
     /// `trafficEnabled` adds AI arrivals and departures at this runway, with the tower clearing them.
@@ -91,8 +91,7 @@ public struct GameplaySession: Sendable {
         if trafficEnabled {
             let runway = TrafficRunway(threshold: world.runwayThreshold, heading: world.runwayHeading,
                                        length: world.runwayLengthMetres, elevation: world.runwayElevation)
-            traffic = TrafficSystem(runway: runway)
-            atc = ATCController(runwayDesignator: runway.designator)
+            tower = TowerSession(runway: runway, startsOnRunway: onGround)
         }
     }
 
@@ -245,25 +244,23 @@ public struct GameplaySession: Sendable {
     /// Snapshots of the AI aircraft, for the renderer and HUD.
     public var trafficSnapshots: [TrafficSnapshot] { traffic?.snapshots ?? [] }
 
-    /// Steps the traffic in place, lets the tower clear it, and gives ownship the wakes of the heavy aircraft near it.
+    /// The clearance the tower is waiting on from the pilot, if any. Answer it with `answerTower(choice:)`.
+    public var towerPrompt: OwnshipPrompt? { tower?.prompt }
+
+    /// The pilot's readback choice for the tower's prompt. Returns true when correct, false for "say again", and nil
+    /// when no prompt is waiting.
+    @discardableResult
+    public mutating func answerTower(choice: Int) -> Bool? {
+        tower?.readback(choice: choice)
+    }
+
+    /// Steps the traffic and the tower, and gives ownship the wakes of the heavy aircraft near it.
     private mutating func updateTraffic(dt: Double) {
-        guard traffic != nil else { return }
-        traffic?.step(dt: dt)
-        _ = traffic?.drainEvents()   // nothing reads these yet; drain so the buffer stays short
-        atcClock += dt
-        if atcClock >= Self.atcInterval {
-            atcClock = 0
-            let simTime = traffic?.time ?? 0
-            let snapshots = traffic?.snapshots ?? []
-            let wind = ATCWind(windNED: environment.windNED)
-            let instructions = atc?.update(time: simTime, traffic: snapshots, wind: wind) ?? []
-            for instruction in instructions {
-                if let clearance = instruction.clearance {
-                    _ = traffic?.issue(clearance, to: instruction.aircraftID)
-                }
-            }
-        }
-        environment.wakes = traffic?.wakesNear(state.positionNED) ?? []
+        guard tower != nil else { return }
+        let report = OwnshipReport(config: aircraft.config, positionNED: state.positionNED,
+                                   velocityNED: state.velocityNED, onGround: onGround)
+        _ = tower?.step(dt: dt, ownship: report, wind: ATCWind(windNED: environment.windNED))
+        environment.wakes = tower?.traffic.wakesNear(state.positionNED) ?? []
     }
 
     private mutating func fail(_ reason: String) {

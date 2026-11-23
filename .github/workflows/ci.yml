@@ -11,8 +11,9 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ci-${{ github.ref }}
-  # Keep every run on main: cancelling a superseded push there can hide a failure.
+  # Runs on main get their own group (by run id). GitHub keeps only one pending run per group, so a shared group
+  # let a newer push drop a queued run for an older commit. Branches still cancel superseded runs.
+  group: ci-${{ github.ref == 'refs/heads/main' && github.run_id || github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
@@ -23,7 +24,7 @@ jobs:
     runs-on: ubuntu-24.04
     container: swift:6.3
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: actions/cache@v4
@@ -54,7 +55,7 @@ jobs:
   apple:
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Select Xcode
@@ -92,14 +93,14 @@ jobs:
             CODE_SIGNING_ALLOWED=NO build | tee mac-build.log | tail -n 80
       - name: Upload logs
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: apple-build-logs
           path: "*-build.log"
           if-no-files-found: ignore
       - name: Upload visual regression output
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: visual-regression
           path: visual-out
@@ -111,7 +112,7 @@ jobs:
   frames:
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Select Xcode
@@ -130,7 +131,7 @@ jobs:
           if [ -f frames.log ]; then python3 tools/ci_frames.py extract frames.log frames-out; else echo "::warning::No frames log"; fi
       - name: Upload frames
         if: ${{ always() }}
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: skyforge-frames
           path: frames-out
@@ -154,12 +155,12 @@ jobs:
       REPO: ${{ github.repository }}
       SHA: ${{ github.sha }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Download frames
         id: download
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         continue-on-error: true
         with:
           name: skyforge-frames

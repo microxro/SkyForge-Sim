@@ -59,6 +59,10 @@ public struct MissionRuntime: Sendable {
     private var objectiveStart = 0.0
     private var hold = 0.0
     private var routeIndex = 0
+    // Loop tracking: unwrapped angle of the velocity vector in the vertical plane through the start heading.
+    private var loopRef: SIMD2<Double>?
+    private var loopPrev: Double?
+    private var loopAngle = 0.0
     private var belowTime = 0.0
     private var outOfBandTime = 0.0
     private var errorSum = 0.0
@@ -138,6 +142,7 @@ public struct MissionRuntime: Sendable {
 
     private mutating func beginObjective(sample: FlightSample, targets: [AITarget]) {
         hold = 0; routeIndex = 0; belowTime = 0; outOfBandTime = 0
+        loopRef = nil; loopPrev = nil; loopAngle = 0
         errorSum = 0; errorSamples = 0; lostTime = 0; progress = 0
         touchedDown = false; touchdownQuality = 1; bounces = 0
         if let obj = currentObjective, case .flyTo(let wp) = obj.kind {
@@ -222,6 +227,28 @@ public struct MissionRuntime: Sendable {
             }
             progress = initialDistance > 1 ? max(0, min(1, 1 - d / initialDistance)) : 0
             return .running
+        case .loop(let minAGL, let minSpeed):
+            if !s.onGround && s.heightAGL < minAGL { return .failed("Too low for the loop") }
+            if Self.distance(s.velocityNED, .zero) < minSpeed { return .failed("Lost too much speed in the loop") }
+            let vh = SIMD2(s.velocityNED.x, s.velocityNED.y)
+            let horiz = (vh.x * vh.x + vh.y * vh.y).squareRoot()
+            if loopRef == nil {
+                guard horiz > 1 else { progress = 0; return .running }
+                loopRef = vh / horiz
+            }
+            guard let ref = loopRef else { return .running }
+            let along = vh.x * ref.x + vh.y * ref.y
+            let up = -s.velocityNED.z
+            let angle = atan2(up, along)
+            if let prev = loopPrev {
+                var d = angle - prev
+                while d > .pi { d -= 2 * .pi }
+                while d < -.pi { d += 2 * .pi }
+                loopAngle += d
+            }
+            loopPrev = angle
+            progress = max(0, min(1, abs(loopAngle) / (2 * .pi)))
+            return abs(loopAngle) >= 2 * .pi * 0.95 ? .completed(quality: 1) : .running
         case .pickup(let wp, let maxSpeed, let holdTime):
             let d = Self.distance(s.positionNED, wp.ned(frame))
             let speed = Self.distance(s.velocityNED, .zero)

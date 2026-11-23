@@ -12,7 +12,7 @@ let package = Package(
         .executable(name: "sfpreview", targets: ["SFPreviewCLI"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/apple/swift-crypto.git", from: "4.5.2"),
+        .package(url: "https://github.com/apple/swift-crypto.git", from: "5.1.2"),
     ],
     targets: [
         // Pure Swift (Linux-testable)

@@ -79,6 +79,9 @@ public enum ObjectiveKind: Sendable, Codable, Equatable {
     case survive(seconds: Double)
     /// Keep the radar locked on a target for `hold` seconds continuously; the timer resets if the lock drops.
     case radarLock(targetID: String, hold: Double)
+    /// Turn the velocity vector through one full loop in the vertical plane while staying above `minAGL`
+    /// and at or above `minSpeed` (m/s). Fails if the aircraft gets too low or too slow.
+    case loop(minAGL: Double, minSpeed: Double)
 }
 
 public struct MissionObjective: Sendable, Codable, Equatable, Identifiable {
@@ -240,6 +243,8 @@ public struct MissionDefinition: Sendable, Codable, Equatable, Identifiable {
                 if !(hold >= 0) { out.append("\(o.id): bad radar lock hold") }
             case .dropRun(_, let maxAGL, let minSpeed, let maxSpeed):
                 if maxAGL <= 0 || minSpeed < 0 || maxSpeed <= minSpeed { out.append("\(o.id): bad drop run limits") }
+            case .loop(let minAGL, let minSpeed):
+                if minAGL <= 0 || minSpeed <= 0 { out.append("\(o.id): bad loop limits") }
             case .takeoff, .flyTo: break
             }
         }

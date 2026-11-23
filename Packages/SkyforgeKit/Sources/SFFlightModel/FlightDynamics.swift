@@ -76,6 +76,8 @@ public struct FlightEnvironment: Sendable {
     public var wakes: [WakeVortexPair] = []
     /// Airframe ice severity, 0 clean … 1 heavily iced (see `IcingModel`).
     public var iceIndex: Double = 0
+    /// Ground surface under the wheels (see `GroundSurface`). Paved by default.
+    public var surface: GroundSurface = .paved
     public init(windNED: SIMD3<Double> = .zero, temperatureOffset: Double = 0, originHeight: Double = 0,
                 terrain: any TerrainHeightProvider = FlatTerrain(), surfaceFriction: Double = 1,
                 wakes: [WakeVortexPair] = [], iceIndex: Double = 0) {
@@ -290,6 +292,7 @@ public struct FlightModel: Sendable {
         let gearTravel = config.retractableGear ? clamp((input.gear - 0.1) / 0.85, 0, 1) : 1.0
         let belly = gearTravel < 1
         let mu = 0.85 * (env.surfaceFriction.isFinite ? min(1.2, max(0.02, env.surfaceFriction)) : 1)
+            * env.surface.tractionScale
         for legFull in config.gear {
             var leg = legFull
             if belly {
@@ -319,7 +322,7 @@ public struct FlightModel: Sendable {
             }
             let side = SIMD3(-heading.y, heading.x, 0)
             let vLong = dot(vNED, heading), vLat = dot(vNED, side)
-            let muRoll = belly ? 0.45 : 0.02 + (leg.braked ? 0.55 * input.brakes : 0)
+            let muRoll = (belly ? 0.45 : 0.02 + (leg.braked ? 0.55 * input.brakes : 0)) + env.surface.rollingCoefficient
             var fLong = -muRoll * normal * tanh(vLong / 0.3)
             var fLat = -mu * normal * tanh(vLat / 0.15)
             // Friction circle: combined braking and cornering cannot exceed mu * N.
