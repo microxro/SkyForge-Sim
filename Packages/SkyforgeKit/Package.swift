@@ -37,6 +37,8 @@ let package = Package(
         // Missions, aircraft selection and military flight. Pure Swift on top of the flight model and Quick Flight worlds.
         .target(name: "SFGameplay", dependencies: ["SFMath", "SFAtmosphere", "SFFlightModel", "SFQuickFlight", "SFTraffic", "SFATC"]),
         .target(name: "SFGameplayUI", dependencies: ["SFGameplay"]),
+        // Carrier operations: deck motion, catapult launch, arrested landing with LSO grading, qualification. Pure Swift.
+        .target(name: "SFCarrier"),
         // AI traffic (point-mass arrivals and departures, wake shedding) and rule-based ATC on top of it.
         .target(name: "SFTraffic", dependencies: ["SFAtmosphere", "SFFlightModel"]),
         .target(name: "SFATC", dependencies: ["SFTraffic"]),
@@ -66,6 +68,7 @@ let package = Package(
         .testTarget(name: "SFInstrumentsTests", dependencies: ["SFInstruments", "SFFlightModel", "SFAtmosphere", "SFPreview"]),
         .testTarget(name: "SFQuickFlightTests", dependencies: ["SFQuickFlight", "SFWeather", "SFAtmosphere", "SFFlightModel", "SFInput", "SFPreview", "SFImagery", "SFContent"]),
         .testTarget(name: "SFGameplayTests", dependencies: ["SFGameplay", "SFQuickFlight", "SFFlightModel", "SFAtmosphere", "SFMath"]),
+        .testTarget(name: "SFCarrierTests", dependencies: ["SFCarrier"]),
         .testTarget(name: "SFAudioTests", dependencies: ["SFAudio", "SFFlightModel", "SFWeather"]),
         .testTarget(name: "SFTrafficTests", dependencies: ["SFTraffic", "SFFlightModel", "SFAtmosphere", "SFMath"]),
         .testTarget(name: "SFATCTests", dependencies: ["SFATC", "SFTraffic", "SFFlightModel"]),
