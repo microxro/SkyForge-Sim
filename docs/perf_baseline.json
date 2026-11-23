@@ -1,4 +1,10 @@
 {
-  "_note": "Median frame time baselines (ms) per scene/tier, recorded from real CI runs of the FrameTimeTests step. Empty until a run is recorded; the gate does not fail on scenes without a baseline.",
-  "scenes": {}
+  "_note": "Median frame time (ms) per scene/tier from FrameTimeTests in the Apple CI job of main run 45092630310 (commit 554ea60, macOS 26 virtual GPU runner, not a device). The gate fails above +10 %. Re-record on a runner-image change; a device run replaces these numbers when available.",
+  "source_run": 45092630310,
+  "scenes": {
+    "real-KMRY/low": {"median": 43.80, "p95": 45.34},
+    "real-KMRY/high": {"median": 92.32, "p95": 96.41},
+    "skyworld/low": {"median": 23.51, "p95": 24.91},
+    "skyworld/high": {"median": 42.63, "p95": 43.44}
+  }
 }
