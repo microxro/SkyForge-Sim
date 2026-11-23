@@ -267,7 +267,18 @@ public enum MissionCatalog {
         ],
         parTime: 300, timeLimit: 600, areaRadius: 20_000, unlock: .mission("airshow-loop"),
         payload: [PayloadStation(name: "Rear hold", mass: 180, arm: -0.3)], surface: .grass)
-    public static let all: [MissionDefinition] = [firstFlight, patternLanding, precisionLanding, wingman, intercept, gunnery, lowLevel, dogfight, coastalSurvey, twinBandits, bushStrip, airportTour, valleyRun, waterDropRun, rescuePickup, airshowLoop, radarIntercept, twoShipDefence, ifrApproach, cargoRun]
+    public static let engineOutLanding = MissionDefinition(
+        id: "engine-out-landing", title: "Dead-Stick Landing", category: .landing,
+        briefing: "The engine quits 20 seconds into a 3 km glide from 900 m. Stay on the airfield and land within 250 m of the threshold with the engine failed.",
+        difficulty: 3, recommendedAircraft: AircraftCatalog.sfCruiser.id, allowedRoles: civil,
+        spawn: MissionSpawn(along: -3_000, up: 900, speed: .cruise),
+        objectives: [
+            MissionObjective(id: "land", title: "Land on the runway", kind: .land(aimAlong: 300, zoneHalfLength: 250, maxSinkRate: 3.0), points: 500),
+        ],
+        parTime: 240, timeLimit: 420, areaRadius: 20_000, unlock: .mission("ifr-approach"),
+        engineFailureAt: 20)
+
+    public static let all: [MissionDefinition] = [firstFlight, patternLanding, precisionLanding, wingman, intercept, gunnery, lowLevel, dogfight, coastalSurvey, twinBandits, bushStrip, airportTour, valleyRun, waterDropRun, rescuePickup, airshowLoop, radarIntercept, twoShipDefence, ifrApproach, cargoRun, engineOutLanding]
 
     public static func mission(id: String) -> MissionDefinition? { all.first { $0.id == id } }
     public static func missions(in category: MissionCategory) -> [MissionDefinition] { all.filter { $0.category == category } }
