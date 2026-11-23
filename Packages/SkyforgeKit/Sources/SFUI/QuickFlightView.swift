@@ -341,6 +341,20 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
                                                                                  SIMD3(cos(h), -sin(h), 0),
                                                                                  SIMD3(0, 0, -1))))
         }
+        // AI traffic lights: nav red and green at the wingtips, white at the tail, strobe on top. Offsets are body
+        // metres (x forward, y right, z down), approximate for the traffic types. Drawn by the night-light pass.
+        r.trafficLights = r.trafficPoses.enumerated().flatMap { (i, pose) -> [NightLight] in
+            let m = pose.bodyToENU
+            func at(_ b: SIMD3<Double>) -> SIMD3<Float> {
+                let e = m.columns.0 * b.x + m.columns.1 * b.y + m.columns.2 * b.z + pose.position
+                return SIMD3(Float(e.x), Float(e.y), Float(e.z))
+            }
+            let phase = Float((i * 37) % 100) / 100
+            return [NightLight(position: at(SIMD3(0, -6, 0)), kind: .navRed),
+                    NightLight(position: at(SIMD3(0, 6, 0)), kind: .navGreen),
+                    NightLight(position: at(SIMD3(-7, 0, 0)), kind: .navWhite),
+                    NightLight(position: at(SIMD3(0, 0, -1.5)), kind: .strobe, phase: phase)]
+        }
         let encodeStart = CACurrentMediaTime()
         do {
             try r.encode(cmd: cmd, colour: tex, depth: depth, camera: camera,
