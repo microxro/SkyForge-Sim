@@ -601,13 +601,18 @@ public struct QuickFlightSession: Sendable {
     public mutating func setInputs(_ i: ControlInputs) { inputs = i.sanitized }
 
     /// Chase camera: behind and above the aircraft along its track, looking slightly ahead.
-    public func chaseCamera(distance: Double = 22, height: Double = 5) -> (position: SIMD3<Double>, target: SIMD3<Double>) {
+    /// `orbit` swings the camera around the aircraft (radians, 0 = directly behind).
+    public func chaseCamera(distance: Double = 22, height: Double = 5, orbit: Double = 0) -> (position: SIMD3<Double>, target: SIMD3<Double>) {
         let e = state.attitude.euler
         let fwd = SIMD3(sin(e.yaw), cos(e.yaw), 0)
         let p = positionENU
-        var cam = p - fwd * distance + SIMD3(0, 0, height)
+        let a = e.yaw + orbit
+        let behind = SIMD3(sin(a), cos(a), 0)
+        var cam = p - behind * distance + SIMD3(0, 0, height)
         let ground = world.height(cam.x, cam.y) + 2
         cam.z = max(cam.z, ground)
-        return (cam, p + fwd * 30 + SIMD3(0, 0, 1))
+        // Look ahead along the track when behind the aircraft; when swung to the side, look at the aircraft.
+        let ahead = max(0, cos(orbit)) * 30
+        return (cam, p + fwd * ahead + SIMD3(0, 0, 1))
     }
 }
