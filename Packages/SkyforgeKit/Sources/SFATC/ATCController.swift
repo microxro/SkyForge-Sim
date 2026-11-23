@@ -229,6 +229,12 @@ public struct ATCController: Sendable {
     public static let vectorTolerance = 30.0 * Double.pi / 180
     /// Seconds ownship has to reach the approach fix after a hold is read back.
     public static let holdTimeout = 120.0
+    /// Range (m) within which the tower calls an AI aircraft to ownship as traffic.
+    public static let trafficCallRange = 3_000.0
+    /// Range (m) beyond which a traffic call is cleared, so a call can be made again on the next encounter.
+    public static let trafficCallClearRange = 5_000.0
+    /// Vertical separation (m) within which a traffic call is made.
+    public static let trafficCallAltitude = 300.0
 
     public let runwayDesignator: String
     /// Messages said so far, oldest first, capped at `logLimit`.
@@ -264,6 +270,8 @@ public struct ATCController: Sendable {
     /// The clearance or instruction to ownship waiting for a readback, if any.
     private var prompt: Prompt?
     private var lastTime: Double?
+    /// AI aircraft the tower has called to ownship as traffic and not yet seen clear of.
+    private var calledTraffic: Set<String> = []
 
     /// A vector ownship has read back. `flying` is the time its heading has held within tolerance.
     private struct OwnshipVector: Sendable {
@@ -323,6 +331,9 @@ public struct ATCController: Sendable {
         let present = Set(traffic.map { $0.id })
         lastPhase = lastPhase.filter { present.contains($0.key) }
         lastFacility = lastFacility.filter { present.contains($0.key) }
+
+        // 1b. Traffic calls: an AI aircraft close to ownship in range and height is called to the pilot, once per encounter.
+        out.append(contentsOf: trafficCalls(for: traffic))
 
         // 2. Landing clearance: the first base-leg arrival, once spacing and the runway allow it.
         var landingCleared = false
@@ -584,6 +595,54 @@ public struct ATCController: Sendable {
             return "\(cs), no landing clearance read back."
         }
         return nil
+    }
+
+    /// Traffic calls to ownship. Each AI aircraft within `trafficCallRange` and `trafficCallAltitude` is called once,
+    /// with its clock position, distance and height. The call is cleared once it is beyond `trafficCallClearRange`.
+    private mutating func trafficCalls(for traffic: [TrafficSnapshot]) -> [ATCInstruction] {
+        guard let own = traffic.first(where: { $0.id == TrafficOwnship.id }) else {
+            calledTraffic.removeAll()
+            return []
+        }
+        let ids = Set(traffic.map { $0.id })
+        calledTraffic = calledTraffic.filter { ids.contains($0) }
+        let ownCS = ATCPhrase.callsign(own.callsign)
+        var out: [ATCInstruction] = []
+        for s in traffic where s.id != TrafficOwnship.id {
+            let dn = s.positionNED.x - own.positionNED.x
+            let de = s.positionNED.y - own.positionNED.y
+            let range = (dn * dn + de * de).squareRoot()
+            if calledTraffic.contains(s.id) {
+                if range > Self.trafficCallClearRange { calledTraffic.remove(s.id) }
+                continue
+            }
+            let dh = s.heightAboveRunway - own.heightAboveRunway
+            guard range <= Self.trafficCallRange, abs(dh) <= Self.trafficCallAltitude else { continue }
+            calledTraffic.insert(s.id)
+            let clock = Self.clockPosition(bearing: atan2(de, dn), heading: own.heading)
+            let miles = max(1, Int((range / 1_852).rounded()))
+            let text = "\(ownCS), traffic, \(clock), \(ATCPhrase.digits(String(miles))) "
+                + (miles == 1 ? "mile" : "miles") + ", \(Self.altitudeWords(dh)). "
+                + "\(ATCPhrase.callsign(s.callsign)), \(s.typeName)."
+            out.append(ATCInstruction(aircraftID: TrafficOwnship.id, clearance: nil, text: text))
+        }
+        return out
+    }
+
+    /// The clock position of a bearing seen from ownship's heading, spoken as "two o'clock" (both NED angles in rad).
+    static func clockPosition(bearing: Double, heading: Double) -> String {
+        var relative = (bearing - heading).truncatingRemainder(dividingBy: 2 * Double.pi)
+        if relative < 0 { relative += 2 * Double.pi }
+        var hour = Int((relative / (Double.pi / 6)).rounded()) % 12
+        if hour == 0 { hour = 12 }
+        return ATCPhrase.digits(String(hour)) + " o'clock"
+    }
+
+    /// Height difference (m) in hundreds of feet, spoken relative to ownship: "same altitude" or "three hundred feet below".
+    static func altitudeWords(_ dh: Double) -> String {
+        let hundreds = Int((abs(dh) * 3.28084 / 100).rounded())
+        if hundreds == 0 { return "same altitude" }
+        return ATCPhrase.digits(String(hundreds)) + " hundred feet " + (dh > 0 ? "above" : "below")
     }
 
     /// Adds a line to the log, keeping the newest `logLimit`.
