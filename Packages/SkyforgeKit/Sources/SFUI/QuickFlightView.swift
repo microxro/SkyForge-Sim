@@ -455,6 +455,7 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
         let report = FlightReport.fromMission(id: result.missionID, aircraftID: result.aircraftID, success: result.success,
                                               score: result.score, elapsed: result.elapsed, kills: result.kills,
                                               crashed: session.crashed, endedAt: Int(Date().timeIntervalSince1970))
+        LogbookStore(url: LogbookStore.defaultURL).record(report)
         if let outcome = SaveStore(url: SaveStore.defaultURL).record(report), let lvl = outcome.leveledUpTo {
             attribution.append("Career: reached level \(lvl)")
         }
