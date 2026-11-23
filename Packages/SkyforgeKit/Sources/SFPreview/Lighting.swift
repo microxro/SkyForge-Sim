@@ -101,7 +101,9 @@ public struct LightingSetup: Sendable {
                                  ambientSky: SIMD3(0.16, 0.16, 0.26), ambientGround: SIMD3(0.06, 0.05, 0.05),
                                  fogDensity: 0.000_10, fogColour: SIMD3(0.45, 0.28, 0.26), exposure: 1.9, cloudCover: 0.2, sunDisc: false)
         case .night:
-            return LightingSetup(toSun: dir(35, azimuthDegrees - 120), sunColour: SIMD3(0.05, 0.06, 0.09),
+            // Sun 30° below the horizon: night was lit by a sun 35° up (daylight). Stars and moon need the night
+            // sky pass, which is not wired yet; this fixes the light, the sky colours and the shadows.
+            return LightingSetup(toSun: dir(-30, azimuthDegrees - 120), sunColour: SIMD3(0.05, 0.06, 0.09),
                                  skyZenith: SIMD3(0.005, 0.008, 0.02), skyHorizon: SIMD3(0.04, 0.035, 0.05),
                                  ambientSky: SIMD3(0.025, 0.03, 0.05), ambientGround: SIMD3(0.01, 0.01, 0.012),
                                  fogDensity: 0.000_08, fogColour: SIMD3(0.06, 0.05, 0.06), exposure: 6.0, cloudCover: 0.1, sunDisc: false)

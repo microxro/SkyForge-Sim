@@ -298,6 +298,12 @@ public final class WorldRenderer {
     public var shadowsEnabled = true
     /// Volumetric cumulus layer (coverage 0 disables the cloud passes).
     public var clouds: SFAtmosphere.CloudLayer = .clear
+    /// Night sky (stars, moon, Milky Way) is drawn when the sun is down. Observer place for star positions
+    /// (default: the showcase airport KMRY). `skyUnixTime` nil means the device clock.
+    public var observerLatDeg = 36.58
+    public var observerLonDeg = -121.85
+    public var skyUnixTime: Double?
+    public var nightTier: NightTier = .high
     /// Cloud march steps per ray (device tier knob).
     public var cloudSteps = 64
     /// Display grade strength (gentle filmic contrast and vibrance after the tone map; 0 = off).
@@ -368,6 +374,7 @@ public final class WorldRenderer {
         vegetationDensity = s.vegetationDensity; drawDistanceScale = s.drawDistanceScale; terrainSSEScale = s.terrainSSEScale
     }
     private var cloudRenderer: CloudRenderer?
+    private var nightSkyPass: NightSkyPass?
     private let sky: PhysicalSkyRenderer
     private var environment: (buffer: MTLBuffer, count: Int, origin: SIMD3<Double>, cells: [MeshCell])?
     private var environmentCull: EnvironmentCullIndirect?
@@ -1273,6 +1280,15 @@ public final class WorldRenderer {
         sv.exposure = Double(L.exposure) * Double.pi * 3.4    // renderer units → sky radiance scale (PhysicalSky.ks)
         if L.physical != nil { sky.parameters = L.physical!.model.parameters }
         try sky.encode(into: cmd, pass: skyPass, view: sv, aspect: aspect, hdr: true)
+        // Night sky: stars, moon, Milky Way and airglow, additive over the sky and before the terrain (opaque terrain
+        // covers them below the horizon). Skipped while the sun is up, so day frames do not change.
+        let nightSky = NightSkyPass.state(sun: L.toSun, unix: skyUnixTime ?? Date().timeIntervalSince1970,
+                                          latDeg: observerLatDeg, lonDeg: observerLonDeg)
+        if nightSky.darkness > 0.001 {
+            if nightSkyPass == nil { nightSkyPass = try NightSkyPass(device: device, colorFormat: .rgba16Float) }
+            try nightSkyPass?.encode(cmd: cmd, device: device, colour: colour, state: nightSky, tier: nightTier,
+                                     camera: c, time: Float(time))
+        }
 
         // GPU environment culling (flag): the compute pass runs before the main render encoder opens.
         let envGPU = gpuEnvironmentCull ? environmentCull : nil
