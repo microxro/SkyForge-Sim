@@ -47,6 +47,8 @@ public struct RealWorldRenderData: Sendable {
     public var airportMask: AirportMaskRaster? = nil
     /// Suburban parcel mask over the near imagery extent (RGBA8, round 2); nil without land use.
     public var suburbMask: SuburbMaskRaster? = nil
+    /// Land-use zones for the procedural city lights (region metres), from the region's OSM land use.
+    public var cityLightZones: [CityLightZone] = []
     /// Where the 3D trees stand, for removing the photo's own trees and shadows from imagery streamed later
     /// (the in-flight detail layer), as `init(region:)` does for the near and detail layers.
     public var photoCrowns: [ImageryDelighting.Crown] = []
@@ -122,5 +124,23 @@ extension RealWorldRenderData {
         mid = withWater(region.midImagery)
         runway = Runway(threshold: region.runwayThreshold, direction: region.runwayDirection, length: region.runwayLengthMetres,
                         width: region.runwayWidthMetres, lowNumber: region.runwayLowNumber)
+        cityLightZones = region.landUse.map { poly in
+            CityLightZone(density: CityLights.density(landUse: Self.cityLandUseName(poly.category), buildingCoverage: 0),
+                          ring: poly.ring.map { SIMD2(Float($0.x), Float($0.y)) })
+        }
+    }
+}
+
+extension RealWorldRenderData {
+    /// OSM-style class name for `CityLights.density`. Classes that carry no night lighting map to "farmland" (dark).
+    static func cityLandUseName(_ c: LandUseCategory) -> String {
+        switch c {
+        case .residential, .institutional: return "residential"
+        case .commercial: return "commercial"
+        case .industrial: return "industrial"
+        case .transport: return "railway"
+        case .other: return "other"
+        case .airport, .park, .agricultural, .cemetery, .golf, .natural: return "farmland"
+        }
     }
 }
