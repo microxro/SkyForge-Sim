@@ -10,7 +10,7 @@
 //
 // Library order (WorldRenderer): `CloudShaders.common + MacroColourShaders.source + WorldShaders.source`; world_fragment
 // calls `mc_decoupleGround`, so this source must come BEFORE it. It has no dependency on WorldShaders (all helpers are
-// prefixed `mc_`). Runtime flag: `WorldRenderer.macroColourDecoupling` (u.quality.w), default off. CPU mirror:
+// prefixed `mc_`). Runtime flag: `WorldRenderer.macroColourDecoupling` (u.quality.w), default on (round 65). CPU mirror:
 // `MacroColourReference` (SFRender). Host: `MacroColourPass`. Integration notes: docs/rounds/ROUND3.md.
 
 public enum MacroColourShaders {
@@ -128,8 +128,12 @@ public enum MacroColourShaders {
             float tufts  = mc_n(w + 41.0, 2.0) * mc_fade(fp, 2.0);
             float patch4 = mc_n(w - 63.0, 4.0) * mc_fade(fp, 4.0);
             float patch8 = mc_n(w + 23.0, 8.0) * mc_fade(fp, 8.0);
+            // Mid-scale mottle (16 m and 32 m): a flat lawn reads as a sheet without it. Small amplitude, and it
+            // fades out by the same footprint rule, so it adds structure at 2–6 km and nothing at a 19 m+ footprint.
+            float patch16 = mc_n(w - 117.0, 16.0) * mc_fade(fp, 16.0);
+            float patch32 = mc_n(w + 201.0, 32.0) * mc_fade(fp, 32.0);
             float g = 1.0 + 0.08 * blades + 0.08 * clumps + 0.06 * saturate(tufts) - 0.10 * saturate(-tufts)
-                          + 0.06 * patch4 + 0.05 * patch8;
+                          + 0.06 * patch4 + 0.05 * patch8 + 0.05 * patch16 + 0.04 * patch32;
             f *= mix(1.0, g, k.grass);
             tint *= mix(float3(1.0), mix(float3(0.93, 0.99, 0.90), float3(1.06, 1.02, 0.88), saturate(patch8 * 0.5 + 0.5)),
                         0.5 * k.grass * mc_fade(fp, 8.0));

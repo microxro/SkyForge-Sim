@@ -92,6 +92,21 @@ import Foundation
         }
     }
 
+    @Test func lawnMottleReachesMidScaleAndVanishesAtCoarseFootprint() {
+        // Round 65: the 16 m and 32 m lawn octaves must add some variation at a 4 m footprint (2–6 km view) and
+        // none at a 25 m footprint (past their fade), so the change cannot reach the near ground or the far field.
+        let k = R.classify(macroAlb: lawn, forest: 0, steep: 0, roadNear: 0, burb: 0)
+        var lo: Float = 10, hi: Float = -10
+        for i in 0..<400 {
+            let f = R.detail(k, w: SIMD2(Float(i) * 9.1, Float(i) * 5.3), fp: 4, roadNear: 0, burb: 0)
+            lo = min(lo, f); hi = max(hi, f)
+        }
+        #expect(hi - lo > 0.05)
+        #expect(hi - lo < 0.5)
+        let coarse = R.detail(k, w: SIMD2(77.7, 310.3), fp: 25, roadNear: 0, burb: 0)
+        #expect(abs(coarse - 1) < 1e-3)
+    }
+
     @Test func darkCarParkKeepsItsToneInsideALawn() {
         // A dark car park (0.4 × asphalt) at a lawn's edge: the 128 m median and the 400 m mean are lawn-bright, but
         // the pavement clamp is against the 30 m mean (the car park's own), so its tone must survive. The old test
