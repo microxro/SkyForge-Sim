@@ -16,7 +16,8 @@ concurrency:
 
 jobs:
   publish:
-    if: ${{ github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.head_repository.full_name == github.repository }}
+    # Same-repo pull requests only, and never a run that was cancelled by a newer push.
+    if: ${{ github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.head_repository.full_name == github.repository && github.event.workflow_run.conclusion != 'cancelled' }}
     runs-on: ubuntu-24.04
     permissions:
       actions: read
@@ -49,6 +50,20 @@ jobs:
           set -euo pipefail
           if [ -z "$PR" ]; then echo "::notice::No pull request attached to run $RUN_ID; nothing to publish"; exit 0; fi
           mkdir -p frames-out
+          # A run with no frames (its frames job failed or was skipped) must not replace frames already
+          # published for this PR with an empty folder.
+          shopt -s nullglob
+          PNGS=(frames-out/*.png)
+          if [ "${#PNGS[@]}" -eq 0 ]; then
+            echo "::notice::Run $RUN_ID has no frames for PR #$PR; keeping the frames already published"
+            exit 0
+          fi
+          # Publish only the newest commit of the PR. A superseded run must not overwrite newer frames.
+          HEAD_NOW=$(gh api "repos/${REPO}/pulls/${PR}" --jq '.head.sha')
+          if [ "$HEAD_NOW" != "$SHA" ]; then
+            echo "::notice::PR #$PR moved from ${SHA:0:7} to ${HEAD_NOW:0:7}; skipping run $RUN_ID"
+            exit 0
+          fi
           AUTH="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
           GIT=(git -c "http.https://github.com/.extraheader=$AUTH")
           REMOTE="https://github.com/${REPO}.git"
