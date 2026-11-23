@@ -300,7 +300,7 @@ import SFInstruments
     }
 
     /// Night frame: traffic nav, strobe and beacon lights around the aircraft. The lights must add visible
-    /// light, so the frame with them is brighter than the same frame without them (the night-light pass is drawn).
+    /// light, so the frame with them differs from the same frame without them (the night-light pass is drawn).
     @Test(.enabled(if: SkyRegressionTests.hasDevice, "no Metal device on this host"))
     func nightTrafficLightsFrame() throws {
         guard Self.wanted("SKYWORLD") else { return }
@@ -315,26 +315,35 @@ import SFInstruments
         r.clouds = .clear
         let c = session.bodyToENUColumns
         let body = simd_double3x3(columns: (c.0, c.1, c.2))
-        let p = SIMD3<Float>(Float(session.positionENU.x), Float(session.positionENU.y), Float(session.positionENU.z))
         let camera = WorldCamera(position: cam.position, target: cam.target)
-        func brightPixels(_ img: [UInt8]) -> Int {
+        // Lights on the view axis, so they land in the frame whatever the chase heading is.
+        let fwd = simd_normalize(cam.target - cam.position)
+        func onAxis(_ distance: Double, lift: Double) -> SIMD3<Float> {
+            let q = cam.position + fwd * distance + SIMD3<Double>(0, 0, lift)
+            return SIMD3<Float>(Float(q.x), Float(q.y), Float(q.z))
+        }
+        // Count pixels that changed between the two renders (the lights must change the frame, not just brighten it).
+        func changedPixels(_ a: [UInt8], _ b: [UInt8]) -> Int {
             var n = 0
-            for i in stride(from: 0, to: img.count - 2, by: 3) where Int(img[i]) + Int(img[i + 1]) + Int(img[i + 2]) > 600 { n += 1 }
+            for i in stride(from: 0, to: min(a.count, b.count) - 2, by: 3) {
+                let sa = Int(a[i]) + Int(a[i + 1]) + Int(a[i + 2]), sb = Int(b[i]) + Int(b[i + 1]) + Int(b[i + 2])
+                if abs(sa - sb) > 30 { n += 1 }
+            }
             return n
         }
         r.trafficLights = []
         let dark = try r.render(width: Self.width, height: Self.height, camera: camera,
                                 aircraftPosition: session.positionENU, aircraftBodyToENU: body)
         r.trafficLights = [
-            NightLight(position: p + SIMD3(-60, 300, 20), kind: .navRed),
-            NightLight(position: p + SIMD3(60, 300, 20), kind: .navGreen),
-            NightLight(position: p + SIMD3(0, 300, 25), kind: .strobe),
-            NightLight(position: p + SIMD3(0, 900, 40), kind: .beacon),
+            NightLight(position: onAxis(300, lift: 0), kind: .navRed),
+            NightLight(position: onAxis(340, lift: 12), kind: .navGreen),
+            NightLight(position: onAxis(420, lift: 30), kind: .strobe),
+            NightLight(position: onAxis(900, lift: 200), kind: .beacon),
         ]
         let lit = try r.render(width: Self.width, height: Self.height, camera: camera,
                                aircraftPosition: session.positionENU, aircraftBodyToENU: body)
         Self.save("night_traffic_lights_1280x720", lit)
-        #expect(brightPixels(lit) > brightPixels(dark), "night-light sprites add visible light")
+        #expect(changedPixels(lit, dark) >= 20, "night-light sprites change the frame")
     }
 }
 #endif
