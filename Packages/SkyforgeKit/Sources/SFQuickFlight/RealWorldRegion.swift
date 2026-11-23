@@ -229,7 +229,7 @@ public struct RealWorldRegion: FlightWorld {
                 let d = (c * c).sum().squareRoot()
                 return d < full || (d < far && (height >= 14 || area >= 600))
             }) ?? []
-            if !list.isEmpty { osm = OSMData(buildings: list, roads: osm?.roads ?? []) }
+            if !list.isEmpty { osm = OSMData(buildings: list, roads: osm?.roads ?? [], water: osm?.water ?? []) }
         }
         if bundledBuildings, osm?.roads.isEmpty != false, let packed = Showcase.roadData(for: ident) {
             // Bundled streets: every class near the field and under the final approach's foreground (1.5 km around a
@@ -246,14 +246,14 @@ public struct RealWorldRegion: FlightWorld {
                 default: return d < far
                 }
             }) ?? []
-            if !list.isEmpty { osm = OSMData(buildings: osm?.buildings ?? [], roads: list) }
+            if !list.isEmpty { osm = OSMData(buildings: osm?.buildings ?? [], roads: list, water: osm?.water ?? []) }
         }
         progress("Land cover")
         var attribution = [nearProvider.attribution]
         if farProvider.id != nearProvider.id { attribution.append(farProvider.attribution) }
         attribution.append("Elevation: Terrarium tiles (Mapzen/Tilezen; SRTM, USGS 3DEP and others)")
         attribution.append("Airports: OurAirports (public domain)")
-        if let o = osm, !(o.buildings.isEmpty && o.roads.isEmpty) { attribution.append(OSMData.attribution) }
+        if let o = osm, !(o.buildings.isEmpty && o.roads.isEmpty && o.water.isEmpty) { attribution.append(OSMData.attribution) }
         let cover = bundledLandCover ? Showcase.landCover(for: ident) : nil
         if cover != nil { attribution.append(LandCoverGrid.attribution) }
         // A mid layer with no coverage (offline pack without those tiles) is dropped; otherwise it is
@@ -399,9 +399,14 @@ public struct RealWorldRegion: FlightWorld {
         return out
     }
 
+    /// OSM roads and open water (rivers, canals, lakes) as the environment mesh (nil without either).
+    /// Water is `Material.water`, so the renderer's water shader draws it.
     public func roadMesh() -> TriangleSoup? {
-        guard let roads = osm?.roads, !roads.isEmpty else { return nil }
-        return OSMMeshBuilder.roads(roads) { self.height($0, $1) }
+        let roadList = osm?.roads ?? [], waterList = osm?.water ?? []
+        guard !(roadList.isEmpty && waterList.isEmpty) else { return nil }
+        var soup = OSMMeshBuilder.roads(roadList) { self.height($0, $1) }
+        if !waterList.isEmpty { soup.appendOSM(OSMMeshBuilder.water(waterList) { self.height($0, $1) }) }
+        return soup
     }
 
     /// OSM buildings and roads as one mesh in local metres (nil without OSM data).
