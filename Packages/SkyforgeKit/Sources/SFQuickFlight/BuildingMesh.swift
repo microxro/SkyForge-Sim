@@ -340,6 +340,19 @@ public enum BuildingMeshBuilder {
                 cap(pr.ring, z: top + pr.rise, colour: roof, st: st)
             } else {
                 cap(ring, z: top, colour: roof, st: roofStyle(false, photo: photoRoof))
+                // Parapet coping: a lighter 0.35 m band on top of the parapet walls, so a flat roof reads as a built
+                // edge rather than a plain slab. Facing up, so it takes the roof shading.
+                if !floating && parapet > 0, let coping = inset(ring, by: 0.35), coping.count == n {
+                    let cop = wall * 1.15, zc = top + parapet, copStyle = roofStyle(false, photo: false)
+                    for k in 0..<n {
+                        let j = (k + 1) % n
+                        let o0 = vertex(SIMD3(ring[k].x, ring[k].y, zc), up, cop, .roof, uv: ring[k] - it.centre, style: copStyle)
+                        let o1 = vertex(SIMD3(ring[j].x, ring[j].y, zc), up, cop, .roof, uv: ring[j] - it.centre, style: copStyle)
+                        let i1 = vertex(SIMD3(coping[j].x, coping[j].y, zc), up, cop, .roof, uv: coping[j] - it.centre, style: copStyle)
+                        let i0 = vertex(SIMD3(coping[k].x, coping[k].y, zc), up, cop, .roof, uv: coping[k] - it.centre, style: copStyle)
+                        quad(o0, o1, i1, i0)
+                    }
+                }
                 if floating {                                                  // underside of a raised part
                     let first = UInt32(mesh.vertices.count / 32)
                     for p in ring { _ = vertex(SIMD3(p.x, p.y, bottom), -up, wall * 0.6, .roof, uv: p - it.centre, style: roofStyle(false, photo: false)) }
