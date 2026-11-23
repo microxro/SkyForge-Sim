@@ -286,7 +286,7 @@ extension OpenWorldPlanner {
         let dir = SIMD2<Double>(sin(h), cos(h))
         let perp = SIMD2<Double>(cos(h), -sin(h))
         let halfL = length / 2 + 150
-        let halfW = (kind == .bushStrip || kind == .mountainStrip) ? 60 : 340
+        let halfW: Double = (kind == .bushStrip || kind == .mountainStrip) ? 60 : 340
         var lo = Double.infinity, hi = -Double.infinity
         var s = -halfL
         while s <= halfL {
