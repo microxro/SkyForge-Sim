@@ -188,18 +188,18 @@ extension AircraftConfig {
             retractableGear: false)
     }()
 
-    /// SF-N Narrowbody (sfNarrowbody): ~58 t twin-turbofan airliner, 105 kN per engine, retractable gear.
+    /// SF-N Narrowbody (sfNarrowbody): ~58 t twin-turbofan airliner, 115 kN per engine, retractable gear.
     public static let sfNarrowbody: AircraftConfig = {
         var a = AeroCoefficients()
-        a.cL0 = 0.20; a.cLAlpha = 4.9; a.cLMaxClean = 1.50; a.cLMaxFlaps = 2.40
+        a.cL0 = 0.38; a.cLAlpha = 4.9; a.cLMaxClean = 1.50; a.cLMaxFlaps = 2.40
         a.cLQ = 3.0; a.cLElevator = 0.40; a.cLFlap = 0.60
         a.cD0 = 0.022; a.cDGear = 0.012; a.cDFlap = 0.060; a.cDSpeedbrake = 0.020; a.oswald = 0.82
         a.cYBeta = -0.45; a.cYRudder = 0.16
-        a.cm0 = 0.0; a.cmAlpha = -0.90; a.cmQ = -15.0; a.cmAlphaDot = -4.0; a.cmElevator = -1.20; a.cmFlap = -0.05
+        a.cm0 = 0.0; a.cmAlpha = -0.50; a.cmQ = -15.0; a.cmAlphaDot = -4.0; a.cmElevator = -1.20; a.cmFlap = -0.05
         a.clBeta = -0.09; a.clP = -0.38; a.clR = 0.08; a.clAileron = 0.14; a.clRudder = 0.012
         a.cnBeta = 0.09; a.cnP = -0.025; a.cnR = -0.18; a.cnAileron = -0.02; a.cnRudder = -0.06
         var p = PropulsionConfig(kind: .turbojet, engineCount: 2, engineSpanOffset: 5.0)
-        p.dryThrust = 105_000; p.idleFraction = 0.04; p.windmillDragArea = 0.20
+        p.dryThrust = 115_000; p.idleFraction = 0.04; p.windmillDragArea = 0.20
         return AircraftConfig(
             id: "org.skyforge.sfn", name: "SF-N Narrowbody",
             mass: 58_000, inertia: SIMD3(720_000, 2_200_000, 2_800_000), ixz: 0,
@@ -224,11 +224,11 @@ extension AircraftConfig {
     /// SF-E Executive (sfExecutive): ~9 t twin-jet business aircraft, 22 kN per engine, retractable gear.
     public static let sfExecutive: AircraftConfig = {
         var a = AeroCoefficients()
-        a.cL0 = 0.15; a.cLAlpha = 4.8; a.cLMaxClean = 1.45; a.cLMaxFlaps = 2.00
+        a.cL0 = 0.35; a.cLAlpha = 4.8; a.cLMaxClean = 1.45; a.cLMaxFlaps = 2.00
         a.cLQ = 3.0; a.cLElevator = 0.40; a.cLFlap = 0.50
         a.cD0 = 0.020; a.cDGear = 0.012; a.cDFlap = 0.040; a.cDSpeedbrake = 0.020; a.oswald = 0.82
         a.cYBeta = -0.40; a.cYRudder = 0.16
-        a.cm0 = 0.0; a.cmAlpha = -0.80; a.cmQ = -11.0; a.cmAlphaDot = -3.0; a.cmElevator = -1.10; a.cmFlap = -0.04
+        a.cm0 = 0.0; a.cmAlpha = -0.40; a.cmQ = -11.0; a.cmAlphaDot = -3.0; a.cmElevator = -1.10; a.cmFlap = -0.04
         a.clBeta = -0.08; a.clP = -0.34; a.clR = 0.08; a.clAileron = 0.13; a.clRudder = 0.012
         a.cnBeta = 0.09; a.cnP = -0.025; a.cnR = -0.16; a.cnAileron = -0.02; a.cnRudder = -0.06
         var p = PropulsionConfig(kind: .turbojet, engineCount: 2, engineSpanOffset: 2.4)
