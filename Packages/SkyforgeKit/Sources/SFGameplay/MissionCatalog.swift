@@ -278,7 +278,19 @@ public enum MissionCatalog {
         parTime: 240, timeLimit: 420, areaRadius: 20_000, unlock: .mission("ifr-approach"),
         engineFailureAt: 20)
 
-    public static let all: [MissionDefinition] = [firstFlight, patternLanding, precisionLanding, wingman, intercept, gunnery, lowLevel, dogfight, coastalSurvey, twinBandits, bushStrip, airportTour, valleyRun, waterDropRun, rescuePickup, airshowLoop, radarIntercept, twoShipDefence, ifrApproach, cargoRun, engineOutLanding]
+    public static let scooperFirefight = MissionDefinition(
+        id: "scooper-firefight", title: "Lake Scoop Firefight", category: .training,
+        briefing: "A grass fire is burning 3 km out. Skim the lake at planing speed with the door open to take water, then make a low drop run over the fire line at 30 m or less and 45 to 70 m/s.",
+        difficulty: 4, recommendedAircraft: AircraftCatalog.sfCruiser.id, allowedRoles: civil,
+        spawn: MissionSpawn(along: -1_000, up: 300, speed: .cruise),
+        objectives: [
+            MissionObjective(id: "lake", title: "Set up on the lake", kind: .flyTo(MissionWaypoint(1_500, -800, 60, radius: 400)), points: 150),
+            MissionObjective(id: "drop", title: "Drop on the fire line", kind: .dropRun(MissionWaypoint(3_000, 0, 30, radius: 250), maxAGL: 30, minSpeed: 45, maxSpeed: 70), points: 350),
+        ],
+        parTime: 300, timeLimit: 600, areaRadius: 20_000, unlock: .mission("engine-out-landing"),
+        surface: .water)
+
+    public static let all: [MissionDefinition] = [firstFlight, patternLanding, precisionLanding, wingman, intercept, gunnery, lowLevel, dogfight, coastalSurvey, twinBandits, bushStrip, airportTour, valleyRun, waterDropRun, rescuePickup, airshowLoop, radarIntercept, twoShipDefence, ifrApproach, cargoRun, engineOutLanding, scooperFirefight]
 
     public static func mission(id: String) -> MissionDefinition? { all.first { $0.id == id } }
     public static func missions(in category: MissionCategory) -> [MissionDefinition] { all.filter { $0.category == category } }
