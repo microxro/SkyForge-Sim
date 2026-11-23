@@ -359,5 +359,34 @@ import SFInstruments
         Self.save("night_traffic_lights_1280x720", lit)
         #expect(changedPixels(lit, dark) > 0, "night-light sprites change the frame")
     }
+
+    /// Night sky frame: stars and the moon above the sunless horizon (the night lighting preset, fixed clock).
+    /// The upper half of the frame must hold light, which the night sky pass adds.
+    @Test(.enabled(if: SkyRegressionTests.hasDevice, "no Metal device on this host"))
+    func nightSkyFrame() throws {
+        guard Self.wanted("SKYWORLD") else { return }
+        let world = QuickFlightWorld()
+        let session = QuickFlightSession(world: world, start: .final)
+        let cam = session.chaseCamera()
+        let r = try WorldRenderer(lighting: LightingSetup.physicalPreset(.night, azimuthDegrees: 200, cameraHeightMetres: cam.position.z))
+        r.skyUnixTime = 1_795_000_000   // fixed clock so the star field is reproducible
+        let env = world.buildEnvironmentInstanced(detail: .phone)
+        try r.setEnvironment(env.soup)
+        try r.setTrees(RealWorldRenderData.trees(env.trees))
+        try r.setAircraft(QuickFlightWorld.aircraftMesh())
+        r.clouds = .clear
+        let c = session.bodyToENUColumns
+        let img = try r.render(width: Self.width, height: Self.height, camera: WorldCamera(position: cam.position, target: cam.target),
+                               aircraftPosition: session.positionENU, aircraftBodyToENU: simd_double3x3(columns: (c.0, c.1, c.2)))
+        Self.save("night_sky_1280x720", img)
+        var upperLight = 0
+        for y in 0..<(Self.height / 2) {
+            for x in 0..<Self.width {
+                let i = 3 * (y * Self.width + x)
+                if Int(img[i]) + Int(img[i + 1]) + Int(img[i + 2]) > 60 { upperLight += 1 }
+            }
+        }
+        #expect(upperLight > 30, "stars and moon light the night sky: \(upperLight)")
+    }
 }
 #endif

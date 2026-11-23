@@ -51,6 +51,30 @@ public enum QuickFlightLocation: Hashable, Sendable {
     }
 }
 
+/// The time of day a player picks in Quick Flight. Each maps to an SFPreview lighting preset, which sets the sun,
+/// the sky, the stars (night sky pass) and the exposure together.
+public enum FlightTimeOfDay: String, CaseIterable, Sendable {
+    case dawn, day, dusk, night
+
+    public var label: String {
+        switch self {
+        case .dawn: "Dawn"
+        case .day: "Day"
+        case .dusk: "Dusk"
+        case .night: "Night"
+        }
+    }
+
+    public var preset: TimePreset {
+        switch self {
+        case .dawn: .sunrise
+        case .day: .midday
+        case .dusk: .dusk
+        case .night: .night
+        }
+    }
+}
+
 @MainActor
 final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
     enum Status: Equatable { case loading(String), ready, failed(String) }
@@ -59,6 +83,16 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
     @Published var crashed = false
     /// In-cockpit view (3D panel with a live SF-1000 PFD) instead of the chase camera.
     @Published var cockpit = false
+    /// Time of day the player chose: sets the sun, sky, stars and exposure together.
+    @Published var timeOfDay: FlightTimeOfDay = .day {
+        didSet { if timeOfDay != oldValue { renderer?.setLighting(lightingForTimeOfDay()) } }
+    }
+    /// Sun azimuth and camera height for the lighting (the real airport and SkyWorld differ).
+    private var lightingAzimuth: Double = 200
+    private var lightingHeight: Double = 300
+    private func lightingForTimeOfDay() -> LightingSetup {
+        LightingSetup.physicalPreset(timeOfDay.preset, azimuthDegrees: lightingAzimuth, cameraHeightMetres: lightingHeight)
+    }
     private var pfdBusy = false
     /// Camera-following sharp imagery (texture streaming): the loaded region, its tile sources and state.
     private var realRegion: RealWorldRegion?
@@ -187,8 +221,10 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
         skyWorldDetail = tier == .low ? .phone : (tier == .medium ? .tablet : .desktop)
         let real: Bool
         if case .realAirport = location { real = true } else { real = false }
-        let lighting = real ? LightingSetup.physicalPreset(.midday, azimuthDegrees: 200, cameraHeightMetres: 300)
-                            : LightingSetup.physicalPreset(.goldenHour, azimuthDegrees: 255, cameraHeightMetres: world.runwayElevation + 50)
+        lightingAzimuth = real ? 200 : 255
+        lightingHeight = real ? 300 : world.runwayElevation + 50
+        timeOfDay = real ? .day : .dusk
+        let lighting = lightingForTimeOfDay()
         do { renderer = try WorldRenderer(device: device, colorFormat: .bgra8Unorm, lighting: lighting) }
         catch { status = .failed("Renderer: \(error)"); return }
         do { try renderer?.setCockpit(Cockpit.mesh(), screen: Cockpit.pfdCorners.map { SIMD3<Float>(Float($0.x), Float($0.y), Float($0.z)) }) }
@@ -545,6 +581,12 @@ public struct QuickFlightView: View {
                     Menu("Restart") {
                         Button("On the runway") { controller.restart(.runway) }
                         Button("On a 3° final") { controller.restart(.final) }
+                    }
+                    .buttonStyle(.bordered)
+                    Menu("Time: \(controller.timeOfDay.label)") {
+                        ForEach(FlightTimeOfDay.allCases, id: \.self) { t in
+                            Button(t.label) { controller.timeOfDay = t }
+                        }
                     }
                     .buttonStyle(.bordered)
                     Button(controller.cockpit ? "Chase view" : "Cockpit view") { controller.cockpit.toggle() }
