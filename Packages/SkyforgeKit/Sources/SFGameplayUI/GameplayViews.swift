@@ -143,9 +143,62 @@ public struct MissionHUDView: View {
             case .some(.failed(let reason)): Text("Mission failed: \(reason)").font(.title3.bold()).foregroundStyle(.red)
             default: EmptyView()
             }
+            CombatPanelView(hud: hud)
         }
         .padding(12)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+/// Compact radar and damage readout: radar mode and lock, up to six contacts, three health bars and the
+/// countermeasure counts. Read-only; every value comes from the HUD.
+private struct CombatPanelView: View {
+    let hud: GameplayHUD
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("RDR \(hud.radarMode.displayName)")
+                if let lock = hud.radarLockText { Text(lock).foregroundStyle(.green) }
+                Spacer()
+            }
+            .font(.caption.monospaced())
+            ForEach(hud.contacts.prefix(6)) { c in
+                HStack {
+                    Text(c.id)
+                    Spacer()
+                    Text(String(format: "%.1f km", c.range / 1000))
+                    Text(bearingText(c.bearing))
+                    Text(c.locked ? "LOCK" : "").foregroundStyle(.green)
+                }
+                .font(.caption.monospaced())
+            }
+            healthBar("AIRFRAME", hud.airframeHealth)
+            healthBar("ENGINE", hud.engineHealth)
+            healthBar("CONTROLS", hud.controlsHealth)
+            HStack {
+                Text("FLR \(hud.flares)")
+                Text("CHF \(hud.chaff)")
+                Text("RMSL \(hud.radarMissiles)")
+                Spacer()
+            }
+            .font(.caption.monospaced())
+        }
+        .padding(.horizontal, 16)
+    }
+
+    /// Whole degrees, "R" when the contact is right of the nose and "L" when it is left.
+    private func bearingText(_ radians: Double) -> String {
+        let degrees = Int((abs(radians) * 180 / Double.pi).rounded())
+        return (radians >= 0 ? "R" : "L") + String(format: "%03d", degrees)
+    }
+
+    private func healthBar(_ label: String, _ value: Double) -> some View {
+        let v = min(max(value, 0), 1)
+        return VStack(alignment: .leading, spacing: 2) {
+            Text(label).font(.caption.monospaced())
+            ProgressView(value: v)
+        }
     }
 }
 #endif

@@ -46,6 +46,29 @@ always gets the same words.
 `AVSpeechATCSpeaker`, which calls Apple's built-in `AVSpeechSynthesizer`. That voice ships with the OS, so
 the project bundles no voice files and needs no licence beyond the OS.
 
+## Ownship
+
+The tower sees the player's aircraft as one more entry in its picture, with the id `TrafficOwnship.id` and the
+callsign "N one zero zero". `OwnshipTracker` works out its phase from the flight state:
+
+- On the runway and not yet flown: holds short, then takes the roll as `takeoffRoll`.
+- Climbing out after lift-off: `departing`, until 3 km along the runway. Then it is inbound again.
+- Airborne near the field: the nearest pattern leg (`downwind`, `base`, `final`), or `inbound` when it is far
+  from the pattern. After touchdown it is `landing`.
+
+The same rules sequence ownship and AI traffic. A landing goes to the first base-leg arrival, a takeoff to the
+first departure holding short, and an arrival on final holds ownship on the ground.
+
+Clearances to ownship are read back. The tower opens a prompt with three choices: one repeats the clearance
+correctly, and two are wrong. A correct choice confirms the clearance. A wrong one gets "say again", and the
+prompt stays open. While a prompt is open, the tower clears nothing else. `GameplaySession.towerPrompt` and
+`GameplaySession.answerTower(choice:)` expose the prompt, and Quick Flight shows the choices as buttons.
+
+Missions read `ATCController.ownshipStatus` (through `GameplaySession.atc`): `landingCleared`, `takeoffCleared`,
+`unauthorizedTakeoffs` (rolls with no takeoff readback), and `unclearedLandings` (touchdowns with no landing
+readback). The tower also says so on the log when either happens. Nothing stops the aircraft. The mission decides
+what the count is worth.
+
 ## Limits (for later)
 
 - One runway per field: the one nearest the world's runway. Runway choice by wind is not done yet.
@@ -54,9 +77,13 @@ the project bundles no voice files and needs no licence beyond the OS.
 - No collisions between aircraft, and AI aircraft are not weapon targets.
 - The renderer does not draw AI aircraft yet. `GameplaySession.trafficSnapshots` and
   `TrafficSystem.snapshots` expose them for it. Renderer edits go through the renderer thread.
-- Ownship is not sequenced by the tower. Its instructions are not spoken yet.
+- Taxi is not modelled. A flight that starts on the runway begins at the hold short line.
+- Ownship phases are read from position and ground contact, not from the pilot's controls. A go-around is
+  flown as a departure.
+- Quick Flight is the only place a prompt is answered on screen. Mission HUDs do not show the prompt yet.
 
 ## Tests
 
 `Tests/SFTrafficTests` and `Tests/SFATCTests` cover performance, pattern geometry, the arrival and departure
-state machines, determinism, wake shedding, phrase templates, clearance rules and wake spacing.
+state machines, determinism, wake shedding, phrase templates, clearance rules, wake spacing, ownship phases,
+readback prompts and the ownship counts.

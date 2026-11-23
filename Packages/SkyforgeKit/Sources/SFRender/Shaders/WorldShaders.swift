@@ -500,7 +500,8 @@ public enum WorldShaders {
         if (k.dry > 0.01) {
             // Tufts and wind-laid streaks (stretched noise along a slowly turning direction).
             float a = 0.6 + 1.2 * groundNoise(w + 61.0, 30.0);
-            float2 d = float2(cos(a), sin(a)), sw = float2(dot(w, d) / 3.0, dot(w, float2(-d.y, d.x)) * 2.0);
+            // Streak aspect 2.4:1 (was 6:1): the 6:1 stretch read as smeared hillsides at KASE in the PR #48 frames.
+            float2 d = float2(cos(a), sin(a)), sw = float2(dot(w, d) / 1.5, dot(w, float2(-d.y, d.x)) * 1.6);
             float streak = groundNoise(sw + 13.0, 1.0) * o2, tuft = groundNoise(w - 3.7, 0.4) * o1, bare = groundNoise(w + 44.0, 4.0) * o3;
             float3 g = float3(1.0 + 0.14 * streak + 0.16 * tuft);
             g *= mix(float3(1.0), float3(0.90, 0.86, 0.80), saturate(bare) * 0.7);      // thin, earthy patches
@@ -1366,10 +1367,14 @@ public enum WorldShaders {
                         float3 lumW3 = float3(0.2126, 0.7152, 0.0722);
                         float mL = max(dot(ltMean, lumW3), 1e-3), pL = max(dot(albedo, lumW3), 1e-4);
                         // Hue from the already-held albedo, not the 30 m mean (round 53: the mean is the blotch's own colour).
-                        float3 hue = mix(albedo / pL, float3(0.80, 1.10, 0.62), (0.35 + 0.25 * burb) * k.grass / max(k.grass + k.dry, 1e-3));
+                        // Lawn share 0.50–0.75 (was 0.35–0.60): the photo's yellow-green hue read as flat olive at KMRY in the PR #48 frames.
+                        float3 hue = mix(albedo / pL, float3(0.80, 1.10, 0.62), (0.50 + 0.25 * burb) * k.grass / max(k.grass + k.dry, 1e-3));
                         // Luminance: the held albedo's own, bounded at ±35 % of the 30 m mean (round 62b, KBFI debug view 1: a
                         // ±12 % bound pulled the ~400 m-held lawn back to the 30 m mean, whose 40–80 m cloudy mottle returned at 75 %).
                         albedo = mix(albedo, hue * clamp(pL, mL * 0.65, mL * 1.35), lawnW);
+                        // Mid-scale mottle (9 m, ±8 %): the material octaves fade out by 8 m, which left the lawn one sheet of
+                        // colour from a kilometre out. Fades by a 16 m footprint, so it cannot alias at distance.
+                        albedo *= 1.0 + 0.16 * groundNoise(gw - 29.0, 9.0) * saturate(1.0 - fpw / 16.0) * lawnW;
                     }
                 }
                 albedo *= 1.0 + (f - 1.0) * groundMat;
