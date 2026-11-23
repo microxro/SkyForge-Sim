@@ -194,6 +194,11 @@ public final class WorldRenderer {
     }
     /// Tree instances binned into 400 m cells per kind (contiguous ranges), culled per view and cascade.
     private var treeCells: [(kind: Int, start: Int, count: Int, min: SIMD3<Float>, max: SIMD3<Float>)] = []
+    /// Round 5 vegetation: one batch per species (every 4th tree), drawn with the `veg_vertex` full-detail mesh.
+    private struct VegBatch { let mesh: MTLBuffer; let meshCount: Int; let instances: MTLBuffer; let instanceCount: Int; let species: Int }
+    private var vegBatches: [VegBatch] = []
+    /// Mirrors `VegUniforms` in VegetationShaders (8 × float4).
+    private struct VegUniformsCPU { var wind, timeFade, season, species, board, barkLeaf, grass, grassParams: SIMD4<Float> }
     /// Tree cells drawn in the last main pass (of `treeCellCount`).
     public private(set) var lastDrawnTreeCells = 0
     /// Of those, cells drawn with the distant LOD mesh.
@@ -624,10 +629,34 @@ public final class WorldRenderer {
     /// Centre and half extent of the current detail layer (nil = none).
     public var detailImageryPlacement: (centre: SIMD2<Double>, half: Double)? { imageryDetail.map { ($0.centre, $0.half) } }
 
+    /// Round 5 vegetation upload: full-detail species meshes plus every 4th tree as an instance of its species.
+    /// Instances are a separate list from the tree pass, so vegetation adds to the trees for now.
+    private func setVegetation(_ list: [RealWorldRenderData.Tree]) throws {
+        vegBatches = []
+        let meshes = VegetationModels.buildAll(tier: .high).full
+        var buckets = [[PackedTreeInstance]](repeating: [], count: meshes.count)
+        for (i, t) in list.enumerated() where i % 4 == 0 {
+            let s = VegetationModels.species(x: t.position.x, y: t.position.y, climate: 0).rawValue
+            guard s < buckets.count else { continue }
+            buckets[s].append(PackedTreeInstance(px: t.position.x, py: t.position.y, pz: t.position.z, height: t.height,
+                                                 r: t.colour.x, g: t.colour.y, b: t.colour.z, kind: Float(s)))
+        }
+        for s in meshes.indices where !buckets[s].isEmpty {
+            let gpu = VegVertex.gpuVertices(meshes[s])
+            let inst = buckets[s]
+            guard !gpu.isEmpty,
+                  let mb = gpu.withUnsafeBytes({ device.makeBuffer(bytes: $0.baseAddress!, length: $0.count, options: .storageModeShared) }),
+                  let ib = inst.withUnsafeBytes({ device.makeBuffer(bytes: $0.baseAddress!, length: $0.count, options: .storageModeShared) })
+            else { throw RendererError.commandQueue }
+            vegBatches.append(VegBatch(mesh: mb, meshCount: gpu.count, instances: ib, instanceCount: inst.count, species: s))
+        }
+    }
+
     /// Uploads instanced trees, binned by kind and 400 m cell so each cell is one contiguous instance range
     /// (culled per view and per shadow cascade). An empty list removes them.
     public func setTrees(_ list: [RealWorldRenderData.Tree]) throws {
-        guard !list.isEmpty else { trees = nil; treeCells = []; return }
+        guard !list.isEmpty else { trees = nil; treeCells = []; vegBatches = []; return }
+        try setVegetation(list)
         let meshes = Self.treeMeshes()
         var treeVerts: [PackedTerrainVertex] = []
         var ranges: [(Int, Int)] = []
@@ -1406,6 +1435,30 @@ public final class WorldRenderer {
             }
             lastDrawnBuildingCells = drawn
             enc.setRenderPipelineState(pipeline)
+        }
+        if !vegBatches.isEmpty {
+            // Round 5 vegetation, full-detail representation (LOD cross-fade is the next step).
+            var uu = uniforms(model: Self.translation(-c.position))
+            enc.setRenderPipelineState(vegPipeline)
+            enc.setVertexBytes(&uu, length: MemoryLayout<WorldUniforms>.stride, index: 1)
+            enc.setFragmentBytes(&uu, length: MemoryLayout<WorldUniforms>.stride, index: 1)
+            for b in vegBatches {
+                let kind = SpeciesKind(rawValue: b.species) ?? .birch
+                var vu = VegUniformsCPU(
+                    wind: SIMD4<Float>(1, 0, 3, 0.3),
+                    timeFade: SIMD4<Float>(0, VegetationTier.high.cardStart, VegetationTier.high.billboardStart, VegetationTier.high.fadeWidth),
+                    season: SIMD4<Float>(0, 0, 0, 1),
+                    species: SIMD4<Float>(Float(b.species), kind.stiffness, kind.deciduous ? 1 : 0, 0),
+                    board: .zero,
+                    barkLeaf: SIMD4<Float>(kind.leafColour, 0),
+                    grass: .zero,
+                    grassParams: .zero)
+                enc.setVertexBuffer(b.mesh, offset: 0, index: 0)
+                enc.setVertexBuffer(b.instances, offset: 0, index: 2)
+                enc.setVertexBytes(&vu, length: MemoryLayout<VegUniformsCPU>.stride, index: 3)
+                enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: b.meshCount, instanceCount: b.instanceCount)
+            }
+            enc.setRenderPipelineState(treePipeline)
         }
         if let tr = trees {
             var u = uniforms(model: Self.translation(-c.position))

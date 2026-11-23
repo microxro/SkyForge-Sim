@@ -497,7 +497,7 @@ public extension VegVertex {
     var gpuFloats: [Float] { [position.x, position.y, position.z, normal.x, normal.y, normal.z, shade, sway, card, uv.x, uv.y] }
 
     /// Typed upload array (stride 44). Prefer this over `gpuBuffer`.
-    static func gpuVertices(_ vertices: [VegVertex]) -> [VegVertexGPU] { vertices.map(VegVertexGPU.init) }
+    public static func gpuVertices(_ vertices: [VegVertex]) -> [VegVertexGPU] { vertices.map(VegVertexGPU.init) }
 
     static func gpuBuffer(_ vertices: [VegVertex]) -> [Float] {
         var out: [Float] = []
