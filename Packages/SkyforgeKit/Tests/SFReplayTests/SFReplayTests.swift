@@ -35,11 +35,12 @@ private func sample(_ t: Double, x: Double = 0, speed: Double = 50) -> FlightSam
 
 @Test func recorderRejectsDuplicatesAndRateLimits() {
     var rec = FlightRecorder(capacity: 100, minInterval: 0.5)
-    #expect(rec.record(sample(0)))
-    #expect(!rec.record(sample(0.25)))
-    #expect(rec.record(sample(0.5)))
-    #expect(!rec.record(sample(0.5)))
-    #expect(rec.record(sample(1.0)))
+    let first = rec.record(sample(0))
+    let tooSoon = rec.record(sample(0.25))
+    let second = rec.record(sample(0.5))
+    let duplicate = rec.record(sample(0.5))
+    let third = rec.record(sample(1.0))
+    #expect(first && !tooSoon && second && !duplicate && third)
     #expect(rec.samples.count == 3)
 }
 
