@@ -1392,6 +1392,21 @@ public enum WorldShaders {
                         float mAng = 3.14159 * (0.5 + 0.5 * groundNoise(mBlk + 71.0, 8.0));
                         float mStripe = sin(dot(gw, float2(cos(mAng), sin(mAng))) * (6.28318 / 30.0));
                         albedo *= 1.0 + 0.08 * mStripe * saturate(1.0 - fpw / 24.0) * lawnW;
+                        // Terrain patchwork (terrain-photoreal round): lawns and fields were one flat olive sheet from
+                        // 1–3 km (art round 62, KMRY lawns). A 180 m soil zone shifts brightness and warms the hue
+                        // (dry, bare ground vs. green), ±9 % and ±5 %, out to a 120 m footprint. Irregular, so it breaks
+                        // the repeat of the 48 m field tone and the 96 m mowing blocks.
+                        float soilZ = groundNoise(gw + 271.0, 180.0) + 0.35 * groundNoise(gw - 157.0, 61.0);
+                        float soilW = clamp(soilZ, -1.0, 1.0) * saturate(1.0 - fpw / 120.0) * lawnW;
+                        albedo *= 1.0 + 0.09 * soilW;
+                        albedo *= float3(1.0 + 0.05 * soilW, 1.0, 1.0 - 0.06 * soilW);
+                        // Micro-relief (terrain-photoreal round): a 4 m bump from value noise, bent into the normal so
+                        // low sun and oblique light show the ground's undulation. Faded by a 6 m footprint, so it
+                        // cannot alias at distance. The same finite-difference form as the canopy bump below.
+                        float bumpE = 1.0;
+                        float bgx = groundNoise(gw + float2(bumpE, 0.0), 4.0) - groundNoise(gw - float2(bumpE, 0.0), 4.0);
+                        float bgy = groundNoise(gw + float2(0.0, bumpE), 4.0) - groundNoise(gw - float2(0.0, bumpE), 4.0);
+                        n = normalize(n + float3(-bgx, -bgy, 0.0) * (0.22 * saturate(1.0 - fpw / 6.0) * lawnW));
                     }
                 }
                 albedo *= 1.0 + (f - 1.0) * groundMat;
