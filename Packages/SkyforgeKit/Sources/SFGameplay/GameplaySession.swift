@@ -41,6 +41,11 @@ public struct GameplaySession: Sendable {
     public let mission: MissionDefinition?
     public let frame: RunwayFrame
     public let model: FlightModel
+    /// Engines and their failure state. A mission can fail the first engine at a set time (see `MissionDefinition.engineFailureAt`).
+    private var engines = EngineOperations(engineCount: 1)
+    private var engineClock = 0.0
+    /// Engines still producing thrust.
+    public var enginesRunning: Int { engines.runningCount }
     /// Wind, terrain and the wake vortices of other aircraft (`wakes`, updated from the traffic each step).
     public private(set) var environment: FlightEnvironment
 
@@ -81,6 +86,7 @@ public struct GameplaySession: Sendable {
             return spec
         }()
         self.aircraft = loaded
+        engines = EngineOperations(engineCount: loaded.config.propulsion?.engineCount ?? 1)
         model = loaded.model
         let wind = mission?.wind.windNED(runwayHeading: frame.heading) ?? .zero
         var env = FlightEnvironment(windNED: wind, terrain: FlightWorldTerrain(world))
@@ -195,6 +201,9 @@ public struct GameplaySession: Sendable {
         effectiveInputs = input
         let sinkBefore = state.velocityNED.z
 
+        engineClock += dt
+        if let at = mission?.engineFailureAt, engineClock >= at { engines.fail(0) }
+        input.engineFailureMask = engines.failureMask
         state = model.step(state, inputs: input, environment: environment, dt: dt)
         time += dt
         onGround = before.weightOnWheels
