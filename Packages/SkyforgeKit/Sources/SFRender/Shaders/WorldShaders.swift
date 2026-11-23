@@ -2094,6 +2094,11 @@ public enum WorldShaders {
                 d = float3(dL, aL, 0.0) / max(dL + aL, 1e-4);
                 d.b = saturate((dL + aL) / max(dot(u.sunColour.rgb, float3(0.2126, 0.7152, 0.0722)), 1e-4));   // irradiance / full sun
             }
+            else if (mode == 9) {
+                // Water path proof: r = imagery-water branch taken, g = ocean shader branch (m == 1),
+                // b = wakes reaching the shader (wakeCount / 4).
+                d = float3(imageryWater ? 1.0 : 0.0, m == 1.0 ? 1.0 : 0.0, saturate(float(ow.wakeCount) / 4.0));
+            }
             else if (mode == 5) {
                 // Imagery resolution against screen footprint: r = layer metres per texel / 20, g = pixel footprint
                 // (geometric mean) / 20 m, b = footprint anisotropy (long / short axis) / 16.

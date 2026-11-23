@@ -182,6 +182,12 @@ import SFInstruments
             let lake = try r.render(width: w, height: h, camera: lakePose.chase(distance: 24, height: 6),
                                     aircraftPosition: lakePose.position, aircraftBodyToENU: lakePose.bodyToENU)
             Self.save("ultra_NZQN_lake", lake)
+            // Water path proof (debugView 9): r = imagery-water branch, g = ocean shader, b = wakes reaching the shader.
+            r.debugView = 9
+            let proof = try r.render(width: w, height: h, camera: lakePose.chase(distance: 24, height: 6),
+                                     aircraftPosition: lakePose.position, aircraftBodyToENU: lakePose.bodyToENU)
+            r.debugView = 0
+            Self.save("debug_NZQN_lake_water", proof)
         }
 
         // Debug views (WorldRenderer.debugView) for the terms the reviews could not tell apart: the LSZS high
