@@ -433,7 +433,7 @@ public final class WorldRenderer {
         // AAShadowShaders (Round 5: TAA/SMAA entry points and the tier cascade lookup) precedes WorldShaders, which calls it.
         // Round 5 vegetation: `common` helpers (and the veg_keep gate) precede WorldShaders; the vertex entry points follow it.
         // NightShaders (nt_ prefix) is library-only for now; its draw passes are a later milestone.
-        do { lib = try device.makeLibrary(source: CloudShaders.common + "\n" + MacroColourShaders.source + "\n" + OceanShaders.source + "\n" + AAShadowShaders.source + "\n" + VegetationShaders.common + "\n" + NightShaders.source + "\n" + WorldShaders.source + "\n" + VegetationShaders.source, options: nil) }
+        do { lib = try device.makeLibrary(source: CloudShaders.common + "\n" + MacroColourShaders.source + "\n" + OceanShaders.source + "\n" + AAShadowShaders.source + "\n" + VegetationShaders.common + "\n" + NightShaders.source + "\n" + AircraftExteriorShaders.source + "\n" + WorldShaders.source + "\n" + VegetationShaders.source, options: nil) }
         catch { throw RendererError.shaderCompile(String(describing: error)) }
         worldLibrary = lib
         guard let v = lib.makeFunction(name: "world_vertex"), let f = lib.makeFunction(name: "world_fragment") else {
