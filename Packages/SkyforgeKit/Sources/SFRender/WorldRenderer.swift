@@ -148,7 +148,7 @@ public final class WorldRenderer {
     private var shadowMap: MTLTexture?
     private let terrainPipeline: MTLRenderPipelineState
     private let treePipeline: MTLRenderPipelineState
-    // Round 5 vegetation (no draw calls yet; see docs/rounds/ROUND5_vegetation.md).
+    // Round 5 vegetation: pipelines for the full-detail tree batches (vegBatches, drawn after the tree pass). LOD cards, grass and the shadow pass are not drawn yet; see docs/rounds/ROUND5_vegetation.md.
     private let vegPipeline: MTLRenderPipelineState
     private let vegBoardPipeline: MTLRenderPipelineState
     private let grassPipeline: MTLRenderPipelineState
