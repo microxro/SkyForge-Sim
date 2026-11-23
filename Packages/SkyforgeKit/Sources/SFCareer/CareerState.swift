@@ -29,11 +29,12 @@ public struct CareerState: Codable, Sendable, Equatable {
     public var claimedCampaignStages: Set<String> = []
     public var activeJob: Job?
     public var log: [FlightLogEntry] = []        // most recent last, capped
+    public var firefighting = FirefightingRecord()
     public init() {}
 
     enum CodingKeys: String, CodingKey {
         case version, pilotName, xp, credits, ownedAircraft, unlockedAchievements, stats, challenges
-        case completedMissions, completedJobIDs, claimedCampaignStages, activeJob, log
+        case completedMissions, completedJobIDs, claimedCampaignStages, activeJob, log, firefighting
     }
 
     /// Tolerant decoding: every field optional so old saves survive new fields; result is always sanitised.
@@ -53,6 +54,7 @@ public struct CareerState: Codable, Sendable, Equatable {
         claimedCampaignStages = try c.decodeIfPresent(Set<String>.self, forKey: .claimedCampaignStages) ?? []
         activeJob = try c.decodeIfPresent(Job.self, forKey: .activeJob)
         log = try c.decodeIfPresent([FlightLogEntry].self, forKey: .log) ?? []
+        firefighting = try c.decodeIfPresent(FirefightingRecord.self, forKey: .firefighting) ?? FirefightingRecord()
         sanitize()
     }
 
@@ -77,6 +79,7 @@ public struct CareerState: Codable, Sendable, Equatable {
         ownedAircraft = ownedAircraft.filter { Economy.spec($0) != nil }
         ownedAircraft.insert("org.skyforge.sf1")
         stats.sanitize()
+        firefighting.sanitize()
         // A tampered attempt count of Int.max would trap on the next `attempts += 1`; scores must stay finite.
         challenges = Dictionary(uniqueKeysWithValues: challenges.filter { Self.validID($0.key) }.prefix(500).map { entry -> (String, ChallengeRecord) in
             var r = entry.value
