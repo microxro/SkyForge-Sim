@@ -155,6 +155,15 @@ import Foundation
         #expect(p.count == 4 && p.allSatisfy { $0.position.x < -22 })
     }
 
+    @Test func runwayLightsFollowTheRunwayDirection() {
+        // Runway 090: threshold at the origin, course due east (ENU x). Lights must lie along +x, centred 1200 m east.
+        let l = AirportLighting.runwayLights(threshold: SIMD2(0, 0), direction: SIMD2(1, 0), length: 2400, width: 45)
+        #expect(!l.isEmpty && l.count <= 512)   // NightLightPass.maxLights
+        let centre = l.filter { $0.kind == .centreline }.map(\.position.x)
+        #expect(abs((centre.min() ?? 0) - 0) < 1 && abs((centre.max() ?? 0) - 2400) < 1)
+        #expect(AirportLighting.runwayLights(threshold: .zero, direction: .zero, length: 2400, width: 45).isEmpty)
+    }
+
     @Test func cityLightsDeterministicAndDensityOrdered() {
         let cell = CityLights.Cell(x: 3, y: -2)
         let a = CityLights.lights(cell: cell, density: 0.8), b = CityLights.lights(cell: cell, density: 0.8)

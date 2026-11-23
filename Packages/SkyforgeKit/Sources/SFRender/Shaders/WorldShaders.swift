@@ -1911,7 +1911,7 @@ public enum WorldShaders {
             float3 rr = reflect(dir, nW);
             rr.z = abs(rr.z);
             // Open ocean: deep, no shoreline. Imagery lakes: depth and waterline distance from the water mask.
-            float depthM = imageryWater ? mix(0.3, 12.0, smoothstep(0.6, 1.0, shoreWm)) : 200.0;
+            float depthM = imageryWater ? mix(0.3, 25.0, smoothstep(0.6, 1.0, shoreWm)) : 200.0;
             // shoreDist is 0 at the waterline and grows into the lake. The mask is 1 in the lake interior, so
             // the ramp must rise with it: the old inverted ramp put shoreline foam over the whole lake (the
             // white speckle in the NZQN and LSZS frames).

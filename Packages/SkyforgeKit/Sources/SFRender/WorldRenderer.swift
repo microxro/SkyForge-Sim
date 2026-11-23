@@ -931,7 +931,18 @@ public final class WorldRenderer {
     }
 
     /// The runway whose markings are painted on the real-world ground (nil = the photo only).
-    public var runway: RealWorldRenderData.Runway?
+    public var runway: RealWorldRenderData.Runway? {
+        didSet {
+            airportLights = runway.map {
+                AirportLighting.runwayLights(threshold: SIMD2(Float($0.threshold.x), Float($0.threshold.y)),
+                                             direction: SIMD2(Float($0.direction.x), Float($0.direction.y)),
+                                             length: Float($0.length), width: Float($0.width))
+            } ?? []
+        }
+    }
+    /// Runway edge, threshold, centreline and approach lights for `runway`, rebuilt when the runway changes.
+    /// Drawn by the night-light pass with the traffic lights.
+    public private(set) var airportLights: [NightLight] = []
     public func setLighting(_ l: LightingSetup) { lighting = l; tables = nil }
     /// Multiplier on the lighting preset's exposure (see `encodeScene`).
     public var exposureScale: Float = 0.45
@@ -1022,10 +1033,11 @@ public final class WorldRenderer {
         // Night lights (traffic nav, strobe and beacon sprites): additive over the scene, depth-tested against it.
         // They fade in as the sun drops below about 7 degrees (toSun.z ≈ 0.12 → 0).
         let nightFade = min(1, max(0, (0.12 - lighting.toSun.z) / 0.15))
-        if nightFade > 0, !trafficLights.isEmpty {
+        let nightLights = trafficLights + airportLights
+        if nightFade > 0, !nightLights.isEmpty {
             if nightLightPass == nil { nightLightPass = try NightLightPass(device: device, colorFormat: .rgba16Float) }
             try nightLightPass?.encode(cmd: cmd, device: device, colour: scene, depth: sceneDepth, camera: c,
-                                       lights: trafficLights, intensityScale: nightFade, time: Float(time))
+                                       lights: nightLights, intensityScale: nightFade, time: Float(time))
         }
         // Precipitation, wet-air veil and lightning over the HDR scene, after the cloud composite and before post.
         let lightning = weatherEffects.lightning(at: time)
