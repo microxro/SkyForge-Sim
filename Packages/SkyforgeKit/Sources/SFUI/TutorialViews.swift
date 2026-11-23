@@ -41,10 +41,10 @@ struct TutorialCard: View {
                 Text("Tutorial complete. You have flown a full circuit.")
                     .font(.callout.bold())
                     .foregroundStyle(.white)
-                Text("Flight school, with licence lessons, comes in a later update.")
+                Text("Next is the Discovery Flight, the first flight school lesson.")
                     .font(.caption)
                     .foregroundStyle(.white.opacity(0.85))
-                Button("Done", action: finish).buttonStyle(.borderedProminent)
+                Button("Start the Discovery Flight", action: finish).buttonStyle(.borderedProminent)
             }
         }
         .padding(10)
