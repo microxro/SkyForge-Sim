@@ -247,6 +247,8 @@ public final class WorldRenderer {
     /// (aircraft on the water; at most `oceanTier.maxWakes` are drawn).
     public var oceanWindSpeed: Float = 8
     public var oceanWindDirection: Float = 0
+    /// Vegetation sway wind (see `VegetationWind.uniform`): east, north, speed m/s, gustiness. Set each frame from the live wind.
+    public var vegetationWind: SIMD4<Float> = VegetationWind.fallback
     public var oceanTier: OceanTier = .high
     public var oceanWakes: [OceanWake] = []
     /// Weather presentation (precipitation overlay, lightning, fog). `.clear` (the default) changes nothing: no overlay
@@ -1463,7 +1465,7 @@ public final class WorldRenderer {
             for b in vegBatches {
                 let kind = SpeciesKind(rawValue: b.species) ?? .birch
                 var vu = VegUniformsCPU(
-                    wind: SIMD4<Float>(1, 0, 3, 0.3),
+                    wind: vegetationWind,
                     timeFade: SIMD4<Float>(0, VegetationTier.high.cardStart, VegetationTier.high.billboardStart, VegetationTier.high.fadeWidth),
                     season: SIMD4<Float>(0, 0, 0, 1),
                     species: SIMD4<Float>(Float(b.species), kind.stiffness, kind.deciduous ? 1 : 0, 0),
