@@ -205,8 +205,9 @@ public enum CockpitMaterialShaders {
         float2 cell = q / 0.0012;
         float2 ci = floor(cell), cf = fract(cell) - 0.5;
         float on = step(0.62, ck_hash(ci));
-        // Fade the grain out before a pixel is as wide as a particle: below that it only aliases into stipple.
-        float speck = on * (1.0 - smoothstep(0.18, 0.5, length(cf))) * (1.0 - smoothstep(0.0008, 0.0025, fp));
+        // A 1.2 mm grain sampled by a pixel wider than half its size (Nyquist) aliases into stipple, so the grain is
+        // gone by 0.6 mm. The haze term carries the film at distance.
+        float speck = on * (1.0 - smoothstep(0.18, 0.5, length(cf))) * (1.0 - smoothstep(0.0003, 0.0006, fp));
         float haze = 0.06 + 0.12 * patch;                                   // microscopic film that fades with distance
         return saturate(amount * (haze * settle + 0.55 * speck * patch));
     }
@@ -273,7 +274,7 @@ public enum CockpitMaterialShaders {
         float3 dustLit = sunRad * ck_hg(cosEye, 0.62) * 1.9 * graze + skyAmbient * 0.045;
         // Scratches are hairlines; a lower gain and a lower grazing cap stop them reading as bright diagonal bars.
         float scrGraze = min(1.0 / max(ns, 0.18f), 2.0f);
-        float3 scrLit = sunRad * ck_hg(cosEye, 0.85) * 1.4 * scrGraze + skyAmbient * 0.03;
+        float3 scrLit = sunRad * ck_hg(cosEye, 0.85) * 0.8 * scrGraze + skyAmbient * 0.03;
         float3 scat = dustLit * film + scrLit * sc;
         // Particles and scratches also block a little of what is behind.
         float block = saturate(film * 0.25 + sc * 0.12);
