@@ -168,6 +168,9 @@ public final class WorldRenderer {
     }
     /// FXAA on the final frame (the scene renders into an internal texture first).
     public var antialiasing = true
+    /// Off by default. When on, the final FXAA pass also filters sky, cloud and shimmering edges that the
+    /// depth-edge test skips. Set per frame; the frames harness renders both states for comparison.
+    public var wideEdgeAA = false
     private let fxaaPipeline: MTLRenderPipelineState
     private var sceneTarget: MTLTexture?
     private var real: (vertices: MTLBuffer, indices: MTLBuffer, draws: [(indexOffset: Int, indexCount: Int, baseVertex: Int, min: SIMD3<Float>, max: SIMD3<Float>)])?
@@ -1130,7 +1133,7 @@ public final class WorldRenderer {
             e.setFragmentBytes(&aoS, length: 16, index: 1)
         }
         if antialiasing {
-            var fp = SIMD4<Float>(sharpen, 0, 0, 0)
+            var fp = SIMD4<Float>(sharpen, wideEdgeAA ? 1 : 0, 0, 0)
             try pass(colour, load: .dontCare, label: "FXAA") { e in
                 e.setRenderPipelineState(aaTier == .low ? (aaPasses?.smaaPipeline ?? fxaaPipeline) : fxaaPipeline)   // Round 5 low tier: SMAA-lite
                 e.setFragmentTexture(toneOut, index: 0)
