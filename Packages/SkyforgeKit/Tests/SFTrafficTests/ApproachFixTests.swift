@@ -15,8 +15,10 @@ private func quietSystem() -> TrafficSystem {
     @Test func controlOnlyFitsAnInboundArrival() {
         var system = quietSystem()
         // Nothing has spawned yet at time zero, so there is no aircraft to instruct.
-        #expect(system.apply(.hold, to: "T1") == false)
-        #expect(system.apply(.vectorToFix, to: "T1") == false)
+        let holdResult = system.apply(.hold, to: "T1")
+        let vectorResult = system.apply(.vectorToFix, to: "T1")
+        #expect(holdResult == false)
+        #expect(vectorResult == false)
     }
 
     @Test func aVectorIsSeenInTheSnapshotAndCanBeCancelled() {
@@ -27,9 +29,11 @@ private func quietSystem() -> TrafficSystem {
             Issue.record("no arrival spawned")
             return
         }
-        #expect(system.apply(.vectorToFix, to: arrival.id))
+        let applied = system.apply(.vectorToFix, to: arrival.id)
+        #expect(applied)
         #expect(system.snapshot(of: system.aircraft.first { $0.id == arrival.id }!).vectored)
-        #expect(system.apply(.direct, to: arrival.id))
+        let cancelled = system.apply(.direct, to: arrival.id)
+        #expect(cancelled)
         let after = system.aircraft.first { $0.id == arrival.id }!
         #expect(!system.snapshot(of: after).vectored)
     }
@@ -41,7 +45,8 @@ private func quietSystem() -> TrafficSystem {
             Issue.record("no arrival spawned")
             return
         }
-        #expect(system.apply(.hold, to: arrival.id))
+        let applied = system.apply(.hold, to: arrival.id)
+        #expect(applied)
         // Ten minutes: the arrival flies to the orbit and keeps circling the fix.
         for _ in 0..<1_200 { system.step(dt: 0.5) }
         let a = system.aircraft.first { $0.id == arrival.id }!
@@ -57,9 +62,11 @@ private func quietSystem() -> TrafficSystem {
             Issue.record("no arrival spawned")
             return
         }
-        #expect(system.apply(.hold, to: arrival.id))
+        let applied = system.apply(.hold, to: arrival.id)
+        #expect(applied)
         for _ in 0..<600 { system.step(dt: 0.5) }
-        #expect(system.apply(.release, to: arrival.id))
+        let released = system.apply(.release, to: arrival.id)
+        #expect(released)
         var reached = false
         for _ in 0..<1_800 {
             system.step(dt: 0.5)
