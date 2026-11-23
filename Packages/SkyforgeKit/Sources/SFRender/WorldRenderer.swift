@@ -356,6 +356,9 @@ public final class WorldRenderer {
     private var cloudRenderer: CloudRenderer?
     private let sky: PhysicalSkyRenderer
     private var environment: (buffer: MTLBuffer, count: Int, origin: SIMD3<Double>, cells: [MeshCell])?
+    private var environmentCull: EnvironmentCullIndirect?
+    /// GPU-culled indirect draws for the environment cells (see `EnvironmentCullIndirect`). Off by default.
+    public var gpuEnvironmentCull = false
     /// Field parcels drawn per pixel on the environment's terrain (from the soup; nil = none).
     public private(set) var fieldPattern: FieldPattern?
     private var parcelTex: (tex: MTLTexture, grid: FieldPattern.ParcelGrid)?
@@ -829,6 +832,7 @@ public final class WorldRenderer {
         precondition(MemoryLayout<PackedWorldVertex>.stride == 20)
         let (order, cells) = SpatialBinning.bin(positions: soup.positions)
         environment = (try makeBuffer(Self.pack(soup, order: order)), soup.triangleCount * 3, soup.origin, cells)
+        environmentCull = try? EnvironmentCullIndirect(device: device, cells: cells)   // nil: the CPU path is used
         fieldPattern = soup.vertexField.isEmpty ? nil : soup.fieldPattern
         parcelTex = nil
         if let g = fieldPattern?.parcels, g.width > 0, g.height > 0 {
@@ -1226,6 +1230,14 @@ public final class WorldRenderer {
         if L.physical != nil { sky.parameters = L.physical!.model.parameters }
         try sky.encode(into: cmd, pass: skyPass, view: sv, aspect: aspect, hdr: true)
 
+        // GPU environment culling (flag): the compute pass runs before the main render encoder opens.
+        let envGPU = gpuEnvironmentCull ? environmentCull : nil
+        if let g = envGPU, let e = environment {
+            let upForCull = SIMD3<Float>(Float(c.up.x), Float(c.up.y), Float(c.up.z))
+            let vpForCull = aaJitterClip * Self.reversedZProjection(fovY: Float(fovY), aspect: Float(aspect), near: Float(c.near))
+                * Self.view(forward: fwd, up: upForCull)
+            g.dispatch(cmd: cmd, planes: Self.planes(vpForCull * Self.translation(e.origin - c.position)))
+        }
         let pass = MTLRenderPassDescriptor()
         pass.colorAttachments[0].texture = colour
         pass.colorAttachments[0].loadAction = .load
@@ -1329,14 +1341,18 @@ public final class WorldRenderer {
             enc.setVertexBuffer(e.buffer, offset: 0, index: 0)
             enc.setVertexBytes(&u, length: MemoryLayout<WorldUniforms>.stride, index: 1)
             enc.setFragmentBytes(&u, length: MemoryLayout<WorldUniforms>.stride, index: 1)
-            let fp = Self.planes(viewProj * u.model)
-            var cellsDrawn = 0
-            for r in SpatialBinning.runs(e.cells, visible: { c in
-                let v = Self.boxVisible(fp, c.min, c.max); if v { cellsDrawn += 1 }; return v
-            }) {
-                enc.drawPrimitives(type: .triangle, vertexStart: r.lowerBound, vertexCount: r.count)
+            if let g = envGPU {
+                g.draw(enc)
+            } else {
+                let fp = Self.planes(viewProj * u.model)
+                var cellsDrawn = 0
+                for r in SpatialBinning.runs(e.cells, visible: { c in
+                    let v = Self.boxVisible(fp, c.min, c.max); if v { cellsDrawn += 1 }; return v
+                }) {
+                    enc.drawPrimitives(type: .triangle, vertexStart: r.lowerBound, vertexCount: r.count)
+                }
+                lastDrawnEnvironmentCells = cellsDrawn
             }
-            lastDrawnEnvironmentCells = cellsDrawn
         }
         if let cd = cdlodTerrain {
             var u = uniforms(model: Self.translation(-c.position))

@@ -288,8 +288,21 @@ public enum BuildingMeshBuilder {
                 let vb = (bottom - (floating ? bottom : base)) / fh, vt = Double(storeys) + parapet / fh
                 // Each facade takes its own tint (±7 %): one flat colour per house reads as a toy block at 2–6 km.
                 let facade = wall * Float(0.93 + 0.14 * rnd(UInt64(1_000 + i)))
-                let a = vertex(SIMD3(p.x, p.y, bottom), nrm, facade, .wall, uv: SIMD2(-len / 2, vb), style: st)
-                let c1 = vertex(SIMD3(pn.x, pn.y, bottom), nrm, facade, .wall, uv: SIMD2(len / 2, vb), style: st)
+                // Ground-standing walls: the lowest 0.8 m is a darker contact band (ground occlusion and grime), so the
+                // box sits on the ground instead of floating on the photo. The band and the wall above it share one v
+                // mapping, v = (z - base) / storey height, so the storey rows do not move.
+                let zBand = floating ? bottom : base + 0.8
+                let vBand = (zBand - (floating ? bottom : base)) / fh
+                if !floating {
+                    let dark = facade * 0.62
+                    let a0 = vertex(SIMD3(p.x, p.y, bottom), nrm, dark, .wall, uv: SIMD2(-len / 2, vb), style: st)
+                    let a1 = vertex(SIMD3(pn.x, pn.y, bottom), nrm, dark, .wall, uv: SIMD2(len / 2, vb), style: st)
+                    let a2 = vertex(SIMD3(pn.x, pn.y, zBand), nrm, dark, .wall, uv: SIMD2(len / 2, vBand), style: st)
+                    let a3 = vertex(SIMD3(p.x, p.y, zBand), nrm, dark, .wall, uv: SIMD2(-len / 2, vBand), style: st)
+                    quad(a0, a1, a2, a3)
+                }
+                let a = vertex(SIMD3(p.x, p.y, zBand), nrm, facade, .wall, uv: SIMD2(-len / 2, vBand), style: st)
+                let c1 = vertex(SIMD3(pn.x, pn.y, zBand), nrm, facade, .wall, uv: SIMD2(len / 2, vBand), style: st)
                 let c2 = vertex(SIMD3(pn.x, pn.y, top + parapet), nrm, facade, .wall, uv: SIMD2(len / 2, vt), style: st)
                 let e = vertex(SIMD3(p.x, p.y, top + parapet), nrm, facade, .wall, uv: SIMD2(-len / 2, vt), style: st)
                 quad(a, c1, c2, e)
