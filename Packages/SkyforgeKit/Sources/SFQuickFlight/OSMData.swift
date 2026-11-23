@@ -119,12 +119,39 @@ public struct OSMRoad: Sendable, Equatable {
     }
 }
 
-/// Buildings and roads of one region, in local metres around the region's `GeoOrigin`.
+/// Open water from OSM: a river or canal centre line, or a lake outline (`natural=water`, `waterway=riverbank`).
+public struct OSMWater: Sendable, Equatable {
+    public enum Kind: String, Sendable, Equatable { case river, canal, lake }
+    public var id: Int64
+    public var kind: Kind
+    /// Rivers and canals: centre line in way order (≥ 2 points). Lakes: outline, counter-clockwise, no repeated point.
+    public var points: [SIMD2<Double>]
+    /// Channel width in metres (`width` tag, else a class default). Lakes ignore it.
+    public var widthMetres: Double
+
+    public init(id: Int64, kind: Kind, points: [SIMD2<Double>], widthMetres: Double? = nil) {
+        self.id = id; self.kind = kind; self.points = points
+        self.widthMetres = widthMetres ?? OSMWater.estimatedWidth(kind)
+    }
+
+    public static func estimatedWidth(_ kind: Kind) -> Double {
+        switch kind {
+        case .river: return 25
+        case .canal: return 12
+        case .lake: return 0
+        }
+    }
+}
+
+/// Buildings, roads and open water of one region, in local metres around the region's `GeoOrigin`.
 public struct OSMData: Sendable, Equatable {
-    public static let attribution = "Buildings and roads: © OpenStreetMap contributors, ODbL 1.0"
+    public static let attribution = "Buildings, roads and water: © OpenStreetMap contributors, ODbL 1.0"
     public var buildings: [OSMBuilding]
     public var roads: [OSMRoad]
-    public init(buildings: [OSMBuilding] = [], roads: [OSMRoad] = []) { self.buildings = buildings; self.roads = roads }
+    public var water: [OSMWater]
+    public init(buildings: [OSMBuilding] = [], roads: [OSMRoad] = [], water: [OSMWater] = []) {
+        self.buildings = buildings; self.roads = roads; self.water = water
+    }
 }
 
 // MARK: - Geometry helpers
@@ -259,7 +286,7 @@ public enum OSMParser {
     public static func parse(_ data: Data, origin: GeoOrigin) throws -> OSMData {
         let response: Response
         do { response = try JSONDecoder().decode(Response.self, from: data) } catch { throw ParseError.invalidJSON(String(describing: error)) }
-        var buildings: [OSMBuilding] = [], roads: [OSMRoad] = []
+        var buildings: [OSMBuilding] = [], roads: [OSMRoad] = [], water: [OSMWater] = []
         func local(_ g: [LatLon?]) -> [SIMD2<Double>] {
             // Untrusted JSON (network or disk cache): any out-of-range coordinate discards the whole geometry.
             let pts = g.compactMap { $0 }
@@ -273,17 +300,47 @@ public enum OSMParser {
                 guard let g = e.geometry else { continue }
                 if let b = building(id: e.id, ring: local(g), tags: tags) { buildings.append(b) }
                 else if let r = road(id: e.id, line: local(g), tags: tags) { roads.append(r) }
+                else if let w = waterBody(id: e.id, line: local(g), tags: tags) { water.append(w) }
             case "relation" where tags["type"] == "multipolygon":
-                // Outer rings that are closed in a single member; inner rings (courtyards) are ignored.
+                // Outer rings that are closed in a single member; inner rings (courtyards, islands) are ignored.
                 for m in e.members ?? [] where m.type == "way" && (m.role ?? "outer") == "outer" {
                     guard let g = m.geometry, let first = g.first ?? nil, let last = g.last ?? nil,
                           first.lat == last.lat && first.lon == last.lon else { continue }
                     if let b = building(id: e.id, ring: local(g), tags: tags) { buildings.append(b) }
+                    else if let w = lake(id: e.id, ring: local(g), tags: tags) { water.append(w) }
                 }
             default: continue
             }
         }
-        return OSMData(buildings: dropOutlinesWithParts(buildings), roads: roads)
+        return OSMData(buildings: dropOutlinesWithParts(buildings), roads: roads, water: water)
+    }
+
+    /// Largest lake outline kept: ear clipping is O(n²), and a lake this detailed is not seen from flight altitude anyway.
+    static let maxLakeVertices = 4_000
+
+    /// A river/canal (`waterway=river|canal`, not in a tunnel) or a closed `natural=water` way as a lake.
+    static func waterBody(id: Int64, line raw: [SIMD2<Double>], tags: [String: String]) -> OSMWater? {
+        if tags["natural"] == "water" || tags["waterway"] == "riverbank" {
+            // Only a closed way is an area; an open one is not a lake.
+            guard let first = raw.first, raw.last == first else { return nil }
+            return lake(id: id, ring: raw, tags: tags)
+        }
+        guard let waterway = tags["waterway"], waterway == "river" || waterway == "canal" else { return nil }
+        if let t = tags["tunnel"], t != "no" { return nil }
+        var pts: [SIMD2<Double>] = []
+        for p in raw where pts.last.map({ simdLength(p - $0) > 0.01 }) ?? true { pts.append(p) }
+        guard pts.count >= 2 else { return nil }
+        let kind: OSMWater.Kind = waterway == "river" ? .river : .canal
+        let width = tags["width"].flatMap(parseLength).flatMap { $0 > 0.5 && $0 < 1_000 ? $0 : nil }
+        return OSMWater(id: id, kind: kind, points: pts, widthMetres: width)
+    }
+
+    /// A lake outline from a closed ring of `natural=water` (or `waterway=riverbank`); nil for other tags or degenerate rings.
+    static func lake(id: Int64, ring raw: [SIMD2<Double>], tags: [String: String]) -> OSMWater? {
+        guard tags["natural"] == "water" || tags["waterway"] == "riverbank" else { return nil }
+        // `footprint` returns the ring counter-clockwise without the closing point.
+        guard let ring = footprint(raw), ring.count >= 3, ring.count <= maxLakeVertices else { return nil }
+        return OSMWater(id: id, kind: .lake, points: ring)
     }
 
     /// Simple 3D Buildings: an outline that contains `building:part`s is not drawn itself.
@@ -438,7 +495,8 @@ public struct OverpassQuery: Sendable, Equatable {
     static func fmt(_ v: Double) -> String { String(format: "%.3f", v == 0 ? 0 : v) }
     var bbox: String { "\(Self.fmt(south)),\(Self.fmt(west)),\(Self.fmt(north)),\(Self.fmt(east))" }
 
-    public var cacheKey: String { "osm/\(bbox)" }
+    /// `v2`: the water classes joined the query, so responses cached before that (no water) are not reused.
+    public var cacheKey: String { "osm/v2/\(bbox)" }
 
     public var ql: String {
         let classes = OSMHighway.allCases.map(\.rawValue).joined(separator: "|")
@@ -449,6 +507,10 @@ public struct OverpassQuery: Sendable, Equatable {
           way["building:part"](\(bbox));
           relation["building"]["type"="multipolygon"](\(bbox));
           way["highway"~"^(\(classes))$"](\(bbox));
+          way["waterway"~"^(river|canal)$"](\(bbox));
+          way["natural"="water"](\(bbox));
+          way["waterway"="riverbank"](\(bbox));
+          relation["natural"="water"]["type"="multipolygon"](\(bbox));
         );
         out geom;
         """
@@ -690,6 +752,64 @@ public enum OSMMeshBuilder {
         }
     }
 
+    public static let waterColour = srgb(46, 62, 70)
+
+    /// Open water as `Material.water` triangles. Rivers and canals are terrain-draped ribbons (mitred like roads,
+    /// `widthMetres` across, `lift` above the ground). Lakes are flat, at the lowest ground under their outline, so
+    /// a lake never tilts with the slope beneath it. Tunnels are dropped at parse time.
+    public static func water(_ bodies: [OSMWater], lift: Double = 0.5, maxSegment: Double = 8,
+                             ground: (Double, Double) -> Double) -> TriangleSoup {
+        var soup = TriangleSoup(origin: .zero)
+        let up = SIMD3<Float>(0, 0, 1)
+        for w in bodies {
+            switch w.kind {
+            case .lake:
+                guard w.points.count >= 3, let low = w.points.map({ ground($0.x, $0.y) }).min() else { continue }
+                let level = low + lift
+                for t in OSMGeometry.triangulate(w.points) {
+                    let a = w.points[t.x], b = w.points[t.y], c = w.points[t.z]
+                    soup.add(SIMD3(a.x, a.y, level), SIMD3(b.x, b.y, level), SIMD3(c.x, c.y, level),
+                             na: up, nb: up, nc: up, colour: waterColour, material: .water)
+                }
+            case .river, .canal:
+                guard w.points.count >= 2 else { continue }
+                var pts: [SIMD2<Double>] = [w.points[0]]
+                for i in 1..<w.points.count {
+                    let a = pts[pts.count - 1], b = w.points[i]
+                    let len = simdLength(b - a)
+                    guard len > 0.01 else { continue }
+                    let n = min(4_096, max(1, Int((len / max(1, maxSegment)).rounded(.up))))
+                    for s in 1...n { pts.append(a + (b - a) * (Double(s) / Double(n))) }
+                }
+                guard pts.count >= 2 else { continue }
+                let half = w.widthMetres / 2
+                var left: [SIMD3<Double>] = [], right: [SIMD3<Double>] = []
+                for i in pts.indices {
+                    func normal(_ a: SIMD2<Double>, _ b: SIMD2<Double>) -> SIMD2<Double> { let d = simdNormalize(b - a); return SIMD2(-d.y, d.x) }
+                    let nIn = i > 0 ? normal(pts[i - 1], pts[i]) : nil
+                    let nOut = i < pts.count - 1 ? normal(pts[i], pts[i + 1]) : nil
+                    var off: SIMD2<Double>
+                    switch (nIn, nOut) {
+                    case let (a?, b?):
+                        let m = a + b, ml = simdLength(m)
+                        if ml < 1e-6 { off = a * half } else { let mn = m / ml; off = mn * (half / max(0.5, (mn * a).sum())) }
+                    case let (a?, nil): off = a * half
+                    case let (nil, b?): off = b * half
+                    default: off = .zero
+                    }
+                    let l = pts[i] + off, rr = pts[i] - off
+                    left.append(SIMD3(l.x, l.y, ground(l.x, l.y) + lift))
+                    right.append(SIMD3(rr.x, rr.y, ground(rr.x, rr.y) + lift))
+                }
+                for i in 0..<(pts.count - 1) {
+                    soup.add(right[i], right[i + 1], left[i + 1], na: up, nb: up, nc: up, colour: waterColour, material: .water)
+                    soup.add(right[i], left[i + 1], left[i], na: up, nb: up, nc: up, colour: waterColour, material: .water)
+                }
+            }
+        }
+        return soup
+    }
+
     /// Terrain-draped ribbons (material `.road`) `lift` metres above `ground`, resampled every
     /// ≤ `maxSegment` metres, mitred at bends (miter length capped at 2× half-width). Tunnels are skipped.
     public static func roads(_ roads: [OSMRoad], lift: Double = 0.4, maxSegment: Double = 8,   // 20 m floated over KASE slopes (round 22)
@@ -740,6 +860,25 @@ public enum OSMMeshBuilder {
             }
         }
         return soup
+    }
+}
+
+extension TriangleSoup {
+    /// Appends another OSM soup's triangles (both use the zero origin). Per-vertex channels are padded so a
+    /// flat-coloured soup can join one that has them.
+    mutating func appendOSM(_ other: TriangleSoup) {
+        let n = triangleCount, m = other.triangleCount
+        guard m > 0 else { return }
+        if !vertexAlbedo.isEmpty || !other.vertexAlbedo.isEmpty {
+            if vertexAlbedo.isEmpty { vertexAlbedo = albedo.flatMap { [$0, $0, $0] } }
+            vertexAlbedo += other.vertexAlbedo.isEmpty ? other.albedo.flatMap { [$0, $0, $0] } : other.vertexAlbedo
+        }
+        if !vertexField.isEmpty || !other.vertexField.isEmpty {
+            if vertexField.isEmpty { vertexField = [Float](repeating: 0, count: 3 * n) }
+            vertexField += other.vertexField.isEmpty ? [Float](repeating: 0, count: 3 * m) : other.vertexField
+        }
+        positions += other.positions; normals += other.normals
+        albedo += other.albedo; material += other.material
     }
 }
 

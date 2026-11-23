@@ -175,6 +175,10 @@ import SFInstruments
         if ident == "NZQN" {
             let p = region.runwayThreshold - dir * 1_500
             let lakePose = Pose(position: SIMD3(p.x, p.y, ground(p) + 40), heading: hdg, roll: 0.0)
+            // The wake needs an aircraft speed; the static pose carries a 60 m/s wake along the arm so the lake shows it.
+            let lakeWake = OceanWake.aircraft(position: SIMD2(Float(p.x), Float(p.y)), heading: Float(atan2(dir.y, dir.x)),
+                                              speed: 60, wingspan: 11)
+            r.oceanWakes = lakeWake.map { [$0] } ?? []
             let lake = try r.render(width: w, height: h, camera: lakePose.chase(distance: 24, height: 6),
                                     aircraftPosition: lakePose.position, aircraftBodyToENU: lakePose.bodyToENU)
             Self.save("ultra_NZQN_lake", lake)
@@ -307,6 +311,55 @@ import SFInstruments
         Self.save(ultra ? "ultra_skyworld_final" : "metal_skyworld_1280x720", img)
         #expect(r.lastDrawnEnvironmentCells > 0)
     }
+
+    /// Night frame: traffic nav, strobe and beacon lights around the aircraft. The lights must add visible
+    /// light, so the frame with them differs from the same frame without them (the night-light pass is drawn).
+    @Test(.enabled(if: SkyRegressionTests.hasDevice, "no Metal device on this host"))
+    func nightTrafficLightsFrame() throws {
+        guard Self.wanted("SKYWORLD") else { return }
+        let world = QuickFlightWorld()
+        let session = QuickFlightSession(world: world, start: .final)
+        let cam = session.chaseCamera()
+        // The real .night preset (sun below the horizon), so the night-light pass fades in as it would in the app.
+        let r = try WorldRenderer(lighting: LightingSetup.physicalPreset(.night, azimuthDegrees: 200, cameraHeightMetres: cam.position.z))
+        let env = world.buildEnvironmentInstanced(detail: .phone)
+        try r.setEnvironment(env.soup)
+        try r.setTrees(RealWorldRenderData.trees(env.trees))
+        try r.setAircraft(QuickFlightWorld.aircraftMesh())
+        r.clouds = .clear
+        let c = session.bodyToENUColumns
+        let body = simd_double3x3(columns: (c.0, c.1, c.2))
+        let camera = WorldCamera(position: cam.position, target: cam.target)
+        // Lights on the view axis, so they land in the frame whatever the chase heading is.
+        let fwd = simd_normalize(cam.target - cam.position)
+        func onAxis(_ distance: Double, lift: Double) -> SIMD3<Float> {
+            let q = cam.position + fwd * distance + SIMD3<Double>(0, 0, lift)
+            return SIMD3<Float>(Float(q.x), Float(q.y), Float(q.z))
+        }
+        // Count pixels where any channel changed between the two renders. The lights are a few pixels each, so a
+        // brightness threshold would hide them; any change at all shows the pass drew.
+        func changedPixels(_ a: [UInt8], _ b: [UInt8]) -> Int {
+            var n = 0
+            for i in stride(from: 0, to: min(a.count, b.count) - 2, by: 3) where a[i] != b[i] || a[i + 1] != b[i + 1] || a[i + 2] != b[i + 2] {
+                n += 1
+            }
+            return n
+        }
+        r.trafficLights = []
+        let dark = try r.render(width: Self.width, height: Self.height, camera: camera,
+                                aircraftPosition: session.positionENU, aircraftBodyToENU: body)
+        r.trafficLights = [
+            NightLight(position: onAxis(300, lift: 0), kind: .navRed),
+            NightLight(position: onAxis(340, lift: 12), kind: .navGreen),
+            NightLight(position: onAxis(420, lift: 30), kind: .strobe),
+            NightLight(position: onAxis(900, lift: 200), kind: .beacon),
+        ]
+        let lit = try r.render(width: Self.width, height: Self.height, camera: camera,
+                               aircraftPosition: session.positionENU, aircraftBodyToENU: body)
+        Self.save("night_traffic_lights_1280x720", lit)
+        #expect(changedPixels(lit, dark) > 0, "night-light sprites change the frame")
+    }
+
     /// Night sky frame: stars and the moon above the sunless horizon (the night lighting preset, fixed clock).
     /// The upper half of the frame must hold light, which the night sky pass adds.
     @Test(.enabled(if: SkyRegressionTests.hasDevice, "no Metal device on this host"))
