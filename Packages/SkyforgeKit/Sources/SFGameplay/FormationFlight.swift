@@ -41,8 +41,10 @@ extension AITarget {
             position += velocity * dt
             return
         }
-        let slotPoint = FormationGeometry.slotPosition(leaderPosition: leader.position, heading: leader.heading,
-                                                       slot: slot, spacing: spacing)
+        // The leader has already moved this frame, but the follower's own position is still the start-of-frame one.
+        // Aim at the slot as it was at the start of the frame, or the follower lags the slot by one step (v * dt).
+        let slotPoint = FormationGeometry.slotPosition(leaderPosition: leader.position - leader.velocity * dt,
+                                                       heading: leader.heading, slot: slot, spacing: spacing)
         // Desired velocity: the leader's velocity plus a correction toward the slot.
         var wanted = leader.velocity + (slotPoint - position) * FormationFlight.gain
         let cap = max(0, leader.speed) * FormationFlight.maxSpeedFactor + FormationFlight.speedMargin
