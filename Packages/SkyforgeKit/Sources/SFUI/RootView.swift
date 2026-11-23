@@ -117,7 +117,9 @@ struct SkyPreviewView: UIViewRepresentable {
 /// (imagery and elevation download once, after the user agrees; App Review Guideline 4.2.3).
 struct AirportPickerView: View {
     let onPick: (QuickFlightLocation) -> Void
-    @State private var ident = ""
+    @State private var query = ""
+    @State private var db: NavDatabase?
+    @State private var results: [AirportHit] = []
     @State private var pending: (ident: String, name: String)?
     @State private var message: String?
     @Environment(\.dismiss) private var dismiss
@@ -137,19 +139,36 @@ struct AirportPickerView: View {
                 }
             } header: { Text("Included airports") }
             Section {
-                TextField("ICAO code, e.g. KSFO", text: $ident)
+                TextField("Name, city or code, e.g. Heathrow, Tokyo, KSFO", text: $query)
                     .autocorrectionDisabled()
                     #if os(iOS)
-                    .textInputAutocapitalization(.characters)
+                    .textInputAutocapitalization(.never)
                     #endif
-                    .onSubmit(lookUp)
-                Button("Fly from this airport", action: lookUp).disabled(ident.trimmingCharacters(in: .whitespaces).count < 3)
+                    .onSubmit { if let first = results.first { choose(first.airport.ident, first.airport.name) } }
+                if db == nil {
+                    ProgressView("Loading worldwide airports…")
+                }
+                ForEach(results) { hit in
+                    Button {
+                        choose(hit.airport.ident, hit.airport.name)
+                    } label: {
+                        VStack(alignment: .leading) {
+                            Text("\(hit.airport.name) (\(hit.airport.ident))")
+                            Text(Self.subtitle(hit)).font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                if db != nil, results.isEmpty, !query.trimmingCharacters(in: .whitespaces).isEmpty {
+                    Text("No airport with an open runway matches \"\(query)\".").font(.footnote).foregroundStyle(.secondary)
+                }
                 if let message { Text(message).font(.footnote).foregroundStyle(.secondary) }
-            } header: { Text("Any airport") } footer: {
-                Text("Free imagery (USGS, Sentinel-2) and elevation (Terrarium) download once, about 5–15 MB, and are cached.")
+            } header: { Text("Any airport in the world") } footer: {
+                Text("Airports from OurAirports (public domain). Only airports with an open runway are listed. Free imagery (USGS, Sentinel-2) and elevation (Terrarium) download once, about 5–15 MB, and are cached.")
             }
         }
         .navigationTitle("Choose an airport")
+        .task { await loadDatabase() }
+        .onChange(of: query) { _, q in refresh(q) }
         .alert("Download scenery?", isPresented: Binding(get: { pending != nil }, set: { if !$0 { pending = nil } })) {
             Button("Download and fly") {
                 if let p = pending { onPick(.realAirport(ident: p.ident, name: p.name)); dismiss() }
@@ -160,23 +179,45 @@ struct AirportPickerView: View {
         }
     }
 
-    private func lookUp() {
-        let code = ident.trimmingCharacters(in: .whitespaces).uppercased()
-        if let a = Showcase.airports.first(where: { $0.ident == code }) {
+    /// Parses the bundled OurAirports snapshot off the main thread, once.
+    private func loadDatabase() async {
+        guard db == nil else { return }
+        do {
+            let loaded = try await Task.detached(priority: .userInitiated) { try BundledNavData.load() }.value
+            db = loaded
+            refresh(query)
+        } catch {
+            message = "The bundled airport database could not be read (\(error.localizedDescription))."
+        }
+    }
+
+    /// Re-ranks the worldwide search off the main thread. Stale results are dropped if the query has moved on.
+    private func refresh(_ q: String) {
+        guard let db else { return }
+        let text = q.trimmingCharacters(in: .whitespacesAndNewlines)
+        Task {
+            let hits = await Task.detached(priority: .userInitiated) {
+                AirportSearch.search(text, in: db, limit: 60)
+            }.value
+            if text == query.trimmingCharacters(in: .whitespacesAndNewlines) { results = hits }
+        }
+    }
+
+    /// Showcase airports fly straight away from the bundle; any other airport asks before downloading scenery.
+    private func choose(_ ident: String, _ name: String) {
+        message = nil
+        if let a = Showcase.airports.first(where: { $0.ident == ident }) {
             onPick(.realAirport(ident: a.ident, name: a.name)); dismiss(); return
         }
-        let db: NavDatabase
-        do { db = try BundledNavData.load() } catch {
-            message = "The bundled airport database could not be read (\(error.localizedDescription))."; return
-        }
-        guard let apt = db.airport(code) else {
-            message = "\(code) is not in the bundled OurAirports data."; return
-        }
-        guard db.runways(at: code).contains(where: { $0.hasGeometry && !$0.closed }) else {
-            message = "\(apt.name) has no runway geometry in OurAirports."; return
-        }
-        message = nil
-        pending = (code, apt.name)
+        pending = (ident, name)
+    }
+
+    private static func subtitle(_ hit: AirportHit) -> String {
+        let a = hit.airport
+        let place = [a.municipality, a.country].filter { !$0.isEmpty }.joined(separator: ", ")
+        let kind = a.type.replacingOccurrences(of: "_", with: " ")
+        let runways = hit.flyableRunways == 1 ? "1 runway" : "\(hit.flyableRunways) runways"
+        return [place, kind, runways].filter { !$0.isEmpty }.joined(separator: " · ")
     }
 }
 #endif
