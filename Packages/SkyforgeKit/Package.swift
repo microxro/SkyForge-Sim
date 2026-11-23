@@ -32,6 +32,8 @@ let package = Package(
         .target(name: "SFInstruments", dependencies: ["SFMath", "SFAtmosphere", "SFFlightModel"]),
         .target(name: "SFQuickFlight", dependencies: ["SFMath", "SFAtmosphere", "SFWeather", "SFFlightModel", "SFInstruments", "SFInput", "SFWorldGen", "SFPreview", "SFImagery", "SFNavData", "SFTerrainCore", "SFContent"], resources: [.copy("Resources")]),
         .target(name: "SFCareer", dependencies: ["SFMath"]),
+        // Multiplayer core: transport protocol, wire format, remote aircraft interpolation. Pure Swift.
+        .target(name: "SFNetcode"),
         // Missions, aircraft selection and military flight. Pure Swift on top of the flight model and Quick Flight worlds.
         .target(name: "SFGameplay", dependencies: ["SFMath", "SFAtmosphere", "SFFlightModel", "SFQuickFlight", "SFTraffic", "SFATC"]),
         .target(name: "SFGameplayUI", dependencies: ["SFGameplay"]),
@@ -47,6 +49,7 @@ let package = Package(
         .executableTarget(name: "SFPreviewCLI", dependencies: ["SFPreview", "SFInstruments", "SFAtmosphere", "SFQuickFlight", "SFImagery", "SFContent", "SFWorldGen", "SFTerrainCore", "SFMath"]),
         // Tests (Swift Testing)
         .testTarget(name: "SFCareerTests", dependencies: ["SFCareer", "SFMath"]),
+        .testTarget(name: "SFNetcodeTests", dependencies: ["SFNetcode"]),
         .testTarget(name: "SFMathTests", dependencies: ["SFMath"]),
         .testTarget(name: "SFAtmosphereTests", dependencies: ["SFAtmosphere"]),
         .testTarget(name: "SFFlightModelTests", dependencies: ["SFFlightModel"]),
