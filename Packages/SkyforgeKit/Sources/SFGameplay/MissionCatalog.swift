@@ -236,6 +236,16 @@ public enum MissionCatalog {
         ],
         parTime: 240, timeLimit: 480, areaRadius: 20_000, unlock: .mission("valley-run"))
 
+    public static let ifrApproach = MissionDefinition(
+        id: "ifr-approach", title: "Instrument Approach", category: .landing,
+        briefing: "Join the final approach 4 km out at the glideslope. Hold the centreline and the 3 degree path to the threshold. Stray more than 30 m for longer than 3 seconds and the approach fails.",
+        difficulty: 4, recommendedAircraft: AircraftCatalog.sfCruiser.id, allowedRoles: civil,
+        spawn: MissionSpawn(along: -5_000, up: 262, speed: .approach),
+        objectives: [
+            MissionObjective(id: "glidepath", title: "Fly the glidepath to the threshold", kind: .ifrApproach(gateDistance: 4_000, glideslopeDeg: 3, tolerance: 30, graceTime: 3), points: 500),
+        ],
+        parTime: 180, timeLimit: 420, areaRadius: 20_000, unlock: .mission("airshow-loop"))
+
     public static let rescuePickup = MissionDefinition(
         id: "rescue-pickup", title: "Rescue Pickup", category: .navigation,
         briefing: "A hiker is waiting on a meadow strip about 1.5 km down the field. Land, stop beside them for three seconds, then fly the casualty to the hospital at the far end.",
@@ -257,7 +267,7 @@ public enum MissionCatalog {
         ],
         parTime: 300, timeLimit: 600, areaRadius: 20_000, unlock: .mission("airshow-loop"),
         payload: [PayloadStation(name: "Rear hold", mass: 180, arm: -0.3)], surface: .grass)
-    public static let all: [MissionDefinition] = [firstFlight, patternLanding, precisionLanding, wingman, intercept, gunnery, lowLevel, dogfight, coastalSurvey, twinBandits, bushStrip, airportTour, valleyRun, waterDropRun, rescuePickup, airshowLoop, radarIntercept, twoShipDefence, cargoRun]
+    public static let all: [MissionDefinition] = [firstFlight, patternLanding, precisionLanding, wingman, intercept, gunnery, lowLevel, dogfight, coastalSurvey, twinBandits, bushStrip, airportTour, valleyRun, waterDropRun, rescuePickup, airshowLoop, radarIntercept, twoShipDefence, ifrApproach, cargoRun]
 
     public static func mission(id: String) -> MissionDefinition? { all.first { $0.id == id } }
     public static func missions(in category: MissionCategory) -> [MissionDefinition] { all.filter { $0.category == category } }
