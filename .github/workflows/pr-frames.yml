@@ -1,11 +1,12 @@
 name: PR review frames
 
-# Runs after the Frames workflow finishes for a pull request. It runs the workflow file from main and never
+# Runs after the CI or Frames workflow finishes for a pull request. It runs the workflow file from main and never
 # checks out pull-request code, so the write token is never exposed to code a PR contains.
 # Same-repo PRs only: fork PRs get a read-only token and are skipped.
+# Open PRs still render frames inside CI; newer PRs render them in Frames. Both are watched. A run with no frames artifact exits early.
 on:
   workflow_run:
-    workflows: [Frames]
+    workflows: [CI, Frames]
     types: [completed]
 
 permissions: {}
