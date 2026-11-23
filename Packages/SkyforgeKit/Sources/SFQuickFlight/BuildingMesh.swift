@@ -338,8 +338,42 @@ public enum BuildingMeshBuilder {
                     quad(v0, v1, v2, v3)
                 }
                 cap(pr.ring, z: top + pr.rise, colour: roof, st: st)
+                // Brick chimney stack on about 40 % of pitched houses, rising a metre above the ridge. Its corners
+                // must sit inside the roof ring, so a narrow house without room for one gets none.
+                if rnd(8) < 0.4 {
+                    let cc = it.centre, h = 0.45
+                    let stack = [SIMD2(cc.x - h, cc.y - h), SIMD2(cc.x + h, cc.y - h), SIMD2(cc.x + h, cc.y + h), SIMD2(cc.x - h, cc.y + h)]
+                    if stack.allSatisfy({ OSMGeometry.contains(pr.ring, $0) }) {
+                        let zTop = top + pr.rise + 1.0
+                        let brick = srgb(138, 86, 72) * Float(0.85 + 0.3 * rnd(9))
+                        let stackStyle = roofStyle(false, photo: false)
+                        for i in 0..<4 {
+                            let p = stack[i], pn = stack[(i + 1) % 4]
+                            let d = simdNormalize(pn - p), nrm = SIMD3(d.y, -d.x, 0)
+                            let a = vertex(SIMD3(p.x, p.y, top), nrm, brick, .roof, uv: p - it.centre, style: stackStyle)
+                            let b1 = vertex(SIMD3(pn.x, pn.y, top), nrm, brick, .roof, uv: pn - it.centre, style: stackStyle)
+                            let c1 = vertex(SIMD3(pn.x, pn.y, zTop), nrm, brick, .roof, uv: pn - it.centre, style: stackStyle)
+                            let e = vertex(SIMD3(p.x, p.y, zTop), nrm, brick, .roof, uv: p - it.centre, style: stackStyle)
+                            quad(a, b1, c1, e)
+                        }
+                        cap(stack, z: zTop, colour: brick * 0.7, st: stackStyle)
+                    }
+                }
             } else {
                 cap(ring, z: top, colour: roof, st: roofStyle(false, photo: photoRoof))
+                // Parapet coping: a lighter 0.35 m band on top of the parapet walls, so a flat roof reads as a built
+                // edge rather than a plain slab. Facing up, so it takes the roof shading.
+                if !floating && parapet > 0, let coping = inset(ring, by: 0.35), coping.count == n {
+                    let cop = wall * 1.15, zc = top + parapet, copStyle = roofStyle(false, photo: false)
+                    for k in 0..<n {
+                        let j = (k + 1) % n
+                        let o0 = vertex(SIMD3(ring[k].x, ring[k].y, zc), up, cop, .roof, uv: ring[k] - it.centre, style: copStyle)
+                        let o1 = vertex(SIMD3(ring[j].x, ring[j].y, zc), up, cop, .roof, uv: ring[j] - it.centre, style: copStyle)
+                        let i1 = vertex(SIMD3(coping[j].x, coping[j].y, zc), up, cop, .roof, uv: coping[j] - it.centre, style: copStyle)
+                        let i0 = vertex(SIMD3(coping[k].x, coping[k].y, zc), up, cop, .roof, uv: coping[k] - it.centre, style: copStyle)
+                        quad(o0, o1, i1, i0)
+                    }
+                }
                 if floating {                                                  // underside of a raised part
                     let first = UInt32(mesh.vertices.count / 32)
                     for p in ring { _ = vertex(SIMD3(p.x, p.y, bottom), -up, wall * 0.6, .roof, uv: p - it.centre, style: roofStyle(false, photo: false)) }

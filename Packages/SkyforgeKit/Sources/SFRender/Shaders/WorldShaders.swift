@@ -1392,6 +1392,21 @@ public enum WorldShaders {
                         float mAng = 3.14159 * (0.5 + 0.5 * groundNoise(mBlk + 71.0, 8.0));
                         float mStripe = sin(dot(gw, float2(cos(mAng), sin(mAng))) * (6.28318 / 30.0));
                         albedo *= 1.0 + 0.08 * mStripe * saturate(1.0 - fpw / 24.0) * lawnW;
+                        // Terrain patchwork (terrain-photoreal round): lawns and fields were one flat olive sheet from
+                        // 1–3 km (art round 62, KMRY lawns). A 180 m soil zone shifts brightness and warms the hue
+                        // (dry, bare ground vs. green), ±9 % and ±5 %, out to a 120 m footprint. Irregular, so it breaks
+                        // the repeat of the 48 m field tone and the 96 m mowing blocks.
+                        float soilZ = groundNoise(gw + 271.0, 180.0) + 0.35 * groundNoise(gw - 157.0, 61.0);
+                        float soilW = clamp(soilZ, -1.0, 1.0) * saturate(1.0 - fpw / 120.0) * lawnW;
+                        albedo *= 1.0 + 0.09 * soilW;
+                        albedo *= float3(1.0 + 0.05 * soilW, 1.0, 1.0 - 0.06 * soilW);
+                        // Micro-relief (terrain-photoreal round): a 4 m bump from value noise, bent into the normal so
+                        // low sun and oblique light show the ground's undulation. Faded by a 6 m footprint, so it
+                        // cannot alias at distance. The same finite-difference form as the canopy bump below.
+                        float bumpE = 1.0;
+                        float bgx = groundNoise(gw + float2(bumpE, 0.0), 4.0) - groundNoise(gw - float2(bumpE, 0.0), 4.0);
+                        float bgy = groundNoise(gw + float2(0.0, bumpE), 4.0) - groundNoise(gw - float2(0.0, bumpE), 4.0);
+                        n = normalize(n + float3(-bgx, -bgy, 0.0) * (0.22 * saturate(1.0 - fpw / 6.0) * lawnW));
                     }
                 }
                 albedo *= 1.0 + (f - 1.0) * groundMat;
@@ -1911,7 +1926,7 @@ public enum WorldShaders {
             float3 rr = reflect(dir, nW);
             rr.z = abs(rr.z);
             // Open ocean: deep, no shoreline. Imagery lakes: depth and waterline distance from the water mask.
-            float depthM = imageryWater ? mix(0.3, 12.0, smoothstep(0.6, 1.0, shoreWm)) : 200.0;
+            float depthM = imageryWater ? mix(0.3, 25.0, smoothstep(0.6, 1.0, shoreWm)) : 200.0;
             float shoreDistM = imageryWater ? (1.0 - smoothstep(0.6, 0.97, shoreWm)) * 6.0 : 1.0e3;
             OWOut owo = owShade(fieldW, dir, toSun, ow, wakes, fieldFp, depthM, shoreDistM, float3(0.35, 0.30, 0.22),
                                 skyEnv(u, rr), u.sunColour.rgb, ambient, vis, imageryWater ? 1.0 : 0.0);
@@ -2026,6 +2041,13 @@ public enum WorldShaders {
                 // Seams stay subtle (they read as dashed road markings at 0.45 on the chase view, round 7).
                 albedo *= 1.0 - 0.22 * aircraftPanels(in.local, localFp);
                 albedo = mix(albedo, float3(0.012, 0.014, 0.022), registrationMark(in.local, localFp));
+                // Round 5 exterior detail (AircraftExteriorShaders): grime and exhaust soot, rivet domes that tilt
+                // the normal and darken their edges. Fuselage skin uses (x, z) metres, wings (x, y).
+                float2 axUV = abs(in.local.y) < 0.75 ? in.local.xz : in.local.xy;
+                albedo *= 1.0 - 0.55 * ax_dirt(in.local, 0.6, localFp);
+                float3 axRivet = ax_rivet(axUV, localFp);
+                n = normalize(ax_tilt(n, axRivet.xy * 0.5));
+                albedo *= 1.0 - 0.25 * axRivet.z;
             }
             float rough = m == 6.0 ? 0.24 : 0.06;   // glossy paint: a visible sun glint
             float3 env = mix(u.ambientGround.rgb, u.skyHorizon.rgb, saturate(reflect(dir, n).z * 0.5 + 0.5));
@@ -2043,6 +2065,11 @@ public enum WorldShaders {
             }
             col = pbrDielectric(albedo, n, -dir, toSun, rough, u.sunColour.rgb, env, vis) * mix(1.0, ao, 0.5)
                 + albedo * ambient * (m == 6.0 ? 1.0 : 0.3) * ao;
+            if (m == 6.0 && dist < 150.0) {
+                // Clearcoat over the paint (round 5): a tighter, lower-energy sun reflection on top of the base gloss.
+                float4 axCC = ax_clearcoat(n, -dir, toSun, u.sunColour.rgb, vis);
+                col = col * (1.0 - 0.5 * axCC.w) + 0.5 * axCC.xyz;
+            }
         } else {
             // Photo terrain in shadow (cast or self-shadowed) gets 35 % more sky light: under the 0.45 exposure,
             // shaded slopes read as featureless near-black masses (round 31: the LSZS high foreground slope).
