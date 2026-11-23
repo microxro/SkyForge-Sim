@@ -307,7 +307,11 @@ import SFInstruments
         let world = QuickFlightWorld()
         let session = QuickFlightSession(world: world, start: .final)
         let cam = session.chaseCamera()
-        let r = try WorldRenderer(lighting: LightingSetup.physicalPreset(.night, azimuthDegrees: 200, cameraHeightMetres: cam.position.z))
+        // The .night preset keeps the sun 35° up (a dim day look), so the night-light pass, which fades in as the
+        // sun sets, would stay off. Put the sun 30° below the horizon for a real night.
+        var night = LightingSetup.physicalPreset(.night, azimuthDegrees: 200, cameraHeightMetres: cam.position.z)
+        night.toSun = simd_normalize(SIMD3<Float>(0.4, -0.6, -0.5))
+        let r = try WorldRenderer(lighting: night)
         let env = world.buildEnvironmentInstanced(detail: .phone)
         try r.setEnvironment(env.soup)
         try r.setTrees(RealWorldRenderData.trees(env.trees))
