@@ -82,6 +82,9 @@ public enum ObjectiveKind: Sendable, Codable, Equatable {
     /// Turn the velocity vector through one full loop in the vertical plane while staying above `minAGL`
     /// and at or above `minSpeed` (m/s). Fails if the aircraft gets too low or too slow.
     case loop(minAGL: Double, minSpeed: Double)
+    /// Fly a straight-in approach on a glidepath from `gateDistance` metres out to the threshold. Stay within
+    /// `tolerance` metres of the centreline and the glidepath (`glideslopeDeg`); fail after `graceTime` seconds out of band.
+    case ifrApproach(gateDistance: Double, glideslopeDeg: Double, tolerance: Double, graceTime: Double)
 }
 
 public struct MissionObjective: Sendable, Codable, Equatable, Identifiable {
@@ -243,6 +246,8 @@ public struct MissionDefinition: Sendable, Codable, Equatable, Identifiable {
                 if !(hold >= 0) { out.append("\(o.id): bad radar lock hold") }
             case .dropRun(_, let maxAGL, let minSpeed, let maxSpeed):
                 if maxAGL <= 0 || minSpeed < 0 || maxSpeed <= minSpeed { out.append("\(o.id): bad drop run limits") }
+            case .ifrApproach(let gate, let slope, let tol, let grace):
+                if gate <= 0 || slope <= 0 || slope > 6 || tol <= 0 || grace < 0 { out.append("\(o.id): bad approach limits") }
             case .loop(let minAGL, let minSpeed):
                 if minAGL <= 0 || minSpeed <= 0 { out.append("\(o.id): bad loop limits") }
             case .takeoff, .flyTo: break
