@@ -43,16 +43,67 @@ public struct ATCMessage: Sendable, Equatable {
     }
 }
 
-/// One instruction for this tick. A clearance is also issued to `TrafficSystem`; an advisory has none.
+/// One instruction for this tick. A clearance to an aircraft in `TrafficSystem` is issued to it. A clearance to
+/// ownship (`TrafficOwnship.id`) waits for a readback, and `readback` holds the choices the pilot picks from.
+/// An advisory has no clearance.
 public struct ATCInstruction: Sendable, Equatable {
     public var aircraftID: String
     public var clearance: TrafficClearance?
     public var text: String
+    /// Readback choices for a clearance to ownship. Nil for advisories and for clearances to other aircraft.
+    public var readback: ATCReadback?
 
-    public init(aircraftID: String, clearance: TrafficClearance?, text: String) {
+    public init(aircraftID: String, clearance: TrafficClearance?, text: String, readback: ATCReadback? = nil) {
         self.aircraftID = aircraftID
         self.clearance = clearance
         self.text = text
+        self.readback = readback
+    }
+}
+
+/// The readback choices for a clearance to ownship: the one correct readback and two wrong ones.
+public struct ATCReadback: Sendable, Equatable {
+    public var options: [String]
+    /// Index in `options` of the correct readback.
+    public var correctIndex: Int
+
+    public init(options: [String], correctIndex: Int) {
+        self.options = options
+        self.correctIndex = correctIndex
+    }
+}
+
+/// A clearance to ownship that is waiting for the pilot's readback.
+public struct OwnshipPrompt: Sendable, Equatable {
+    /// The clearance as the tower said it.
+    public var text: String
+    public var clearance: TrafficClearance
+    /// The readbacks to choose from. Exactly one is correct.
+    public var options: [String]
+
+    public init(text: String, clearance: TrafficClearance, options: [String]) {
+        self.text = text
+        self.clearance = clearance
+        self.options = options
+    }
+}
+
+/// What the tower has confirmed and counted for ownship. Missions read this to judge the flight.
+public struct OwnshipTowerStatus: Sendable, Equatable {
+    /// A landing clearance was read back correctly.
+    public var landingCleared: Bool
+    /// A takeoff clearance was read back correctly.
+    public var takeoffCleared: Bool
+    /// Takeoff rolls started with no takeoff clearance read back.
+    public var unauthorizedTakeoffs: Int
+    /// Touchdowns with no landing clearance read back.
+    public var unclearedLandings: Int
+
+    public init(landingCleared: Bool, takeoffCleared: Bool, unauthorizedTakeoffs: Int, unclearedLandings: Int) {
+        self.landingCleared = landingCleared
+        self.takeoffCleared = takeoffCleared
+        self.unauthorizedTakeoffs = unauthorizedTakeoffs
+        self.unclearedLandings = unclearedLandings
     }
 }
 
@@ -134,6 +185,24 @@ public struct ATCController: Sendable {
     private var lastLandingTime: Double?
     private var lastLandingHeavy = false
     private var lastTakeoffTime: Double?
+    /// Clearances issued to ownship, read back or not. The tower's own record, so it does not repeat one.
+    public private(set) var issuedToOwnship: Set<TrafficClearance> = []
+    /// Clearances to ownship that the pilot read back correctly.
+    public private(set) var confirmedForOwnship: Set<TrafficClearance> = []
+    /// Takeoff rolls started with no takeoff clearance read back.
+    public private(set) var unauthorizedTakeoffs = 0
+    /// Touchdowns with no landing clearance read back.
+    public private(set) var unclearedLandings = 0
+    /// The clearance to ownship waiting for a readback, if any.
+    private var prompt: Prompt?
+
+    /// A clearance to ownship waiting for its readback.
+    private struct Prompt: Sendable {
+        var callsign: String
+        var clearance: TrafficClearance
+        var text: String
+        var readback: ATCReadback
+    }
 
     public init(runwayDesignator: String) {
         self.runwayDesignator = runwayDesignator
@@ -155,6 +224,9 @@ public struct ATCController: Sendable {
             let previous = lastPhase[s.id]
             guard previous != s.phase else { continue }
             lastPhase[s.id] = s.phase
+            if s.id == TrafficOwnship.id, let warning = unclearedWarning(for: s) {
+                out.append(ATCInstruction(aircraftID: s.id, clearance: nil, text: warning))
+            }
             if let text = advisory(for: s, runway: rwy) {
                 out.append(ATCInstruction(aircraftID: s.id, clearance: nil, text: text))
             }
@@ -168,12 +240,18 @@ public struct ATCController: Sendable {
         let arrivals = traffic
             .filter { $0.kind == .arrival && $0.phase == .base && !$0.clearedToLand }
             .sorted { $0.distanceToTouchdown < $1.distanceToTouchdown }
-        if let next = arrivals.first, !takeoffRolling, landingSpacingMet(time: time, follower: next) {
+        // While a readback is waiting, nothing else is cleared, so the pilot's answer comes first.
+        if let next = arrivals.first, !takeoffRolling, landingSpacingMet(time: time, follower: next),
+           !(next.id == TrafficOwnship.id && prompt != nil) {
             let cs = ATCPhrase.callsign(next.callsign)
             let caution = lastLandingHeavy && !next.isHeavy
                 && (lastLandingTime.map { time - $0 < Self.wakeCautionWindow } ?? false)
             let text = "\(cs), cleared to land \(rwy), \(windText)." + (caution ? " Caution, wake turbulence." : "")
-            out.append(ATCInstruction(aircraftID: next.id, clearance: .land, text: text))
+            if next.id == TrafficOwnship.id {
+                out.append(clearOwnship(.land, callsign: cs, text: text, runway: rwy, time: time))
+            } else {
+                out.append(ATCInstruction(aircraftID: next.id, clearance: .land, text: text))
+            }
             lastLandingTime = time
             lastLandingHeavy = next.isHeavy
             landingCleared = true
@@ -184,11 +262,15 @@ public struct ATCController: Sendable {
             a.kind == .arrival && (a.phase == .final || a.phase == .landing || (a.clearedToLand && a.phase == .base))
         }
         let takeoffSpacingMet = lastTakeoffTime.map { time - $0 >= Self.takeoffSpacing } ?? true
-        if !arrivalOnRunway, !takeoffRolling, takeoffSpacingMet,
+        if !arrivalOnRunway, !takeoffRolling, takeoffSpacingMet, prompt == nil,
            let departure = traffic.first(where: { $0.kind == .departure && $0.phase == .holdShort && !$0.clearedToTakeoff && $0.takeoffFits }) {
             let cs = ATCPhrase.callsign(departure.callsign)
-            out.append(ATCInstruction(aircraftID: departure.id, clearance: .takeoff,
-                                      text: "\(cs), \(rwy), cleared for takeoff, \(windText)."))
+            let text = "\(cs), \(rwy), cleared for takeoff, \(windText)."
+            if departure.id == TrafficOwnship.id {
+                out.append(clearOwnship(.takeoff, callsign: cs, text: text, runway: rwy, time: time))
+            } else {
+                out.append(ATCInstruction(aircraftID: departure.id, clearance: .takeoff, text: text))
+            }
             lastTakeoffTime = time
         }
 
@@ -197,6 +279,81 @@ public struct ATCController: Sendable {
         }
         if log.count > Self.logLimit { log.removeFirst(log.count - Self.logLimit) }
         return out
+    }
+
+    /// The pilot's answer to the readback prompt: `choice` indexes `ownshipPrompt.options`. Returns true when the
+    /// readback is correct, which confirms the clearance. Returns false when the tower says "say again" and the
+    /// prompt stays open. Returns nil when no prompt is waiting or the choice is not one of its options.
+    @discardableResult
+    public mutating func readback(choice: Int, time: Double) -> Bool? {
+        guard let current = prompt, current.readback.options.indices.contains(choice) else { return nil }
+        if choice == current.readback.correctIndex {
+            confirmedForOwnship.insert(current.clearance)
+            prompt = nil
+            say("\(current.callsign), readback correct.", at: time)
+            return true
+        }
+        say("\(current.callsign), negative, say again.", at: time)
+        return false
+    }
+
+    /// The clearance waiting for a readback, if any.
+    public var ownshipPrompt: OwnshipPrompt? {
+        prompt.map { OwnshipPrompt(text: $0.text, clearance: $0.clearance, options: $0.readback.options) }
+    }
+
+    /// What the tower has confirmed and counted for ownship.
+    public var ownshipStatus: OwnshipTowerStatus {
+        OwnshipTowerStatus(landingCleared: confirmedForOwnship.contains(.land),
+                           takeoffCleared: confirmedForOwnship.contains(.takeoff),
+                           unauthorizedTakeoffs: unauthorizedTakeoffs, unclearedLandings: unclearedLandings)
+    }
+
+    /// Issues a clearance to ownship and opens a readback prompt for it.
+    private mutating func clearOwnship(_ clearance: TrafficClearance, callsign: String, text: String,
+                                       runway rwy: String, time: Double) -> ATCInstruction {
+        let readback = readbackChoices(for: clearance, runway: rwy, time: time)
+        issuedToOwnship.insert(clearance)
+        prompt = Prompt(callsign: callsign, clearance: clearance, text: text, readback: readback)
+        return ATCInstruction(aircraftID: TrafficOwnship.id, clearance: clearance, text: text, readback: readback)
+    }
+
+    /// The readback choices for a clearance: the correct readback and two wrong ones. The place of the correct one
+    /// follows the time, so the answer is not always the same tap.
+    private func readbackChoices(for clearance: TrafficClearance, runway rwy: String, time: Double) -> ATCReadback {
+        let correct: String
+        let wrong: [String]
+        if clearance == .land {
+            correct = "cleared to land \(rwy)"
+            wrong = ["cleared for takeoff \(rwy)", "hold short \(rwy)"]
+        } else {
+            correct = "cleared for takeoff \(rwy)"
+            wrong = ["cleared to land \(rwy)", "hold short \(rwy)"]
+        }
+        let slot = max(0, Int(time.rounded(.down))) % 3
+        var options = wrong
+        options.insert(correct, at: slot)
+        return ATCReadback(options: options, correctIndex: slot)
+    }
+
+    /// A warning when ownship rolls or touches down with no clearance read back. Each one is counted for missions.
+    private mutating func unclearedWarning(for s: TrafficSnapshot) -> String? {
+        let cs = ATCPhrase.callsign(s.callsign)
+        if s.phase == .takeoffRoll, !confirmedForOwnship.contains(.takeoff) {
+            unauthorizedTakeoffs += 1
+            return "\(cs), no takeoff clearance read back."
+        }
+        if s.phase == .landing, !confirmedForOwnship.contains(.land) {
+            unclearedLandings += 1
+            return "\(cs), no landing clearance read back."
+        }
+        return nil
+    }
+
+    /// Adds a line to the log, keeping the newest `logLimit`.
+    private mutating func say(_ text: String, at time: Double) {
+        log.append(ATCMessage(time: time, text: text))
+        if log.count > Self.logLimit { log.removeFirst(log.count - Self.logLimit) }
     }
 
     private func landingSpacingMet(time: Double, follower: TrafficSnapshot) -> Bool {
