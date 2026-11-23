@@ -117,10 +117,49 @@ jobs:
           path: visual-out
           if-no-files-found: ignore
 
+  # Decides whether the slow `frames` job is needed. A pull request runs it only when its changes touch rendering,
+  # scenery, shaders, assets or the frames tooling. Pushes to main and manual runs always render, because the art
+  # thread reads ci-frames/main/. A skipped `frames` job counts as passing for required checks.
+  changes:
+    runs-on: ubuntu-24.04
+    outputs:
+      visual: ${{ steps.decide.outputs.visual }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Decide whether frames are needed
+        id: decide
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          # Paths whose changes can alter a rendered frame. Anything else (gameplay, input, career, settings, docs) skips frames.
+          VISUAL='^(Packages/SkyforgeKit/Sources/(SFRender|SFTerrainCore|SFWorldGen|SFImagery|SFAtmosphere|SFContent|SFPreview|SFPreviewCLI|SFQuickFlight|SFTraffic)/|Packages/SkyforgeKit/Tests/[^/]*(Render|Showcase|Frame|Visual|Terrain|Scenery|Building)[^/]*/|Packages/SkyforgeKit/Package\.swift$|App/|SKYFORGE\.xcodeproj/|\.github/workflows/|tools/(ci_frames|test_ci_frames|perf_gate|fetch_|overture)[^/]*$)|(^|/)(Assets|Resources|Shaders?|Textures?)/|\.(metal|metallib|msl|glsl)$|(WorldRenderer|Scenery|Terrain|Shader|Frame|Showcase)[^/]*\.swift$'
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "visual=true" >> "$GITHUB_OUTPUT"
+            echo "Event $EVENT always renders frames."
+            exit 0
+          fi
+          git diff --name-only "$BASE" "$HEAD" > changed.txt
+          echo "Changed files: $(wc -l < changed.txt)"
+          if grep -Eq "$VISUAL" changed.txt; then
+            echo "visual=true" >> "$GITHUB_OUTPUT"
+            echo "Rendering-related files changed; frames will run."
+          else
+            echo "visual=false" >> "$GITHUB_OUTPUT"
+            echo "No rendering-related files changed; frames skipped."
+          fi
+
   # Art-review frames (five showcase airports and SkyWorld at 1280×720, Metal), logged as SKYFORGE_PNG
   # lines in their own job so they can be read back without the rest of the test output.
   # One job renders every scene in sequence: macOS runners are the scarce resource, so each PR needs 2, not 7.
   frames:
+    needs: changes
+    if: ${{ needs.changes.outputs.visual == 'true' }}
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v7
