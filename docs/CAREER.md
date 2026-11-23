@@ -10,6 +10,15 @@ Pure-Swift, Linux-testable module that turns flights into long-term progression.
 - **Achievements**: 20 achievements, pure functions of lifetime stats.
 - **Saves**: versioned JSON, atomic write, rolling `.bak`, falls back to the backup if the main file is corrupt, and throws rather than overwrite when both are unreadable or the save is from a newer app.
 
+## Airline career (Airline.swift)
+- **Ranks**: Cadet First Officer → First Officer → Regional Captain → Senior Captain. Each rank needs scheduled legs and airline reputation (0–100). Ranks gate aircraft seats (3 seats until Regional Captain, then 6) and sector length. Military types never fly scheduled legs.
+- **Schedule**: `AirlineSchedule.generate` builds a deterministic day board out of a hub. A route converts to a `Job` with `asJob()`, so it flies through the existing job accept and settle pipeline and pays there.
+- **Scoring**: `AirlineEngine.score` weights on-time 50%, passenger comfort 25%, landing 15% and SOP checklist 10%. A leg that does not end at the scheduled destination scores zero.
+- **SOP checklist**: `SOPChecklist.standard` in flight order. Required steps are 80% of the SOP score.
+- **Settlement**: `AirlineEngine.settle` updates reputation, legs, best score and rank. It never pays out, so money is not counted twice.
+- **Saves**: stored as `CareerState.airline`. Old saves decode with a fresh record.
+- **Not yet**: UI screens, a larger civil aircraft for Senior Captain, and in-flight SOP ticks from SFGameplay.
+
 ## Integration contract
 The sim/gameplay/UI layers build a `FlightReport` when a flight ends and call:
 
