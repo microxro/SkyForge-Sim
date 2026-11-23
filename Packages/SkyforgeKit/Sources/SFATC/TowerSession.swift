@@ -41,6 +41,9 @@ public struct TowerSession: Sendable {
             if let clearance = instruction.clearance {
                 traffic.issue(clearance, to: instruction.aircraftID)
             }
+            if let control = instruction.control {
+                traffic.apply(control, to: instruction.aircraftID)
+            }
         }
         return instructions
     }

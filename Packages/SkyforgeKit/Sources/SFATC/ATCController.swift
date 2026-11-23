@@ -52,12 +52,16 @@ public struct ATCInstruction: Sendable, Equatable {
     public var text: String
     /// Readback choices for a clearance to ownship. Nil for advisories and for clearances to other aircraft.
     public var readback: ATCReadback?
+    /// Approach control's instruction to an arrival: a vector, a direct route, a hold or a release. Nil otherwise.
+    public var control: TrafficControl?
 
-    public init(aircraftID: String, clearance: TrafficClearance?, text: String, readback: ATCReadback? = nil) {
+    public init(aircraftID: String, clearance: TrafficClearance?, text: String, readback: ATCReadback? = nil,
+                control: TrafficControl? = nil) {
         self.aircraftID = aircraftID
         self.clearance = clearance
         self.text = text
         self.readback = readback
+        self.control = control
     }
 }
 
@@ -177,6 +181,10 @@ public struct ATCController: Sendable {
     public static let takeoffSpacing = 60.0
     /// Most messages kept in the log.
     public static let logLimit = 40
+    /// Along-runway distance (m) at which approach control stops vectoring an arrival and sends it direct to the fix.
+    public static let directRange = 4_000.0
+    /// Distance (m) from the approach fix within which an arrival can be held there.
+    public static let holdRange = 1_500.0
 
     public let runwayDesignator: String
     /// Messages said so far, oldest first, capped at `logLimit`.
@@ -282,6 +290,32 @@ public struct ATCController: Sendable {
                 out.append(ATCInstruction(aircraftID: departure.id, clearance: .takeoff, text: text))
             }
             lastTakeoffTime = time
+        }
+
+        // 4. Approach control. An arrival is vectored toward the approach fix, sent direct when close, held there
+        // while another arrival holds the landing slot, and released when the slot is free. Only AI arrivals are
+        // held or vectored. Ownship gets the advisories and no instructions of this kind.
+        let slotTaken = landingCleared || traffic.contains { a in
+            a.kind == .arrival && (a.phase == .base || a.phase == .final || a.phase == .landing)
+        } || (lastLandingTime.map { time - $0 < Self.landingSpacing } ?? false)
+        for s in traffic where s.kind == .arrival && s.id != TrafficOwnship.id && s.facility == .approach && s.phase == .inbound {
+            let cs = ATCPhrase.callsign(s.callsign)
+            if s.holding {
+                if !slotTaken {
+                    out.append(ATCInstruction(aircraftID: s.id, clearance: nil,
+                                              text: "\(cs), leave the hold, proceed to the downwind.", control: .release))
+                }
+            } else if slotTaken, s.distanceToApproachFix < Self.holdRange {
+                out.append(ATCInstruction(aircraftID: s.id, clearance: nil,
+                                          text: "\(cs), hold at the approach fix, expect further clearance.", control: .hold))
+            } else if s.vectored, s.alongRunway <= Self.directRange {
+                out.append(ATCInstruction(aircraftID: s.id, clearance: nil,
+                                          text: "\(cs), proceed direct to the downwind entry.", control: .direct))
+            } else if !s.vectored, s.alongRunway > Self.directRange {
+                out.append(ATCInstruction(aircraftID: s.id, clearance: nil,
+                                          text: "\(cs), turn heading to the approach fix, vectors for the downwind.",
+                                          control: .vectorToFix))
+            }
         }
 
         for instruction in out {

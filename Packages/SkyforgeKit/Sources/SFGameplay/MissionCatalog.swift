@@ -34,7 +34,7 @@ public enum MissionCatalog {
             MissionObjective(id: "final", title: "Join final", kind: .flyTo(MissionWaypoint(-2_200, 0, 115, radius: 350))),
             MissionObjective(id: "land", title: "Land and stop", kind: .land(aimAlong: 300, zoneHalfLength: 250, maxSinkRate: 3.0), points: 200),
         ],
-        parTime: 480, timeLimit: 900, areaRadius: 15_000, unlock: .mission("first-flight"))
+        parTime: 480, timeLimit: 900, areaRadius: 15_000, unlock: .mission("first-flight"), traffic: true)
 
     public static let precisionLanding = MissionDefinition(
         id: "precision-landing", title: "Crosswind Precision", category: .landing,
@@ -45,7 +45,7 @@ public enum MissionCatalog {
         objectives: [
             MissionObjective(id: "land", title: "Land in the touchdown zone", kind: .land(aimAlong: 300, zoneHalfLength: 150, maxSinkRate: 2.5), points: 300),
         ],
-        parTime: 150, timeLimit: 420, areaRadius: 10_000, unlock: .mission("pattern-landing"))
+        parTime: 150, timeLimit: 420, areaRadius: 10_000, unlock: .mission("pattern-landing"), traffic: true)
 
     public static let wingman = MissionDefinition(
         id: "wingman-formation", title: "Wingman", category: .military,

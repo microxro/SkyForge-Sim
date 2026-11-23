@@ -102,7 +102,7 @@ public struct GameplaySession: Sendable {
         effectiveInputs = trimmed
         gear = GearActuator(position: trimmed.gear)
         onGround = spawn.onRunway
-        if trafficEnabled {
+        if trafficEnabled || (mission?.traffic ?? false) {
             let runway = TrafficRunway(threshold: world.runwayThreshold, heading: world.runwayHeading,
                                        length: world.runwayLengthMetres, elevation: world.runwayElevation)
             tower = TowerSession(runway: runway, startsOnRunway: onGround)
