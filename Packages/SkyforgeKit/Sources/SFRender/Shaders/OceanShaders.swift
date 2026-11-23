@@ -226,7 +226,8 @@ public enum OceanShaders {
         float cosT = max(0.0, -dot(dir, n));
         // Imagery lakes (lake = 1): a reflectance floor and a wider glint lobe, so the sky and sun show on flat water.
         // The ocean (lake = 0) keeps the physical Fresnel and slope variance.
-        float F = max(owFresnel(cosT), 0.10 * lake);
+        // The reflectance rises only at grazing angles, so mid-lake stays deep and the far shore mirrors.
+        float F = max(owFresnel(cosT), 0.30 * lake * pow(1.0 - cosT, 4.0));
         slopeVar += 0.12 * lake;
 
         float3 light = ambient * 0.5 + sunRad * max(0.0, toSun.z) * 0.18 * sunVis;
