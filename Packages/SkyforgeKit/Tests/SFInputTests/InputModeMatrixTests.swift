@@ -243,7 +243,7 @@ struct SimulatedInputHub: Sendable {
         var m = InputMapper(profiles: [player])
         let out = m.evaluate(.init(pressed: ["key.f"]))
         #expect(out.actions == [.gearToggle])
-        #expect(BindingProfile.conflicts(in: player).isEmpty)
+        #expect(InputMapper.conflicts(in: player).isEmpty)
     }
 
     @Test func rebindingSurvivesAJSONRoundTrip() throws {
