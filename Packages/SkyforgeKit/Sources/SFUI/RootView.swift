@@ -11,7 +11,7 @@ import SFNavData
 import SFGameplay
 import SFCareer
 
-/// Root view shown by the app. Items that are not implemented yet are labelled honestly.
+/// Root view shown by the app: a hub of cards. Items that are not implemented yet are labelled as coming soon.
 public struct SkyforgeRootView: View {
     @State private var showingSky = false
     @State private var showingFlight = false
@@ -24,46 +24,87 @@ public struct SkyforgeRootView: View {
 
     public var body: some View {
         NavigationStack {
-            List {
-                Section {
-                    Button("Fly now: \(Showcase.defaultAirport.name) (real world, works offline)") {
-                        flightLocation = .defaultStart; showingFlight = true
-                    }
-                    .font(.headline)
-                    NavigationLink("Choose an airport…") {
-                        AirportPickerView { location in flightLocation = location; showingFlight = true }
-                    }
-                    Button("SkyWorld airfield (procedural, offline)") { flightLocation = .skyWorld; showingFlight = true }
-                    NavigationLink("Pilot career: ranks, hangar, campaigns, awards") { CareerScreen() }
-                    NavigationLink("Aircraft, missions and military flight") {
-                        GameplayMenuView { aircraft, mission in
-                            flightAircraft = aircraft; flightMission = mission
-                            flightLocation = .defaultStart; showingFlight = true
+            ScrollView {
+                VStack(alignment: .leading, spacing: 28) {
+                    hero
+                    SFHubSection(title: "Fly") {
+                        NavigationLink {
+                            AirportPickerView { location in flightLocation = location; showingFlight = true }
+                        } label: {
+                            SFHubRowLabel(title: "Choose an airport", subtitle: "Search every airport in the bundled data", symbol: "globe.americas")
                         }
+                        .buttonStyle(.plain)
+                        Divider().padding(.leading, 60)
+                        Button {
+                            flightLocation = .skyWorld; showingFlight = true
+                        } label: {
+                            SFHubRowLabel(title: "SkyWorld airfield", subtitle: "Procedural, works offline", symbol: "sparkles")
+                        }
+                        .buttonStyle(.plain)
                     }
-                } header: {
-                    Text("Quick Flight")
+                    SFHubSection(title: "Career and missions") {
+                        NavigationLink {
+                            CareerScreen()
+                        } label: {
+                            SFHubRowLabel(title: "Pilot career", subtitle: "Ranks, hangar, campaigns and awards", symbol: "trophy")
+                        }
+                        .buttonStyle(.plain)
+                        Divider().padding(.leading, 60)
+                        NavigationLink {
+                            GameplayMenuView { aircraft, mission in
+                                flightAircraft = aircraft; flightMission = mission
+                                flightLocation = .defaultStart; showingFlight = true
+                            }
+                        } label: {
+                            SFHubRowLabel(title: "Aircraft and missions", subtitle: "Pick a plane, then fly free or a mission", symbol: "scope")
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    SFHubSection(title: "Tools") {
+                        Button {
+                            showingSky = true
+                        } label: {
+                            SFHubRowLabel(title: "Sky preview", subtitle: "Physically based sky, day to twilight", symbol: "sun.horizon")
+                        }
+                        .buttonStyle(.plain)
+                        Divider().padding(.leading, 60)
+                        Button {
+                            showingInstruments = true
+                        } label: {
+                            SFHubRowLabel(title: "Instruments", subtitle: "Steam gauges and the SF-1000 PFD", symbol: "gauge.with.dots.needle.67percent")
+                        }
+                        .buttonStyle(.plain)
+                        Divider().padding(.leading, 60)
+                        NavigationLink {
+                            BindingsView()
+                        } label: {
+                            SFHubRowLabel(title: "Controls and bindings", symbol: "gamepad")
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    SFHubSection(title: "Coming soon") {
+                        SFHubRowLabel(title: "World map", subtitle: "Plan routes across the whole Earth", symbol: "map", showsChevron: false)
+                            .opacity(0.6)
+                        Divider().padding(.leading, 60)
+                        SFHubRowLabel(title: "Settings", subtitle: "Graphics, controls and accessibility", symbol: "slider.horizontal.3", showsChevron: false)
+                            .opacity(0.6)
+                    }
+                    SFHubSection(title: "About") {
+                        Text("SKYFORGE is free and open source (Apache-2.0). No ads, no paid unlocks.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .padding(16)
+                        Divider().padding(.leading, 16)
+                        NavigationLink {
+                            AcknowledgementsView()
+                        } label: {
+                            SFHubRowLabel(title: "Acknowledgements and data attribution", symbol: "doc.text")
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
-                Section {
-                    Button("Renderer preview (physically based sky, day to twilight)") { showingSky = true }
-                    Button("Instruments demo (steam gauges and SF-1000 PFD)") { showingInstruments = true }
-                    NavigationLink("Controls and bindings") { BindingsView() }
-                } header: {
-                    Text("Available")
-                }
-                Section {
-                    Text("World map: not yet available")
-                    Text("Settings: not yet available")
-                } header: {
-                    Text("Coming in later phases")
-                }
-                Section {
-                    Text("SKYFORGE is free and open source (Apache-2.0).")
-                        .font(.footnote)
-                    NavigationLink("Acknowledgements and Data Attribution") { AcknowledgementsView() }
-                } header: {
-                    Text("About")
-                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
             }
             .navigationTitle("SKYFORGE")
             #if os(iOS)
@@ -82,6 +123,33 @@ public struct SkyforgeRootView: View {
                     .ignoresSafeArea()
             }
         }
+    }
+
+    /// The first thing a pilot sees: the promise of the game and one big button to fly now.
+    private var hero: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Fly the real world")
+                .font(.largeTitle.weight(.heavy))
+            Text("Real airports, real weather and real terrain, free and open source.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            Button {
+                flightLocation = .defaultStart; showingFlight = true
+            } label: {
+                Label("Fly now from \(Showcase.defaultAirport.name)", systemImage: "airplane.departure")
+                    .font(.headline)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 4)
+            }
+            .buttonStyle(.glassProminent)
+            .controlSize(.large)
+            Text("Works offline. Scenery is bundled.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: SFHubStyle.cornerRadius + 6))
     }
 }
 
