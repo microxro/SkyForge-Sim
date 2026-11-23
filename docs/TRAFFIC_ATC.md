@@ -24,12 +24,49 @@ or bundles a licensed voice or data pack.
 - Heavy aircraft (2,000 kg and above) shed a `WakeVortexPair` every 4 s, which ownship's flight model feels
   through `FlightEnvironment.wakes`.
 
+## Traffic at each field
+
+Every field that Quick Flight starts from gets traffic. `TrafficProfile` sets the traffic from the runway, so
+the field's runway length decides how busy it is:
+
+| Field class | Runway length | Arrival and departure means | Most aircraft | Types |
+|---|---|---|---|---|
+| Busy | 2,400 m and longer | 110 s and 160 s | 8 | all four civil types |
+| Medium | 1,200 m to 2,400 m | 150 s and 210 s | 6 | all four civil types |
+| Quiet | under 1,200 m | 240 s and 320 s | 3 | SF-1 and SF-C only |
+
+Each field has its own seed, taken from the threshold position, so two fields do not repeat the same
+movements. The same runway always gives the same traffic. `TowerSession` builds the traffic from the profile,
+so the game and Quick Flight use the same rules at every field.
+
+## Approach, departure and handoffs
+
+Each aircraft is with one controller at a time, the `TrafficFacility`:
+
+- **Approach** has an arrival from spawn until it reaches the pattern entry (the downwind leg). A new arrival is
+  given "approach, radar contact" and then "report downwind".
+- **Tower** has everything on the runway and the pattern: holds, takeoff rolls, the legs, landing and rollout.
+  An arrival that reaches the downwind leg is handed to the tower with "contact tower".
+- **Departure** has a departure once it is 3 km along the runway ("contact departure"). The same 3 km is where
+  ownship's climb out ends. When ownship flies back inbound it stays with departure until it reaches the
+  pattern, then goes back to the tower with "contact tower".
+
+`TrafficSystem.facility(current:phase:alongRunway:)` is the rule, and each aircraft and ownship keep their own
+facility from tick to tick. `ATCController` announces a change once. Handoffs have no clearance and need no
+readback; they are advisories, like the phase calls.
+
+The tower does not sequence arrivals by vectors or hold them at an approach fix yet. Spacing still happens at
+base, as before.
+
 ## How the tower decides
 
 The tower is a state machine of fixed rules, not a model:
 
 1. **Advisories** on every phase change: "report downwind", "report final", "extend downwind for spacing",
-   "vacate the runway when able", "airborne, contact departure".
+   "vacate the runway when able", "airborne, climb straight out".
+   **Handoffs** when the controller changes: "approach, radar contact" for a new arrival, "contact tower" when
+   an arrival reaches the pattern or ownship rejoins the pattern, and "contact departure" when a departure
+   passes 3 km. Each handoff is said once. See "Approach, departure and handoffs" below.
 2. **Landing clearance** goes to the first base-leg arrival, when no takeoff is rolling and spacing allows.
    Spacing is 75 s, or 120 s after a heavy aircraft when the next one is light (wake turbulence). A light
    aircraft that follows a heavy within 150 s also gets "caution, wake turbulence".
@@ -75,8 +112,11 @@ what the count is worth.
 - AI altitudes are relative to the field elevation. Traffic does not avoid terrain, so mountain fields
   (for example KASE) can put traffic low over hills near the pattern.
 - No collisions between aircraft, and AI aircraft are not weapon targets.
-- The renderer does not draw AI aircraft yet. `GameplaySession.trafficSnapshots` and
-  `TrafficSystem.snapshots` expose them for it. Renderer edits go through the renderer thread.
+- Quick Flight draws the AI aircraft. Mission scenes do not, because missions run without traffic. Renderer
+  edits go through the renderer thread.
+- Fields are the ones Quick Flight can start from. The six showcase fields ship with tile packs. Other
+  fields come from the bundled OurAirports data and stream on first use. Adding a showcase pack needs
+  `sfpreview pack-airport`, which runs on a Mac. The traffic profile applies to any field with runway data.
 - Taxi is not modelled. A flight that starts on the runway begins at the hold short line.
 - Ownship phases are read from position and ground contact, not from the pilot's controls. A go-around is
   flown as a departure.
@@ -86,4 +126,5 @@ what the count is worth.
 
 `Tests/SFTrafficTests` and `Tests/SFATCTests` cover performance, pattern geometry, the arrival and departure
 state machines, determinism, wake shedding, phrase templates, clearance rules, wake spacing, ownship phases,
-readback prompts and the ownship counts.
+readback prompts, the ownship counts, the facility rule and its handoffs, and the field profiles. The profile
+tests check that every field, from a 800 m strip to a 3 km runway, gets arrivals and departures.

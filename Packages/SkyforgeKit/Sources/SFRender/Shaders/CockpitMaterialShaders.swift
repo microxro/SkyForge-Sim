@@ -205,7 +205,8 @@ public enum CockpitMaterialShaders {
         float2 cell = q / 0.0012;
         float2 ci = floor(cell), cf = fract(cell) - 0.5;
         float on = step(0.62, ck_hash(ci));
-        float speck = on * (1.0 - smoothstep(0.18, 0.5, length(cf))) * saturate(1.0 - fp / 0.003);
+        // Fade the grain out before a pixel is as wide as a particle: below that it only aliases into stipple.
+        float speck = on * (1.0 - smoothstep(0.18, 0.5, length(cf))) * (1.0 - smoothstep(0.0008, 0.0025, fp));
         float haze = 0.06 + 0.12 * patch;                                   // microscopic film that fades with distance
         return saturate(amount * (haze * settle + 0.55 * speck * patch));
     }
@@ -270,7 +271,9 @@ public enum CockpitMaterialShaders {
         float sc = scratches * saturate(max(ck_scratchLayer(p.yz, 0.35, fp, 0.0), ck_scratchLayer(p.yz, 0.9, fp, 41.0))
                                         + 0.6 * ck_wiperArcs(p.yz, float2(0.0, -0.40), fp));
         float3 dustLit = sunRad * ck_hg(cosEye, 0.62) * 1.9 * graze + skyAmbient * 0.045;
-        float3 scrLit = sunRad * ck_hg(cosEye, 0.85) * 3.2 * graze + skyAmbient * 0.03;
+        // Scratches are hairlines; a lower gain and a lower grazing cap stop them reading as bright diagonal bars.
+        float scrGraze = min(1.0 / max(ns, 0.18f), 2.0f);
+        float3 scrLit = sunRad * ck_hg(cosEye, 0.85) * 1.4 * scrGraze + skyAmbient * 0.03;
         float3 scat = dustLit * film + scrLit * sc;
         // Particles and scratches also block a little of what is behind.
         float block = saturate(film * 0.25 + sc * 0.12);
@@ -335,6 +338,18 @@ public enum CockpitMaterialShaders {
         float occ = mix(0.45, 1.0, saturate(winSun * 0.5 + 0.5));
         float3 sun = u.sunColour.rgb * winSun;
         float3 metalCol = ck_brushedMetal(n, t, v, toSun, f0, rough, aniso, sun, env * 0.6 + ambient * 0.5, ambient, occ);
+        // Rivets on flat panel plates (not rings or tubes): a 4 cm grid of 3 mm domes, each with a darker rim where
+        // the plate meets the dome. Plate coordinates are `along` and `across`, both in metres. The pattern fades
+        // out once a pixel is wider than a rivet, so it never shimmers at distance.
+        if (!ring && conf < 0.5) {
+            float2 rg = float2(along, across) / 0.04;
+            float2 rf = (fract(rg) - 0.5) * 0.04;                                 // metres from the nearest rivet centre
+            float rr = length(rf);
+            float seen = 1.0 - smoothstep(0.003, 0.006, fp);
+            float head = (1.0 - smoothstep(0.0025, 0.0032, rr)) * seen;
+            float rim = smoothstep(0.0032, 0.0040, rr) * (1.0 - smoothstep(0.0040, 0.0052, rr)) * seen;
+            metalCol *= (1.0 - 0.30 * rim) * (1.0 + 0.10 * head);
+        }
         // Dark `.metal` parts (the black throttle knob, switch caps) are anodised or moulded, not bare metal:
         // they take the dielectric lobe, so they are not mirrors that go black.
         float lum = dot(albedo, float3(0.2126, 0.7152, 0.0722));

@@ -7,18 +7,35 @@ import SFGameplay
 struct WeaponButtons: View {
     let controller: QuickFlightController
     let hasMissiles: Bool
+    let hasRadarMissiles: Bool
     @State private var firing = false
 
     var body: some View {
-        HStack(spacing: 12) {
-            Button(firing ? "Cannon: firing" : "Cannon") {
-                firing.toggle(); controller.fireHeld = firing
+        VStack(spacing: 8) {
+            // Scrolls sideways so the row keeps its width on a phone.
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    Button(firing ? "Cannon: firing" : "Cannon") {
+                        firing.toggle(); controller.fireHeld = firing
+                    }
+                    .buttonStyle(.borderedProminent).tint(firing ? .red : .gray)
+                    if hasMissiles {
+                        Button("Missile") { controller.launchMissile() }.buttonStyle(.bordered)
+                    }
+                    if hasRadarMissiles {
+                        Button("Radar missile") { controller.launchRadarMissile() }.buttonStyle(.bordered)
+                    }
+                    Button("Next target") { controller.cycleTarget() }.buttonStyle(.bordered)
+                }
             }
-            .buttonStyle(.borderedProminent).tint(firing ? .red : .gray)
-            if hasMissiles {
-                Button("Missile") { controller.launchMissile() }.buttonStyle(.bordered)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    Button("Radar") { controller.cycleRadar() }.buttonStyle(.bordered)
+                    Button("Lock") { controller.lockRadarTarget() }.buttonStyle(.bordered)
+                    Button("Flare") { controller.deployFlare() }.buttonStyle(.bordered)
+                    Button("Chaff") { controller.deployChaff() }.buttonStyle(.bordered)
+                }
             }
-            Button("Next target") { controller.cycleTarget() }.buttonStyle(.bordered)
         }
         .padding(8)
     }

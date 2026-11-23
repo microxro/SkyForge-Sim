@@ -53,12 +53,23 @@ public struct OwnshipTracker: Sendable, Equatable {
     /// Distance (m) from every pattern leg beyond which ownship counts as inbound.
     public static let patternReach = 1_500.0
 
+    /// The controller that has ownship now: the tower for a flight that starts on the runway, approach otherwise.
+    public private(set) var facility: TrafficFacility
+
     public init(startsOnRunway: Bool) {
         awaitingTakeoff = startsOnRunway
+        facility = startsOnRunway ? .tower : .approach
     }
 
-    /// The tower's phase for ownship in this report. Updates the takeoff and climb-out state.
+    /// The tower's phase for ownship in this report. Updates the takeoff, climb-out and facility state.
     public mutating func phase(for report: OwnshipReport, runway: TrafficRunway, pattern: TrafficPatternGeometry) -> TrafficPhase {
+        let current = flightPhase(for: report, runway: runway, pattern: pattern)
+        facility = TrafficSystem.facility(current: facility, phase: current, alongRunway: runway.local(report.positionNED).x)
+        return current
+    }
+
+    private mutating func flightPhase(for report: OwnshipReport, runway: TrafficRunway,
+                                      pattern: TrafficPatternGeometry) -> TrafficPhase {
         if report.onGround {
             if awaitingTakeoff {
                 return report.groundSpeed < 2 ? .holdShort : .takeoffRoll
@@ -127,6 +138,6 @@ public struct OwnshipTracker: Sendable, Equatable {
                                distanceToTouchdown: (d.x * d.x + d.y * d.y + d.z * d.z).squareRoot(),
                                isHeavy: TrafficPerformance.isHeavy(report.config),
                                clearedToLand: clearedToLand, clearedToTakeoff: clearedToTakeoff,
-                               takeoffFits: system.departureFits(report.config))
+                               takeoffFits: system.departureFits(report.config), facility: facility)
     }
 }

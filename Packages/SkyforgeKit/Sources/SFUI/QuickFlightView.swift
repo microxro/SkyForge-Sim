@@ -97,6 +97,12 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
     var fireHeld = false
     private var launchRequested = false
     private var cycleRequested = false
+    private var radarLaunchRequested = false
+    /// Radar and countermeasure buttons, one-shot like launch and cycle (the director sees rising edges).
+    private var radarCycleRequested = false
+    private var radarLockRequested = false
+    private var flareRequested = false
+    private var chaffRequested = false
     var touch = InputMapper.DeviceState()
     private var renderer: WorldRenderer?
     private var governor: QualityGovernor?
@@ -162,6 +168,11 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
 
     func launchMissile() { launchRequested = true }
     func cycleTarget() { cycleRequested = true }
+    func launchRadarMissile() { radarLaunchRequested = true }
+    func cycleRadar() { radarCycleRequested = true }
+    func lockRadarTarget() { radarLockRequested = true }
+    func deployFlare() { flareRequested = true }
+    func deployChaff() { chaffRequested = true }
 
     func attach(_ view: MTKView) {
         guard let device = view.device ?? MTLCreateSystemDefaultDevice() else { status = .failed("No Metal device."); return }
@@ -332,6 +343,20 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
                                                                                  SIMD3(cos(h), -sin(h), 0),
                                                                                  SIMD3(0, 0, -1))))
         }
+        // AI traffic lights: nav red and green at the wingtips, white at the tail, strobe on top. Offsets are body
+        // metres (x forward, y right, z down), approximate for the traffic types. Drawn by the night-light pass.
+        r.trafficLights = r.trafficPoses.enumerated().flatMap { (i, pose) -> [NightLight] in
+            let m = pose.bodyToENU
+            func at(_ b: SIMD3<Double>) -> SIMD3<Float> {
+                let e = m.columns.0 * b.x + m.columns.1 * b.y + m.columns.2 * b.z + pose.position
+                return SIMD3(Float(e.x), Float(e.y), Float(e.z))
+            }
+            let phase = Float((i * 37) % 100) / 100
+            return [NightLight(position: at(SIMD3(0, -6, 0)), kind: .navRed),
+                    NightLight(position: at(SIMD3(0, 6, 0)), kind: .navGreen),
+                    NightLight(position: at(SIMD3(-7, 0, 0)), kind: .navWhite),
+                    NightLight(position: at(SIMD3(0, 0, -1.5)), kind: .strobe, phase: phase)]
+        }
         let encodeStart = CACurrentMediaTime()
         do {
             try r.encode(cmd: cmd, colour: tex, depth: depth, camera: camera,
@@ -416,14 +441,23 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
     private func stepGameplay(dt: Double) {
         trackTouchdown()
         if session.crashed { recordFreeFlight(event: nil) }
+        // Damage from the last step reaches the next flight step through the control path.
+        session.inputFilter = GameplaySession.damagedControlFilter(base: controlFilter, damage: director.damage)
         guard !director.isFinished, let outputs = session.lastOutputs else { return }
         let snapshot = FlightSnapshot(time: session.time, state: session.state, outputs: outputs,
                                       flaps: session.inputs.flaps, heightAGL: session.heightAboveGround,
                                       crashed: session.crashed, crashReason: session.crashed ? "Crashed into the ground" : nil)
         director.advance(dt: dt, snapshot: snapshot,
-                         weaponInput: WeaponInput(fireGun: fireHeld, launchMissile: launchRequested, cycleTarget: cycleRequested))
-        launchRequested = false; cycleRequested = false
+                         weaponInput: WeaponInput(fireGun: fireHeld, launchMissile: launchRequested, cycleTarget: cycleRequested,
+                                                  launchRadarMissile: radarLaunchRequested),
+                         radarInput: RadarInput(cycleMode: radarCycleRequested, lockNext: radarLockRequested),
+                         countermeasureInput: CountermeasureInput(flare: flareRequested, chaff: chaffRequested))
+        launchRequested = false; cycleRequested = false; radarLaunchRequested = false
+        radarCycleRequested = false; radarLockRequested = false
+        flareRequested = false; chaffRequested = false
         if director.monitor.structuralFailure && !session.crashed { session.markCrashed() }
+        // A shot-down airframe ends the flight, as the headless session does, with or without a mission.
+        if director.damage.destroyed && !session.crashed { session.markCrashed() }
         if let result = director.runtime?.result, !resultSaved { saveResult(result) }
     }
 
@@ -438,6 +472,7 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
         let report = FlightReport.fromMission(id: result.missionID, aircraftID: result.aircraftID, success: result.success,
                                               score: result.score, elapsed: result.elapsed, kills: result.kills,
                                               crashed: session.crashed, endedAt: Int(Date().timeIntervalSince1970))
+        LogbookStore(url: LogbookStore.defaultURL).record(report)
         if let outcome = SaveStore(url: SaveStore.defaultURL).record(report), let lvl = outcome.leveledUpTo {
             attribution.append("Career: reached level \(lvl)")
         }
@@ -558,7 +593,8 @@ public struct QuickFlightView: View {
                 }
                 Spacer()
                 if let hud = controller.gameplayHUD, !controller.spec.armament.isEmpty, hud.status == .inProgress || hud.status == nil {
-                    WeaponButtons(controller: controller, hasMissiles: controller.spec.armament.contains(.heatMissile))
+                    WeaponButtons(controller: controller, hasMissiles: controller.spec.armament.contains(.heatMissile),
+                                  hasRadarMissiles: controller.spec.armament.contains(.radarMissile))
                 }
                 if !controller.attribution.isEmpty {
                     Text(controller.attribution.joined(separator: " · "))

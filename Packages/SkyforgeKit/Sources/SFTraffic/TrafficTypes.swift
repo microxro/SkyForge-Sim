@@ -86,6 +86,12 @@ public enum TrafficClearance: String, Sendable, Codable, Equatable {
     case land, takeoff
 }
 
+/// Which controller has the aircraft. Arrivals are with approach until they reach the pattern, then with the tower.
+/// Departures are with the tower until they pass the handoff point, then with departure control.
+public enum TrafficFacility: String, Sendable, Codable, Equatable {
+    case approach, tower, departure
+}
+
 /// One AI aircraft. Point-mass state; `config` supplies its real mass, span, speeds and climb limits.
 public struct TrafficAircraft: Sendable, Equatable, Identifiable {
     public let id: String
@@ -107,6 +113,8 @@ public struct TrafficAircraft: Sendable, Equatable, Identifiable {
     public internal(set) var age = 0.0
     /// Seconds since this aircraft last shed a wake pair.
     public internal(set) var sinceWake = 0.0
+    /// The controller that has this aircraft now.
+    public internal(set) var facility: TrafficFacility
 
     public init(id: String, callsign: String, config: AircraftConfig, kind: TrafficKind, phase: TrafficPhase,
                 position: SIMD3<Double>, heading: Double, speed: Double) {
@@ -118,6 +126,7 @@ public struct TrafficAircraft: Sendable, Equatable, Identifiable {
         self.position = position
         self.heading = heading
         self.speed = speed
+        self.facility = (kind == .arrival && phase == .inbound) ? .approach : .tower
     }
 }
 
@@ -142,6 +151,8 @@ public struct TrafficSnapshot: Sendable, Equatable, Identifiable {
     public var clearedToTakeoff: Bool
     /// False when this departure cannot reach rotation speed on the runway, so the tower must not clear it.
     public var takeoffFits: Bool = true
+    /// The controller that has the aircraft now. The tower announces changes of facility.
+    public var facility: TrafficFacility = .tower
 }
 
 /// Things that happened in the last step, for logs and effects.

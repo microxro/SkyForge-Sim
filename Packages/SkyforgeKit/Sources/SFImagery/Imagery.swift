@@ -121,13 +121,15 @@ public actor ImageryStreamer {
 
     public func tile(_ t: TileCoord) async -> (RGBImage?, Source) {
         if let m = memory[t] { return (m, .memory) }
-        if let c = cache, let d = await c.get(key(t)), let img = try? JPEGDecoder.decode([UInt8](d)) {
+        // JPEG decode is CPU-heavy: keep it off the actor so one decode does not serialise every other tile request.
+        if let c = cache, let d = await c.get(key(t)),
+           let img = await Task.detached(priority: .utility, operation: { try? JPEGDecoder.decode([UInt8](d)) }).value {
             remember(t, img); return (img, .disk)
         }
         if let task = inFlight[t] { let r = await task.value; return (r?.1, r == nil ? .missing : .network) }
         let url = provider.url(t), transport = self.transport
         networkRequests += 1
-        let task = Task<(Data, RGBImage)?, Never> {
+        let task = Task<(Data, RGBImage)?, Never>.detached(priority: .utility) {
             guard let data = try? await transport.get(url), let img = try? JPEGDecoder.decode([UInt8](data)) else { return nil }
             return (data, img)
         }

@@ -229,6 +229,8 @@ public final class WorldRenderer {
     }
     /// AI traffic drawn with the hero aircraft mesh. The host sets this each frame; empty draws nothing.
     public var trafficPoses: [TrafficPose] = []
+    /// Nav and strobe lights on the AI traffic, built by the host from `trafficPoses`. Drawn by the night-light pass.
+    public var trafficLights: [NightLight] = []
     /// Animation time (s) for water and other moving surfaces.
     public var time: Double = 0
     /// Round 5 ocean: wind (m/s, direction the wind blows toward in radians), quality tier and live wake sources
