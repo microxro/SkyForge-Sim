@@ -1743,3 +1743,26 @@ Tree counts: LSZS 650k (capped), KASE 650k (capped), NZQN 116k (+70k scrub), KMR
 - **Why nothing changed:** `aaTier` is never set anywhere in Sources or tests. TAA, SMAA-lite and the 4-cascade shadows therefore never run, so #42 changes no frame.
 - **Correction:** the round 62 entry says #42 lifted the hold. That was premature. The hold stays until `aaTier` is set for the showcase render and a before/after pair shows the change.
 - **Main CI:** the linux job of run 45070726691 failed in `ScenarioTests` with one issue. Other suites passed.
+
+## Round 64 verdict (main fec046b, frames in ci-frames/main/)
+
+- **Frames:** main/ from run 45081978939 (fec046b). Includes #62 (`aaTier` set in render presets) and #64 (ocean wind and wake inputs). Main has since moved to 30cf1ced (#73, gameplay only). These frames stay the reference until the next main run.
+- **Change from round 63 (measured on the 17 frames):**
+  - Every frame differs byte-wise. Mean pixel change is 0.6 on SkyWorld and 1.4–1.8 on the KASE and KBFI finals, 6.1 on KMRY high, and 11.2 on NZQN close (water).
+  - Six close and cockpit frames lost 6–9 % edge energy (KASE, KBFI, KMRY, LSZS and NZQN close, KMRY cockpit). That fits TAA smoothing shimmer, but it also fits softer edges. A 2x capture is needed to tell them apart.
+  - Finals and highs moved within ±3 %.
+- **Checks from round 63:**
+  - **TAA and cascades:** `aaTier` is now set, so the first condition is met. Building and tree shadows are present on KMRY close and KBFI close. Cascade seams are not visible at 1280×720. I see no clear edge gain by eye.
+  - **Ocean wake on water heading:** not visible. No frame shows a wake trail behind the aircraft, including NZQN close and high, where the aircraft is low over the lake. Either the wake does not render at this altitude or it is outside the frame.
+  - **Water:** NZQN close is a shade bluer than round 63. It is still a flat matte grey-blue with speckle, with no sky reflection and no sun glint.
+- **Round 64 verdict: 6.2, unchanged.** Per-airport averages match round 62 and 63. The water is not better, and the wake check fails.
+- **Hold:** stays on lighting and AA. The first condition is met, but the before-and-after pair shows no visible gain.
+- **Defects, still open:**
+  1. **Water** (NZQN, LSZS, KMRY coast, KBFI harbour): flat matte speckle, no reflection, no glint. Wake not visible. Owner: "Make scenery and lighting beat MSFS". PR #52 (ocean) still needs an owner.
+  2. **Suburbs** (KMRY final, KBFI close): untextured boxes at 2–6 km. Owner: terrain LOD and building fill.
+  3. **Fields** (KASE valley smear, KMRY flat olive lawns). Owner: terrain LOD.
+  4. **Cockpit** (KMRY): canopy dither and diagonal glare streaks. Owner: "Push airport frames past 8.2".
+  5. **Trees** (KMRY final, LSZS final): lollipop crowns at mid distance. Low priority.
+- **Asks for the next round:**
+  - A 2x capture of KBFI close and NZQN close, so edge and shimmer can be judged.
+  - A low pass over the NZQN lake, for the wake check.

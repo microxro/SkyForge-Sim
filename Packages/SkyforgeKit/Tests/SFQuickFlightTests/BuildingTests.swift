@@ -74,7 +74,8 @@ import SFPreview
             } else { #expect(mat == Material.roof.rawValue); roofs += 1 }
             top = max(top, m.position(i).z)
         }
-        #expect(walls == 16 && roofs >= 4)
+        // Four facades, each a 0.8 m contact band and the wall above it: 2 quads of 4 vertices per facade.
+        #expect(walls == 32 && roofs >= 4)
         #expect(top >= 29 && top < 33, "roof at 29 m plus a parapet and plant, got \(top)")
         // Outward walls: every wall vertex's normal points away from the centroid.
         for i in 0..<m.vertexCount where m.material(i) == Material.wall.rawValue {
@@ -94,6 +95,18 @@ import SFPreview
         }
         #expect(sloped >= 16, "four sloped roof planes")
         #expect(ridge > eave + 1 && ridge < 9, "ridge \(ridge) above eave \(eave)")
+    }
+
+    /// A ground-standing wall has a darker contact band at its foot, so it sits on the ground.
+    @Test func groundStandingWallsHaveADarkerContactBand() {
+        let m = BuildingMeshBuilder.build([Self.box], ground: { _, _ in 10 })
+        var band: [Float] = [], upper: [Float] = []
+        for i in 0..<m.vertexCount where m.material(i) == Material.wall.rawValue {
+            let z = m.position(i).z
+            if z < 10.79 { band.append(m.albedo(i).x) } else if z > 12 { upper.append(m.albedo(i).x) }
+        }
+        #expect(!band.isEmpty && !upper.isEmpty)
+        #expect((band.max() ?? 1) < (upper.min() ?? 0), "band \(band.max() ?? 0), wall \(upper.min() ?? 0)")
     }
 
     /// One house is not one flat colour: its facades and roof planes each take their own tone.

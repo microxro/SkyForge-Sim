@@ -11,8 +11,9 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ci-${{ github.ref }}
-  # Keep every run on main: cancelling a superseded push there can hide a failure.
+  # Runs on main get their own group (by run id). GitHub keeps only one pending run per group, so a shared group
+  # let a newer push drop a queued run for an older commit. Branches still cancel superseded runs.
+  group: ci-${{ github.ref == 'refs/heads/main' && github.run_id || github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
