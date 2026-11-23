@@ -74,7 +74,9 @@ jobs:
       - name: Showcase frames
         env:
           SKYFORGE_VISUAL_LOG: "1"
-          SKYFORGE_FRAMES: KMRY,KBFI,KASE,LSZS,NZQN,SKYWORLD
+          # Pull requests render two scenes (the default airport and SkyWorld) at full resolution, to cut macOS queue time.
+          # Pushes to main render all six, so the art thread reads the full set on ci-frames/main/.
+          SKYFORGE_FRAMES: ${{ github.event_name == 'pull_request' && 'KMRY,SKYWORLD' || 'KMRY,KBFI,KASE,LSZS,NZQN,SKYWORLD' }}
         run: |
           set -o pipefail
           swift test --disable-automatic-resolution -c release -Xswiftc -enable-testing --package-path Packages/SkyforgeKit --filter ShowcaseRenderTests 2>&1 | tee frames.log
