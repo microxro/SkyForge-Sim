@@ -33,6 +33,35 @@ public enum ImageryGrading {
         for i in 0..<m.rgb.count { m.rgb[i] = lut[Int(m.rgb[i])] }
     }
 
+    /// Restores edge detail softened by resampling (the 1–10 km Sentinel-2 ring is ~10 m per pixel and reads washed
+    /// out next to MSFS). Unsharp mask on a 3×3 box blur, per channel: out = v + amount·(v − blur), clamped to 0…255.
+    /// Pixels without imagery (coverage 0) are left alone, and the blur only reads imagery pixels, so a missing
+    /// tile never leaks a dark edge into the sharpened neighbourhood. `amount` 0 leaves the image unchanged.
+    public static func sharpen(_ m: inout ImageryMosaic, amount: Double = 0.5) {
+        guard amount > 0, m.size > 2 else { return }
+        let n = m.size
+        let src = m.rgb, cov = m.coverage
+        for y in 1..<(n - 1) {
+            for x in 1..<(n - 1) {
+                let p = y * n + x
+                guard cov[p] != 0 else { continue }
+                for c in 0..<3 {
+                    var sum = 0.0, count = 0.0
+                    for dy in -1...1 {
+                        for dx in -1...1 {
+                            let q = (y + dy) * n + (x + dx)
+                            if cov[q] != 0 { sum += Double(src[3 * q + c]); count += 1 }
+                        }
+                    }
+                    let v = Double(src[3 * p + c])
+                    let blur = sum / count
+                    let out = v + amount * (v - blur)
+                    m.rgb[3 * p + c] = UInt8(max(0, min(255, out.rounded())))
+                }
+            }
+        }
+    }
+
     /// Per-channel (mean, variance) of `near` block-averaged to `far`'s resolution, and of `far`, over
     /// their overlap; nil when they barely overlap.
     static func overlapStats(_ near: ImageryMosaic, _ far: ImageryMosaic) -> (near: [(Double, Double)], far: [(Double, Double)])? {

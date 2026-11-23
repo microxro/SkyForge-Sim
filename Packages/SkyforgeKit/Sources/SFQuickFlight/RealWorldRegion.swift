@@ -278,6 +278,7 @@ public struct RealWorldRegion: FlightWorld {
         }
         if var m = imd {
             if midProvider.id != nearProvider.id { ImageryGrading.dehaze(&m) }
+            ImageryGrading.sharpen(&m, amount: 0.5)     // 1–10 km ring: restore edge detail softened by resampling (round 65)
             ImageryGrading.match(far: &m, to: region.ground.near)
             region.midImagery = m
         }
