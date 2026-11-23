@@ -11,6 +11,11 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      scenes:
+        description: "Comma-separated airports (KMRY,KBFI,KASE,LSZS,NZQN,SKYWORLD). Empty renders all six."
+        type: string
+        default: ""
 
 concurrency:
   group: frames-${{ github.ref == 'refs/heads/main' && github.run_id || github.ref }}
@@ -27,35 +32,73 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       visual: ${{ steps.decide.outputs.visual }}
+      scenes: ${{ steps.decide.outputs.scenes }}
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Decide whether frames are needed
+      - name: Decide whether frames are needed, and which scenes
         id: decide
         env:
           EVENT: ${{ github.event_name }}
           BASE: ${{ github.event.pull_request.base.sha }}
           HEAD: ${{ github.event.pull_request.head.sha }}
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+          DISPATCH_SCENES: ${{ inputs.scenes }}
         run: |
           set -euo pipefail
-          # Paths whose changes can alter a rendered frame. Anything else (gameplay, input, career, settings, docs) skips frames.
-          VISUAL='^(Packages/SkyforgeKit/Sources/(SFRender|SFTerrainCore|SFWorldGen|SFImagery|SFAtmosphere|SFContent|SFPreview|SFPreviewCLI|SFQuickFlight|SFTraffic)/|Packages/SkyforgeKit/Tests/[^/]*(Render|Showcase|Frame|Visual|Terrain|Scenery|Building)[^/]*/|Packages/SkyforgeKit/Package\.swift$|App/|SKYFORGE\.xcodeproj/|\.github/workflows/|tools/(ci_frames|test_ci_frames|perf_gate|fetch_|overture)[^/]*$)|(^|/)(Assets|Resources|Shaders?|Textures?)/|\.(metal|metallib|msl|glsl)$|(WorldRenderer|Scenery|Terrain|Shader|Frame|Showcase)[^/]*\.swift$'
-          if [ "$EVENT" != "pull_request" ]; then
-            echo "visual=true" >> "$GITHUB_OUTPUT"
-            echo "Event $EVENT always renders frames."
+          ALL="KMRY KBFI KASE LSZS NZQN SKYWORLD"
+          emit() { local csv; csv=$(echo "$2" | tr ' ' ',' | tr -s ','); echo "visual=$1" >> "$GITHUB_OUTPUT"; echo "scenes=$csv" >> "$GITHUB_OUTPUT"; echo "Scenes: $csv"; }
+          # Manual runs choose their own scenes. Pushes to main always render all six, because the art thread reads ci-frames/main/.
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            if [ -n "$DISPATCH_SCENES" ]; then emit true "$(echo "$DISPATCH_SCENES" | tr ',+ ' '   ')"; else emit true "$ALL"; fi
             exit 0
           fi
-          git diff --name-only "$BASE" "$HEAD" > changed.txt
+          if [ "$EVENT" != "pull_request" ]; then emit true "$ALL"; exit 0; fi
+          # Paths whose changes can alter a rendered frame. Anything else (gameplay, input, career, settings, docs) skips frames.
+          VISUAL='^(Packages/SkyforgeKit/Sources/(SFRender|SFTerrainCore|SFWorldGen|SFImagery|SFAtmosphere|SFContent|SFPreview|SFPreviewCLI|SFQuickFlight|SFTraffic)/|Packages/SkyforgeKit/Tests/[^/]*(Render|Showcase|Frame|Visual|Terrain|Scenery|Building)[^/]*/|Packages/SkyforgeKit/Package\.swift$|App/|SKYFORGE\.xcodeproj/|\.github/workflows/|tools/(ci_frames|test_ci_frames|perf_gate|fetch_|overture)[^/]*$)|(^|/)(Assets|Resources|Shaders?|Textures?)/|\.(metal|metallib|msl|glsl)$|(WorldRenderer|Scenery|Terrain|Shader|Frame|Showcase)[^/]*\.swift$'
+          BASE_SHA="$BASE"; HEAD_SHA="$HEAD"
+          git diff --name-only "$BASE_SHA" "$HEAD_SHA" > changed.txt
           echo "Changed files: $(wc -l < changed.txt)"
-          if grep -Eq "$VISUAL" changed.txt; then
-            echo "visual=true" >> "$GITHUB_OUTPUT"
-            echo "Rendering-related files changed; frames will run."
-          else
-            echo "visual=false" >> "$GITHUB_OUTPUT"
+          if ! grep -Eq "$VISUAL" changed.txt; then
+            emit false ""
             echo "No rendering-related files changed; frames skipped."
+            exit 0
           fi
+          # Label override: `frames:all`, or `frames:KBFI+LSZS` for exact scenes. Otherwise pick scenes from the changed paths.
+          want=" KMRY "
+          all=0
+          IFS=',' read -ra LABEL_LIST <<< "$LABELS"
+          for label in "${LABEL_LIST[@]}"; do
+            case "$label" in
+              frames:all) all=1 ;;
+              frames:*) want=" $(echo "${label#frames:}" | tr '+' ' ') " ; all=2 ;;
+            esac
+          done
+          if [ "$all" -eq 0 ]; then
+            while IFS= read -r f; do
+              case "$f" in
+                # Shared renderer, shader, app and build files can change every scene: render all six.
+                *Shaders/*|*/Shaders*|*WorldRenderer.swift|*WorldRenderer+*|*RendererQuality*|App/*|*.xcodeproj/*|Packages/SkyforgeKit/Package.swift|.github/workflows/*|tools/*) all=1 ;;
+                *Ocean*|*Water*|*water*|*Lake*|*lake*) want+="NZQN " ;;
+                *Building*|*Suburb*|*LandUse*|*Overture*|*Scenery*) want+="KBFI " ;;
+                *Terrain*|*CDLOD*|*DEM*|*Elevation*) want+="KASE " ;;
+                *Imagery*|*Sentinel*) want+="LSZS NZQN " ;;
+                *Atmosphere*|*Cloud*|*Sky*|*Weather*|*Night*) want+="SKYWORLD " ;;
+                # Unmatched renderer and scenery source could affect any scene: render all six.
+                Packages/SkyforgeKit/Sources/*) all=1 ;;
+                *) ;;
+              esac
+            done < changed.txt
+          fi
+          if [ "$all" -eq 1 ]; then SCENES="$ALL"; else
+            SCENES=""
+            for s in $ALL; do case " $want " in *" $s "*) SCENES="$SCENES $s" ;; esac; done
+            SCENES="${SCENES# }"
+          fi
+          emit true "$(echo "$SCENES" | tr ' ' ',')"
+          echo "Rendering-related files changed; frames will run."
 
   # Art-review frames (five showcase airports and SkyWorld at 1280×720, Metal), logged as SKYFORGE_PNG
   # lines in their own job so they can be read back without the rest of the test output.
@@ -74,9 +117,8 @@ jobs:
       - name: Showcase frames
         env:
           SKYFORGE_VISUAL_LOG: "1"
-          # Pull requests render two scenes (the default airport and SkyWorld) at full resolution, to cut macOS queue time.
-          # Pushes to main render all six, so the art thread reads the full set on ci-frames/main/.
-          SKYFORGE_FRAMES: ${{ github.event_name == 'pull_request' && 'KMRY,SKYWORLD' || 'KMRY,KBFI,KASE,LSZS,NZQN,SKYWORLD' }}
+          # Scenes come from the changes job: picked from the changed paths on pull requests, all six on main.
+          SKYFORGE_FRAMES: ${{ needs.changes.outputs.scenes }}
         run: |
           set -o pipefail
           swift test --disable-automatic-resolution -c release -Xswiftc -enable-testing --package-path Packages/SkyforgeKit --filter ShowcaseRenderTests 2>&1 | tee frames.log
