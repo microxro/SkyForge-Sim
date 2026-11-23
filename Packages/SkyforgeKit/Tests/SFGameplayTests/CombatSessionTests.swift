@@ -40,6 +40,22 @@ private func isPlayerDamaged(_ e: GameEvent) -> Bool {
         #expect(zero == ControlInputs())
     }
 
+    @Test func damagedControlFilterRunsTheBaseFilterThenAppliesDamage() {
+        var engineHit = AircraftDamage()
+        _ = engineHit.apply(source: .missile, zone: .engine, amount: 0.4)
+        #expect(engineHit.thrustFactor < 1)
+        let base: ControlFilter = { inputs, _, _ in
+            var out = inputs
+            out.elevator = 0.5
+            return out
+        }
+        let filter = GameplaySession.damagedControlFilter(base: base, damage: engineHit)
+        let state = AircraftState(positionNED: .zero, velocityBody: .zero, attitude: .identity, bodyRates: .zero)
+        let out = filter(ControlInputs(throttle: 1), state, FlightOutputs())
+        #expect(out.elevator == 0.5)            // controls intact, so the base filter's stick passes through
+        #expect(out.throttle == engineHit.thrustFactor)
+    }
+
     @Test func deadEngineGivesZeroThrottleAndDeadControlsKeepMinimumAuthority() {
         var engineHit = AircraftDamage()
         let engineKilled: Bool = engineHit.apply(source: .missile, zone: .engine, amount: 0.5)
