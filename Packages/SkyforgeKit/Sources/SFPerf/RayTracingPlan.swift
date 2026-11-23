@@ -39,7 +39,7 @@ public struct RayTracingCapability: Sendable, Equatable {
 }
 
 /// Full RT setting as the settings menu stores it. Sample counts are clamped to supported ranges
-/// on every write, so a corrupt or hand-edited settings file cannot ask for an unbounded ray count.
+/// on every write and on decode, so a corrupt or hand-edited settings file cannot ask for an unbounded ray count.
 public struct RayTracingSettings: Sendable, Equatable, Codable {
     public static let reflectionSampleRange = 1...2
     public static let aoRayRange = 4...16
@@ -57,6 +57,15 @@ public struct RayTracingSettings: Sendable, Equatable, Codable {
         self.reflectionSamples = Self.clamp(reflectionSamples, Self.reflectionSampleRange)
         self.aoRays = Self.clamp(aoRays, Self.aoRayRange)
         self.shadowSamples = Self.clamp(shadowSamples, Self.shadowSampleRange)
+    }
+
+    /// Decodes through the clamping initialiser: synthesized Codable would skip the `didSet` clamps.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(mode: try c.decode(RayTracingMode.self, forKey: .mode),
+                  reflectionSamples: try c.decode(Int.self, forKey: .reflectionSamples),
+                  aoRays: try c.decode(Int.self, forKey: .aoRays),
+                  shadowSamples: try c.decode(Int.self, forKey: .shadowSamples))
     }
 
     /// The settings the renderer may actually run on `cap`. Unsupported hardware always gets `off`,
