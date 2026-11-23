@@ -30,6 +30,7 @@ let package = Package(
         .target(name: "SFInstruments", dependencies: ["SFMath", "SFAtmosphere", "SFFlightModel"]),
         .target(name: "SFQuickFlight", dependencies: ["SFMath", "SFAtmosphere", "SFWeather", "SFFlightModel", "SFInstruments", "SFInput", "SFWorldGen", "SFPreview", "SFImagery", "SFNavData", "SFTerrainCore", "SFContent"], resources: [.copy("Resources")]),
         .target(name: "SFATC", dependencies: ["SFMath", "SFWeather"]),
+        .target(name: "SFChallenge"),
         .target(name: "SFSim", dependencies: ["SFMath", "SFAtmosphere", "SFFlightModel", "SFSystems", "SFWeather", "SFInput"]),
         // Apple-only code inside #if canImport(...) so these compile empty on Linux
         .target(name: "SFRender", dependencies: ["SFMath", "SFSim", "SFTerrainCore", "SFWorldGen", "SFAtmosphere", "SFPreview", "SFQuickFlight"]),
@@ -42,6 +43,7 @@ let package = Package(
         .testTarget(name: "SFAtmosphereTests", dependencies: ["SFAtmosphere"]),
         .testTarget(name: "SFFlightModelTests", dependencies: ["SFFlightModel"]),
         .testTarget(name: "SFSimTests", dependencies: ["SFSim"]),
+        .testTarget(name: "SFChallengeTests", dependencies: ["SFChallenge"]),
         .testTarget(name: "SFContentTests", dependencies: ["SFContent"]),
         .testTarget(name: "SFWorldGenTests", dependencies: ["SFWorldGen", "SFTerrainCore"]),
         .testTarget(name: "SFPreviewTests", dependencies: ["SFPreview", "SFImagery", "SFContent"]),
