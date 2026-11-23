@@ -175,6 +175,10 @@ import SFInstruments
         if ident == "NZQN" {
             let p = region.runwayThreshold - dir * 1_500
             let lakePose = Pose(position: SIMD3(p.x, p.y, ground(p) + 40), heading: hdg, roll: 0.0)
+            // The wake needs an aircraft speed; the static pose carries a 60 m/s wake along the arm so the lake shows it.
+            let lakeWake = OceanWake.aircraft(position: SIMD2(Float(p.x), Float(p.y)), heading: Float(atan2(dir.y, dir.x)),
+                                              speed: 60, wingspan: 11)
+            r.oceanWakes = lakeWake.map { [$0] } ?? []
             let lake = try r.render(width: w, height: h, camera: lakePose.chase(distance: 24, height: 6),
                                     aircraftPosition: lakePose.position, aircraftBodyToENU: lakePose.bodyToENU)
             Self.save("ultra_NZQN_lake", lake)
