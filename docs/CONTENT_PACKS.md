@@ -37,7 +37,7 @@ Initial budget (to be measured when each pack is built, not estimated now):
 |---|---|---|
 | NZQN sharp imagery (Queenstown, z17 to z19), first pack | 1.5 GB | M2 |
 | Terrain at 30 m for the six showcase airports and their ±40 km regions | 1.5 GB | M2 |
-| Sharp imagery and terrain for famous regions outside NZQN, one pack each (list agreed with "Build high-detail famous regions") | 5.0 GB | M3 |
+| Famous regions, first wave, one pack each (list from PR #165, `tools/region_packs/regions.json`): nz-mount-cook 1.0 GB, nyc-manhattan 1.5 GB, grand-canyon-south-rim 1.0 GB, alps-engadin 1.0 GB, norway-geirangerfjord 0.5 GB. Hawaii is a later optional pack (1.0 GB). | 5.0 GB | M3 |
 | Sentinel-2 at 10 m fill for regions where no sharper source exists | 1.5 GB | M3 |
 | Ground and building textures, detail maps | 2.5 GB | M4 |
 | Aircraft liveries and cockpit textures (fleet) | 1.5 GB | M4 |
