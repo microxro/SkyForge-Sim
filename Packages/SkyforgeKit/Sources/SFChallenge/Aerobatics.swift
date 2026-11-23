@@ -1,5 +1,6 @@
 // SKYFORGE — Apache-2.0
-// Aerobatic figure detection and scoring from body rates. Pure logic: no rendering, UI or I/O.
+// Aileron-roll detection and chain scoring from body rates. Pure logic: no rendering, UI or I/O.
+// Loops are not detected here: MissionRuntime already flies them as the `.loop` objective.
 import Foundation
 
 /// One aircraft sample, in the units the flight model already reports.
@@ -17,7 +18,6 @@ public struct AerobaticSample: Sendable, Equatable {
 }
 
 public enum FigureKind: String, Sendable, CaseIterable, Codable {
-    case loop
     case aileronRoll
 }
 
@@ -37,34 +37,29 @@ public struct FigureResult: Sendable, Equatable {
     }
 }
 
-/// Finds loops and aileron rolls by integrating body rates.
-///
-/// A loop is a full pitch turn (about 324 degrees, 90 % of 360) with the roll integral kept under
-/// 60 degrees. An aileron roll is a full roll turn with the pitch integral kept under 30 degrees.
-/// A figure is abandoned when the rate goes quiet for over a second, reverses direction, or lasts
-/// longer than 25 s.
+/// Finds aileron rolls by integrating roll rate. A roll needs a full turn (324 degrees, 90 % of 360)
+/// with the pitch integral kept under 30 degrees. It is abandoned when the rate goes quiet for over a
+/// second, reverses direction, or lasts longer than 25 s.
 public struct FigureDetector: Sendable {
     public static let fullTurn = 0.9 * 2 * Double.pi
-    public static let crossAxisLimitLoop = Double.pi / 3
-    public static let crossAxisLimitRoll = Double.pi / 6
-    public static let activationRate = 0.15      // rad/s, about 9 deg/s
-    public static let quietRate = 0.05           // rad/s
-    public static let quietReset = 1.0           // s
+    public static let crossAxisLimit = Double.pi / 6
+    public static let activationRate = 0.3       // rad/s, about 17 deg/s
+    public static let quietRate = 0.05          // rad/s
+    public static let quietReset = 1.0          // s
     public static let maxDuration = 25.0         // s
 
     struct Tracker: Sendable {
         var active = false
         var start = 0.0
         var sign = 0.0
-        var angle = 0.0            // integral of the tracked rate, rad
-        var cross = 0.0            // integral of the other axis, rad
+        var angle = 0.0            // integral of roll rate, rad
+        var cross = 0.0            // integral of pitch rate, rad
         var entryAltitude = 0.0
         var minSpeed = Double.infinity
         var quietSince: Double?
     }
 
-    private var loopTracker = Tracker()
-    private var rollTracker = Tracker()
+    private var tracker = Tracker()
     private var lastTime: Double?
 
     public init() {}
@@ -74,18 +69,13 @@ public struct FigureDetector: Sendable {
         defer { lastTime = s.time }
         guard let previous = lastTime else { return [] }
         let dt = min(max(s.time - previous, 0), 0.25)
-        guard dt > 0 else { return [] }
-        var out: [FigureResult] = []
-        if let loop = Self.step(&loopTracker, kind: .loop, rate: s.pitchRate, cross: s.rollRate, sample: s, dt: dt) {
-            out.append(loop)
+        guard dt > 0, let roll = Self.step(&tracker, rate: s.rollRate, cross: s.pitchRate, sample: s, dt: dt) else {
+            return []
         }
-        if let roll = Self.step(&rollTracker, kind: .aileronRoll, rate: s.rollRate, cross: s.pitchRate, sample: s, dt: dt) {
-            out.append(roll)
-        }
-        return out
+        return [roll]
     }
 
-    private static func step(_ t: inout Tracker, kind: FigureKind, rate: Double, cross: Double,
+    private static func step(_ t: inout Tracker, rate: Double, cross: Double,
                              sample s: AerobaticSample, dt: Double) -> FigureResult? {
         if !t.active {
             guard abs(rate) >= activationRate else { return nil }
@@ -106,9 +96,8 @@ public struct FigureDetector: Sendable {
         t.minSpeed = min(t.minSpeed, s.airspeed)
 
         guard abs(t.angle) >= fullTurn else { return nil }
-        let limit = kind == .loop ? crossAxisLimitLoop : crossAxisLimitRoll
-        guard abs(t.cross) < limit else { t = Tracker(); return nil }
-        let result = FigureResult(kind: kind, startTime: t.start, endTime: s.time, direction: Int(t.sign),
+        guard abs(t.cross) < crossAxisLimit else { t = Tracker(); return nil }
+        let result = FigureResult(kind: .aileronRoll, startTime: t.start, endTime: s.time, direction: Int(t.sign),
                                   minAirspeed: t.minSpeed, altitudeLoss: t.entryAltitude - s.altitude)
         t = Tracker()
         return result
@@ -133,12 +122,12 @@ public struct ScoredFigure: Sendable, Equatable {
 }
 
 public enum FigureScoring {
-    /// Base points: full value at target entry speed, scaled down toward the floor speed, and
-    /// reduced by up to half for altitude lost (100 m or more costs half).
+    /// Base points: 60 at 60 m/s entry speed, falling to zero at 40 m/s, and reduced by up to half
+    /// for altitude lost (100 m or more costs half).
     public static func basePoints(kind: FigureKind, minAirspeed: Double, altitudeLoss: Double) -> Double {
-        let value: Double = kind == .loop ? 100 : 60
-        let floor: Double = kind == .loop ? 45 : 40
-        let target: Double = kind == .loop ? 70 : 60
+        let value: Double = 60
+        let floor: Double = 40
+        let target: Double = 60
         let speed = clamp01((minAirspeed - floor) / (target - floor))
         let altitude = 1 - min(0.5, max(0, altitudeLoss) / 100)
         return (value * speed * altitude).rounded()
