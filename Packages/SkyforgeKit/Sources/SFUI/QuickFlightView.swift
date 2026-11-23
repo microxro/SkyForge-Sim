@@ -138,6 +138,9 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
     private var radarLockRequested = false
     private var flareRequested = false
     private var chaffRequested = false
+    let touchLayout = TouchSettingsStore.load()
+    /// Chase-camera pinch distance and two-finger orbit.
+    var chaseControl = ChaseCameraControl()
     var touch = InputMapper.DeviceState()
     private var renderer: WorldRenderer?
     private var governor: QualityGovernor?
@@ -185,6 +188,8 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
             s.place(state: state, inputs: inputs)
         }
         s.inputFilter = filter
+        // Touch layout (sensitivity, curve) and the player's saved bindings sit above the defaults.
+        s.mapper = InputMapper(profiles: [.defaults, TouchSettingsStore.load().profile, BindingsStore.load()])
         s.gearDownBelowSpeed = GameplayDirector.gearDownSpeed(for: spec)
         return (s, GameplayDirector(aircraft: spec, frame: frame, mission: mission))
     }
@@ -208,6 +213,8 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
     func lockRadarTarget() { radarLockRequested = true }
     func deployFlare() { flareRequested = true }
     func deployChaff() { chaffRequested = true }
+    func pinchChase(scale: Double) { chaseControl.pinch(scale: scale) }
+    func dragChase(points: Double) { chaseControl.drag(points: points) }
 
     func attach(_ view: MTKView) {
         guard let device = view.device ?? MTLCreateSystemDefaultDevice() else { status = .failed("No Metal device."); return }
@@ -354,7 +361,7 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
             camera = WorldCamera(position: ck.position, target: ck.target, verticalFOVDeg: 62, up: ck.up, near: 0.05)
             if hudCounter % 4 == 0 { refreshCockpitPFD() }
         } else {
-            let cam = session.chaseCamera()
+            let cam = session.chaseCamera(distance: chaseControl.distance, orbit: chaseControl.orbit)
             camera = WorldCamera(position: cam.position, target: cam.target)
         }
         // Round 5 ocean inputs, live each frame: wind from the flight environment and this aircraft as a wake on
@@ -574,6 +581,12 @@ public struct QuickFlightView: View {
     public var body: some View {
         ZStack {
             QuickFlightMetalView(controller: controller).ignoresSafeArea()
+            #if os(iOS)
+            CameraGestureSurface(onPinch: { controller.pinchChase(scale: $0) },
+                                 onDrag: { controller.dragChase(points: $0) },
+                                 onDoubleTap: { controller.cockpit.toggle() })
+                .ignoresSafeArea()
+            #endif
             VStack {
                 HStack(alignment: .top) {
                     Button("Close") { dismiss() }.buttonStyle(.borderedProminent)
@@ -645,7 +658,7 @@ public struct QuickFlightView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 #if os(iOS)
-                TouchFlightControls { controller.touch = $0 }
+                TouchFlightControls(layout: controller.touchLayout) { controller.touch = $0 }
                 #else
                 Text("W/S pitch · A/D roll · Q/E rudder · gamepad right trigger throttle · F/Shift+F flaps")
                     .font(.caption).padding(8).background(.black.opacity(0.4)).foregroundStyle(.white)
