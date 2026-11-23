@@ -15,6 +15,8 @@ public struct PilotControls: Sendable, Equatable {
     public var weapons = WeaponInput()
     public var radar = RadarInput()
     public var countermeasures = CountermeasureInput()
+    /// Water scoop controls: door open, and release the tank (a drop).
+    public var water = WaterInput()
     public init(flight: ControlInputs = ControlInputs(), weapons: WeaponInput = WeaponInput(),
                 radar: RadarInput = RadarInput(), countermeasures: CountermeasureInput = CountermeasureInput()) {
         self.flight = flight; self.weapons = weapons
@@ -40,7 +42,14 @@ public struct GameplaySession: Sendable {
     public let aircraft: PlaneSpec
     public let mission: MissionDefinition?
     public let frame: RunwayFrame
-    public let model: FlightModel
+    /// The flight model. Rebuilt when the water load changes, so its mass and inertia follow the tank.
+    public private(set) var model: FlightModel
+    /// The configuration without any water aboard; `model` is this plus the water load.
+    private let baseConfig: AircraftConfig
+    /// The water scoop: intake while skimming, and the tank.
+    public private(set) var scoop = WaterScoop()
+    /// Spin state from the last step: detected from the stall and the body rates, with recovery inputs.
+    public private(set) var spin = SpinAssessment.assess(stalled: false, bodyRates: .zero)
     /// Engines and their failure state. A mission can fail the first engine at a set time (see `MissionDefinition.engineFailureAt`).
     private var engines = EngineOperations(engineCount: 1)
     private var engineClock = 0.0
@@ -88,6 +97,7 @@ public struct GameplaySession: Sendable {
         self.aircraft = loaded
         engines = EngineOperations(engineCount: loaded.config.propulsion?.engineCount ?? 1)
         model = loaded.model
+        baseConfig = loaded.config
         let wind = mission?.wind.windNED(runwayHeading: frame.heading) ?? .zero
         var env = FlightEnvironment(windNED: wind, terrain: FlightWorldTerrain(world))
         env.surface = mission?.surface ?? .paved
@@ -184,8 +194,25 @@ public struct GameplaySession: Sendable {
         }
     }
 
+    /// The aircraft configuration with `water` kg aboard: mass rises, and inertia scales with it.
+    public static func configCarryingWater(_ base: AircraftConfig, water: Double) -> AircraftConfig {
+        var c = base
+        let extra = water.isFinite ? max(0, water) : 0
+        let m = base.mass + extra
+        c.mass = m
+        c.inertia = base.inertia * (m / max(base.mass, 1))
+        return c
+    }
+
     public mutating func step(_ controls: PilotControls) {
         let dt = Self.dt
+        // Water controls first: a drop empties the tank before this step's intake.
+        scoop.doorOpen = controls.water.doorOpen
+        var massChanged = false
+        if controls.water.release, scoop.load > 0 {
+            _ = scoop.release()
+            massChanged = true
+        }
         var input = controls.flight.sanitized
         input.gear = gear.position
         let before = model.forcesAndMoments(state, input, environment).2
@@ -207,6 +234,20 @@ public struct GameplaySession: Sendable {
         state = model.step(state, inputs: input, environment: environment, dt: dt)
         time += dt
         onGround = before.weightOnWheels
+
+        // Water scoop: take in water while skimming at planing speed, and slow the aircraft by the door drag.
+        let took = scoop.step(dt: dt, speed: trueAirspeed, heightAboveWater: heightAGL,
+                              onWater: environment.surface == .water)
+        if took.scooping {
+            let rho = ISA.state(geometricAltitude: altitudeMSL).density
+            let drag = scoop.scoopDrag(airDensity: rho, speed: trueAirspeed, scooping: true)
+            state.velocityBody.x -= drag / model.config.mass * dt
+            massChanged = true
+        }
+        if massChanged {
+            model = FlightModel(config: Self.configCarryingWater(baseConfig, water: scoop.load))
+        }
+        spin = SpinAssessment.assess(stalled: before.stalled, bodyRates: state.bodyRates)
 
         // Crash: the airframe well below the surface, or ground contact at over 3 m/s sink. The
         // thresholds match Quick Flight's (a belly strike), so a firm gear landing is not a crash.
