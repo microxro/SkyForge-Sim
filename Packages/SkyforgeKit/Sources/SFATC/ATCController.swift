@@ -182,6 +182,8 @@ public struct ATCController: Sendable {
     /// Messages said so far, oldest first, capped at `logLimit`.
     public private(set) var log: [ATCMessage] = []
     private var lastPhase: [String: TrafficPhase] = [:]
+    /// The controller each aircraft was last with, so a handoff is announced once.
+    private var lastFacility: [String: TrafficFacility] = [:]
     private var lastLandingTime: Double?
     private var lastLandingHeavy = false
     private var lastTakeoffTime: Double?
@@ -219,8 +221,15 @@ public struct ATCController: Sendable {
         let rwy = ATCPhrase.runway(runwayDesignator)
         let windText = ATCPhrase.wind(wind)
 
-        // 1. Advisories on each phase change.
+        // 1. Handoffs between controllers, then advisories on each phase change.
         for s in traffic {
+            let previousFacility = lastFacility[s.id]
+            if previousFacility != s.facility {
+                lastFacility[s.id] = s.facility
+                if let text = handoff(for: s, from: previousFacility) {
+                    out.append(ATCInstruction(aircraftID: s.id, clearance: nil, text: text))
+                }
+            }
             let previous = lastPhase[s.id]
             guard previous != s.phase else { continue }
             lastPhase[s.id] = s.phase
@@ -233,6 +242,7 @@ public struct ATCController: Sendable {
         }
         let present = Set(traffic.map { $0.id })
         lastPhase = lastPhase.filter { present.contains($0.key) }
+        lastFacility = lastFacility.filter { present.contains($0.key) }
 
         // 2. Landing clearance: the first base-leg arrival, once spacing and the runway allow it.
         var landingCleared = false
@@ -362,12 +372,29 @@ public struct ATCController: Sendable {
         return time - last >= required
     }
 
+    /// The words for a change of controller, or nil when there is nothing to say. A new arrival with approach is
+    /// given radar contact. Later changes are handoffs: to the tower from approach or departure, or to departure.
+    private func handoff(for s: TrafficSnapshot, from previous: TrafficFacility?) -> String? {
+        let cs = ATCPhrase.callsign(s.callsign)
+        switch (previous, s.facility) {
+        case (nil, .approach):
+            return "\(cs), approach, radar contact."
+        case (.some(_), .tower):
+            return "\(cs), contact tower."
+        case (.some(_), .departure):
+            return "\(cs), contact departure."
+        default:
+            return nil
+        }
+    }
+
     /// The words for entering a phase, or nil when the phase needs no call.
     private func advisory(for s: TrafficSnapshot, runway rwy: String) -> String? {
         let cs = ATCPhrase.callsign(s.callsign)
         switch s.phase {
         case .inbound:
-            return "\(cs), \(rwy) in use, report downwind."
+            // Ownship flying back after its climb out is with departure, which gives no pattern call.
+            return s.facility == .departure ? nil : "\(cs), \(rwy) in use, report downwind."
         case .downwind:
             return "\(cs), report base."
         case .base:
@@ -377,7 +404,7 @@ public struct ATCController: Sendable {
         case .landing:
             return "\(cs), \(rwy), vacate the runway when able."
         case .departing:
-            return "\(cs), airborne, contact departure."
+            return "\(cs), airborne, climb straight out."
         case .final, .holdShort, .takeoffRoll, .complete:
             return nil
         }
