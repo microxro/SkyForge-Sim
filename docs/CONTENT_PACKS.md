@@ -35,14 +35,15 @@ Initial budget (to be measured when each pack is built, not estimated now):
 
 | Pack | Target size | Milestone |
 |---|---|---|
-| NZQN sharp imagery (Queenstown, z17 to z19) | 3.0 GB | M2 |
-| Terrain at 30 m for the six showcase airports and their ±40 km regions | 1.0 GB | M2 |
-| More airports with terrain and imagery (Sentinel-2 at 10 m where no sharper source exists) | 3.0 GB | M3 |
-| Ground and building textures, liveries | 2.5 GB | M4 |
-| Audio, missions and open-world data (fleet, traffic, mission scripts) | 1.5 GB | M4 |
-| Headroom and per-region detail | rest, to about 15 GB | M5 |
+| NZQN sharp imagery (Queenstown, z17 to z19) | 4.5 GB | M2 |
+| Terrain at 30 m for the six showcase airports and their ±40 km regions | 1.5 GB | M2 |
+| More airports with sharp imagery and terrain (Sentinel-2 at 10 m where no sharper source exists) | 3.5 GB | M3 |
+| Ground and building textures, detail maps | 2.5 GB | M4 |
+| Aircraft liveries and cockpit textures (fleet) | 1.5 GB | M4 |
+| Audio (engines, wind, cabin, ATC voices where licensed) | 1.0 GB | M4 |
+| Missions, traffic and open-world data | 0.5 GB | M5 |
 
-The 15 GB target is set by Pranav (2026-11-23). Pack slots are coordinated with the new missions, aircraft fleet, audio and hi-res region threads.
+The 15 GB target is set by Pranav (2026-11-23). Visuals and gameplay come first, so imagery, terrain, textures, aircraft and audio take most of the budget. Pack slots are coordinated with the new missions, aircraft fleet, audio and hi-res region threads.
 
 ## Pipeline (to build)
 
