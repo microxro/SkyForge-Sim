@@ -7,15 +7,17 @@ A downloadable, offline region: one bounding box (at most 1.5° × 1.5°) with i
 buildings and original landmark models, shipped as a tile pack (see `TilePack`, ADR-0015) through Apple
 Background Assets. The manifest is `tools/region_packs/regions.json`; `validate_regions.py` runs in CI.
 
-## Planned regions (15.0 GB total, estimates)
-| Region | Imagery (licence) | Target GB |
-|---|---|---|
-| nyc-manhattan (city skyline) | USGS orthoimagery (public domain, 0.5 m) | 3.0 |
-| grand-canyon-south-rim | USGS orthoimagery (public domain, 0.5 m) | 2.0 |
-| alps-engadin | Sentinel-2 cloudless (CC BY 4.0, 10 m) | 3.0 |
-| hawaii-big-island | Sentinel-2 cloudless (CC BY 4.0, 10 m) | 2.0 |
-| norway-geirangerfjord | Sentinel-2 cloudless (CC BY 4.0, 10 m) | 2.5 |
-| nz-mount-cook | LINZ aerial (CC BY 4.0, 0.3 m) | 2.5 |
+## Planned regions (first wave 5.0 GB, inside the 15 GB game total; estimates)
+| Wave | Region | Imagery (licence) | Target GB |
+|---|---|---|---|
+| first | nz-mount-cook | LINZ aerial (CC BY 4.0, 0.3 m) | 1.0 |
+| first | nyc-manhattan (city skyline) | USGS orthoimagery (public domain, 0.5 m) | 1.5 |
+| first | grand-canyon-south-rim | USGS orthoimagery (public domain, 0.5 m) | 1.0 |
+| first | alps-engadin | Sentinel-2 cloudless (CC BY 4.0, 10 m) | 1.0 |
+| first | norway-geirangerfjord | Sentinel-2 cloudless (CC BY 4.0, 10 m) | 0.5 |
+| later (optional) | hawaii-big-island | Sentinel-2 cloudless (CC BY 4.0, 10 m) | 1.0 |
+
+The first wave is 5.0 GB. Later packs are optional and do not count toward the first wave.
 
 Elevation is AWS Terrarium DEM for every region. Buildings are OpenStreetMap only (ODbL, user decision).
 Landmark models are original work (Apache-2.0). Sizes are planning numbers, not measurements.
@@ -29,7 +31,7 @@ Landmark models are original work (Apache-2.0). Sizes are planning numbers, not 
 | data.opentopography.org | unreachable | alternative DEM |
 | elevation-tiles-prod.s3.amazonaws.com | reachable (200) | Terrarium DEM |
 
-Consequence: the cloud session cannot fetch the 15 GB. Builds need a machine that can reach the
+Consequence: the cloud session cannot fetch the regions. Builds run on GitHub Actions (the shared `content-pack.yml` workflow owned by the content-pack thread), which can reach the
 hosts above, with about 20 GB of free disk per region. Imagery and buildings are the blockers, not code.
 
 ## Milestones

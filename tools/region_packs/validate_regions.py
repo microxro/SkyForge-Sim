@@ -15,8 +15,9 @@ ALLOWED_PROVIDERS = {
     "landmarks": {"original-models"},
 }
 REQUIRED_LAYERS = set(ALLOWED_PROVIDERS)
-REQUIRED_REGION_KEYS = {"id", "name", "kind", "bbox", "sources", "target_gb", "landmarks"}
-TARGET_GB = 15.0
+REQUIRED_REGION_KEYS = {"id", "name", "kind", "bbox", "sources", "target_gb", "landmarks", "wave"}
+TARGET_GB = 5.0  # famous regions, first wave, inside the 15 GB game total (PR #157)
+WAVES = {"first", "later"}
 TOLERANCE_GB = 0.05
 
 
@@ -51,22 +52,25 @@ def check(data):
             prov = layers.get(layer, {}).get("provider")
             if prov not in allowed:
                 errors.append(f"{rid}: {layer} provider {prov!r} not in {sorted(allowed)}")
+        if r["wave"] not in WAVES:
+            errors.append(f"{rid}: wave must be one of {sorted(WAVES)}")
         if not r["landmarks"]:
             errors.append(f"{rid}: no landmarks listed")
         if not isinstance(r["target_gb"], (int, float)) or r["target_gb"] <= 0:
             errors.append(f"{rid}: target_gb must be positive")
-    total = sum(r.get("target_gb", 0) for r in regions)
+    total = sum(r.get("target_gb", 0) for r in regions if r.get("wave") == "first")
     if abs(total - TARGET_GB) > TOLERANCE_GB:
-        errors.append(f"budget: regions total {total:.2f} GB, target {TARGET_GB} GB")
-    return errors, total
+        errors.append(f"budget: first-wave regions total {total:.2f} GB, target {TARGET_GB} GB")
+    later = sum(r.get("target_gb", 0) for r in regions if r.get("wave") == "later")
+    return errors, total, later
 
 
 def main():
     data = json.loads((HERE / "regions.json").read_text())
-    errors, total = check(data)
+    errors, total, later = check(data)
     for e in errors:
         print("region packs:", e)
-    print(f"region packs: {len(data.get('regions', []))} regions, planned {total:.2f} GB")
+    print(f"region packs: first wave {total:.2f} GB, optional later packs {later:.2f} GB")
     print("region packs:", "FAIL" if errors else "OK")
     return 1 if errors else 0
 
