@@ -171,6 +171,8 @@ public struct TrafficSnapshot: Sendable, Equatable, Identifiable {
     public var vectored: Bool = false
     /// Straight-line distance (m) to the approach fix, where arrivals are vectored, held and released.
     public var distanceToApproachFix: Double = .infinity
+    /// NED bearing (rad) from the aircraft to the approach fix. A vector to the fix is this heading.
+    public var bearingToApproachFix: Double = 0
 }
 
 /// Things that happened in the last step, for logs and effects.

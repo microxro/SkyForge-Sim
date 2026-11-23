@@ -138,6 +138,8 @@ public struct OwnshipTracker: Sendable, Equatable {
                                distanceToTouchdown: (d.x * d.x + d.y * d.y + d.z * d.z).squareRoot(),
                                isHeavy: TrafficPerformance.isHeavy(report.config),
                                clearedToLand: clearedToLand, clearedToTakeoff: clearedToTakeoff,
-                               takeoffFits: system.departureFits(report.config), facility: facility)
+                               takeoffFits: system.departureFits(report.config), facility: facility,
+                               distanceToApproachFix: system.distanceToApproachFix(report.positionNED),
+                               bearingToApproachFix: system.bearingToApproachFix(report.positionNED))
     }
 }

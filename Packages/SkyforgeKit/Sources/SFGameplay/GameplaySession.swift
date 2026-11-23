@@ -268,6 +268,7 @@ public struct GameplaySession: Sendable {
         let report = OwnshipReport(config: aircraft.config, positionNED: state.positionNED,
                                    velocityNED: state.velocityNED, onGround: onGround)
         _ = tower?.step(dt: dt, ownship: report, wind: ATCWind(windNED: environment.windNED))
+        director.towerErrors = tower?.status.complianceErrors ?? 0
         environment.wakes = tower?.traffic.wakesNear(state.positionNED) ?? []
     }
 

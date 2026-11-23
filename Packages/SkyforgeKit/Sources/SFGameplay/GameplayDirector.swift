@@ -40,6 +40,8 @@ public struct GameplayDirector: Sendable {
     public private(set) var damage: AircraftDamage = AircraftDamage()
     /// Combat statistics for the flight, passed to the mission runtime.
     public private(set) var combat: CombatTally = CombatTally()
+    /// Tower compliance errors, set by the session each tick from the tower. Zero without a tower.
+    var towerErrors = 0
     public private(set) var radar: RadarSet = RadarSet()
     public private(set) var countermeasures: CountermeasureSystem = CountermeasureSystem()
     /// Guns and missiles fired by hostile AI aircraft at the player.
@@ -164,7 +166,8 @@ public struct GameplayDirector: Sendable {
                                       crashReason: reason)
             let missionEvents: [MissionEvent] = runtime!.update(sample: sample, targets: targets,
                                                                 overstressSeconds: monitor.overstressSeconds,
-                                                                combat: combat, radarLockedID: radar.lockedTargetID)
+                                                                combat: combat, radarLockedID: radar.lockedTargetID,
+                                                                towerErrors: towerErrors)
             for e in missionEvents { pendingEvents.append(.mission(e)) }
         }
     }

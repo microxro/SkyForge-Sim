@@ -67,7 +67,14 @@ public struct TrafficSystem: Sendable {
                                clearedToLand: a.clearedToLand, clearedToTakeoff: a.clearedToTakeoff,
                                takeoffFits: departureFits(a.config), facility: a.facility,
                                holding: a.holding, vectored: a.vectorHeading != nil,
-                               distanceToApproachFix: distanceToApproachFix(a.position))
+                               distanceToApproachFix: distanceToApproachFix(a.position),
+                               bearingToApproachFix: bearingToApproachFix(a.position))
+    }
+
+    /// NED bearing (rad) from an NED position to the approach fix.
+    public func bearingToApproachFix(_ ned: SIMD3<Double>) -> Double {
+        let fix = runway.ned(along: approachFix.x, right: approachFix.y, up: approachFix.z)
+        return atan2(fix.y - ned.y, fix.x - ned.x)
     }
 
     /// The approach fix in runway coordinates (along, right, up). It is the downwind entry: arrivals are vectored
