@@ -44,6 +44,16 @@ public struct GameplayHUD: Sendable, Equatable {
     public var missiles: Int
     public var status: MissionStatus?
     public var kills: Int = 0
+    public var contacts: [RadarContact] = []
+    public var radarMode: RadarMode = .off
+    /// "TRACK <id> <percent>%" while the radar acquires, "LOCK <id>" when locked, nil otherwise.
+    public var radarLockText: String? = nil
+    public var airframeHealth: Double = 1
+    public var engineHealth: Double = 1
+    public var controlsHealth: Double = 1
+    public var flares: Int = 0
+    public var chaff: Int = 0
+    public var radarMissiles: Int = 0
     /// The last tower messages, oldest first.
     public var atcLines: [String] = []
 
@@ -62,6 +72,12 @@ public extension GameplayDirector {
         case .acquiring(let id, let p): lock = "ACQUIRING \(id) \(Int(p * 100))%"
         case .locked(let id): lock = "LOCK \(id)"
         }
+        let radarLock: String?
+        switch radar.lock {
+        case .none: radarLock = nil
+        case .acquiring(let id, let p): radarLock = "TRACK \(id) \(Int(p * 100))%"
+        case .locked(let id): radarLock = "LOCK \(id)"
+        }
         return GameplayHUD(
             objectiveTitle: runtime?.currentObjective?.title,
             objectiveNumber: min((runtime?.objectiveIndex ?? 0) + 1, runtime?.mission.objectives.count ?? 0),
@@ -71,7 +87,11 @@ public extension GameplayDirector {
             warnings: monitor.warnings.sorted(),
             loadFactor: loadFactor, mach: mach, lockText: lock,
             cannonRounds: weapons.cannonRounds, missiles: weapons.missilesRemaining,
-            status: runtime?.status, kills: kills)
+            status: runtime?.status, kills: kills,
+            contacts: radar.contacts, radarMode: radar.mode, radarLockText: radarLock,
+            airframeHealth: damage.airframe, engineHealth: damage.engine, controlsHealth: damage.controls,
+            flares: countermeasures.flares, chaff: countermeasures.chaff,
+            radarMissiles: weapons.radarMissilesRemaining)
     }
 }
 

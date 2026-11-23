@@ -145,6 +145,37 @@ public enum MissionCatalog {
         ],
         parTime: 240, timeLimit: 420, areaRadius: 40_000, unlock: .mission("air-combat-training"))
 
+    public static let radarIntercept = MissionDefinition(
+        id: "radar-intercept", title: "Radar Intercept", category: .military,
+        briefing: "A hostile fighter is 12 km ahead and will manoeuvre to escape. Use the radar to hold a lock on it for two seconds, then shoot it down.",
+        difficulty: 4, recommendedAircraft: AircraftCatalog.sfF1Fighter.id, allowedRoles: [.fighter],
+        spawn: MissionSpawn(along: 0, up: 3_000, speed: .cruise),
+        targets: [
+            TargetSpawn(id: "bandit", role: .hostile, along: 12_000, right: 500, up: 3_000, speed: 170, behavior: .evade(maxTurnRate: 0.12), health: 12),
+        ],
+        objectives: [
+            MissionObjective(id: "lock", title: "Hold a radar lock on the bandit", kind: .radarLock(targetID: "bandit", hold: 2), points: 150),
+            MissionObjective(id: "kill", title: "Shoot down the bandit", kind: .destroy(targetIDs: ["bandit"]), points: 250),
+        ],
+        parTime: 240, timeLimit: 480, areaRadius: 50_000, unlock: .mission("air-combat-training"))
+
+    public static let twoShipDefence = MissionDefinition(
+        id: "two-ship-defence", title: "Two-Ship Defence", category: .military,
+        briefing: "Two hostile fighters are closing from 4 km ahead, one either side. The bandits fight back: they will turn onto your tail and fire. Survive the first minute, then shoot both down.",
+        difficulty: 5, recommendedAircraft: AircraftCatalog.sfF1Fighter.id, allowedRoles: [.fighter],
+        spawn: MissionSpawn(along: 0, up: 3_000, speed: .cruise),
+        targets: [
+            TargetSpawn(id: "bandit-a", role: .hostile, along: 4_000, right: -1_500, up: 3_000, headingOffset: .pi,
+                        speed: 180, behavior: .dogfight(DogfightSettings()), health: 12),
+            TargetSpawn(id: "bandit-b", role: .hostile, along: 4_000, right: 1_500, up: 3_100, headingOffset: .pi,
+                        speed: 180, behavior: .dogfight(DogfightSettings()), health: 12),
+        ],
+        objectives: [
+            MissionObjective(id: "survive", title: "Survive the first minute", kind: .survive(seconds: 60), points: 150),
+            MissionObjective(id: "kill", title: "Shoot down both bandits", kind: .destroy(targetIDs: ["bandit-a", "bandit-b"]), points: 300),
+        ],
+        parTime: 240, timeLimit: 480, areaRadius: 50_000, unlock: .mission("radar-intercept"))
+
     public static let bushStrip = MissionDefinition(
         id: "bush-strip", title: "Bush Strip", category: .landing,
         briefing: "Come in low over the trees and land in the first 200 m of the strip. Short fields reward a slow, steady approach.",
@@ -204,7 +235,6 @@ public enum MissionCatalog {
         ],
         parTime: 240, timeLimit: 480, areaRadius: 20_000, unlock: .mission("valley-run"))
 
-    public static let all: [MissionDefinition] = [firstFlight, patternLanding, precisionLanding, wingman, intercept, gunnery, lowLevel, dogfight, coastalSurvey, twinBandits, bushStrip, airportTour, valleyRun, waterDropRun, rescuePickup, airshowLoop]
     public static let rescuePickup = MissionDefinition(
         id: "rescue-pickup", title: "Rescue Pickup", category: .navigation,
         briefing: "A hiker is waiting on a meadow strip about 1.5 km down the field. Land, stop beside them for three seconds, then fly the casualty to the hospital at the far end.",
@@ -216,6 +246,7 @@ public enum MissionCatalog {
         ],
         parTime: 300, timeLimit: 600, areaRadius: 30_000, unlock: .mission("bush-strip"))
 
+    public static let all: [MissionDefinition] = [firstFlight, patternLanding, precisionLanding, wingman, intercept, gunnery, lowLevel, dogfight, coastalSurvey, twinBandits, bushStrip, airportTour, valleyRun, waterDropRun, rescuePickup, airshowLoop, radarIntercept, twoShipDefence]
 
     public static func mission(id: String) -> MissionDefinition? { all.first { $0.id == id } }
     public static func missions(in category: MissionCategory) -> [MissionDefinition] { all.filter { $0.category == category } }

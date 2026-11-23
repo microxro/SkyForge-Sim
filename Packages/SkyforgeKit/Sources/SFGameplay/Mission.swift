@@ -75,6 +75,10 @@ public enum ObjectiveKind: Sendable, Codable, Equatable {
     case destroy(targetIDs: [String])
     /// Hold a slot on a friendly leader for `hold` seconds (the timer decays when out of tolerance).
     case formation(leaderID: String, slot: FormationSlot, spacing: Double, tolerance: Double, hold: Double)
+    /// Stay alive and flying for `seconds`. A crash already ends the mission, so this only times the hold.
+    case survive(seconds: Double)
+    /// Keep the radar locked on a target for `hold` seconds continuously; the timer resets if the lock drops.
+    case radarLock(targetID: String, hold: Double)
     /// Turn the velocity vector through one full loop in the vertical plane while staying above `minAGL`
     /// and at or above `minSpeed` (m/s). Fails if the aircraft gets too low or too slow.
     case loop(minAGL: Double, minSpeed: Double)
@@ -131,6 +135,7 @@ public enum MissionTargetBehavior: Sendable, Codable, Equatable {
     case orbit(turnRate: Double)
     case route(points: [MissionWaypoint], loop: Bool)
     case evade(maxTurnRate: Double)
+    case dogfight(DogfightSettings)
 }
 
 public struct TargetSpawn: Sendable, Codable, Equatable {
@@ -156,6 +161,7 @@ public struct TargetSpawn: Sendable, Codable, Equatable {
         case .orbit(let r): b = .orbit(turnRate: r)
         case .route(let pts, let loop): b = .route(points: pts.map { $0.ned(f) }, loop: loop)
         case .evade(let r): b = .evade(maxTurnRate: r)
+        case .dogfight(let settings): b = .dogfight(settings)
         }
         return AITarget(id: id, role: role, position: f.ned(along: along, right: right, up: up),
                         heading: f.heading + headingOffset, speed: speed, behavior: b, health: health)
@@ -230,6 +236,11 @@ public struct MissionDefinition: Sendable, Codable, Equatable, Identifiable {
                 if zone <= 0 || maxSink <= 0 { out.append("\(o.id): bad landing limits") }
             case .reachAltitude(_, let tol, let hold):
                 if tol <= 0 || hold < 0 { out.append("\(o.id): bad altitude hold") }
+            case .survive(let seconds):
+                if !(seconds > 0) { out.append("\(o.id): survive time must be above zero") }
+            case .radarLock(let t, let hold):
+                if !ids.contains(t) { out.append("\(o.id): unknown target id") }
+                if !(hold >= 0) { out.append("\(o.id): bad radar lock hold") }
             case .dropRun(_, let maxAGL, let minSpeed, let maxSpeed):
                 if maxAGL <= 0 || minSpeed < 0 || maxSpeed <= minSpeed { out.append("\(o.id): bad drop run limits") }
             case .loop(let minAGL, let minSpeed):
@@ -262,11 +273,31 @@ public struct MissionResult: Sendable, Codable, Equatable {
     /// Hostile aircraft destroyed during the mission.
     public var kills: Int
     public var breakdown: [String: Int]
+    /// Damage taken, countermeasures used and missile accuracy over the sortie.
+    public var combat: CombatTally
 
     public init(missionID: String, aircraftID: String, success: Bool, failureReason: String?, score: Int, medal: MissionMedal,
-                elapsed: Double, objectivesCompleted: Int, kills: Int = 0, breakdown: [String: Int]) {
+                elapsed: Double, objectivesCompleted: Int, kills: Int = 0, breakdown: [String: Int],
+                combat: CombatTally = CombatTally()) {
         self.missionID = missionID; self.aircraftID = aircraftID; self.success = success
         self.failureReason = failureReason; self.score = score; self.medal = medal; self.elapsed = elapsed
         self.objectivesCompleted = objectivesCompleted; self.kills = kills; self.breakdown = breakdown
+        self.combat = combat
+    }
+
+    /// Hand-written so results saved before combat existed (no "combat" key) still load.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        missionID = try c.decode(String.self, forKey: .missionID)
+        aircraftID = try c.decode(String.self, forKey: .aircraftID)
+        success = try c.decode(Bool.self, forKey: .success)
+        failureReason = try c.decodeIfPresent(String.self, forKey: .failureReason)
+        score = try c.decode(Int.self, forKey: .score)
+        medal = try c.decode(MissionMedal.self, forKey: .medal)
+        elapsed = try c.decode(Double.self, forKey: .elapsed)
+        objectivesCompleted = try c.decode(Int.self, forKey: .objectivesCompleted)
+        kills = try c.decode(Int.self, forKey: .kills)
+        breakdown = try c.decode([String: Int].self, forKey: .breakdown)
+        combat = try c.decodeIfPresent(CombatTally.self, forKey: .combat) ?? CombatTally()
     }
 }
