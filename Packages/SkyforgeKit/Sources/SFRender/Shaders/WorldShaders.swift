@@ -2026,6 +2026,13 @@ public enum WorldShaders {
                 // Seams stay subtle (they read as dashed road markings at 0.45 on the chase view, round 7).
                 albedo *= 1.0 - 0.22 * aircraftPanels(in.local, localFp);
                 albedo = mix(albedo, float3(0.012, 0.014, 0.022), registrationMark(in.local, localFp));
+                // Round 5 exterior detail (AircraftExteriorShaders): grime and exhaust soot, rivet domes that tilt
+                // the normal and darken their edges. Fuselage skin uses (x, z) metres, wings (x, y).
+                float2 axUV = abs(in.local.y) < 0.75 ? in.local.xz : in.local.xy;
+                albedo *= 1.0 - 0.55 * ax_dirt(in.local, 0.6, localFp);
+                float3 axRivet = ax_rivet(axUV, localFp);
+                n = normalize(ax_tilt(n, axRivet.xy * 0.5));
+                albedo *= 1.0 - 0.25 * axRivet.z;
             }
             float rough = m == 6.0 ? 0.24 : 0.06;   // glossy paint: a visible sun glint
             float3 env = mix(u.ambientGround.rgb, u.skyHorizon.rgb, saturate(reflect(dir, n).z * 0.5 + 0.5));
@@ -2043,6 +2050,11 @@ public enum WorldShaders {
             }
             col = pbrDielectric(albedo, n, -dir, toSun, rough, u.sunColour.rgb, env, vis) * mix(1.0, ao, 0.5)
                 + albedo * ambient * (m == 6.0 ? 1.0 : 0.3) * ao;
+            if (m == 6.0 && dist < 150.0) {
+                // Clearcoat over the paint (round 5): a tighter, lower-energy sun reflection on top of the base gloss.
+                float4 axCC = ax_clearcoat(n, -dir, toSun, u.sunColour.rgb, vis);
+                col = col * (1.0 - 0.5 * axCC.w) + 0.5 * axCC.xyz;
+            }
         } else {
             // Photo terrain in shadow (cast or self-shadowed) gets 35 % more sky light: under the 0.45 exposure,
             // shaded slopes read as featureless near-black masses (round 31: the LSZS high foreground slope).
