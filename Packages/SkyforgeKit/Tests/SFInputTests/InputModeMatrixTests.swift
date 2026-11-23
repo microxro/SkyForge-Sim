@@ -20,7 +20,8 @@ enum InputControlCatalog {
                           "gamepad.dpad.up", "gamepad.dpad.down", "gamepad.dpad.left", "gamepad.dpad.right",
                           "gamepad.leftStickButton", "gamepad.rightStickButton",
                           "gamepad.menu", "gamepad.options", "gamepad.home", "gamepad.share"]
-    static let touch = [TouchControls.stickX, TouchControls.stickY, TouchControls.throttle, TouchControls.rudder]
+    static let touch = [TouchControls.stickX, TouchControls.stickY, TouchControls.throttle, TouchControls.rudder,
+                        TouchControls.flapsDown, TouchControls.flapsUp]
     static let tilt = [TiltMapper.rollControl, TiltMapper.pitchControl]
 
     static let known: Set<String> = Set(keyLetters + keyDigits + keyNamed + gamepad + touch + tilt)
