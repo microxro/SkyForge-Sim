@@ -50,6 +50,8 @@ public struct MissionRuntime: Sendable {
     public private(set) var earned: [String: Int] = [:]
     /// Hostile aircraft destroyed so far (reported by the session; copied into the result).
     public private(set) var kills = 0
+    /// Latest combat tally handed to `update`; copied into the result at finish.
+    public private(set) var combat = CombatTally()
 
     // Per-objective accumulators, reset when an objective starts.
     private var started = false
@@ -67,6 +69,8 @@ public struct MissionRuntime: Sendable {
     private var errorSum = 0.0
     private var errorSamples = 0
     private var lostTime = 0.0
+    /// Radar lock reported for the current update step only.
+    private var currentLockID: String?
     private var initialDistance = 0.0
     // Landing
     private var touchedDown = false
@@ -95,7 +99,10 @@ public struct MissionRuntime: Sendable {
 
     /// Advances the mission by one sample. `overstressSeconds` is the envelope monitor's running total.
     @discardableResult
-    public mutating func update(sample: FlightSample, targets: [AITarget], overstressSeconds: Double = 0) -> [MissionEvent] {
+    public mutating func update(sample: FlightSample, targets: [AITarget], overstressSeconds: Double = 0,
+                                combat: CombatTally = CombatTally(), radarLockedID: String? = nil) -> [MissionEvent] {
+        self.combat = combat
+        currentLockID = radarLockedID
         guard status == .inProgress else { return [] }
         if !started {
             started = true; startTime = sample.time; objectiveStart = sample.time
@@ -181,7 +188,7 @@ public struct MissionRuntime: Sendable {
         let medal: MissionMedal = !success ? .none : frac >= 0.9 ? .gold : frac >= 0.75 ? .silver : frac >= 0.5 ? .bronze : .none
         result = MissionResult(missionID: mission.id, aircraftID: aircraftID, success: success, failureReason: reason,
                                score: score, medal: medal, elapsed: elapsed, objectivesCompleted: earned.count,
-                               kills: kills, breakdown: breakdown)
+                               kills: kills, breakdown: breakdown, combat: combat)
         events.append(success ? .succeeded : .failed(reason: reason ?? "Failed"))
         return events
     }
@@ -294,6 +301,19 @@ public struct MissionRuntime: Sendable {
             let dead = ids.filter { id in targets.first(where: { $0.id == id })?.destroyed == true }.count
             progress = ids.isEmpty ? 1 : Double(dead) / Double(ids.count)
             return dead == ids.count ? .completed(quality: 1) : .running
+
+        case .survive(let seconds):
+            // `dt` is only valid after the first sample, and the crash path has already ended the mission.
+            hold += dt
+            progress = max(0, min(1, hold / max(0.1, seconds)))
+            return hold >= seconds ? .completed(quality: 1) : .running
+
+        case .radarLock(let id, let holdTime):
+            guard let t = targets.first(where: { $0.id == id }) else { return .failed("Target lost") }
+            if t.destroyed { return .failed("Target destroyed before it was locked") }
+            if currentLockID == id { hold += dt } else { hold = 0 }
+            progress = max(0, min(1, hold / max(0.1, holdTime)))
+            return hold >= holdTime ? .completed(quality: 1) : .running
 
         case .formation(let leaderID, let slot, let spacing, let tolerance, let holdTime):
             guard let leader = targets.first(where: { $0.id == leaderID }), !leader.destroyed else { return .failed("Lost the formation leader") }
