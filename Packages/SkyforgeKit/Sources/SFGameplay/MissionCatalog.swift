@@ -3,6 +3,7 @@
 // a military track (formation, intercept, gunnery, low-level navigation, air combat training).
 // All coordinates are runway-frame metres, so the missions run at any airport.
 import Foundation
+import SFFlightModel
 
 public enum MissionCatalog {
     private static let civil: [AircraftRole] = [.lightTrainer, .tourer, .aerobatic]
