@@ -134,7 +134,9 @@ public enum NightShaders {
         float below = smoothstep(-0.03f, 0.03f, el);
         // faint cellular banding so the airglow is not a flat wash
         float band = 0.85f + 0.3f * nt_fbm(ray.xy / max(0.25f, el + 0.3f) * 1.4f);
-        return float3(0.10f, 0.55f, 0.22f) * vr * band * below * 0.0025f * u.sky.z;
+        // Gain 0.0002 (was 0.0025): the twilight exposure boost (up to 40x at night) multiplies this term, so the
+        // old gain turned the whole night sky green (PR #112 frame). Airglow should be a faint tint only.
+        return float3(0.10f, 0.55f, 0.22f) * vr * band * below * 0.0002f * u.sky.z;
     }
 
     fragment float4 nt_sky_fragment(NTFull in [[stage_in]], constant NTUniforms& u [[buffer(0)]]) {
