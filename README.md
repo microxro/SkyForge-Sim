@@ -2,7 +2,7 @@
 
 A free, open-source (Apache-2.0) flight simulator for iOS, iPadOS and macOS, written in Swift 6 with a custom Metal renderer. The world ("SkyWorld") is generated procedurally on top of real elevation data, so it works offline and needs no accounts, API keys or paid services.
 
-**Status: early development (Phase 0 bootstrap).** The app currently shows a menu and a renderer preview; flight is not available yet. See `PROGRESS.md` and `docs/STATE.md`.
+**Status: playable early release.** Quick Flight works offline from six bundled real airports (KMRY, KASE, KBFI, LSZS, NZQN, KCOI) and a procedural SkyWorld airfield, with a custom Metal renderer, a six-degree-of-freedom flight model, instruments and rebindable input. Missions (10) and five aircraft, including a jet trainer and an interceptor, are in Quick Flight's menu. Air traffic, player damage and a world map are not available yet. See `PROGRESS.md` and `docs/STATE.md`.
 
 ## Open and run
 1. Open `SKYFORGE.xcodeproj` in Xcode 26.6 or newer.
@@ -27,7 +27,10 @@ tools/gate.sh fast         # build, test, project lint
 Code: Apache-2.0 (`LICENSE`, `NOTICE`). Dependencies: `THIRD_PARTY_NOTICES.md`. Data sources and attribution text: `docs/DATA_SOURCES.md`. No GPL/LGPL code is shipped.
 
 ## Known limitations
-No flight model, terrain or world generation yet. All Apple-only code (Metal, SwiftUI) has not been compiled yet; the first build happens in macOS CI or on a Mac.
+Performance on real devices is still being measured (`docs/PERFORMANCE.md`). Apple-platform builds run in macOS CI and have not been signed or archived by the maintainers yet.
+
+## App Store release
+Store metadata, privacy policy, review notes and the owner-only checklist are in `docs/appstore/`. Run `python3 tools/appstore_preflight.py` for static checks. Archives are built by the manual workflow `.github/workflows/release-archive.yml`.
 
 ## Resuming autonomous work
 The Claude Code session is set to continue automatically after a usage limit resets. If a session has ended, send the message: **continue**.

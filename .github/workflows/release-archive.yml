@@ -1,0 +1,131 @@
+name: Release archive
+
+# Manual only. Builds Release archives for iOS and macOS.
+# Unsigned by default (proves the archive builds). Signed runs need the `release` environment (main only,
+# required reviewers) holding these secrets: APPLE_TEAM_ID, BUILD_CERTIFICATE_BASE64 (distribution .p12),
+# P12_PASSWORD, ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_BASE64 (App Store Connect API .p8).
+# Optional variable APP_BUNDLE_ID (the bundle ID registered in Apple Developer) overrides the project's ID.
+# With `testflight`, the signed .ipa (iOS) and .pkg (macOS) are uploaded to App Store Connect for TestFlight.
+# Step-by-step setup for a first run: docs/TESTFLIGHT.md.
+on:
+  workflow_dispatch:
+    inputs:
+      sign:
+        description: "Sign and export (needs the release environment secrets)"
+        type: boolean
+        default: false
+      testflight:
+        description: "Upload the signed builds to TestFlight (needs sign)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  archive:
+    # Signed runs: only from main, and only after the `release` environment's required reviewers approve.
+    # Create that environment in repo Settings > Environments and store the signing secrets there, not repo-wide.
+    if: ${{ !inputs.sign || github.ref == 'refs/heads/main' }}
+    environment: ${{ inputs.sign && 'release' || null }}
+    runs-on: macos-26
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [ios, macos]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Select Xcode
+        run: |
+          if [ -d /Applications/Xcode_26.6.app ]; then sudo xcode-select -s /Applications/Xcode_26.6.app; fi
+          xcodebuild -version
+      - name: Static preflight
+        env:
+          APP_BUNDLE_ID: ${{ vars.APP_BUNDLE_ID }}
+        run: python3 tools/appstore_preflight.py ${{ inputs.sign && '--release' || '' }}
+      - name: Set build number
+        run: echo "BUILD_NUMBER=${{ github.run_number }}" >> "$GITHUB_ENV"
+      - name: Archive (unsigned)
+        if: ${{ !inputs.sign }}
+        run: |
+          set -o pipefail
+          DEST=$([ "${{ matrix.platform }}" = ios ] && echo 'generic/platform=iOS' || echo 'generic/platform=macOS')
+          xcodebuild archive -project SKYFORGE.xcodeproj -scheme SKYFORGE -configuration Release \
+            -destination "$DEST" -archivePath build/SKYFORGE-${{ matrix.platform }}.xcarchive \
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER" CODE_SIGNING_ALLOWED=NO | tail -n 60
+      - name: Import certificate and API key
+        if: ${{ inputs.sign }}
+        env:
+          CERT: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+          ASC_KEY: ${{ secrets.ASC_KEY_BASE64 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+        run: |
+          KC="$RUNNER_TEMP/build.keychain-db"; KCPW="$(uuidgen)"
+          security create-keychain -p "$KCPW" "$KC"
+          security set-keychain-settings -lut 21600 "$KC"
+          security unlock-keychain -p "$KCPW" "$KC"
+          echo "$CERT" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -P "$P12_PASSWORD" -T /usr/bin/codesign -t cert -f pkcs12 -k "$KC"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KCPW" "$KC"
+          security list-keychain -d user -s "$KC"
+          mkdir -p "$RUNNER_TEMP/keys"
+          echo "$ASC_KEY" | base64 --decode > "$RUNNER_TEMP/keys/AuthKey_${ASC_KEY_ID}.p8"
+      - name: Archive and export (signed)
+        if: ${{ inputs.sign }}
+        env:
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          APP_BUNDLE_ID: ${{ vars.APP_BUNDLE_ID }}
+        run: |
+          set -o pipefail
+          PLATFORM='${{ matrix.platform }}'
+          DEST=$([ "$PLATFORM" = ios ] && echo 'generic/platform=iOS' || echo 'generic/platform=macOS')
+          AUTH="-allowProvisioningUpdates -authenticationKeyPath $RUNNER_TEMP/keys/AuthKey_${ASC_KEY_ID}.p8 -authenticationKeyID ${ASC_KEY_ID} -authenticationKeyIssuerID ${ASC_ISSUER_ID}"
+          BUNDLE=()
+          if [ -n "$APP_BUNDLE_ID" ]; then BUNDLE=("PRODUCT_BUNDLE_IDENTIFIER=$APP_BUNDLE_ID"); fi
+          # The export options are committed without a team; put the team secret in a runner-local copy.
+          OPTS="$RUNNER_TEMP/ExportOptions-$PLATFORM.plist"
+          cp "tools/appstore/ExportOptions-$PLATFORM.plist" "$OPTS"
+          /usr/libexec/PlistBuddy -c "Delete :teamID" "$OPTS" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :teamID string ${TEAM_ID}" "$OPTS"
+          xcodebuild archive -project SKYFORGE.xcodeproj -scheme SKYFORGE -configuration Release \
+            -destination "$DEST" -archivePath "build/SKYFORGE-$PLATFORM.xcarchive" \
+            DEVELOPMENT_TEAM="${TEAM_ID}" CURRENT_PROJECT_VERSION="$BUILD_NUMBER" "${BUNDLE[@]}" $AUTH | tail -n 60
+          xcodebuild -exportArchive -archivePath "build/SKYFORGE-$PLATFORM.xcarchive" \
+            -exportOptionsPlist "$OPTS" -exportPath "build/export-$PLATFORM" $AUTH | tail -n 30
+      - name: Upload to TestFlight (App Store Connect)
+        if: ${{ inputs.sign && inputs.testflight }}
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          API_PRIVATE_KEYS_DIR: ${{ runner.temp }}/keys
+        run: |
+          set -euo pipefail
+          PLATFORM='${{ matrix.platform }}'
+          case "$PLATFORM" in
+            ios) EXT=ipa; TYPE=ios ;;
+            *) EXT=pkg; TYPE=macos ;;
+          esac
+          FILE=$(find "build/export-$PLATFORM" -maxdepth 1 -name "*.$EXT" | head -n 1)
+          if [ -z "$FILE" ]; then echo "::error::No .$EXT in build/export-$PLATFORM"; exit 1; fi
+          # altool reads the API key from $API_PRIVATE_KEYS_DIR/AuthKey_<KEY_ID>.p8, written by the import step.
+          xcrun altool --upload-app --type "$TYPE" --file "$FILE" \
+            --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
+      - name: Remove signing material
+        if: ${{ always() && inputs.sign }}
+        run: |
+          security delete-keychain "$RUNNER_TEMP/build.keychain-db" 2>/dev/null || true
+          rm -rf "$RUNNER_TEMP/keys" "$RUNNER_TEMP/cert.p12"
+      - name: Upload archive
+        uses: actions/upload-artifact@v7
+        with:
+          name: skyforge-${{ matrix.platform }}-${{ inputs.sign && 'signed' || 'unsigned' }}
+          path: |
+            build/*.xcarchive
+            build/export-*
+          if-no-files-found: error
+          retention-days: 7

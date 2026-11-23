@@ -11,5 +11,8 @@
 | Offline core flight from bundle (4.2) | pending P1 | no |
 | macOS App Sandbox + network.client, hardened runtime | entitlements present | no |
 | No trademarks (Microsoft, Flight Simulator, Cessna, Garmin, airlines) | by design | no |
-| In-app attributions | pending P1 UI | no |
+| In-app attributions | `AcknowledgementsView` linked from About | no |
 | Age rating questionnaire, screenshots, export compliance, TestFlight | — | yes |
+| Store metadata, privacy policy URL text, review notes | `docs/appstore/` | host the policy, enter in App Store Connect |
+| Archive and export | `release-archive.yml` (manual) | yes (signing secrets, see `docs/appstore/OWNER_TODO.md`) |
+| Placeholder bundle ID org.skyforge.SKYFORGE | must be replaced | yes |

@@ -1,8 +1,11 @@
-LAST_UPDATE: 2026-11-15T20:30:00Z
+LAST_UPDATE: 2026-11-22T17:30:00Z
 
 # SKYFORGE state
 
 ## Phase
+- 2026-11-22: gate fast green on `claude/stoic-gates-3stdhw` (250 tests, Swift 6.3.3 via tools/setup_env.sh); no code changes this session.
+- 2026-11-22 correction: the earlier LINZ blocker was wrong. `nz-imagery.s3.ap-southeast-2.amazonaws.com` is reachable; LINZ tiles are already in the NZQN pack (landed 2026-11-10). Remaining open items need Metal/a Mac.
+- 2026-11-22: C12 done (frame-time targets table in docs/PERFORMANCE.md; device numbers still unverified).
 - 2026-11-14 (PRs #6, #7 and #8 merged; work continues on `claude/ecstatic-davinci-tjahz4` in a new PR): art rounds resumed after PR #5 merged.
   - Scores (ultra tier, same reviewer):
 

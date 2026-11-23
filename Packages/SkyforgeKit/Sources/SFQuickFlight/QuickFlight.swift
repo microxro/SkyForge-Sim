@@ -10,6 +10,7 @@ import SFInstruments
 import SFInput
 import SFWorldGen
 import SFPreview
+import SFWeather
 
 /// Terrain heights from the procedural recipe for the flight model (NED north/east ↔ world y/x).
 public struct RecipeTerrain: TerrainHeightProvider {
@@ -424,12 +425,38 @@ public struct QuickFlightWorld: FlightWorld {
         _ = accent
         return soup
     }
+
+    /// Mesh for a fleet aircraft id (`AircraftCatalog`): the SF-1 keeps its per-pixel livery; the other types use
+    /// plain paint per part (`AircraftVariants`), with a dark glazed canopy. Unknown ids fall back to the SF-1.
+    public static func aircraftMesh(for id: String, accent: SIMD3<Float> = AircraftLivery.navy) -> TriangleSoup {
+        guard let variant = AircraftVariants.build(id: id) else { return aircraftMesh(accent: accent) }
+        var soup = TriangleSoup(origin: .zero)
+        func f(_ n: SIMD3<Double>) -> SIMD3<Float> { SIMD3(Float(n.x), Float(n.y), Float(n.z)) }
+        let style = variant.style
+        for t in variant.triangles {
+            let colour: SIMD3<Float>, mat: Material
+            switch t.part {
+            case .fuselage: colour = style.skin; mat = .paint
+            case .surface: colour = style.surface; mat = .paint
+            case .glass: colour = style.canopy; mat = .glass
+            case .metal: colour = SIMD3(0.62, 0.63, 0.64); mat = .metal
+            case .tyre: colour = SIMD3(0.012, 0.012, 0.013); mat = .opaque
+            case .prop: colour = SIMD3(0.016, 0.016, 0.018); mat = .prop
+            }
+            soup.add(t.a, t.b, t.c, na: f(t.na), nb: f(t.nb), nc: f(t.nc), colour: colour, material: mat)
+        }
+        return soup
+    }
 }
 
 public struct QuickFlightSession: Sendable {
     public let world: any FlightWorld
-    public let model = FlightModel(config: .sf1Trainer)
-    public let environment: FlightEnvironment
+    public let aircraft: AircraftConfig
+    public let model: FlightModel
+    public private(set) var environment: FlightEnvironment
+    /// Airframe icing index (0 clean … 1 heavily iced), driven from the weather each step.
+    public private(set) var iceIndex: Double = 0
+    private var weather: WeatherState?
     public private(set) var state: AircraftState
     public private(set) var inputs = ControlInputs()
     public private(set) var instruments = InstrumentSystem()
@@ -439,29 +466,48 @@ public struct QuickFlightSession: Sendable {
     private var accumulator = 0.0
     private var lastFlapAction = false
     public static let dt = 1.0 / 120
+    /// Optional control filter applied to the pilot's inputs before each step (a fly-by-wire limiter).
+    public var inputFilter: (@Sendable (ControlInputs, AircraftState, FlightOutputs) -> ControlInputs)?
+    /// Airspeed (m/s) below which a retractable aircraft's gear is commanded down; nil leaves the gear alone.
+    public var gearDownBelowSpeed: Double?
+    /// Landing-gear travel: `inputs.gear` follows its position over time for retractable aircraft.
+    public private(set) var gearActuator = GearActuator()
+    /// Lowest point of the gear below the centre of gravity (m).
+    public var gearHeight: Double { aircraft.gear.map { $0.position.z }.max() ?? 1.25 }
 
-    public init(world: any FlightWorld = QuickFlightWorld(), start: QuickFlightStart = .runway) {
+    /// - Parameters:
+    ///   - aircraft: the aircraft to fly (default: the SF-1 Trainer).
+    ///   - approachSpeed: true airspeed (m/s) and `approachFlaps` for the `.final` start.
+    public init(world: any FlightWorld = QuickFlightWorld(), start: QuickFlightStart = .runway,
+                aircraft: AircraftConfig = .sf1Trainer, approachSpeed: Double = 34, approachFlaps: Double = 0.5,
+                wind: SIMD3<Double> = .zero, weather: WeatherState? = nil) {
         self.world = world
-        environment = FlightEnvironment(terrain: FlightWorldTerrain(world))
+        self.aircraft = aircraft
+        model = FlightModel(config: aircraft)
+        let gear = aircraft.gear.map { $0.position.z }.max() ?? 1.25
+        self.weather = weather
+        environment = FlightEnvironment(windNED: wind, temperatureOffset: weather?.isaDeviation ?? 0,
+                                        terrain: FlightWorldTerrain(world))
         let dir = world.runwayDirection
         let hdg = world.runwayHeading
         switch start {
         case .runway:
             let p = world.runwayThreshold + dir * 60
-            state = AircraftState(positionNED: SIMD3(p.y, p.x, -(world.runwayElevation + 1.22)), velocityBody: .zero,
+            state = AircraftState(positionNED: SIMD3(p.y, p.x, -(world.runwayElevation + gear - 0.03)), velocityBody: .zero,
                                   attitude: Quaternion(roll: 0, pitch: 0, yaw: hdg), bodyRates: .zero)
             inputs.brakes = 0
         case .final:
             let dist = 2_000.0
             let p = world.runwayThreshold - dir * dist
             let alt = world.runwayElevation + 15 + dist * tan(3 * Double.pi / 180)
-            let trim = model.trimLevel(trueAirspeed: 34, altitude: alt, flaps: 0.5, environment: environment)
+            let trim = model.trimLevel(trueAirspeed: approachSpeed, altitude: alt, flaps: approachFlaps, environment: environment)
             var s = trim.state
             s.positionNED = SIMD3(p.y, p.x, -alt)
             s.attitude = Quaternion(roll: 0, pitch: trim.alpha, yaw: hdg)
             state = s
             inputs = trim.inputs
         }
+        gearActuator = GearActuator(position: inputs.gear)
     }
 
     public var data: InstrumentData { instruments.data }
@@ -497,19 +543,59 @@ public struct QuickFlightSession: Sendable {
         }
     }
 
+    /// Integrates airframe icing from the weather at the aircraft's altitude.
+    private mutating func updateIcing() {
+        guard let w = weather else { return }
+        let altitude = state.altitude + environment.originHeight
+        let e = IcingConditions.exposure(altitude: altitude, isaDeviation: w.isaDeviation, cloudLayers: w.cloudLayers,
+                                         visibilityMetres: w.visibilityMetres, precipitation: w.precipitation)
+        let v = state.velocityBody
+        let tas = (v.x * v.x + v.y * v.y + v.z * v.z).squareRoot()
+        iceIndex = IcingModel.step(index: iceIndex, liquidWater: e.liquidWater, tas: tas, temperatureK: e.temperatureK, dt: Self.dt)
+        environment.iceIndex = iceIndex
+    }
+
     /// One fixed simulation step with the current inputs.
     public mutating func step() {
-        let o = model.outputs(state, inputs: inputs, environment: environment)
+        updateIcing()
+        var o = model.outputs(state, inputs: inputs, environment: environment)
+        if aircraft.retractableGear, let downBelow = gearDownBelowSpeed {
+            let commandDown = o.weightOnWheels || o.trueAirspeed < downBelow
+            inputs.gear = gearActuator.update(commandDown: commandDown, dt: Self.dt)
+            o = model.outputs(state, inputs: inputs, environment: environment)
+        }
+        var applied = inputs
+        if let filter = inputFilter { applied = filter(inputs, state, o); o = model.outputs(state, inputs: applied, environment: environment) }
+        lastOutputs = o
         let rho = ISA.state(geometricAltitude: state.altitude).density
-        instruments.update(state: state, outputs: o, environment: environment, inputs: inputs,
-                           rpm: PropellerRPM.rpm(throttle: inputs.throttle, trueAirspeed: o.trueAirspeed, density: rho), dt: Self.dt)
+        instruments.update(state: state, outputs: o, environment: environment, inputs: applied,
+                           rpm: PropellerRPM.rpm(throttle: applied.throttle, trueAirspeed: o.trueAirspeed, density: rho, config: aircraft), dt: Self.dt)
         let vBefore = state.velocityNED.z
-        state = model.step(state, inputs: inputs, environment: environment, dt: Self.dt)
+        state = model.step(state, inputs: applied, environment: environment, dt: Self.dt)
         time += Self.dt
-        // Crash: hard ground contact (> 600 fpm at contact) or the airframe below the surface.
-        if heightAboveGround < 0.3 && vBefore > 3.0 { crashed = true }
-        if heightAboveGround < -0.5 { crashed = true }
+        // Crash: hard ground contact (> 600 fpm at contact) or the airframe below the surface. Heights are
+        // relative to the gear, which is 1.25 m below the centre of gravity on the SF-1 (the original 0.3 m and -0.5 m).
+        let belowGear = heightAboveGround - gearHeight
+        if belowGear < -0.95 && vBefore > 3.0 { crashed = true }
+        if belowGear < -1.75 { crashed = true }
     }
+
+    /// Places the aircraft in a given state (a mission's airborne start) with the control inputs that hold it.
+    public mutating func place(state s: AircraftState, inputs i: ControlInputs) {
+        state = s
+        inputs = i.sanitized
+        gearActuator = GearActuator(position: inputs.gear, travelTime: gearActuator.travelTime)
+        accumulator = 0
+    }
+
+    /// Flight-model outputs from the last step (airspeed, load, weight on wheels), for gameplay layers.
+    public private(set) var lastOutputs: FlightOutputs?
+
+    /// Ends the flight (an overstressed airframe, for example).
+    public mutating func markCrashed() { crashed = true }
+
+    /// Wakes of other aircraft (AI traffic); their induced velocity adds to the air mass at this aircraft.
+    public mutating func setWakes(_ wakes: [WakeVortexPair]) { environment.wakes = wakes }
 
     /// Sets inputs directly (autopilots, tests).
     public mutating func setInputs(_ i: ControlInputs) { inputs = i.sanitized }

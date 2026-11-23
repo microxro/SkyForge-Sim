@@ -1,28 +1,38 @@
-# Career: aircraft ownership and maintenance
+# Career layer (SFCareer)
 
-Module: `Packages/SkyforgeKit/Sources/SFCareer` (pure Swift, no UI, Linux-testable).
-Credits are in-game only. Nothing is bought with real money.
+Pure-Swift, Linux-testable module that turns flights into long-term progression. Apache-2.0, no third-party assets.
 
-## What exists
+## What it does
+- **Progression**: XP, levels 1–75, eight ranks (Student → Legend). Level-ups pay credits.
+- **Economy**: credits, aircraft catalog (rent by level or buy), deterministic daily job board (passenger, cargo, ferry, medevac, survey), settlement with on-time, smooth-landing and passenger-comfort modifiers.
+- **Challenges**: landing, time trial, aerobatics and combat scoring with bronze–platinum medals. Only improvements over the best medal pay out, so challenges cannot be farmed.
+- **Daily challenge**: same challenge for everyone per UTC day (seeded), with a streak counter.
+- **Achievements**: 20 achievements, pure functions of lifetime stats.
+- **Saves**: versioned JSON, atomic write, rolling `.bak`, falls back to the backup if the main file is corrupt, and throws rather than overwrite when both are unreadable or the save is from a newer app.
 
-- **Wallet**: whole-credit balance with an append-only ledger. Overdrafts are rejected.
-- **Catalogue**: `AircraftModel.sf1Trainer` (180,000 cr new). Used aircraft start with wear and cost less.
-- **Storage**: tie-down (25 cr/day, airframe and avionics weather wear) or hangar (T-hangar 120 cr/day, large 300 cr/day, no weather wear). Moving storage costs five days of the new rent.
-- **Components**: engine, propeller, brakes, tires, airframe, avionics. Each has wear (0 to 1), hours since service, and a defect flag.
-- **Wear**: per flight hour, per landing, and per hard landing (airframe). Tie-down adds daily airframe and avionics wear.
-- **Service**: inspection (resets interval), repair (clears defect, -0.25 wear), overhaul (resets wear, interval and defect). Costs come from the new price.
-- **Failures**: above 0.8 wear, each flight hour has a chance of failure, capped at 5%. A failure sets a defect and adds wear.
-- **Dispatch**: grounded if a defect is open, wear is at least 1, or an interval is overdue by 20%. Warning if an interval is due or wear is at least 0.8.
-- **Resale**: new price times an hours factor (floor 15%) times a wear factor, minus 10% while a defect is open.
-- **Maintenance log**: per aircraft, one entry per service, failure and storage change.
+## Integration contract
+The sim/gameplay/UI layers build a `FlightReport` when a flight ends and call:
 
-## Not yet built
+```swift
+var career = try SaveStore(url: saveURL).load()
+let outcome = CareerEngine.apply(report, to: &career, challenge: activeChallenge)
+try SaveStore(url: saveURL).save(career)
+```
 
-- The flight session does not call `Fleet.recordFlight` yet. The hook is in place.
-- No earnings from jobs, no fuel costs, no upgrades, no save/load.
-- The repo has no in-flight failure system to tie into, so these rules are self-contained. Wire them to a flight-model failure system when one exists.
-- Unpaid tie-down rent is forgiven. A debt system is a later decision.
+`FlightReport.sanitized()` clamps every number, so one NaN frame can never corrupt a save. Aircraft and missions are referenced by string id (`org.skyforge.sfc`, mission ids from SFGameplay), so SFCareer has no dependency on the flight model.
 
-## Balance numbers
+## Still to wire (needs a Mac build)
+1. Fill `FlightReport` from the sim at touchdown/shutdown (sink rate, offset, g, bank, fuel).
+2. Career hub screens in SFUI: profile, hangar, job board, challenge list, achievements.
+3. Feed `AirportRef` from SFNavData and gameplay mission results into `.mission(id)`.
 
-All numbers are game balance and easy to tune. They live in `Maintenance.swift`, `Aircraft.swift` and `Fleet.swift`.
+## Aircraft maintenance (`Maintenance.swift`)
+Extends the existing career. It adds no module and no second wallet: servicing spends `CareerState.credits`, and sales refund into them.
+- **State**: `CareerState.maintenance`, keyed by owned aircraft id. Each entry holds six components (engine, propeller, brakes, tires, airframe, avionics) with wear (0 to 1), hours since service and a defect flag, plus a capped history. Saves that predate it load with an empty map.
+- **Wear**: `CareerEngine.apply` calls `FlightWear.apply` for owned aircraft. Wear comes from flight hours, landings (not crashes), and hard landings (sink above 600 fpm, airframe). A crash adds airframe wear and a defect.
+- **Failures**: above 0.8 wear, each flight hour risks a failure, capped at 5%. Rolls are seeded from the flight's `endedAt` and aircraft id, so the same flight always rolls the same way. Failures appear in `FlightOutcome.maintenanceFailures`.
+- **Service**: inspection (resets interval, 8% of overhaul), repair (clears defect, -0.25 wear, 50%), overhaul (full reset, 100%). Costs are a share of the component's overhaul fraction of the reference price (catalogue price, or 30,000 for the starter).
+- **Dispatch**: `CareerState.dispatchStatus(for:)` returns serviceable, warning or grounded. It is advisory. Flights are not blocked yet. The job-accept and free-flight UI should check it before dispatch.
+- **Sales**: `CareerState.sell(aircraftID:)` refunds resale value (reference price, less hours, wear and defects). The starter cannot be sold.
+
+Not yet built: hangar or tie-down rent, fuel, the dispatch gate in the UI, and wiring SFGameplay engine failures to component wear.

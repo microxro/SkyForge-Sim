@@ -3,6 +3,8 @@
 # Usage: . tools/setup_env.sh   (sourcing keeps the PATH change) or sh tools/setup_env.sh
 SWIFT_VER="${SKYFORGE_SWIFT_VERSION:-6.3.3}"
 PREFIX="${SKYFORGE_TOOLCHAIN_DIR:-$HOME/.skyforge-toolchain}"
+# Integrity: set SWIFT_SHA256 to the SHA-256 of the tarball for this version/platform (from swift.org).
+# Unverified installs fail closed; set SKYFORGE_ALLOW_UNVERIFIED=1 to opt out (not recommended).
 
 swift_ok() {
   v=$(swift --version 2>/dev/null | sed -n 's/.*Swift version \([0-9]*\)\.\([0-9]*\).*/\1 \2/p' | head -n 1)
@@ -29,6 +31,21 @@ tmp=$(mktemp -d)
 if ! curl -fsSL "$url" -o "$tmp/swift.tgz"; then
   echo "setup_env: download failed. Swift unavailable: author-only mode. Allow download.swift.org, swift.org, github.com."
   return 1 2>/dev/null || exit 1
+fi
+if [ -n "${SWIFT_SHA256:-}" ]; then
+  if command -v sha256sum >/dev/null 2>&1; then got=$(sha256sum "$tmp/swift.tgz" | cut -d' ' -f1); else got=$(shasum -a 256 "$tmp/swift.tgz" | cut -d' ' -f1); fi
+  want=$(printf %s "$SWIFT_SHA256" | tr 'A-F' 'a-f')
+  if [ "$got" != "$want" ]; then
+    echo "setup_env: SHA-256 mismatch for toolchain download (expected $want, got $got); refusing to install."
+    rm -rf "$tmp"; return 1 2>/dev/null || exit 1
+  fi
+  echo "setup_env: toolchain checksum verified"
+elif [ "${SKYFORGE_ALLOW_UNVERIFIED:-0}" = "1" ]; then
+  echo "setup_env: WARNING installing UNVERIFIED toolchain (SKYFORGE_ALLOW_UNVERIFIED=1)"
+else
+  echo "setup_env: no SWIFT_SHA256 provided; refusing to install an unverified toolchain."
+  echo "setup_env: set SWIFT_SHA256=<sha256 of the tarball from swift.org> or SKYFORGE_ALLOW_UNVERIFIED=1 to opt out."
+  rm -rf "$tmp"; return 1 2>/dev/null || exit 1
 fi
 if command -v apt-get >/dev/null 2>&1 && [ "$(id -u)" = "0" ]; then
   DEBIAN_FRONTEND=noninteractive apt-get install -y -qq binutils git gnupg2 libc6-dev libcurl4-openssl-dev \

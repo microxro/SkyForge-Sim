@@ -1,0 +1,137 @@
+{
+  "meta": {
+    "source": "sf1_mirror.py",
+    "model": "SF-1 Trainer",
+    "mass_kg": 1000.0,
+    "scenario_defs": {
+      "trim": {
+        "tas_kt": 100.0,
+        "alt_ft": 3000.0,
+        "flaps": 0.0
+      },
+      "stall_clean": {
+        "start_tas_kt": 80.0,
+        "alt_ft": 3000.0,
+        "flaps": 0.0,
+        "pitch_ramp_dps": 1.0,
+        "ramp_start_s": 3.0,
+        "max_s": 150.0
+      },
+      "stall_flaps": {
+        "start_tas_kt": 65.0,
+        "alt_ft": 3000.0,
+        "flaps": 1.0,
+        "pitch_ramp_dps": 1.0,
+        "ramp_start_s": 3.0,
+        "max_s": 150.0
+      },
+      "short_period": {
+        "amp_deg": 2.5,
+        "half_pulse_s": 0.5,
+        "pre_s": 2.0,
+        "post_s": 8.0,
+        "fit_s": 6.0
+      },
+      "aileron_step": {
+        "stick": 0.5,
+        "pre_s": 2.0,
+        "post_s": 5.0
+      },
+      "phugoid": {
+        "dv_kt": 8.0,
+        "duration_s": 150.0
+      },
+      "rudder_step": {
+        "stick": 0.5,
+        "pre_s": 3.0,
+        "post_s": 12.0
+      },
+      "takeoff": {
+        "vr_kcas": 55.0,
+        "pitch_deg": 9.0,
+        "gain_ft": 55.0,
+        "max_s": 90.0,
+        "throttle": 1.0
+      }
+    },
+    "runtime_s": 4.9
+  },
+  "scenarios": {
+    "trim": {
+      "converged": true,
+      "alpha_deg": 1.0723006695134647,
+      "elevator_deg_up": -0.1496624956208302,
+      "throttle": 0.7271070181980024,
+      "power_kw": 79.14257942909012,
+      "climb_fpm": 6.664215125169267e-15,
+      "cas_kt": 95.69115210247168,
+      "cl": 0.4073192335504086
+    },
+    "stall_clean": {
+      "cl_max": 1.416224757257868,
+      "v_clmax_kcas": 50.07334581876872,
+      "v_clmax_ktas": 52.32671539597094,
+      "alpha_clmax_deg": 13.799148595372571,
+      "decel_kt_per_s": 1.5327991608868914,
+      "cl_ratio_4s_after_peak": 0.2032461770445871,
+      "alpha_max_deg": 17.476069574156647,
+      "t_peak_s": 18.11666666666628,
+      "theta_peak_deg": 11.731722464232234,
+      "vz_at_peak_fpm": -191.1661485972102
+    },
+    "stall_flaps": {
+      "cl_max": 1.893782389411912,
+      "v_clmax_kcas": 43.67159895360943,
+      "v_clmax_ktas": 45.57715966963377,
+      "alpha_clmax_deg": 13.112161515429548,
+      "decel_kt_per_s": 0.8741802839921579,
+      "cl_ratio_4s_after_peak": 0.8144313449686654,
+      "alpha_max_deg": 14.950244957515274,
+      "t_peak_s": 16.71666666666636,
+      "theta_peak_deg": 6.604559882319902,
+      "vz_at_peak_fpm": -523.1013346110271
+    },
+    "short_period": {
+      "wn_rad_s": 5.019166091095213,
+      "zeta": 0.589042073193253,
+      "wd_rad_s": 4.056000000000001,
+      "sigma": 2.9565,
+      "fit_rms_dps": 0.0017490041491795318,
+      "q_peak_dps": 12.832960626460736,
+      "q_peak_per_deg": 5.133184250584295
+    },
+    "aileron_step": {
+      "p_ss_dps": 17.015067490788464,
+      "tau_roll_s": 0.04166666666666208,
+      "ail_defl_deg": 9.0,
+      "p_per_deg_ail": 1.8905630545320515,
+      "phi_end_deg": 82.52943215438695
+    },
+    "phugoid": {
+      "period_s": 28.17571886627617,
+      "zeta": 0.09264910559250972,
+      "wn_rad_s": 0.22396330614634175,
+      "sigma": 0.020749999999999998,
+      "fit_rms_kt": 0.016931783594282587,
+      "alt_excursion_ft": 121.38682731969493
+    },
+    "rudder_step": {
+      "beta_ss_deg": -15.176326315053984,
+      "beta_peak_deg": -18.711908365359818,
+      "beta_ss_per_deg_rudder": -1.5176326315053985,
+      "r_ss_dps": 3.151958315017647,
+      "phi_max_abs_deg": 8.843980430175215,
+      "rudder_defl_deg": 10.0
+    },
+    "takeoff": {
+      "completed": true,
+      "ground_roll_ft": 1219.6747189063594,
+      "liftoff_kcas": 67.26559787382172,
+      "t_liftoff_s": 19.408333333335296,
+      "dist_to_55ft_ft": 2530.8123657943484,
+      "t_to_55ft_s": 29.908333333338145,
+      "cas_at_55ft_kt": 77.7963709799743,
+      "heading_dev_max_deg": 0.0
+    }
+  }
+}

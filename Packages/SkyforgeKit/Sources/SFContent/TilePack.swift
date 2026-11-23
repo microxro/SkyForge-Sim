@@ -14,22 +14,30 @@ public struct TilePackManifest: Codable, Sendable, Equatable {
     }
 }
 
-public enum TilePackError: Error, Equatable { case missingManifest, corrupt(String) }
+public enum TilePackError: Error, Equatable { case missingManifest, corrupt(String), invalidFileName(String) }
 
 /// A read-only pack on disk (`manifest.json` plus one file per distinct body, named by its hash).
 public struct TilePack: Sendable {
     public let root: URL
     public let manifest: TilePackManifest
 
+    /// True for a lowercase 64-character hex SHA-256 (the only file names a pack may reference).
+    static func isValidHash(_ s: String) -> Bool {
+        s.utf8.count == 64 && s.utf8.allSatisfy { ($0 >= 0x30 && $0 <= 0x39) || ($0 >= 0x61 && $0 <= 0x66) }
+    }
+
     public init(root: URL) throws {
         self.root = root
         guard let d = try? Data(contentsOf: root.appendingPathComponent("manifest.json")) else { throw TilePackError.missingManifest }
-        manifest = try JSONDecoder().decode(TilePackManifest.self, from: d)
+        let m = try JSONDecoder().decode(TilePackManifest.self, from: d)
+        for (_, hex) in m.files where !TilePack.isValidHash(hex) { throw TilePackError.invalidFileName(hex) }
+        manifest = m
     }
 
     /// Body for a URL, verified against its hash; nil when the pack does not hold it.
     public func data(for url: URL) throws -> Data? {
         guard let hex = manifest.files[url.absoluteString] else { return nil }
+        guard TilePack.isValidHash(hex) else { throw TilePackError.invalidFileName(hex) }
         let d = try Data(contentsOf: root.appendingPathComponent(hex))
         guard ContentID(data: d).hex == hex else { throw TilePackError.corrupt(url.absoluteString) }
         return d

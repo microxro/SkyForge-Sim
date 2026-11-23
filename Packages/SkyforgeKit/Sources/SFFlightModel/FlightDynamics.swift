@@ -14,17 +14,42 @@ public struct ControlInputs: Sendable, Equatable, Codable {
     public var flaps: Double = 0      // 0 … 1
     public var brakes: Double = 0     // 0 … 1
     public var elevatorTrim: Double = 0
+    /// Landing-gear position, 0 retracted … 1 extended. Only used by aircraft with `retractableGear`.
+    public var gear: Double = 1
+    public var speedbrake: Double = 0 // 0 … 1
+    /// Bit i set = engine i failed (engine 0 is the right-most).
+    public var engineFailureMask: Int = 0
     public init() {}
-    public init(elevator: Double = 0, aileron: Double = 0, rudder: Double = 0, throttle: Double = 0, flaps: Double = 0, brakes: Double = 0, elevatorTrim: Double = 0) {
+    public init(elevator: Double = 0, aileron: Double = 0, rudder: Double = 0, throttle: Double = 0, flaps: Double = 0, brakes: Double = 0, elevatorTrim: Double = 0,
+                gear: Double = 1, speedbrake: Double = 0, engineFailureMask: Int = 0) {
         self.elevator = elevator; self.aileron = aileron; self.rudder = rudder
         self.throttle = throttle; self.flaps = flaps; self.brakes = brakes; self.elevatorTrim = elevatorTrim
+        self.gear = gear; self.speedbrake = speedbrake; self.engineFailureMask = engineFailureMask
+    }
+    private enum CodingKeys: String, CodingKey {
+        case elevator, aileron, rudder, throttle, flaps, brakes, elevatorTrim, gear, speedbrake, engineFailureMask
+    }
+    /// Decodes with defaults for any missing key, so older recordings (without gear/speedbrake) still load.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        elevator = try c.decodeIfPresent(Double.self, forKey: .elevator) ?? 0
+        aileron = try c.decodeIfPresent(Double.self, forKey: .aileron) ?? 0
+        rudder = try c.decodeIfPresent(Double.self, forKey: .rudder) ?? 0
+        throttle = try c.decodeIfPresent(Double.self, forKey: .throttle) ?? 0
+        flaps = try c.decodeIfPresent(Double.self, forKey: .flaps) ?? 0
+        brakes = try c.decodeIfPresent(Double.self, forKey: .brakes) ?? 0
+        elevatorTrim = try c.decodeIfPresent(Double.self, forKey: .elevatorTrim) ?? 0
+        gear = try c.decodeIfPresent(Double.self, forKey: .gear) ?? 1
+        speedbrake = try c.decodeIfPresent(Double.self, forKey: .speedbrake) ?? 0
+        engineFailureMask = try c.decodeIfPresent(Int.self, forKey: .engineFailureMask) ?? 0
     }
     /// Inputs clamped to their valid ranges (NaN becomes neutral).
     public var sanitized: ControlInputs {
         func c(_ x: Double, _ lo: Double, _ hi: Double) -> Double { x.isFinite ? min(hi, max(lo, x)) : 0 }
         return ControlInputs(elevator: c(elevator, -1, 1), aileron: c(aileron, -1, 1), rudder: c(rudder, -1, 1),
                              throttle: c(throttle, 0, 1), flaps: c(flaps, 0, 1), brakes: c(brakes, 0, 1),
-                             elevatorTrim: c(elevatorTrim, -1, 1))
+                             elevatorTrim: c(elevatorTrim, -1, 1), gear: gear.isFinite ? c(gear, 0, 1) : 1,
+                             speedbrake: c(speedbrake, 0, 1), engineFailureMask: engineFailureMask)
     }
 }
 
@@ -45,10 +70,22 @@ public struct FlightEnvironment: Sendable {
     public var temperatureOffset: Double
     public var originHeight: Double            // ellipsoid height of the local origin (m)
     public var terrain: any TerrainHeightProvider
+    /// Runway/ground friction multiplier: 1 dry asphalt, ~0.5 wet, ~0.25 snow, ~0.1 ice.
+    public var surfaceFriction: Double = 1
+    /// Wake vortices from other aircraft; their induced velocity adds to the wind at the aircraft.
+    public var wakes: [WakeVortexPair] = []
+    /// Airframe ice severity, 0 clean … 1 heavily iced (see `IcingModel`).
+    public var iceIndex: Double = 0
+    /// Ground surface under the wheels (see `GroundSurface`). Paved by default.
+    public var surface: GroundSurface = .paved
     public init(windNED: SIMD3<Double> = .zero, temperatureOffset: Double = 0, originHeight: Double = 0,
-                terrain: any TerrainHeightProvider = FlatTerrain()) {
+                terrain: any TerrainHeightProvider = FlatTerrain(), surfaceFriction: Double = 1,
+                wakes: [WakeVortexPair] = [], iceIndex: Double = 0) {
         self.windNED = windNED; self.temperatureOffset = temperatureOffset
         self.originHeight = originHeight; self.terrain = terrain
+        self.wakes = wakes
+        self.iceIndex = iceIndex.isFinite ? min(1, max(0, iceIndex)) : 0
+        self.surfaceFriction = surfaceFriction.isFinite ? min(1.2, max(0.02, surfaceFriction)) : 1
     }
 }
 
@@ -94,6 +131,12 @@ public struct FlightOutputs: Sendable, Equatable {
     public var stalled: Bool = false
     public var forceBody: SIMD3<Double> = .zero
     public var momentBody: SIMD3<Double> = .zero
+    public var mach: Double = 0
+    /// Body-axis normal load factor from aerodynamic and thrust forces (1 in steady level flight).
+    public var loadFactor: Double = 0
+    /// 0 … 1 stall-warning / buffet intensity, rising toward the stall break.
+    public var stallWarning: Double = 0
+    public init() {}
 }
 
 struct StateDerivative {
@@ -115,14 +158,19 @@ public struct FlightModel: Sendable {
         let input = inRaw.sanitized
         var out = FlightOutputs()
         let atm = ISA.state(geometricAltitude: env.originHeight + s.altitude, temperatureOffset: env.temperatureOffset)
-        let windBody = s.attitude.conjugate.rotate(env.windNED)
+        var airmass = env.windNED
+        for w in env.wakes { airmass += w.velocityNED(at: s.positionNED) }
+        let windBody = s.attitude.conjugate.rotate(airmass)
         let va = s.velocityBody - windBody
         let speed = length(va)
         var force = SIMD3<Double>(0, 0, 0)
         var moment = SIMD3<Double>(0, 0, 0)
+        let gearPos = c.retractableGear ? input.gear : 1.0
+        out.mach = speed / max(atm.speedOfSound, 1)
 
         // Aerodynamics
         if speed > 0.5 {
+            let mp = c.mach.safeEvaluate(out.mach)
             let alpha = atan2(va.z, va.x)
             let beta = asin(clamp(va.y / speed, -1, 1))
             let qbar = 0.5 * atm.density * speed * speed
@@ -131,7 +179,7 @@ public struct FlightModel: Sendable {
             // Surface deflections use the standard sign convention: positive elevator = trailing edge
             // down (nose down), positive rudder = trailing edge left (nose left). Pilot inputs are
             // "stick back = +1" and "right pedal = +1", hence the sign flips.
-            let de = -(input.elevator + input.elevatorTrim * 0.5) * c.elevatorMax
+            let de = -(input.elevator + input.elevatorTrim * 0.5) * c.elevatorMax * mp.controlPower
             let da = input.aileron * c.aileronMax
             let dr = -input.rudder * c.rudderMax
             let flaps = input.flaps
@@ -142,9 +190,11 @@ public struct FlightModel: Sendable {
             let hb = 16 * h / c.wingSpan
             let phi = (hb * hb) / (1 + hb * hb)
 
-            let cLMax = a.cLMaxClean + (a.cLMaxFlaps - a.cLMaxClean) * flaps
-            let cLLin = a.cL0 + a.cLAlpha * alpha + a.cLFlap * flaps
-            let alphaStall = (cLMax - a.cL0 - a.cLFlap * flaps) / a.cLAlpha
+            let iceFrac = env.iceIndex
+            let cLAlphaEff = a.cLAlpha * mp.liftSlope * IcingModel.liftSlopeFactor(iceFrac)
+            let cLMax = (a.cLMaxClean + (a.cLMaxFlaps - a.cLMaxClean) * flaps) * mp.clMax * IcingModel.clMaxFactor(iceFrac)
+            let cLLin = a.cL0 + cLAlphaEff * alpha + a.cLFlap * flaps
+            let alphaStall = max(0.1, (cLMax - a.cL0 - a.cLFlap * flaps) / cLAlphaEff)
             // Linear lift softly saturated at CLmax, then blended (Beard & McLain sigmoid) into
             // flat-plate lift just past the peak, so the lift curve rounds over and breaks.
             let w = 0.06
@@ -161,11 +211,18 @@ public struct FlightModel: Sendable {
             cL *= 1 + 0.08 * (1 - phi)
             cL += a.cLQ * qh + a.cLElevator * de
             let k = phi / (Double.pi * a.oswald * c.aspectRatio)
-            let cD = a.cD0 + a.cDFlap * flaps + k * cL * cL + sigma * 1.2 * sa * sa
+            let cD = a.cD0 + a.cDFlap * flaps + a.cDGear * gearPos + a.cDSpeedbrake * input.speedbrake
+                + mp.waveDrag + IcingModel.dragIncrement(iceFrac) + k * cL * cL + sigma * 1.2 * sa * sa
             let cY = a.cYBeta * beta + a.cYRudder * dr
             let cl = a.clBeta * beta + a.clP * ph + a.clR * rh + a.clAileron * da + a.clRudder * dr
-            let cm = a.cm0 + a.cmAlpha * alpha + a.cmQ * qh + a.cmElevator * de + a.cmFlap * flaps
+                + sigma * (c.stall.autorotation * (-a.clP) * ph + c.stall.wingDropGain * beta)
+            let cm = a.cm0 + a.cmAlpha * mp.pitchStability * alpha + a.cmQ * qh + a.cmElevator * de + a.cmFlap * flaps
+                - sigma * c.stall.noseDrop
+            // Past the stall the yaw damping reverses in proportion to `spinYawReversal`: a stalled
+            // yaw rate feeds itself, which is what sustains a spin. Rudder authority is unchanged, so
+            // opposite rudder still opposes the spin.
             let cn = a.cnBeta * beta + a.cnP * ph + a.cnR * rh + a.cnAileron * da + a.cnRudder * dr
+                + sigma * c.stall.spinYawReversal * (-a.cnR) * rh
 
             let sArea = c.wingArea
             // Lift is perpendicular to the airflow in the x-z plane; drag opposes it.
@@ -176,18 +233,45 @@ public struct FlightModel: Sendable {
 
             out.alpha = alpha; out.beta = beta; out.liftCoefficient = cL
             out.stalled = alpha > breakAlpha
+            let m0 = alphaStall - c.stall.buffetStartMargin
+            out.stallWarning = clamp((alpha - m0) / (c.stall.buffetStartMargin + 2.5 * Double.pi / 180), 0, 1)
         }
 
-        // Propulsion: power lapse with density; thrust blends smoothly from the static value
-        // (staticThrustPerWatt * P) to eta * P / V: T = eta P / sqrt(V^2 + V0^2), V0 = eta / k_static.
-        let sigmaRho = atm.density / ISA.seaLevelDensity
-        let power = c.maxPower * input.throttle * pow(sigmaRho, 1.1)
-        let etaMax = 0.80
-        let v0 = etaMax / c.staticThrustPerWatt
-        let vx = max(0, va.x)
-        let thrust = power > 0 ? etaMax * power / (vx * vx + v0 * v0).squareRoot() : 0
-        force.x += thrust
-        out.thrust = thrust
+        // Propulsion
+        if let p = c.propulsion {
+            let altGeo = env.originHeight + s.altitude
+            let omega = max(p.maxRPM, 1) * 2 * Double.pi / 60
+            let alphaClamped = clamp(out.alpha, -0.3, 0.3)
+            var thrustSum = 0.0
+            for i in 0..<max(0, min(p.engineCount, 8)) {
+                let y = p.enginePosition(i)
+                if (input.engineFailureMask >> i) & 1 == 1 {
+                    let drag = 0.5 * atm.density * max(0, va.x) * max(0, va.x) * p.windmillDragArea
+                    force.x -= drag
+                    moment.z += y * drag
+                } else {
+                    let e = p.engineOutput(throttle: input.throttle, density: atm.density, altitude: altGeo,
+                                           mach: out.mach, axialSpeed: va.x)
+                    force.x += e.thrust
+                    moment.z += -y * e.thrust - e.thrust * p.pFactorArm * alphaClamped
+                    moment.x += -p.propTorqueRoll * e.shaftPower / omega
+                    thrustSum += e.thrust
+                }
+            }
+            out.thrust = thrustSum
+        } else {
+            // Legacy: power lapse with density; thrust blends smoothly from the static value
+            // (staticThrustPerWatt * P) to eta * P / V: T = eta P / sqrt(V^2 + V0^2), V0 = eta / k_static.
+            let sigmaRho = atm.density / ISA.seaLevelDensity
+            let power = c.maxPower * input.throttle * pow(sigmaRho, 1.1)
+            let etaMax = 0.80
+            let v0 = etaMax / c.staticThrustPerWatt
+            let vx = max(0, va.x)
+            let thrust = power > 0 ? etaMax * power / (vx * vx + v0 * v0).squareRoot() : 0
+            force.x += thrust
+            out.thrust = thrust
+        }
+        out.loadFactor = -force.z / (c.mass * ISA.g0)
 
         // Gravity
         force += s.attitude.conjugate.rotate(SIMD3(0, 0, c.mass * ISA.g0))
@@ -206,7 +290,20 @@ public struct FlightModel: Sendable {
     func gearForces(_ s: AircraftState, _ input: ControlInputs, _ env: FlightEnvironment) -> (SIMD3<Double>, SIMD3<Double>, Bool) {
         var f = SIMD3<Double>(0, 0, 0), m = SIMD3<Double>(0, 0, 0)
         var wow = false
-        for leg in config.gear {
+        // Gear up on the ground: the aircraft slides on its belly (shallow, scraping contact points).
+        // The contact points blend smoothly from belly to wheels as the gear travels (0.1 … 0.95), so
+        // toggling the gear on the ground does not pop the aircraft.
+        let gearTravel = config.retractableGear ? clamp((input.gear - 0.1) / 0.85, 0, 1) : 1.0
+        let belly = gearTravel < 1
+        let mu = 0.85 * (env.surfaceFriction.isFinite ? min(1.2, max(0.02, env.surfaceFriction)) : 1)
+            * env.surface.tractionScale
+        for legFull in config.gear {
+            var leg = legFull
+            if belly {
+                let k = gearTravel
+                leg.position = SIMD3(legFull.position.x, legFull.position.y * (0.3 + 0.7 * k), legFull.position.z * (0.45 + 0.55 * k))
+                leg.steerable = false; leg.braked = false
+            }
             let pNED = s.positionNED + s.attitude.rotate(leg.position)
             let groundDown = -env.terrain.elevation(north: pNED.x, east: pNED.y)
             let compression = pNED.z - groundDown
@@ -220,15 +317,22 @@ public struct FlightModel: Sendable {
             heading.z = 0
             heading = normalize(heading)
             if leg.steerable {
-                let steer = input.rudder * 10 * Units.degToRad
+                // Steering authority fades with ground speed (as with a real nose-wheel steering unit).
+                let gs = (vNED.x * vNED.x + vNED.y * vNED.y).squareRoot()
+                let fade = 1 / (1 + (gs / 25) * (gs / 25))
+                let steer = input.rudder * leg.steerAngleMax * fade
                 let ch = cos(steer), sh = sin(steer)
                 heading = SIMD3(heading.x * ch - heading.y * sh, heading.x * sh + heading.y * ch, 0)
             }
             let side = SIMD3(-heading.y, heading.x, 0)
             let vLong = dot(vNED, heading), vLat = dot(vNED, side)
-            let muRoll = 0.02 + (leg.braked ? 0.55 * input.brakes : 0)
-            let fLong = -muRoll * normal * tanh(vLong / 0.3)
-            let fLat = -0.85 * normal * tanh(vLat / 0.15)
+            let muRoll = (belly ? 0.45 : 0.02 + (leg.braked ? 0.55 * input.brakes : 0)) + env.surface.rollingCoefficient
+            var fLong = -muRoll * normal * tanh(vLong / 0.3)
+            var fLat = -mu * normal * tanh(vLat / 0.15)
+            // Friction circle: combined braking and cornering cannot exceed mu * N.
+            let limit = mu * normal
+            let mag = (fLong * fLong + fLat * fLat).squareRoot()
+            if mag > limit && mag > 0 { let k = limit / mag; fLong *= k; fLat *= k }
             let fNED = heading * fLong + side * fLat + SIMD3(0, 0, -normal)
             let fBody = s.attitude.conjugate.rotate(fNED)
             f += fBody
@@ -308,11 +412,16 @@ public struct FlightModel: Sendable {
         public var converged: Bool
     }
 
+    /// Note: retractable-gear aircraft trim with the gear UP (`inputs.gear == 0`) unless `gear:` is given, while
+    /// `ControlInputs.gear` defaults to 1, so callers must carry the trim result's gear into their inputs.
     /// Wings-level, straight and level trim at a true airspeed and altitude (Newton iteration on
     /// alpha, elevator and throttle so that u-dot, w-dot and q-dot vanish).
     public func trimLevel(trueAirspeed v: Double, altitude: Double, flaps: Double = 0,
                           environment env: FlightEnvironment = FlightEnvironment(),
+                          gear: Double? = nil,
                           warmStart: TrimResult? = nil) -> TrimResult {
+        // Retractable-gear aircraft trim with the gear up unless asked otherwise.
+        let trimGear = gear ?? (config.retractableGear ? 0 : 1)
         // Analytic initial guess: alpha from the required lift coefficient, elevator from Cm = 0.
         let rho = ISA.state(geometricAltitude: env.originHeight + altitude, temperatureOffset: env.temperatureOffset).density
         let a = config.aero
@@ -325,7 +434,7 @@ public struct FlightModel: Sendable {
             let st = AircraftState(positionNED: SIMD3(0, 0, -altitude),
                                    velocityBody: SIMD3(v * cos(x.x), 0, v * sin(x.x)),
                                    attitude: Quaternion(roll: 0, pitch: x.x, yaw: 0), bodyRates: .zero)
-            return (st, ControlInputs(elevator: x.y, throttle: x.z, flaps: flaps))
+            return (st, ControlInputs(elevator: x.y, throttle: x.z, flaps: flaps, gear: trimGear))
         }
         func residual(_ x: SIMD3<Double>) -> SIMD3<Double> {
             let (st, inp) = make(x)

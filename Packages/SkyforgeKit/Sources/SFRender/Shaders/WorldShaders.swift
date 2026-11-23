@@ -42,6 +42,8 @@ public enum WorldShaders {
         float4 quality;           // x = shadow filter half width (taps), y = cabin interior fill (cockpit pass), z = debug view, w unused
         float4 runwayA;           // low threshold x, y (region metres), direction x, y (unit, toward the high end)
         float4 runwayB;           // length, width (m), low-end number (0 = none), 1 if a runway is drawn
+        float4 airportRect;       // airport mask rectangle: centre x, y, half extent (region m), 1 if the mask is bound
+        float4 fogParams;         // x = fog extinction beyond the clear-air haze (1/m, 0 = none)
     };
 
     struct BuildingVertex { packed_float3 position; char4 normal; uchar4 colour; packed_float2 uv; uchar4 style; };
@@ -59,6 +61,17 @@ public enum WorldShaders {
     vertex float4 shadow_terrain_vertex(const device TerrainVertex* v [[buffer(0)]], constant ShadowUniforms& u [[buffer(1)]],
                                         uint vid [[vertex_id]]) {
         return u.lightViewProj * (u.model * float4(float3(v[vid].position), 1.0));
+    }
+
+    // The shadow pass morphs exactly as the colour pass does, so cascades match the visible terrain.
+    vertex float4 shadow_terrain_lod_vertex(const device TerrainVertex* v [[buffer(0)]], constant ShadowUniforms& u [[buffer(1)]],
+                                            const device float* morphZ [[buffer(2)]], constant float2& morph [[buffer(3)]],
+                                            uint vid [[vertex_id]]) {
+        float3 lp = float3(v[vid].position);
+        float dist = length((u.model * float4(lp, 1.0)).xyz);
+        float t = clamp((dist - morph.x) / max(morph.y - morph.x, 1e-3), 0.0, 1.0);
+        lp.z = mix(lp.z, morphZ[vid], t);
+        return u.lightViewProj * (u.model * float4(lp, 1.0));
     }
 
     vertex float4 shadow_building_vertex(const device BuildingVertex* v [[buffer(0)]], constant ShadowUniforms& u [[buffer(1)]],
@@ -157,6 +170,29 @@ public enum WorldShaders {
                                        uint vid [[vertex_id]]) {
         TerrainVertex w = v[vid];
         float4 p = u.model * float4(float3(w.position), 1.0);
+        WorldVarying o;
+        o.position = u.viewProj * p;
+        o.rel = p.xyz;
+        o.normal = normalize(float3(w.normal.xyz) / 127.0);
+        o.albedo = float3(0.15, 0.17, 0.12);
+        o.material = 8.0;                       // real terrain: albedo from imagery in the fragment shader
+        o.field = 0.0;
+        o.local = float3(0.0);
+        o.uv = float2(0.0); o.style = float4(0.0);
+        return o;
+    }
+
+    // Real terrain on CDLOD nodes (Strugar 2009): each vertex geomorphs toward its parent surface as the camera moves
+    // through the node's morph band. `morph` is the band in metres from the camera; `morphZ` the parent heights.
+    vertex WorldVarying terrain_lod_vertex(const device TerrainVertex* v [[buffer(0)]], constant WorldUniforms& u [[buffer(1)]],
+                                           const device float* morphZ [[buffer(2)]], constant float2& morph [[buffer(3)]],
+                                           uint vid [[vertex_id]]) {
+        TerrainVertex w = v[vid];
+        float3 lp = float3(w.position);
+        float dist = length((u.model * float4(lp, 1.0)).xyz);
+        float t = clamp((dist - morph.x) / max(morph.y - morph.x, 1e-3), 0.0, 1.0);
+        lp.z = mix(lp.z, morphZ[vid], t);
+        float4 p = u.model * float4(lp, 1.0);
         WorldVarying o;
         o.position = u.viewProj * p;
         o.rel = p.xyz;
@@ -464,7 +500,8 @@ public enum WorldShaders {
         if (k.dry > 0.01) {
             // Tufts and wind-laid streaks (stretched noise along a slowly turning direction).
             float a = 0.6 + 1.2 * groundNoise(w + 61.0, 30.0);
-            float2 d = float2(cos(a), sin(a)), sw = float2(dot(w, d) / 3.0, dot(w, float2(-d.y, d.x)) * 2.0);
+            // Streak aspect 2.4:1 (was 6:1): the 6:1 stretch read as smeared hillsides at KASE in the PR #48 frames.
+            float2 d = float2(cos(a), sin(a)), sw = float2(dot(w, d) / 1.5, dot(w, float2(-d.y, d.x)) * 1.6);
             float streak = groundNoise(sw + 13.0, 1.0) * o2, tuft = groundNoise(w - 3.7, 0.4) * o1, bare = groundNoise(w + 44.0, 4.0) * o3;
             float3 g = float3(1.0 + 0.14 * streak + 0.16 * tuft);
             g *= mix(float3(1.0), float3(0.90, 0.86, 0.80), saturate(bare) * 0.7);      // thin, earthy patches
@@ -547,7 +584,13 @@ public enum WorldShaders {
             float jx = (fp_unit(h) - 0.5) * 3.0, jy = (fp_unit(h >> 8) - 0.5) * 4.0;
             bool built = fp_unit(h >> 16) < 0.86;
             if (built && abs(lx - jx) < 5.0 && abs(ly - jy) < 6.0) {
-                col = fpRoofs[h % 5u];
+                // Roof family per block, two tones each (mirror of FieldPattern.town).
+                uint fam = fp_hash(int(bu), int(bv), seed ^ 0xD15u) % 3u;
+                uint pick = (h >> 26) & 1u;
+                uint idx = fam == 0u ? (pick == 0u ? 0u : 2u) : (fam == 1u ? (pick == 0u ? 1u : 3u) : (pick == 0u ? 4u : 0u));
+                col = fpRoofs[idx];
+                float ux = lx - jx - 2.0, uy = ly - jy + 1.5;
+                if (((h >> 27) & 1u) == 0u && abs(ux) < 1.2 && abs(uy) < 1.2) col *= 0.45;
             } else {
                 col = lawn;
                 if (built && abs(lx - jx) < 5.0 && ly - jy > 6.0 && ly - jy < 9.0) col *= 0.55;
@@ -997,15 +1040,32 @@ public enum WorldShaders {
         return select(a, 0.24 + (a - 0.24) * 0.25, a > 0.24);
     }
 
+    constexpr sampler apNearest(filter::nearest, address::clamp_to_edge, coord::normalized);
+
+    \(AirportSurfaceShaders.source)
+    \(SuburbShaders.source)
+    \(CockpitMaterialShaders.source)
+
     fragment float4 world_fragment(WorldVarying in [[stage_in]], constant WorldUniforms& u [[buffer(1)]],
                                    texture3d<float> ins [[texture(0)]], texture3d<float> tr [[texture(1)]],
                                    depth2d_array<float> sm [[texture(2)]],
                                    texture2d<float> imgNear [[texture(3)]], texture2d<float> imgFar [[texture(4)]],
                                    texture2d<float> waterMask [[texture(5)]], texture2d<float> parcels [[texture(6)]],
-                                   texture2d<float> imgDetail [[texture(7)]], texture2d<float> imgMid [[texture(8)]]) {
+                                   texture2d<float> imgDetail [[texture(7)]], texture2d<float> imgMid [[texture(8)]],
+                                   texture2d<float> airportMask [[texture(9)]],
+                                   texture2d<float> macroTex [[texture(10)]],
+                                   texture2d<float> suburbMask [[texture(11)]],
+                                   constant OWParams& ow [[buffer(6)]], constant OWWake* wakes [[buffer(7)]],
+                                   constant CascadeShadowParams& cas [[buffer(12)]]) {
+        // Round 5 vegetation gate: no-op for everything except vegetation cards (style.x = -1).
+        if (!veg_keep(in.style, in.position.xy, in.uv, in.local)) discard_fragment();
         float dist = length(in.rel);
         float3 dir = in.rel / max(dist, 1e-3);
         float3 n = normalize(in.normal);
+        // Round 4: screen derivatives of position and the unflipped normal for the cabin metal's brushing direction.
+        // Taken here, before the first discard, in uniform control flow (u.quality.y is a uniform).
+        float3 ckDpx = float3(0.0), ckDpy = float3(0.0), ckDnx = float3(0.0), ckDny = float3(0.0);
+        if (u.quality.y > 0.0) { ckDpx = dfdx(in.rel); ckDpy = dfdy(in.rel); ckDnx = dfdx(n); ckDny = dfdy(n); }
         // Cockpit view: the camera is inside the airframe, so its inner (back) faces are skipped and
         // the cabin opens onto the world; the cowling, wings and struts still render from outside.
         if (u.cameraPos.w > 0.5 && dot(n, dir) > 0.0) discard_fragment();
@@ -1019,6 +1079,9 @@ public enum WorldShaders {
         float imgForest = 0.0;                               // canopy score of the imagery colour (real terrain)
         float groundMat = 0.0;                               // weight of the near-ground detail materials
         float2 groundTilt = float2(0.0);                     // their normal tilt (applied after the normal is final)
+        float apCover = 0.0, apInfield = 0.0;                // procedural airport pavement / infield weights (texture 9)
+        float2 apTilt = float2(0.0);                         // pavement relief tilt
+        float apRough = 0.8, apMetal = 0.0;                  // pavement PBR parameters, used by the ground lighting
         float2 canopyTilt = float2(0.0);                     // lit crown relief on mid-ring photo forest (applied with groundTilt)
         float dbgPatch = 0.0, dbgNatural = 0.0;              // near-ground patch term and its class weight (debug view 3)
         float dbgTexel = 0.0;                                // finest imagery layer's metres per texel here (debug view 5)
@@ -1040,6 +1103,30 @@ public enum WorldShaders {
             imgForest = smoothstep(0.0, 0.02, c.g - max(c.r, c.b)) * smoothstep(0.10, 0.03, cl);   // dark green canopy
             // Same photo→albedo conversion as SFPreview.ImageryGround (textures are sRGB, so c is linear).
             albedo = photoAlbedo(c);
+            // Procedural airport ground (round 1): inside the aerodrome the photo albedo is discarded. R of the mask is
+            // pavement coverage (bilinear), G the class (nearest); see AirportSurfaceShaders.
+            if (inNear && u.airportRect.w > 0.5) {
+                float2 auv = float2((photoW.x - u.airportRect.x) / (2.0 * u.airportRect.z) + 0.5,
+                                    0.5 - (photoW.y - u.airportRect.y) / (2.0 * u.airportRect.z));
+                if (all(auv > 0.0) && all(auv < 1.0)) {
+                    float4 ak = airportClasses(airportMask.sample(tbl, auv, level(0.0)).r, airportMask.sample(apNearest, auv, level(0.0)).g);
+                    if (ak.x + ak.y + ak.z + ak.w > 0.01) {
+                        float fpA = length(dwx) + length(dwy);
+                        float3 tone64 = photoAlbedo(imgNear.sample(imgSampler, nuv, level(7.0)).rgb);
+                        float2 rdA = photoW - u.runwayA.xy, rdirA = u.runwayA.zw;
+                        float raA = dot(rdA, rdirA), rcA = rdA.x * rdirA.y - rdA.y * rdirA.x;
+                        float fromEndA = min(raA, u.runwayB.x - raA);
+                        float rcS = raA < 0.5 * u.runwayB.x ? rcA : -rcA;
+                        AirportSurface ap = airportSurface(photoW, rdirA, ak, tone64, n, in.rel.z + u.cameraLocal.z, fpA,
+                                                           fromEndA, rcS, u.runwayB.w, u.runwayB.y, 0.8);
+                        albedo = mix(albedo, ap.albedo, ap.cover);
+                        // Infield turf keeps the tuned photo-ground path; the airport only adds mowing stripes and finer turf detail on top.
+                        if (ap.infield > 0.0) albedo *= mix(float3(1.0), airportInfieldDetail(photoW, fpA), ap.infield);
+                        apTilt = ap.tilt; apRough = ap.roughness; apMetal = ap.metallic;
+                        apCover = ap.cover; apInfield = ap.infield;
+                    }
+                }
+            }
             float rwCover = 0.0;                             // 1 on the runway's paved rectangle
             if (u.runwayB.w > 0.5 && inNear) {
                 float2 rd = photoW - u.runwayA.xy, rdir = u.runwayA.zw;
@@ -1059,6 +1146,7 @@ public enum WorldShaders {
                     float fromEnd = min(ra, rlen - ra);
                     float rubber = smoothstep(120.0, 260.0, fromEnd) * (1.0 - smoothstep(520.0, 900.0, fromEnd)) * exp(-rc * rc / 30.0);
                     asphalt *= 1.0 - 0.38 * rubber * (0.65 + 0.35 * groundNoise(rp * float2(0.05, 1.5), 1.0));
+                    asphalt = mix(asphalt, albedo, apCover);   // procedural pavement (airport mask) replaces the photo-toned asphalt; paint goes on top
                     int low = int(u.runwayB.z + 0.5);
                     float paint = ra < 0.5 * rlen ? runwayPaint(ra, rc, rlen, rw, low, rfp)
                                                   : runwayPaint(rlen - ra, -rc, rlen, rw, low > 0 ? (low + 18 > 36 ? low - 18 : low + 18) : 0, rfp);
@@ -1067,6 +1155,7 @@ public enum WorldShaders {
                     albedo = mix(albedo, surface, rwCover);
                 }
             }
+            rwCover = max(rwCover, apCover);   // later photo passes (tone hold, ground detail, mid imagery) leave airport pavement alone; infield turf stays on them
             // Canopy albedo floor (hue kept), the same 0.05 as the 3D tree tints: Sentinel-2 forest comes out
             // near-black (~0.03), so the ground between the 3D trees read as a dark smear (LSZS, rounds 4–6).
             float al = dot(albedo, float3(0.2126, 0.7152, 0.0722));
@@ -1136,6 +1225,7 @@ public enum WorldShaders {
             // Local tone compression: each pixel held within ±40 % of the photo's ~30 m mean, so baked shadows,
             // dark car parks and bright roofs in the photo do not read as black or white blotches next to the
             // 3D scene's own lighting (art round 23: KMRY, KBFI). Near ground only; not on water or the runway.
+            float3 albedoPhoto = albedo;                     // before the tone-map stack below (round 3 macro-colour path, u.quality.w)
             float ltW = (1.0 - smoothstep(900.0, 1800.0, dist)) * (1.0 - saturate((wm - 0.2) / 0.2)) * (1.0 - rwCover) * (1.0 - clearW);
             if (ltW > 0.0) {
                 float fp0 = length(dwx) + length(dwy);
@@ -1285,14 +1375,64 @@ public enum WorldShaders {
                         float3 lumW3 = float3(0.2126, 0.7152, 0.0722);
                         float mL = max(dot(ltMean, lumW3), 1e-3), pL = max(dot(albedo, lumW3), 1e-4);
                         // Hue from the already-held albedo, not the 30 m mean (round 53: the mean is the blotch's own colour).
-                        float3 hue = mix(albedo / pL, float3(0.80, 1.10, 0.62), (0.35 + 0.25 * burb) * k.grass / max(k.grass + k.dry, 1e-3));
+                        // Lawn share 0.42–0.65 (was 0.35–0.60 before #74, 0.50–0.75 after): the photo's yellow-green hue read as olive at KMRY; the wider share flattened KBFI hue spread.
+                        float3 hue = mix(albedo / pL, float3(0.80, 1.10, 0.62), (0.42 + 0.23 * burb) * k.grass / max(k.grass + k.dry, 1e-3));
                         // Luminance: the held albedo's own, bounded at ±35 % of the 30 m mean (round 62b, KBFI debug view 1: a
                         // ±12 % bound pulled the ~400 m-held lawn back to the 30 m mean, whose 40–80 m cloudy mottle returned at 75 %).
                         albedo = mix(albedo, hue * clamp(pL, mL * 0.65, mL * 1.35), lawnW);
+                        // Mid-scale mottle (9 m, ±8 %): the material octaves fade out by 8 m, which left the lawn one sheet of
+                        // colour from a kilometre out. Fades by a 16 m footprint, so it cannot alias at distance.
+                        albedo *= 1.0 + 0.16 * groundNoise(gw - 29.0, 9.0) * saturate(1.0 - fpw / 16.0) * lawnW;
+                        // Field-scale variation (round 65, art lead: one olive sheet at 1–3 km). A 48 m field tone, sharpened so
+                        // fields read as separate parcels rather than a cloud, ±10 %, out to a 40 m footprint.
+                        float fieldT = clamp(groundNoise(gw + 113.0, 48.0) * 2.5, -1.0, 1.0);
+                        albedo *= 1.0 + 0.10 * fieldT * saturate(1.0 - fpw / 40.0) * lawnW;
+                        // Mowed stripes (round 65): 30 m bands, ±8 %, one direction per 96 m block, faded by a 24 m footprint.
+                        float2 mBlk = floor(gw / 96.0) * 96.0;
+                        float mAng = 3.14159 * (0.5 + 0.5 * groundNoise(mBlk + 71.0, 8.0));
+                        float mStripe = sin(dot(gw, float2(cos(mAng), sin(mAng))) * (6.28318 / 30.0));
+                        albedo *= 1.0 + 0.08 * mStripe * saturate(1.0 - fpw / 24.0) * lawnW;
                     }
                 }
                 albedo *= 1.0 + (f - 1.0) * groundMat;
                 groundTilt = tilt * groundMat;
+            }
+            // Round 3, macro-colour decoupling (u.quality.w > 0.5; default off, so the stack above is unchanged). The photo is
+            // used as a 64–128 m colour lookup only; ground detail comes from the vector masks and procedural octaves. It
+            // overrides the albedo and tilt the stack produced, except on canopy (weight × (1 − forest)). ltMean and groundMat
+            // are left as the stack set them, so the field passes below and the normal tilt still work. docs/rounds/ROUND3.md.
+            if (u.quality.w > 0.5 && inNear) {
+                float4 mq = macroTex.sample(imgSampler, nuv, level(0.0));        // rgb: 128 m mean, a: 128 m median luminance (0 = none)
+                float amountMc = (1.0 - smoothstep(900.0, 1800.0, dist)) * (1.0 - saturate((wm - 0.2) / 0.2)) * (1.0 - rwCover) * (1.0 - clearW);
+                if (mq.a > 0.0 && mc_luma(mq.rgb) > 1e-4 && amountMc * (1.0 - saturate(imgForest)) > 0.0) {
+                    float3 macroAlb = photoAlbedo(mq.rgb);
+                    float medianL = mc_luma(photoAlbedo(mq.rgb * (mq.a / mc_luma(mq.rgb))));
+                    float localL = ltMean.x >= 0.0 ? mc_luma(ltMean) : 0.0;    // 30 m mean: the pavement clamp's median
+                    float fpm = length(dwx) + length(dwy);
+                    float lsw = max(1.0, 390.0 / max(fpm, 1e-3));
+                    float2 wuv; bool win; float ww0, ww1;
+                    float3 wideAlb = photoAlbedo(photoColour(u, imgNear, imgMid, imgFar, imgDetail, photoW, dwx * lsw, dwy * lsw, wuv, win, ww0, ww1));
+                    float steepMc = smoothstep(0.0, 0.5, 1.0 - n.z);
+                    float2 mcTilt; float mcW;
+                    float3 mcAlb = mc_decoupleGround(albedoPhoto, macroAlb, medianL, localL, wideAlb, imgForest, steepMc, roadNear, burb,
+                                                     in.rel.xy + u.cameraPos.xy, 2.0 * sqrt(length(dwx) * length(dwy)), amountMc, 0.15, mcTilt, mcW);
+                    albedo = mix(albedo, mcAlb, mcW);
+                    groundTilt = mix(groundTilt, mcTilt, mcW);
+                }
+            }
+            // Round 2, suburban parcel fabric within ~2 km (WorldRenderer.suburbParcels; the mask is a zero texture otherwise, so
+            // the red-channel test skips it). Bilinear R/B, nearest G/A (the road angle wraps and A is a class). Replaces the
+            // photo's smudged yards with kerb, sidewalk, driveways and per-lot lawns, off airports, water, canopy and clearings.
+            if (inNear && dist < 2000.0 && imgForest < 0.5) {
+                float4 smL = suburbMask.sample(imgSampler, nuv, level(0.0));
+                if (smL.r > 0.001) {
+                    float2 smDim = float2(float(suburbMask.get_width()), float(suburbMask.get_height()));
+                    float4 smN = suburbMask.read(uint2(clamp(nuv * smDim, float2(0.0), smDim - 1.0)));
+                    float3 lawnS = ltMean.x >= 0.0 ? ltMean : albedo;
+                    SuburbSurface ss = suburbParcels(smL, smN, photoW, 2.0 * sqrt(length(dwx) * length(dwy)), dist, lawnS);
+                    float wSub = ss.weight * (1.0 - saturate((wm - 0.2) / 0.2)) * (1.0 - rwCover) * (1.0 - clearW) * (1.0 - saturate(imgForest * 2.0));
+                    albedo = mix(albedo, ss.albedo, wSub);
+                }
             }
             {
                 // Magnified coarse photo (round-45 debug view 5, KASE high: the z14 mid layer at ~6.8 m per texel under a
@@ -1599,6 +1739,7 @@ public enum WorldShaders {
             n = normalize(n + float3(-gx, -gy, 0.0) * (0.12 * wFine * fade));
         }
         if (groundMat > 0.0 && !imageryWater) n = normalize(n + float3(-groundTilt, 0.0));
+        if (apCover > 0.0) n = normalize(n + float3(-apTilt * apCover, 0.0));
         if (any(canopyTilt != 0.0) && !imageryWater) n = normalize(n + float3(canopyTilt, 0.0));
         // Photo terrain enters at 0.985 so the slope tone bands reach moderate slopes; its relief still starts
         // at 0.97 through `steep` (round 32: the bands' wider gate sat inside a 0.97 gate and never applied).
@@ -1717,7 +1858,10 @@ public enum WorldShaders {
             }
         }
         float ndl = dot(n, toSun);
-        float vis = toSun.z > -0.05 ? shadowVisibility(u, sm, in.rel, n, dist, max(0.0f, ndl)) : 0.0;
+        // Round 5: tier cascades when the CPU packed them (fwd.w >= 1); otherwise the existing hero + distance cascades.
+        float vis = toSun.z > -0.05 ? (cas.fwd.w >= 1.0
+            ? cascadedShadowVisibility(cas, sm, in.rel, n, max(0.0f, ndl), in.position.xy)
+            : shadowVisibility(u, sm, in.rel, n, dist, max(0.0f, ndl))) : 0.0;
         float cloudShade = 0.0;                    // fraction of sunlight the cumulus removes here
         if (u.clouds.shape.z > 0.0 && toSun.z > 0.05 && vis > 0.0) {
             // Cloud shadow: optical depth along the sun ray through the cumulus slab (3 samples).
@@ -1761,75 +1905,17 @@ public enum WorldShaders {
             vis = shield * (1.0 - cloudShade);
         }
         float3 col;
-        if (m == 1.0) {                                      // water
-            // Wind waves: two octaves of slope noise (14 m and 3.5 m), faded by pixel footprint so
-            // distant water calms to a mirror-like sheen instead of aliasing.
-            float2 ww = fieldW;
-            float wFar = saturate(1.0 - fieldFp * 2.5 / 14.0), wNear = saturate(1.0 - fieldFp * 2.5 / 3.5);
-            float2 slope = float2(groundNoise(ww + float2(0.7, 0.0), 14.0) - groundNoise(ww - float2(0.7, 0.0), 14.0),
-                                  groundNoise(ww + float2(0.0, 0.7), 14.0) - groundNoise(ww - float2(0.0, 0.7), 14.0)) * 0.9 * wFar
-                         + float2(groundNoise(ww + float2(0.2, 0.0) + 31.0, 3.5) - groundNoise(ww - float2(0.2, 0.0) + 31.0, 3.5),
-                                  groundNoise(ww + float2(0.0, 0.2) + 31.0, 3.5) - groundNoise(ww - float2(0.0, 0.2) + 31.0, 3.5)) * 0.7 * wNear;
-            // Swell: a 60 m octave on rotated axes, so the 14 m and 3.5 m wavelets no longer tile visibly
-            // across a near lake (art round 12).
-            float wSwell = saturate(1.0 - fieldFp * 2.5 / 60.0);
-            float2 sw = float2(0.8 * ww.x - 0.6 * ww.y, 0.6 * ww.x + 0.8 * ww.y) + 123.0;
-            slope += float2(groundNoise(sw + float2(2.0, 0.0), 60.0) - groundNoise(sw - float2(2.0, 0.0), 60.0),
-                            groundNoise(sw + float2(0.0, 2.0), 60.0) - groundNoise(sw - float2(0.0, 2.0), 60.0)) * 0.9 * wSwell;
-            // Wind: ruffled water beside calmer slicks (250 m and 1 km patches), at any distance, so a lake
-            // or a bay is not one uniform sheet.
-            float ruffle = 0.30 + 0.70 * smoothstep(-0.30, 0.40, groundNoise(ww + 211.0, 256.0) + 0.6 * groundNoise(ww + 97.0, 1024.0));
-            // Wind streaks: long bands of rougher water along one wind direction (~25 m across, ~300 m long),
-            // so a near lake seen steeply is not one uniform sheet (round 36, NZQN).
-            float2 wa = float2(0.94 * ww.x + 0.34 * ww.y, -0.34 * ww.x + 0.94 * ww.y);
-            ruffle = saturate(ruffle + 0.35 * smoothstep(0.15, 0.55, groundNoise(float2(wa.x * 0.08, wa.y) + 57.0, 25.0)));
-            slope *= 0.55 + 0.75 * ruffle;
-            float3 wn = normalize(float3(-slope, 1.0));
-            float3 r = reflect(dir, wn);
-            r.z = abs(r.z);
-            float cosT = max(0.0, -dot(dir, wn));
-            float fres = 0.02 + 0.98 * pow(1.0 - cosT, 5.0);
-            // The sky the surface mirrors. Wavelets too small to resolve still tilt the facets, so far water
-            // reflects sky from above the horizon line (deeper blue where it is ruffled, pale in the slicks).
-            float3 rr = normalize(float3(r.xy, max(r.z, 0.02) + 0.20 * ruffle * (1.0 - 0.6 * wNear)));
-            float3 skyR = skyEnv(u, rr);
-            // The needle lobe only where wavelets resolve, and capped: on sub-pixel wavelets it lit single
-            // pixels (fireflies that flicker in motion, art round 13).
-            float glitter = min(pow(max(0.0, dot(r, toSun)), 900.0) * 60.0 * wNear, 12.0) + pow(max(0.0, dot(r, toSun)), 60.0) * 0.6;
-            float3 refl = skyR + u.sunColour.rgb * glitter * vis;
-            float3 body = albedo * (ambient * 0.6 + u.sunColour.rgb * max(0.0, toSun.z) * 0.15);
-            // Sunlight scattered back out of the water column: the blue-green of clear water under sun.
-            body += float3(0.004, 0.030, 0.042) * u.sunColour.rgb * (max(0.0, toSun.z) * 0.55 * vis) * (0.6 + 0.8 * ruffle);
-            // Seen steeply the surface reflects little, so the body carries the look: wave facets toward the sun
-            // brighter, away darker, and ruffled water scatters more (round 35: NZQN near lake one uniform navy).
-            float2 sunH = toSun.xy / max(length(toSun.xy), 1e-3);
-            body *= clamp(1.0 - 2.6 * dot(slope, sunH), 0.5, 1.7) * (0.80 + 0.4 * ruffle);   // ×2.6 (1.4 sat below review, round 36)
-            // Sheen toward the sun from many unresolved facets, wider where the water is ruffled.
-            refl += u.sunColour.rgb * pow(max(0.0, dot(rr, toSun)), mix(260.0, 40.0, ruffle)) * (0.5 + 1.5 * ruffle) * vis;
-            if (imageryWater) {
-                // Shallows: a lighter green-turquoise body across the shore band (the mask's 0.6–0.9 rise), so
-                // a lake edge reads as depth rather than a navy cut-out (art round 11, NZQN).
-                float shallow = 1.0 - smoothstep(0.6, 0.97, shoreWm);   // wider band (round 12: read only at mid-distance)
-                float wide = 1.0 - smoothstep(0.55, 0.97, shoreWide);   // 60–120 m shelf (round 50)
-                float3 lit = ambient * 0.8 + u.sunColour.rgb * max(0.0, toSun.z) * 0.35;
-                body = mix(body, float3(0.05, 0.11, 0.10) * lit, shallow * 0.8);   // 0.6 (round 40: shore still abrupt)
-                body = mix(body, float3(0.035, 0.14, 0.13) * lit, wide * 0.65 * (1.0 - shallow * 0.8));   // turquoise shelf
-                body *= 1.0 + 0.2 * max(shallow, wide);            // near-shore water ~20 % lighter (round 50)
-                // Broad sheen toward the sun from many small wave facets (the 900/60 lobes are single glints).
-                refl += u.sunColour.rgb * pow(max(0.0, dot(r, toSun)), 12.0) * 0.12 * vis;
-            }
-            float reflScale = imageryWater ? 0.85 : 1.0;         // lakes mirror most of the sky (0.6 left them navy)
-            col = mix(body, refl * reflScale, min(1.0, 0.08 + fres * (imageryWater ? 0.9 : 1.0)));
-            // The same facets and streaks on the whole surface colour, reflection included (round 38: on the
-            // dark body alone the NZQN near lake's streaks and facets stayed invisible).
-            col *= clamp(1.0 - 1.6 * dot(slope, sunH), 0.7, 1.35) * mix(1.0, 0.82 + 0.36 * ruffle, wFar);
-            if (imageryWater) {
-                // Shoreline foam: the mask's transition band (wm 0.6–0.7), broken up by noise.
-                float band = 1.0 - smoothstep(0.6, 0.7, shoreWm);   // a thin line, not a white blob
-                float breakUp = smoothstep(-0.1, 0.4, groundNoise(ww + 77.0, 4.0)) * wNear + 0.35 * (1.0 - wNear);
-                float foam = band * breakUp * 0.18 * wNear;   // faint, and only where wavelets resolve (lakes have no surf)
-                col = mix(col, float3(0.85, 0.88, 0.88) * (u.sunColour.rgb * max(0.0, toSun.z) * vis + ambient), foam);
-            }
+        if (m == 1.0) {                                      // water (round 5: OceanShaders)
+            float h_ = 0.0, c_ = 0.0, sv_ = 0.0;
+            float3 nW = owWaveNormal(fieldW, ow, fieldFp, h_, c_, sv_);
+            float3 rr = reflect(dir, nW);
+            rr.z = abs(rr.z);
+            // Open ocean: deep, no shoreline. Imagery lakes: depth and waterline distance from the water mask.
+            float depthM = imageryWater ? mix(0.3, 12.0, smoothstep(0.6, 1.0, shoreWm)) : 200.0;
+            float shoreDistM = imageryWater ? (1.0 - smoothstep(0.6, 0.97, shoreWm)) * 6.0 : 1.0e3;
+            OWOut owo = owShade(fieldW, dir, toSun, ow, wakes, fieldFp, depthM, shoreDistM, float3(0.35, 0.30, 0.22),
+                                skyEnv(u, rr), u.sunColour.rgb, ambient, vis, imageryWater ? 1.0 : 0.0);
+            col = owo.colour;
         } else if (m == 2.0) {                               // foliage: wrap + back-scatter
             float wrap = max(0.0, ndl * 0.55 + 0.45);
             float back = pow(max(0.0, dot(dir, toSun)), 4.0) * 0.35;
@@ -1860,7 +1946,9 @@ public enum WorldShaders {
             float3 nb = float3(dot(n, u.model[0].xyz), dot(n, u.model[1].xyz), dot(n, u.model[2].xyz));
             float3 r = reflect(dir, n);
             float3 env = skyEnv(u, r);
-            if (m == 12.0) {
+            if (m == 12.0 && u.quality.y > 0.0) {
+                col = ck_cockpitMetal(u, in, n, dir, albedo, ambient, vis, cloudShade, toSun, localFp, ckDpx, ckDpy, ckDnx, ckDny);
+            } else if (m == 12.0) {
                 float F = 0.75 + 0.25 * pow(1.0 - nv, 5.0);
                 col = albedo * (env * F + u.sunColour.rgb * ggxLobe(n, v, toSun, 0.28, 0.9) * vis) + albedo * ambient * 0.12;
             } else {
@@ -1984,6 +2072,19 @@ public enum WorldShaders {
                 float spec = pow(max(0.0, dot(n, h)), 20.0) * 0.08;
                 col += u.sunColour.rgb * spec * vis;
             }
+            if (apCover > 0.02) {
+                // Airport pavement is a PBR surface: GGX sun lobe (roughness 0.65–0.85, f0 0.04, slightly more on asphalt's
+                // 0.05 metallic) plus a Fresnel sky/ground reflection, both fading out as the pavement coverage does.
+                float3 vA = -dir;
+                float f0A = mix(0.04, dot(albedo, float3(0.2126, 0.7152, 0.0722)), apMetal);
+                float3 envA = mix(u.ambientGround.rgb, u.skyHorizon.rgb, saturate(reflect(dir, n).z * 0.5 + 0.5));
+                float nvA = saturate(dot(n, vA));
+                // Roughness-aware Schlick (rough surfaces reflect less at grazing angles), lowered in cast shadow and capped at
+                // a quarter of the sky radiance so a 3° final-approach view cannot wash the pavement out.
+                float FvA = f0A + (max(1.0 - apRough, f0A) - f0A) * pow(1.0 - nvA, 5.0);
+                float3 specEnvA = min(envA * FvA * mix(0.3, 1.0, vis), envA * 0.25);
+                col += (u.sunColour.rgb * ggxLobe(n, vA, toSun, apRough, f0A) * vis + specEnvA) * apCover;
+            }
         }
         if (u.quality.z > 0.5) {
             // Debug views (WorldRenderer.debugView): each channel a 0–1 term, encoded so that the tone map
@@ -1998,6 +2099,11 @@ public enum WorldShaders {
                 float aL = dot(ambient, float3(0.2126, 0.7152, 0.0722));
                 d = float3(dL, aL, 0.0) / max(dL + aL, 1e-4);
                 d.b = saturate((dL + aL) / max(dot(u.sunColour.rgb, float3(0.2126, 0.7152, 0.0722)), 1e-4));   // irradiance / full sun
+            }
+            else if (mode == 9) {
+                // Water path proof: r = imagery-water branch taken, g = ocean shader branch (m == 1),
+                // b = wakes reaching the shader (wakeCount / 4).
+                d = float3(imageryWater ? 1.0 : 0.0, m == 1.0 ? 1.0 : 0.0, saturate(float(ow.wakeCount) / 4.0));
             }
             else if (mode == 5) {
                 // Imagery resolution against screen footprint: r = layer metres per texel / 20, g = pixel footprint
@@ -2030,6 +2136,14 @@ public enum WorldShaders {
             float3 hzc = u.skyHorizon.rgb * 0.92;
             hzc = mix(float3(dot(hzc, float3(0.2126, 0.7152, 0.0722))), hzc, mix(0.5, 0.7, smoothstep(5000.0, 14000.0, dist)));
             col = mix(col, hzc, hz);
+        }
+        if (u.fogParams.x > 0.0) {
+            // Weather fog (METAR visibility): Beer-Lambert transmittance toward the desaturated horizon colour, on top
+            // of the table's clear-air aerial perspective. Zero extinction (the default) skips it entirely.
+            float ft = exp(-u.fogParams.x * dist);
+            float3 fogc = u.skyHorizon.rgb * 0.92;
+            fogc = mix(float3(dot(fogc, float3(0.2126, 0.7152, 0.0722))), fogc, 0.5);
+            col = mix(fogc, col, ft);
         }
         return float4(col * u.sunColour.w, 1.0);    // linear HDR (× exposure); tone-mapped in post
     }
