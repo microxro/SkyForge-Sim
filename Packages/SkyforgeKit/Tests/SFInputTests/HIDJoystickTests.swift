@@ -51,12 +51,12 @@ import Foundation
 
     @Test func controlNamesAreStableAndReportsDecode() {
         let layout = HIDJoystickLayout.stick()
-        #expect(layout.id.controlPrefix == "joy.044f.b10a.0")
+        #expect(layout.id.controlPrefix == "joystick.044f.b10a.0")
         let out = layout.controls(for: HIDReport(axes: [0: 255, 2: 1023], buttons: [1, 12, 13, 0], hats: [0: 2]))
-        #expect(out.analog["joy.044f.b10a.0.axis.0"] == 1)
-        #expect(out.analog["joy.044f.b10a.0.axis.2"] == 1)
-        #expect(out.analog["joy.044f.b10a.0.axis.1"] == nil)          // no report for that axis
-        #expect(out.pressed == ["joy.044f.b10a.0.button.1", "joy.044f.b10a.0.button.12", "joy.044f.b10a.0.hat.0.right"])
+        #expect(out.analog["joystick.044f.b10a.0.axis.0"] == 1)
+        #expect(out.analog["joystick.044f.b10a.0.axis.2"] == 1)
+        #expect(out.analog["joystick.044f.b10a.0.axis.1"] == nil)
+        #expect(out.pressed == ["joystick.044f.b10a.0.button.1", "joystick.044f.b10a.0.button.12", "joystick.044f.b10a.0.hat.0.right"])
     }
 
     @Test func hubAssignsAndReusesInstances() {
@@ -77,9 +77,9 @@ import Foundation
             a: HIDReport(axes: [0: 255]),
             b: HIDReport(axes: [0: 0], buttons: [3]),
         ])
-        #expect(state.analog["joy.044f.b10a.0.axis.0"] == 1)
-        #expect(state.analog["joy.044f.b10a.1.axis.0"] == -1)
-        #expect(state.pressed == ["joy.044f.b10a.1.button.3"])
+        #expect(state.analog["joystick.044f.b10a.0.axis.0"] == 1)
+        #expect(state.analog["joystick.044f.b10a.1.axis.0"] == -1)
+        #expect(state.pressed == ["joystick.044f.b10a.1.button.3"])
     }
 
     @Test func unknownDeviceReportsAreIgnored() {
@@ -91,11 +91,11 @@ import Foundation
     @Test func bindingsReadJoystickControlsThroughInputMapper() {
         var hub = HIDJoystickHub()
         let id = hub.connect(HIDJoystickLayout.stick())
-        var throttle = Binding(device: .joystick, control: "joy.044f.b10a.0.axis.2", target: .axis(.throttle))
+        var throttle = Binding(device: .joystick, control: "joystick.044f.b10a.0.axis.2", target: .axis(.throttle))
         throttle.axis.unipolar = true
         var profile = BindingProfile(name: "stick", layer: .device, bindings: [
-            Binding(device: .joystick, control: "joy.044f.b10a.0.axis.0", target: .axis(.roll)),
-            Binding(device: .joystick, control: "joy.044f.b10a.0.button.1", target: .action(.flapsDown)),
+            Binding(device: .joystick, control: "joystick.044f.b10a.0.axis.0", target: .axis(.roll)),
+            Binding(device: .joystick, control: "joystick.044f.b10a.0.button.1", target: .action(.flapsDown)),
             throttle,
         ])
         profile.bindings[0].axis.innerDeadZone = 0

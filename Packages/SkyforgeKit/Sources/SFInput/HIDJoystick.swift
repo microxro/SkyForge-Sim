@@ -1,6 +1,6 @@
 // SKYFORGE — Apache-2.0
 // Generic HID joystick normalisation. Any device that reports HID axes, buttons and a hat switch
-// maps to stable control names ("joy.<vid>.<pid>.<instance>.axis.<n>") that bindings target.
+// maps to stable control names ("joystick.<vid>.<pid>.<instance>.axis.<n>") that bindings target.
 // Platform adapters feed raw reports into HIDJoystickHub; InputMapper does the rest.
 import Foundation
 
@@ -17,9 +17,9 @@ public struct HIDDeviceID: Hashable, Codable, Sendable {
         self.instance = instance
     }
 
-    /// Stable prefix for control names, e.g. "joy.044f.b10a.0".
+    /// Stable prefix for control names, e.g. "joystick.044f.b10a.0".
     public var controlPrefix: String {
-        "joy.\(hexWord(vendorID)).\(hexWord(productID)).\(instance)"
+        "joystick.\(hexWord(vendorID)).\(hexWord(productID)).\(instance)"
     }
 }
 
