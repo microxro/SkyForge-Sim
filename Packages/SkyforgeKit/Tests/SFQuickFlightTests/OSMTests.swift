@@ -395,7 +395,7 @@ actor ScriptedOSMTransport: HTTPTransport {
         #expect(!s.contains(" ") && !s.contains("\"") && !s.contains("[") && !s.contains("\n") && !s.contains(";"))
         let items = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems)
         #expect(items.count == 1 && items[0].name == "data" && items[0].value == q.ql)
-        #expect(OSMData.attribution == "Buildings and roads: © OpenStreetMap contributors, ODbL 1.0")
+        #expect(OSMData.attribution == "Buildings, roads and water: © OpenStreetMap contributors, ODbL 1.0")
     }
 }
 
