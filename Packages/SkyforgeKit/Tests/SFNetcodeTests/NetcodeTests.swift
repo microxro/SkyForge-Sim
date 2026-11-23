@@ -68,8 +68,8 @@ private func snapshot(_ seq: UInt32, _ t: Double, x: Double = 6_500_000, vx: Flo
 @Suite struct RemoteAircraftBufferTests {
     @Test func interpolatesBetweenSnapshots() {
         var buffer = RemoteAircraftBuffer(interpolationDelay: 0.1)
-        buffer.insert(snapshot(1, 0.0, x: 6_500_000), arrival: 0.0)
-        buffer.insert(snapshot(2, 1.0, x: 6_600_000), arrival: 1.0)
+        _ = buffer.insert(snapshot(1, 0.0, x: 6_500_000), arrival: 0.0)
+        _ = buffer.insert(snapshot(2, 1.0, x: 6_600_000), arrival: 1.0)
         // Render time 0.6 maps to sender time 0.5 with zero clock offset.
         let pose = buffer.pose(at: 0.6)
         #expect(pose?.extrapolated == false)
@@ -78,7 +78,7 @@ private func snapshot(_ seq: UInt32, _ t: Double, x: Double = 6_500_000, vx: Flo
 
     @Test func extrapolatesWithVelocityAndCapsIt() {
         var buffer = RemoteAircraftBuffer(interpolationDelay: 0.1, maxExtrapolation: 0.5)
-        buffer.insert(snapshot(1, 0.0, x: 6_500_000, vx: 100), arrival: 0.0)
+        _ = buffer.insert(snapshot(1, 0.0, x: 6_500_000, vx: 100), arrival: 0.0)
         // Far past the newest sample, so prediction is capped at 0.5 s of motion.
         let pose = buffer.pose(at: 10.0)
         #expect(pose?.extrapolated == true)
@@ -87,9 +87,12 @@ private func snapshot(_ seq: UInt32, _ t: Double, x: Double = 6_500_000, vx: Flo
 
     @Test func rejectsStaleAndDuplicateSequences() {
         var buffer = RemoteAircraftBuffer()
-        #expect(buffer.insert(snapshot(5, 1.0), arrival: 1.0))
-        #expect(buffer.insert(snapshot(4, 0.9), arrival: 1.1) == false)
-        #expect(buffer.insert(snapshot(5, 1.0), arrival: 1.2) == false)
+        let first = buffer.insert(snapshot(5, 1.0), arrival: 1.0)
+        let stale = buffer.insert(snapshot(4, 0.9), arrival: 1.1)
+        let duplicate = buffer.insert(snapshot(5, 1.0), arrival: 1.2)
+        #expect(first)
+        #expect(stale == false)
+        #expect(duplicate == false)
     }
 
     @Test func noPoseBeforeFirstSnapshot() {
