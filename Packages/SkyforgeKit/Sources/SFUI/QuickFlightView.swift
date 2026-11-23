@@ -6,6 +6,7 @@ import SwiftUI
 import MetalKit
 import simd
 import SFRender
+import SFWorldGen
 import SFPreview
 import SFInput
 import SFInstruments
@@ -327,6 +328,7 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
             let w = session.environment.windNED
             r.oceanWindSpeed = Float((w.x * w.x + w.y * w.y).squareRoot())
             r.oceanWindDirection = Float(atan2(w.x, w.y))   // NED wind (north, east) to ENU heading of the air mass
+            r.vegetationWind = VegetationWind.uniform(windNED: w)   // trees and grass sway with the live wind
             let v = session.state.velocityNED
             let groundSpeed = (v.x * v.x + v.y * v.y).squareRoot()
             let wake = OceanWake.aircraft(position: SIMD2(Float(session.positionENU.x), Float(session.positionENU.y)),
