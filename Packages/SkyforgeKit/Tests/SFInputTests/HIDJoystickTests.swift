@@ -50,7 +50,7 @@ import Foundation
     }
 
     @Test func controlNamesAreStableAndReportsDecode() {
-        let layout = HIDJoystickLayout.stick()
+        let layout = HIDJoystickTests.stick()
         #expect(layout.id.controlPrefix == "joystick.044f.b10a.0")
         let out = layout.controls(for: HIDReport(axes: [0: 255, 2: 1023], buttons: [1, 12, 13, 0], hats: [0: 2]))
         #expect(out.analog["joystick.044f.b10a.0.axis.0"] == 1)
@@ -61,18 +61,18 @@ import Foundation
 
     @Test func hubAssignsAndReusesInstances() {
         var hub = HIDJoystickHub()
-        let first = hub.connect(HIDJoystickLayout.stick())
-        let second = hub.connect(HIDJoystickLayout.stick())
+        let first = hub.connect(HIDJoystickTests.stick())
+        let second = hub.connect(HIDJoystickTests.stick())
         #expect(first.instance == 0 && second.instance == 1)
         #expect(hub.layouts.count == 2)
         hub.disconnect(first)
-        #expect(hub.connect(HIDJoystickLayout.stick()).instance == 0)
+        #expect(hub.connect(HIDJoystickTests.stick()).instance == 0)
     }
 
     @Test func twoIdenticalSticksDoNotCollide() {
         var hub = HIDJoystickHub()
-        let a = hub.connect(HIDJoystickLayout.stick())
-        let b = hub.connect(HIDJoystickLayout.stick())
+        let a = hub.connect(HIDJoystickTests.stick())
+        let b = hub.connect(HIDJoystickTests.stick())
         let state = hub.deviceState(reports: [
             a: HIDReport(axes: [0: 255]),
             b: HIDReport(axes: [0: 0], buttons: [3]),
@@ -90,20 +90,18 @@ import Foundation
 
     @Test func bindingsReadJoystickControlsThroughInputMapper() {
         var hub = HIDJoystickHub()
-        let id = hub.connect(HIDJoystickLayout.stick())
-        var throttle = Binding(device: .joystick, control: "joystick.044f.b10a.0.axis.2", target: .axis(.throttle))
+        let id = hub.connect(HIDJoystickTests.stick())
+        var throttle = Binding(device: .joystick, control: "joystick.044f.b10a.0.axis.2", target: .axis(FlightAxis.throttle))
         throttle.axis.unipolar = true
-        var profile = BindingProfile(name: "stick", layer: .device, bindings: [
-            Binding(device: .joystick, control: "joystick.044f.b10a.0.axis.0", target: .axis(.roll)),
-            Binding(device: .joystick, control: "joystick.044f.b10a.0.button.1", target: .action(.flapsDown)),
-            throttle,
-        ])
-        profile.bindings[0].axis.innerDeadZone = 0
+        var roll = Binding(device: .joystick, control: "joystick.044f.b10a.0.axis.0", target: .axis(FlightAxis.roll))
+        roll.axis.innerDeadZone = 0
+        let flaps = Binding(device: .joystick, control: "joystick.044f.b10a.0.button.1", target: .action(FlightAction.flapsDown))
+        let profile = BindingProfile(name: "stick", layer: .device, bindings: [roll, flaps, throttle])
         var mapper = InputMapper(profiles: [profile])
         let state = hub.deviceState(reports: [id: HIDReport(axes: [0: 255, 2: 1023], buttons: [1])])
-        let out = mapper.evaluate(state)
-        #expect(out.axes[.roll] == 1)
-        #expect(out.axes[.throttle] == 1)
-        #expect(out.actions == [.flapsDown])
+        let out: InputMapper.Output = mapper.evaluate(state)
+        #expect(out.axes[FlightAxis.roll] == 1)
+        #expect(out.axes[FlightAxis.throttle] == 1)
+        #expect(out.actions == [FlightAction.flapsDown])
     }
 }
