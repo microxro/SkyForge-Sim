@@ -257,7 +257,14 @@ public struct FieldPattern: Sendable, Equatable {
             let jx = (Self.unit(h) - 0.5) * 3, jy = (Self.unit(h >> 8) - 0.5) * 4
             let inHouse = abs(lx - jx) < 5 && abs(ly - jy) < 6 && Self.unit(h >> 16) < 0.86
             if inHouse {
-                col = Self.roofs[Int(h % UInt32(Self.roofs.count))]
+                // Roof family per 90 × 140 m block: dark shingle, terracotta or light flat roofs, two tones each.
+                let fam = Self.hash(Int32(bu), Int32(bv), seed ^ 0xD15) % 3
+                let pick = (h >> 26) & 1
+                let idx = fam == 0 ? (pick == 0 ? 0 : 2) : (fam == 1 ? (pick == 0 ? 1 : 3) : (pick == 0 ? 4 : 0))
+                col = Self.roofs[Int(idx)]
+                // Roof units (HVAC boxes) on about half the roofs: a darker 2.4 m patch off the ridge.
+                let ux = lx - jx - 2.0, uy = ly - jy + 1.5
+                if (h >> 27) & 1 == 0 && abs(ux) < 1.2 && abs(uy) < 1.2 { col *= 0.45 }
             } else {
                 col = lawn
                 // Shadowed side of the house and a tree in some back gardens.
