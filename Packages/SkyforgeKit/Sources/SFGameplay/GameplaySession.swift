@@ -50,6 +50,11 @@ public struct GameplaySession: Sendable {
     public private(set) var scoop = WaterScoop()
     /// Spin state from the last step: detected from the stall and the body rates, with recovery inputs.
     public private(set) var spin = SpinAssessment.assess(stalled: false, bodyRates: .zero)
+    /// Engines and their failure state. A mission can fail the first engine at a set time (see `MissionDefinition.engineFailureAt`).
+    private var engines = EngineOperations(engineCount: 1)
+    private var engineClock = 0.0
+    /// Engines still producing thrust.
+    public var enginesRunning: Int { engines.runningCount }
     /// Wind, terrain and the wake vortices of other aircraft (`wakes`, updated from the traffic each step).
     public private(set) var environment: FlightEnvironment
 
@@ -90,6 +95,7 @@ public struct GameplaySession: Sendable {
             return spec
         }()
         self.aircraft = loaded
+        engines = EngineOperations(engineCount: loaded.config.propulsion?.engineCount ?? 1)
         model = loaded.model
         baseConfig = loaded.config
         let wind = mission?.wind.windNED(runwayHeading: frame.heading) ?? .zero
@@ -106,7 +112,7 @@ public struct GameplaySession: Sendable {
         effectiveInputs = trimmed
         gear = GearActuator(position: trimmed.gear)
         onGround = spawn.onRunway
-        if trafficEnabled {
+        if trafficEnabled || (mission?.traffic ?? false) {
             let runway = TrafficRunway(threshold: world.runwayThreshold, heading: world.runwayHeading,
                                        length: world.runwayLengthMetres, elevation: world.runwayElevation)
             tower = TowerSession(runway: runway, startsOnRunway: onGround)
@@ -222,6 +228,9 @@ public struct GameplaySession: Sendable {
         effectiveInputs = input
         let sinkBefore = state.velocityNED.z
 
+        engineClock += dt
+        if let at = mission?.engineFailureAt, engineClock >= at { engines.fail(0) }
+        input.engineFailureMask = engines.failureMask
         state = model.step(state, inputs: input, environment: environment, dt: dt)
         time += dt
         onGround = before.weightOnWheels
@@ -309,6 +318,7 @@ public struct GameplaySession: Sendable {
         let report = OwnshipReport(config: aircraft.config, positionNED: state.positionNED,
                                    velocityNED: state.velocityNED, onGround: onGround)
         _ = tower?.step(dt: dt, ownship: report, wind: ATCWind(windNED: environment.windNED))
+        director.towerErrors = tower?.status.complianceErrors ?? 0
         environment.wakes = tower?.traffic.wakesNear(state.positionNED) ?? []
     }
 

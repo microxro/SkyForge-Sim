@@ -34,7 +34,7 @@ public enum MissionCatalog {
             MissionObjective(id: "final", title: "Join final", kind: .flyTo(MissionWaypoint(-2_200, 0, 115, radius: 350))),
             MissionObjective(id: "land", title: "Land and stop", kind: .land(aimAlong: 300, zoneHalfLength: 250, maxSinkRate: 3.0), points: 200),
         ],
-        parTime: 480, timeLimit: 900, areaRadius: 15_000, unlock: .mission("first-flight"))
+        parTime: 480, timeLimit: 900, areaRadius: 15_000, unlock: .mission("first-flight"), traffic: true)
 
     public static let precisionLanding = MissionDefinition(
         id: "precision-landing", title: "Crosswind Precision", category: .landing,
@@ -45,7 +45,7 @@ public enum MissionCatalog {
         objectives: [
             MissionObjective(id: "land", title: "Land in the touchdown zone", kind: .land(aimAlong: 300, zoneHalfLength: 150, maxSinkRate: 2.5), points: 300),
         ],
-        parTime: 150, timeLimit: 420, areaRadius: 10_000, unlock: .mission("pattern-landing"))
+        parTime: 150, timeLimit: 420, areaRadius: 10_000, unlock: .mission("pattern-landing"), traffic: true)
 
     public static let wingman = MissionDefinition(
         id: "wingman-formation", title: "Wingman", category: .military,
@@ -267,7 +267,18 @@ public enum MissionCatalog {
         ],
         parTime: 300, timeLimit: 600, areaRadius: 20_000, unlock: .mission("airshow-loop"),
         payload: [PayloadStation(name: "Rear hold", mass: 180, arm: -0.3)], surface: .grass)
-    public static let all: [MissionDefinition] = [firstFlight, patternLanding, precisionLanding, wingman, intercept, gunnery, lowLevel, dogfight, coastalSurvey, twinBandits, bushStrip, airportTour, valleyRun, waterDropRun, rescuePickup, airshowLoop, radarIntercept, twoShipDefence, ifrApproach, cargoRun]
+    public static let engineOutLanding = MissionDefinition(
+        id: "engine-out-landing", title: "Dead-Stick Landing", category: .landing,
+        briefing: "The engine quits 20 seconds into a 3 km glide from 900 m. Stay on the airfield and land within 250 m of the threshold with the engine failed.",
+        difficulty: 3, recommendedAircraft: AircraftCatalog.sfCruiser.id, allowedRoles: civil,
+        spawn: MissionSpawn(along: -3_000, up: 900, speed: .cruise),
+        objectives: [
+            MissionObjective(id: "land", title: "Land on the runway", kind: .land(aimAlong: 300, zoneHalfLength: 250, maxSinkRate: 3.0), points: 500),
+        ],
+        parTime: 240, timeLimit: 420, areaRadius: 20_000, unlock: .mission("ifr-approach"),
+        engineFailureAt: 20)
+
+    public static let all: [MissionDefinition] = [firstFlight, patternLanding, precisionLanding, wingman, intercept, gunnery, lowLevel, dogfight, coastalSurvey, twinBandits, bushStrip, airportTour, valleyRun, waterDropRun, rescuePickup, airshowLoop, radarIntercept, twoShipDefence, ifrApproach, cargoRun, engineOutLanding]
 
     public static func mission(id: String) -> MissionDefinition? { all.first { $0.id == id } }
     public static func missions(in category: MissionCategory) -> [MissionDefinition] { all.filter { $0.category == category } }

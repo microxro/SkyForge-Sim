@@ -55,8 +55,8 @@ Each aircraft is with one controller at a time, the `TrafficFacility`:
 facility from tick to tick. `ATCController` announces a change once. Handoffs have no clearance and need no
 readback; they are advisories, like the phase calls.
 
-The tower does not sequence arrivals by vectors or hold them at an approach fix yet. Spacing still happens at
-base, as before.
+Approach control vectors and holds arrivals at the approach fix (see "Approach control" below). Spacing still
+happens at base, as before.
 
 ## How the tower decides
 
@@ -76,6 +76,42 @@ The tower is a state machine of fixed rules, not a model:
 
 Words come from `ATCPhrase` templates (digits spoken one by one, as pilots say them). The same traffic
 always gets the same words.
+
+## Approach control
+
+Approach control works on arrivals that are with approach (not yet on the pattern). It is a set of fixed rules,
+the same kind as the tower's:
+
+- **Vector.** An arrival more than 4 km along the runway is turned onto a heading toward the approach fix (the
+  downwind entry, 1.2 km along and 1 km to the right of the runway). The aircraft flies that heading until it is
+  sent direct.
+- **Direct.** Within 4 km along the runway, the vectored arrival is sent direct to the fix.
+- **Hold.** An arrival within 1.5 km of the fix is held there while the landing slot is taken: another arrival is
+  on base or final, or landing spacing has not passed. A held arrival orbits the fix at 1.2 km radius.
+- **Release.** When the slot is free, the arrival is released and flies on to the downwind leg. The tower then
+  has it and sequences it as before.
+
+AI arrivals are vectored and held by the tower directly. Ownship is vectored and held by readback. When ownship is
+more than 4 km out, the tower says "turn heading" for the fix, and the pilot picks the readback. A hold at the fix
+is given the same way when the landing slot is taken. The pilot then flies the heading or the hold, and the tower
+counts how it went (see "Traffic in missions" below). Each ownship vector and hold is given once per approach.
+
+- **Vector flown.** The heading stays within 30 degrees of the vector for 5 s. Then it counts as flown.
+- **Vector ignored.** Ownship is sent direct, or leaves approach, before the vector was flown.
+- **Hold flown.** Ownship reaches within 1.5 km of the fix, and the hold is released.
+- **Hold ignored.** Ownship does not reach the fix within 120 s of the readback.
+
+`TrafficSystem.apply(_:to:)` carries out the instructions (`TrafficControl`: vector, direct, hold, release).
+`TowerSession` applies them to AI traffic after each decision tick.
+
+## Traffic in missions
+
+A mission turns traffic on with `MissionDefinition.traffic`. Its flight then gets a tower with the field's
+traffic and readback prompts, shown on the same overlay as Quick Flight. The landing missions (pattern landing and
+crosswind precision) set it. Missions read the tower through `GameplaySession.atc` and
+`ATCController.ownshipStatus`. A flight that has a tower loses 25 points on a success for each tower compliance
+error: a wrong readback, a takeoff or landing with no clearance read back, a vector or hold not flown. The
+breakdown shows it as "tower penalty". Missing a tower error never fails a mission by itself.
 
 ## Voice
 
@@ -112,7 +148,7 @@ what the count is worth.
 - AI altitudes are relative to the field elevation. Traffic does not avoid terrain, so mountain fields
   (for example KASE) can put traffic low over hills near the pattern.
 - No collisions between aircraft, and AI aircraft are not weapon targets.
-- Quick Flight draws the AI aircraft. Mission scenes do not, because missions run without traffic. Renderer
+- Quick Flight draws the AI aircraft, in missions that set `traffic` too. Renderer
   edits go through the renderer thread.
 - Fields are the ones Quick Flight can start from. The six showcase fields ship with tile packs. Other
   fields come from the bundled OurAirports data and stream on first use. Adding a showcase pack needs
@@ -120,11 +156,14 @@ what the count is worth.
 - Taxi is not modelled. A flight that starts on the runway begins at the hold short line.
 - Ownship phases are read from position and ground contact, not from the pilot's controls. A go-around is
   flown as a departure.
-- Quick Flight is the only place a prompt is answered on screen. Mission HUDs do not show the prompt yet.
+- Ownship has one vector and one hold per approach. Its vector and hold count as flown when the pilot flies them, but
+  nothing stops the aircraft from ignoring them.
 
 ## Tests
 
 `Tests/SFTrafficTests` and `Tests/SFATCTests` cover performance, pattern geometry, the arrival and departure
 state machines, determinism, wake shedding, phrase templates, clearance rules, wake spacing, ownship phases,
-readback prompts, the ownship counts, the facility rule and its handoffs, and the field profiles. The profile
+readback prompts, the ownship counts, the facility rule and its handoffs, the field profiles, approach control
+(vectors, direct, holds and releases), ownship's vectors, holds and compliance counts (OwnshipApproachTests,
+TowerScoringTests), and the approach fix itself. The profile
 tests check that every field, from a 800 m strip to a 3 km runway, gets arrivals and departures.

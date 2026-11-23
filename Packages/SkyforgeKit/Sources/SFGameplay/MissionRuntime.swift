@@ -52,6 +52,11 @@ public struct MissionRuntime: Sendable {
     public private(set) var kills = 0
     /// Latest combat tally handed to `update`; copied into the result at finish.
     public private(set) var combat = CombatTally()
+    /// Tower compliance errors handed to `update` (wrong readbacks, flights without a clearance, vectors and holds
+    /// not flown). Each one costs `towerErrorPoints` on a success.
+    public private(set) var towerErrors = 0
+    /// Points lost per tower compliance error on a successful flight.
+    public static let towerErrorPoints = 25
 
     // Per-objective accumulators, reset when an objective starts.
     private var started = false
@@ -100,8 +105,10 @@ public struct MissionRuntime: Sendable {
     /// Advances the mission by one sample. `overstressSeconds` is the envelope monitor's running total.
     @discardableResult
     public mutating func update(sample: FlightSample, targets: [AITarget], overstressSeconds: Double = 0,
-                                combat: CombatTally = CombatTally(), radarLockedID: String? = nil) -> [MissionEvent] {
+                                combat: CombatTally = CombatTally(), radarLockedID: String? = nil,
+                                towerErrors: Int = 0) -> [MissionEvent] {
         self.combat = combat
+        self.towerErrors = towerErrors
         currentLockID = radarLockedID
         guard status == .inProgress else { return [] }
         if !started {
@@ -181,7 +188,9 @@ public struct MissionRuntime: Sendable {
             breakdown["time bonus"] = bonus
             let penalty = min(base, Int((overstress * 15).rounded()))
             if penalty > 0 { breakdown["overstress penalty"] = -penalty }
-            score = max(0, base + bonus - penalty)
+            let towerPenalty = min(max(0, base - penalty), towerErrors * Self.towerErrorPoints)
+            if towerPenalty > 0 { breakdown["tower penalty"] = -towerPenalty }
+            score = max(0, base + bonus - penalty - towerPenalty)
         }
         let maxScore = Double(mission.maxBasePoints) * 1.2
         let frac = maxScore > 0 ? Double(score) / maxScore : 0

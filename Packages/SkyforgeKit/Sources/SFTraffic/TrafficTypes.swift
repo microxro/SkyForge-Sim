@@ -92,6 +92,12 @@ public enum TrafficFacility: String, Sendable, Codable, Equatable {
     case approach, tower, departure
 }
 
+/// Approach control's instructions to an arrival that are not clearances: a vector to the approach fix, a direct
+/// route to it, a hold at it, or the release from that hold.
+public enum TrafficControl: String, Sendable, Codable, Equatable {
+    case vectorToFix, direct, hold, release
+}
+
 /// One AI aircraft. Point-mass state; `config` supplies its real mass, span, speeds and climb limits.
 public struct TrafficAircraft: Sendable, Equatable, Identifiable {
     public let id: String
@@ -115,6 +121,12 @@ public struct TrafficAircraft: Sendable, Equatable, Identifiable {
     public internal(set) var sinceWake = 0.0
     /// The controller that has this aircraft now.
     public internal(set) var facility: TrafficFacility
+    /// True while approach control holds this arrival in an orbit around the approach fix.
+    public internal(set) var holding = false
+    /// Heading (rad) the tower gave for a vector to the approach fix. Nil when the aircraft flies its own route.
+    public internal(set) var vectorHeading: Double?
+    /// Bearing (rad) of the aircraft around the approach fix while it holds.
+    public internal(set) var holdBearing = 0.0
 
     public init(id: String, callsign: String, config: AircraftConfig, kind: TrafficKind, phase: TrafficPhase,
                 position: SIMD3<Double>, heading: Double, speed: Double) {
@@ -153,6 +165,14 @@ public struct TrafficSnapshot: Sendable, Equatable, Identifiable {
     public var takeoffFits: Bool = true
     /// The controller that has the aircraft now. The tower announces changes of facility.
     public var facility: TrafficFacility = .tower
+    /// True while approach control holds this arrival at the approach fix.
+    public var holding: Bool = false
+    /// True while this arrival flies a vector from approach control rather than its own route.
+    public var vectored: Bool = false
+    /// Straight-line distance (m) to the approach fix, where arrivals are vectored, held and released.
+    public var distanceToApproachFix: Double = .infinity
+    /// NED bearing (rad) from the aircraft to the approach fix. A vector to the fix is this heading.
+    public var bearingToApproachFix: Double = 0
 }
 
 /// Things that happened in the last step, for logs and effects.
