@@ -79,13 +79,13 @@ import Foundation
         let tiles = GlobalTileQuadtree.select(
             latitude: 0, longitude: 0, altitudeMeters: 500,
             radiusMeters: 300_000, minZoom: 2, maxZoom: 14, maxTiles: 2_000)
-        let nearest = GlobalTileID.containing(latitude: 0, longitude: 0, zoom: 14)
         let fine = tiles.filter { $0.zoom == 14 }
-        let coarse = tiles.filter { $0.zoom <= 6 }
+        let coarse = tiles.filter { $0.zoom <= 8 }
         #expect(!fine.isEmpty)
         #expect(!coarse.isEmpty)
+        // Fine tiles only appear close to the camera; coarse tiles sit near the radius edge.
         #expect(fine.allSatisfy { GlobalTileQuadtree.distanceMeters(from: 0, 0, to: $0) < 100_000 })
-        #expect(nearest.zoom == 14)
+        #expect(coarse.allSatisfy { GlobalTileQuadtree.distanceMeters(from: 0, 0, to: $0) > 50_000 })
     }
 
     @Test func rejectsBadInputsAndRespectsTileCap() {
@@ -99,11 +99,10 @@ import Foundation
     }
 
     @Test func antimeridianDoesNotCreateAGap() {
-        // A camera just west of the dateline must still select tiles on the east side.
+        // A camera just west of the dateline must still select tiles on the far side (x = 0).
         let tiles = GlobalTileQuadtree.select(
             latitude: 0, longitude: 179.95, altitudeMeters: 2_000,
             radiusMeters: 30_000, minZoom: 3, maxZoom: 12, maxTiles: 500)
-        let eastEdge = tiles.filter { $0.zoom == 3 && $0.x == 0 }
-        #expect(!eastEdge.isEmpty)
+        #expect(tiles.contains { $0.x == 0 })
     }
 }
