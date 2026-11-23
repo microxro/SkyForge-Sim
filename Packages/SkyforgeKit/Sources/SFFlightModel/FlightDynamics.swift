@@ -218,7 +218,11 @@ public struct FlightModel: Sendable {
                 + sigma * (c.stall.autorotation * (-a.clP) * ph + c.stall.wingDropGain * beta)
             let cm = a.cm0 + a.cmAlpha * mp.pitchStability * alpha + a.cmQ * qh + a.cmElevator * de + a.cmFlap * flaps
                 - sigma * c.stall.noseDrop
+            // Past the stall the yaw damping reverses in proportion to `spinYawReversal`: a stalled
+            // yaw rate feeds itself, which is what sustains a spin. Rudder authority is unchanged, so
+            // opposite rudder still opposes the spin.
             let cn = a.cnBeta * beta + a.cnP * ph + a.cnR * rh + a.cnAileron * da + a.cnRudder * dr
+                + sigma * c.stall.spinYawReversal * (-a.cnR) * rh
 
             let sArea = c.wingArea
             // Lift is perpendicular to the airflow in the x-z plane; drag opposes it.

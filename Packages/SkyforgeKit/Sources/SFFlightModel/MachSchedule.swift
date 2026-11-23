@@ -62,10 +62,29 @@ public struct StallBehavior: Sendable, Codable, Equatable {
     public var noseDrop: Double
     /// Angle (rad) before the stall break at which buffet and stall warning begin.
     public var buffetStartMargin: Double
+    /// Fraction of the yaw-damping derivative reversed past the stall. Above zero, a yaw rate in the
+    /// stall feeds itself, which is what sustains a spin. Zero keeps the yaw damping unchanged.
+    public var spinYawReversal: Double
+
     public init(autorotation: Double = 0, wingDropGain: Double = 0, noseDrop: Double = 0,
-                buffetStartMargin: Double = 4 * Double.pi / 180) {
+                buffetStartMargin: Double = 4 * Double.pi / 180, spinYawReversal: Double = 0) {
         self.autorotation = autorotation; self.wingDropGain = wingDropGain
         self.noseDrop = noseDrop; self.buffetStartMargin = buffetStartMargin
+        self.spinYawReversal = spinYawReversal
     }
+
+    // Decoded by hand so configurations saved before `spinYawReversal` existed still load.
+    private enum CodingKeys: String, CodingKey {
+        case autorotation, wingDropGain, noseDrop, buffetStartMargin, spinYawReversal
+    }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        autorotation = try c.decodeIfPresent(Double.self, forKey: .autorotation) ?? 0
+        wingDropGain = try c.decodeIfPresent(Double.self, forKey: .wingDropGain) ?? 0
+        noseDrop = try c.decodeIfPresent(Double.self, forKey: .noseDrop) ?? 0
+        buffetStartMargin = try c.decodeIfPresent(Double.self, forKey: .buffetStartMargin) ?? 4 * Double.pi / 180
+        spinYawReversal = try c.decodeIfPresent(Double.self, forKey: .spinYawReversal) ?? 0
+    }
+
     public static let neutral = StallBehavior()
 }

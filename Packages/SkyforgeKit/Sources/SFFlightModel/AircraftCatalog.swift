@@ -37,7 +37,7 @@ extension AircraftConfig {
                 GearLeg(position: SIMD3(-0.35, 1.35, 1.30), stiffness: 90_000, damping: 7_250, steerable: false, braked: true),
             ],
             propulsion: p,
-            stall: StallBehavior(autorotation: 1.3, wingDropGain: 0.12, noseDrop: 0.10),
+            stall: StallBehavior(autorotation: 1.3, wingDropGain: 0.12, noseDrop: 0.10, spinYawReversal: 1.0),
             retractableGear: true)
         c.groundEffectSpanHeightRatio = 1.0
         return c
@@ -69,7 +69,7 @@ extension AircraftConfig {
                 GearLeg(position: SIMD3(-0.4, 1.8, 1.40), stiffness: 110_000, damping: 10_350, steerable: false, braked: true),
             ],
             propulsion: p,
-            stall: StallBehavior(autorotation: 1.4, wingDropGain: 0.14, noseDrop: 0.10),
+            stall: StallBehavior(autorotation: 1.4, wingDropGain: 0.14, noseDrop: 0.10, spinYawReversal: 1.0),
             retractableGear: true)
     }()
 
