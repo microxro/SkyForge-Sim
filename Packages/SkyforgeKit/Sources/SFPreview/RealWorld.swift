@@ -71,6 +71,7 @@ public struct ImageryGround: GroundAlbedo {
             var nm = near
             ImageryGrading.lift(&nm)                 // after the water mask: dark water stays classified
             ImageryGrading.dehaze(&f)
+            ImageryGrading.sharpen(&f, amount: 0.5)  // far ring: restore edge detail softened by resampling (round 65)
             ImageryGrading.match(far: &f, to: nm)
             self.near = nm; self.far = f
             if var d = detail { ImageryGrading.match(&d, to: nm); self.detail = d } else { self.detail = nil }
