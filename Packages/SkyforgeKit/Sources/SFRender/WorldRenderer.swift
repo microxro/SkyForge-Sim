@@ -271,9 +271,9 @@ public final class WorldRenderer {
     /// CPU suburb mask waiting for its first use with `suburbParcels` on.
     private var pendingSuburb: SuburbMaskRaster?
     private lazy var zeroMacro: MTLTexture = MacroColourPass.zeroTexture(device: device)
-    /// Replace the near-ground tone-map stack with the macro-colour decoupling pass (round 3). On by default from round 65, so the
+    /// Replace the near-ground tone-map stack with the macro-colour decoupling pass (round 3). Off by default again: the round 65 default-on made KBFI lawns brighter and flatter (art lead, 5.5), so the
     /// frames show what players see. Rounds 1–64 were scored with it off.
-    public var macroColourDecoupling = true
+    public var macroColourDecoupling = false
     /// Round 2: suburban parcel fabric (kerbs, sidewalks, driveways, per-lot lawns) on near ground within 2 km, read from the
     /// RGBA8 mask at texture index 11. Off by default: the mask is then not bound (a zero texture is) and the shader's weight is 0,
     /// so the art-tuned frames are unchanged. Needs `landuse.sfl` in the airport's pack. docs/rounds/ROUND2.md.
