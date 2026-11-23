@@ -1,6 +1,5 @@
 // SKYFORGE — Apache-2.0
 import Testing
-import simd
 @testable import SFWorldGen
 
 @Suite("Vegetation wind uniform")

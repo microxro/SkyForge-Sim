@@ -1,6 +1,5 @@
 // SKYFORGE — Apache-2.0
 import Foundation
-import simd
 
 /// Turns the live surface wind into the vegetation sway uniform (`VegUniforms.wind` in VegetationShaders).
 /// Pure maths so it can be tested on Linux; the renderer and the flight view call it each frame.
