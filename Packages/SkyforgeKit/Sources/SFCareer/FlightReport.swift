@@ -7,6 +7,7 @@ public enum FlightKind: Codable, Sendable, Equatable {
     case job(jobID: String)
     case challenge(challengeID: String)
     case mission(missionID: String)
+    case bush(contractID: String)
 }
 
 public struct FlightReport: Codable, Sendable, Equatable {
