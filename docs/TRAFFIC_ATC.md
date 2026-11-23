@@ -104,6 +104,13 @@ counts how it went (see "Traffic in missions" below). Each ownship vector and ho
 `TrafficSystem.apply(_:to:)` carries out the instructions (`TrafficControl`: vector, direct, hold, release).
 `TowerSession` applies them to AI traffic after each decision tick.
 
+## Traffic calls
+
+The tower calls AI traffic to ownship, as a pilot would hear it on the radio. An AI aircraft within 3 km of ownship
+and within 300 m of its height is called once: "N one zero zero, traffic, three o'clock, one mile, same altitude.
+SKY four one seven, SF-1 Trainer." The clock position is relative to ownship's track. The call is cleared once the
+aircraft is beyond 5 km, so a new encounter gets a new call. Calls are advisories: no readback, no clearance.
+
 ## Traffic in missions
 
 A mission turns traffic on with `MissionDefinition.traffic`. Its flight then gets a tower with the field's
