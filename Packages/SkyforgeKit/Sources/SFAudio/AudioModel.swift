@@ -23,9 +23,9 @@ public struct AudioParameters: Sendable, Equatable {
     public var engineLoad: Double = 0          // 0…1, brightens and loudens the exhaust note
     public var engineGain: Double = 0
     /// Engine cylinder firing frequency (4-cylinder, 4-stroke: 2 firings per revolution).
-    public var firingHz: Double { engineRPM / 60 * 2 }
+    public var firingHz: Double { profile.firingHz(engineRPM) }
     /// Propeller blade-pass frequency (two blades).
-    public var bladePassHz: Double { engineRPM / 60 * 2 }
+    public var bladePassHz: Double { profile.bladePassHz(engineRPM) }
     public var windGain: Double = 0
     public var turbulence: Double = 0          // 0…1 gust modulation depth
     public var rainGain: Double = 0
@@ -33,6 +33,8 @@ public struct AudioParameters: Sendable, Equatable {
     public var stallHorn: Bool = false
     /// 0 = headset/closed cabin … 1 = wide open (raises the low-pass cutoff on engine and wind).
     public var cabinOpenness: Double = 0.15
+    /// Engine character for the current aircraft (set by `AudioModel` each update).
+    public var profile: EngineProfile = .inline4
     public init() {}
 
     /// Copy with every value finite and in range (NaN becomes 0), safe to hand to the audio thread.
@@ -100,6 +102,7 @@ public struct AudioModel: Sendable {
         let target = Self.targetRPM(throttle: throttle, trueAirspeed: tas, maxRPM: config.maxRPM)
         rpm += (target - rpm) * (1 - exp(-dt / 0.55))
         params.engineRPM = rpm
+        params.profile = EngineProfile.forAircraft(config)
         params.engineLoad = throttle
         params.engineGain = 0.55 + 0.35 * params.engineLoad
 
