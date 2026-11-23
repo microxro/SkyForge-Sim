@@ -1,6 +1,6 @@
-# Content packs: getting from 0.2 GB to about 5 GB of real scenery
+# Content packs: getting from 0.2 GB to about 15 GB of real content
 
-Goal: about 5 GB of visible, real quality content (high-resolution terrain and imagery for more regions and airports, detailed ground and building textures, aircraft liveries, audio). Everything stays free and openly licensed. Building footprints stay OpenStreetMap-only (`docs/DECISIONS.md`). Attribution goes in `THIRD_PARTY_NOTICES.md` and the in-app list.
+Goal: about 15 GB of visible, real quality content (high-resolution terrain and imagery for more regions and airports, detailed ground and building textures, aircraft liveries, audio, open-world and mission data). Everything stays free and openly licensed. Building footprints stay OpenStreetMap-only (`docs/DECISIONS.md`). Attribution goes in `THIRD_PARTY_NOTICES.md` and the in-app list.
 
 This document is the plan for milestone 1. No pack data is added in this PR.
 
@@ -35,12 +35,14 @@ Initial budget (to be measured when each pack is built, not estimated now):
 
 | Pack | Target size | Milestone |
 |---|---|---|
-| NZQN sharp imagery (Queenstown, z17 to z19) | 2.0 GB | M2 |
-| Terrain at 30 m for the six showcase airports and their ±40 km regions | 0.6 GB | M2 |
-| More airports with terrain and imagery (Sentinel-2 at 10 m where no sharper source exists) | 1.5 GB | M3 |
-| Ground and building textures, liveries | 0.9 GB | M4 |
-| Audio | 0.2 GB | M4 |
-| Headroom | rest, to about 5 GB | M5 |
+| NZQN sharp imagery (Queenstown, z17 to z19) | 3.0 GB | M2 |
+| Terrain at 30 m for the six showcase airports and their ±40 km regions | 1.0 GB | M2 |
+| More airports with terrain and imagery (Sentinel-2 at 10 m where no sharper source exists) | 3.0 GB | M3 |
+| Ground and building textures, liveries | 2.5 GB | M4 |
+| Audio, missions and open-world data (fleet, traffic, mission scripts) | 1.5 GB | M4 |
+| Headroom and per-region detail | rest, to about 15 GB | M5 |
+
+The 15 GB target is set by Pranav (2026-11-23). Pack slots are coordinated with the new missions, aircraft fleet, audio and hi-res region threads.
 
 ## Pipeline (to build)
 
