@@ -196,8 +196,9 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
             s.place(state: state, inputs: inputs)
         }
         s.inputFilter = filter
-        // Touch layout (sensitivity, curve) and the player's saved bindings sit above the defaults.
-        s.mapper = InputMapper(profiles: [.defaults, TouchSettingsStore.load().profile, BindingsStore.load()])
+        // Keyboard and mouse defaults sit above the flight defaults. Touch layout (sensitivity, curve) and the
+        // player's saved bindings sit above those.
+        s.mapper = InputMapper(profiles: [.defaults, .keyboardMouseDefaults, TouchSettingsStore.load().profile, BindingsStore.load()])
         s.gearDownBelowSpeed = GameplayDirector.gearDownSpeed(for: spec)
         return (s, GameplayDirector(aircraft: spec, frame: frame, mission: mission))
     }
