@@ -11,7 +11,7 @@ import SFNavData
 import SFGameplay
 import SFCareer
 
-/// Root view shown by the app: a hub of cards. Items that are not implemented yet are labelled as coming soon.
+/// Root view shown by the app. Items that are not implemented yet are labelled honestly.
 public struct SkyforgeRootView: View {
     @State private var showingSky = false
     @State private var showingFlight = false
@@ -19,8 +19,30 @@ public struct SkyforgeRootView: View {
     @State private var showingInstruments = false
     @State private var flightAircraft = AircraftCatalog.sf1Trainer
     @State private var flightMission: MissionDefinition?
+    @State private var showingTutorial = false
+    /// Set when the tutorial is finished, so the Discovery Flight opens once the tutorial screen has closed.
+    @State private var startDiscoveryFlight = false
+    /// Remembered per device so the tutorial opens automatically only for a new player.
+    @AppStorage("skyforge.tutorial.completed") private var tutorialCompleted = false
 
     public init() {}
+
+    private var tutorialScreen: some View {
+        QuickFlightView(location: .defaultStart, aircraft: AircraftCatalog.sf1Trainer, tutorial: true,
+                        onTutorialFinished: { tutorialCompleted = true; startDiscoveryFlight = true })
+    }
+
+    /// Hands the finished tutorial to the flight school: the first lesson is the Discovery Flight.
+    private func startDiscoveryIfRequested() {
+        guard startDiscoveryFlight else { return }
+        startDiscoveryFlight = false
+        guard let lesson = FlightSchoolCurriculum.lesson(id: "fs-discovery"),
+              let mission = MissionCatalog.mission(id: lesson.missionID) else { return }
+        flightAircraft = AircraftCatalog.sf1Trainer
+        flightMission = mission
+        flightLocation = .defaultStart
+        showingFlight = true
+    }
 
     public var body: some View {
         NavigationStack {
@@ -28,6 +50,13 @@ public struct SkyforgeRootView: View {
                 VStack(alignment: .leading, spacing: 28) {
                     hero
                     SFHubSection(title: "Fly") {
+                        Button {
+                            showingTutorial = true
+                        } label: {
+                            SFHubRowLabel(title: "Learn to fly", subtitle: "Interactive tutorial, then a Discovery Flight", symbol: "graduationcap")
+                        }
+                        .buttonStyle(.plain)
+                        Divider().padding(.leading, 60)
                         NavigationLink {
                             AirportPickerView { location in flightLocation = location; showingFlight = true }
                         } label: {
@@ -111,6 +140,12 @@ public struct SkyforgeRootView: View {
             .fullScreenCover(isPresented: $showingFlight) { QuickFlightView(location: flightLocation, aircraft: flightAircraft, mission: flightMission) }
             #else
             .sheet(isPresented: $showingFlight) { QuickFlightView(location: flightLocation, aircraft: flightAircraft, mission: flightMission).frame(minWidth: 1100, minHeight: 700) }
+            #endif
+            .onAppear { if !tutorialCompleted { showingTutorial = true } }
+            #if os(iOS)
+            .fullScreenCover(isPresented: $showingTutorial, onDismiss: startDiscoveryIfRequested) { tutorialScreen }
+            #else
+            .sheet(isPresented: $showingTutorial, onDismiss: startDiscoveryIfRequested) { tutorialScreen.frame(minWidth: 1100, minHeight: 700) }
             #endif
             .onChange(of: showingFlight) { _, isShowing in
                 if !isShowing { flightAircraft = AircraftCatalog.sf1Trainer; flightMission = nil }   // plain Quick Flight buttons fly the SF-1
