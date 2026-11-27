@@ -144,17 +144,17 @@ public enum TreeModels {
                     // irregular outline instead of collapsing to one ellipsoid on a stick.
                     let pineSub: [(Float, Float, Float, Float)] = [(0.17, 0.05, 0.68, 0.15), (-0.13, 0.13, 0.72, 0.14), (-0.06, -0.17, 0.66, 0.15), (0.05, 0.02, 0.90, 0.12)]
                     for (x, y, z, r) in pineSub.prefix(isLOD ? 2 : 4) {
-                        b.lobe(centre: SIMD3(x, y, z), radii: SIMD3(r, r, r * 0.75), rings: isLOD ? 3 : 5, segments: isLOD ? 5 : 7, bump: 0.25, crown: crown)
+                        b.lobe(centre: SIMD3(x, y, z), radii: SIMD3(r, r, r * 0.75), rings: isLOD ? 2 : 5, segments: isLOD ? 4 : 7, bump: 0.25, crown: crown)
                     }
                 case 2:   // oak: a round mass with side and top lobes
                     b.trunk(z0: -0.03, z1: 0.34, r0: 0.034, r1: 0.026, sides: isLOD ? 4 : 6)
                     let crown = (centre: SIMD3<Float>(0, 0, 0.62), radius: Float(0.46), bottom: Float(0.22), top: Float(1.0))
                     b.lobe(centre: SIMD3(0, 0, 0.62), radii: SIMD3(0.36, 0.36, 0.33), rings: rings, segments: segs, bump: 0.16, crown: crown)
-                    let oakSubs = isLOD ? 3 : 6
+                    let oakSubs = isLOD ? 2 : 6
                     for k in 0..<oakSubs {
                         let a = Float(k) / Float(oakSubs) * 2 * .pi + 0.4, rr = Float(0.19 + 0.05 * Hash.unit(b.rng.next()))
                         let d = Float(0.24 + 0.05 * Hash.unit(b.rng.next())), z = Float(0.50 + 0.22 * Hash.unit(b.rng.next()))
-                        b.lobe(centre: SIMD3(d * cos(a), d * sin(a), z), radii: SIMD3(rr, rr, rr * 0.85), rings: isLOD ? 3 : 5, segments: isLOD ? 5 : 7, bump: 0.22, crown: crown)
+                        b.lobe(centre: SIMD3(d * cos(a), d * sin(a), z), radii: SIMD3(rr, rr, rr * 0.85), rings: isLOD ? 2 : 5, segments: isLOD ? 4 : 7, bump: 0.22, crown: crown)
                     }
                     if !isLOD {
                         b.lobe(centre: SIMD3(0.04, -0.03, 0.84), radii: SIMD3(0.20, 0.20, 0.16), rings: 5, segments: 7, bump: 0.22, crown: crown)
@@ -164,18 +164,18 @@ public enum TreeModels {
                     let crown = (centre: SIMD3<Float>(0, 0, 0.60), radius: Float(0.42), bottom: Float(0.18), top: Float(1.0))
                     b.lobe(centre: SIMD3(0, 0, 0.58), radii: SIMD3(0.23, 0.23, 0.40), rings: rings, segments: segs, bump: 0.16, crown: crown, blend: 0.35)
                     let tallSub: [(Float, Float, Float, Float)] = [(0.13, 0.04, 0.42, 0.15), (-0.11, 0.09, 0.50, 0.15), (-0.02, -0.14, 0.64, 0.14), (0.08, -0.06, 0.80, 0.13), (-0.05, 0.06, 0.88, 0.11)]
-                    for (x, y, z, r) in tallSub.prefix(isLOD ? 3 : 5) {
-                        b.lobe(centre: SIMD3(x, y, z), radii: SIMD3(r, r, r * 1.15), rings: isLOD ? 3 : 5, segments: isLOD ? 5 : 7, bump: 0.24, crown: crown, blend: 0.35)
+                    for (x, y, z, r) in tallSub.prefix(isLOD ? 2 : 5) {
+                        b.lobe(centre: SIMD3(x, y, z), radii: SIMD3(r, r, r * 1.15), rings: isLOD ? 2 : 5, segments: isLOD ? 4 : 7, bump: 0.24, crown: crown, blend: 0.35)
                     }
                 default:  // spreading broadleaf (maple, plane): wide and layered
                     b.trunk(z0: -0.03, z1: 0.38, r0: 0.036, r1: 0.028, sides: isLOD ? 4 : 6)
                     let crown = (centre: SIMD3<Float>(0, 0, 0.66), radius: Float(0.52), bottom: Float(0.30), top: Float(1.0))
                     b.lobe(centre: SIMD3(0, 0, 0.68), radii: SIMD3(0.44, 0.44, 0.27), rings: rings, segments: segs, bump: 0.18, crown: crown)
-                    let spreadSubs = isLOD ? 3 : 7
+                    let spreadSubs = isLOD ? 2 : 7
                     for k in 0..<spreadSubs {
                         let a = Float(k) / Float(spreadSubs) * 2 * .pi, rr = Float(0.17 + 0.05 * Hash.unit(b.rng.next()))
                         let d = Float(0.30 + 0.06 * Hash.unit(b.rng.next())), z = Float(0.56 + 0.16 * Hash.unit(b.rng.next()))
-                        b.lobe(centre: SIMD3(d * cos(a), d * sin(a), z), radii: SIMD3(rr, rr, rr * 0.72), rings: isLOD ? 3 : 5, segments: isLOD ? 5 : 7, bump: 0.22, crown: crown)
+                        b.lobe(centre: SIMD3(d * cos(a), d * sin(a), z), radii: SIMD3(rr, rr, rr * 0.72), rings: isLOD ? 2 : 5, segments: isLOD ? 4 : 7, bump: 0.22, crown: crown)
                     }
                     if !isLOD {
                         b.lobe(centre: SIMD3(-0.03, 0.05, 0.86), radii: SIMD3(0.22, 0.22, 0.13), rings: 5, segments: 7, bump: 0.2, crown: crown)
