@@ -11,8 +11,8 @@ public final class BackgroundAssetsSceneryBackend: SceneryPackBackend, Sendable 
     public init() {}
 
     public func installedSegmentIDs() async -> Set<String> {
-        // BADownloadManager is main-actor isolated and its property can throw.
-        let downloads: [BADownload] = (try? await MainActor.run { try BADownloadManager.shared.currentDownloads }) ?? []
+        // The property is async and isolated: read it with await from this async function.
+        let downloads: [BADownload] = (try? await BADownloadManager.shared.currentDownloads) ?? []
         var ids = Set<String>()
         for download in downloads where download.state == .finished {
             ids.insert(download.identifier)
