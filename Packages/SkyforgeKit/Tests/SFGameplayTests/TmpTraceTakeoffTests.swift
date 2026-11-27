@@ -20,7 +20,7 @@ import SFFlightModel
                 maxV = max(maxV, s.trueAirspeed)
             }
             let line = "TRACE \(a.name) crashed=\(s.crashed) reason=\(s.crashReason ?? "-") maxH=\(String(format: "%.2f", maxH)) maxV=\(String(format: "%.1f", maxV)) rot=\(a.rotateSpeed) z=\(String(format: "%.2f", s.state.positionNED.z))"
-            Issue.record(line)
+            Issue.record("\(line)")
         }
     }
 }
