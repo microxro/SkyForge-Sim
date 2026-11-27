@@ -1,34 +1,32 @@
 // SKYFORGE — Apache-2.0
-// Compile-only probe: each unknown member reports an error, which lists which Background Assets names exist.
-// Removed once the real binding uses the verified calls.
+// Compile-only probe round 2: type names and members. Unknown names report errors.
 #if SCENERY_BACKGROUND_ASSETS && canImport(BackgroundAssets)
 import BackgroundAssets
 
 func _backgroundAssetsProbe(_ m: BADownloadManager, _ d: BADownload) {
+    _ = BAAssetPack.self
+    _ = BAAssetPackManager.self
+    _ = BAContentRequest.self
+    _ = BAURLDownload.self
+    _ = BAManagedDownload.self
+    _ = BADownloadState.self
+    _ = BAAssetPackStatus.self
     _ = m.startForegroundDownload
-    _ = m.startBackgroundDownload
-    _ = m.fetchCurrentDownloads
-    _ = m.ensureDownloaded
-    _ = m.statusForPack
-    _ = m.fetchStatus
-    _ = m.beginDownload
-    _ = m.schedule
     _ = m.cancel
-    _ = m.remove
-    _ = m.delete
-    _ = m.download
+    _ = m.fetchCurrentDownloads
     _ = m.currentDownloads
+    _ = m.assetPacks
+    _ = m.downloads
+    _ = m.status(forPack:)
+    _ = m.statusForPack
     _ = d.identifier
     _ = d.state
-    _ = d.fileURL
-    _ = d.localURL
     _ = d.url
-    _ = d.path
-    _ = d.fileSize
-    _ = d.expectedBytes
-    _ = d.bytesReceived
-    _ = d.progress
-    _ = d.isBackground
     _ = d.error
+    _ = BADownloadState.finished
+    _ = BADownloadState.downloading
+    _ = BADownloadState.failed
+    _ = BADownloadState.waiting
+    _ = BADownloadState.paused
 }
 #endif
