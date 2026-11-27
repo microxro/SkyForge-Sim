@@ -110,12 +110,16 @@ public struct SkyforgeRootView: View {
                             SFHubRowLabel(title: "Controls and bindings", symbol: "gamepad")
                         }
                         .buttonStyle(.plain)
+                        Divider().padding(.leading, 60)
+                        NavigationLink {
+                            SettingsView()
+                        } label: {
+                            SFHubRowLabel(title: "Settings", subtitle: "Graphics, controls and accessibility", symbol: "slider.horizontal.3")
+                        }
+                        .buttonStyle(.plain)
                     }
                     SFHubSection(title: "Coming soon") {
                         SFHubRowLabel(title: "World map", subtitle: "Plan routes across the whole Earth", symbol: "map", showsChevron: false)
-                            .opacity(0.6)
-                        Divider().padding(.leading, 60)
-                        SFHubRowLabel(title: "Settings", subtitle: "Graphics, controls and accessibility", symbol: "slider.horizontal.3", showsChevron: false)
                             .opacity(0.6)
                     }
                     SFHubSection(title: "About") {
@@ -131,31 +135,6 @@ public struct SkyforgeRootView: View {
                         }
                         .buttonStyle(.plain)
                     }
-<<<<<<< HEAD
-                } header: {
-                    Text("Quick Flight")
-                }
-                Section {
-                    Button("Renderer preview (physically based sky, day to twilight)") { showingSky = true }
-                    Button("Instruments demo (steam gauges and SF-1000 PFD)") { showingInstruments = true }
-                    NavigationLink("Controls and bindings") { BindingsView() }
-                    NavigationLink("Settings: graphics, audio, controls, HUD, units, accessibility") { SettingsView() }
-                } header: {
-                    Text("Available")
-                }
-                Section {
-                    Text("World map: not yet available")
-                } header: {
-                    Text("Coming in later phases")
-                }
-                Section {
-                    Text("SKYFORGE is free and open source (Apache-2.0).")
-                        .font(.footnote)
-                    NavigationLink("Acknowledgements and Data Attribution") { AcknowledgementsView() }
-                } header: {
-                    Text("About")
-=======
->>>>>>> origin/main
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
