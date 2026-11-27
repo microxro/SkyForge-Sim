@@ -413,5 +413,30 @@ import SFInstruments
         }
         #expect(upperLight > 30, "stars and moon light the night sky: \(upperLight)")
     }
+
+    /// Night airport frame: a real airport at the ultra tier under the night lighting preset, from the final-approach
+    /// chase camera. It shows the runway and approach lights and the city lights in a real scene, which the sky frame
+    /// and the traffic-light frame do not.
+    @Test(.enabled(if: SkyRegressionTests.hasDevice, "no Metal device on this host"))
+    func nightAirportFrame() async throws {
+        let ident = "KMRY"
+        guard Self.wanted(ident) else { return }
+        let region = try await RealWorldRegion.load(airport: ident, detail: .ultra,
+                                                    transport: Showcase.transport(for: ident, fallback: nil), cache: nil)
+        let data = RealWorldRenderData(region: region, chunkQuads: 32)
+        let session = QuickFlightSession(world: region, start: .final)
+        let cam = session.chaseCamera()
+        let r = try WorldRenderer(lighting: LightingSetup.physicalPreset(.night, azimuthDegrees: 200, cameraHeightMetres: cam.position.z))
+        r.skyUnixTime = 1_795_000_000   // fixed clock so the star field is reproducible
+        r.apply(.ultra)
+        try r.applyRealAirport(data, fieldElevation: region.runwayElevation)
+        try r.setAircraft(QuickFlightWorld.aircraftMesh())
+        let c = session.bodyToENUColumns
+        let img = try r.render(width: Self.width, height: Self.height,
+                               camera: WorldCamera(position: cam.position, target: cam.target),
+                               aircraftPosition: session.positionENU,
+                               aircraftBodyToENU: simd_double3x3(columns: (c.0, c.1, c.2)))
+        Self.save("night_\(ident)_final", img)
+    }
 }
 #endif
