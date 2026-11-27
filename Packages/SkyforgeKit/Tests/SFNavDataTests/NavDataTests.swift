@@ -115,3 +115,45 @@ import SFContent
         #expect(FileManager.default.fileExists(atPath: dir.appendingPathComponent("runways.csv").path))
     }
 }
+
+@Suite struct AirportSearchTests {
+    static let db = NavDataTests.db
+
+    @Test func identAndIataMatchFirst() throws {
+        #expect(AirportSearch.search("ksfo", in: Self.db).first?.airport.ident == "KSFO")
+        #expect(AirportSearch.search("LHR", in: Self.db).first?.airport.ident == "EGLL")
+        #expect(AirportSearch.search("HND", in: Self.db).first?.airport.ident == "RJTT")
+    }
+
+    @Test func nameAndTownMatch() throws {
+        #expect(AirportSearch.search("heathrow", in: Self.db).first?.airport.ident == "EGLL")
+        // "san francisco" is a name prefix of KSFO and a word inside KOAK's name: KSFO ranks first.
+        let sf = AirportSearch.search("san francisco", in: Self.db).map { $0.airport.ident }
+        #expect(sf.first == "KSFO")
+        #expect(sf.contains("KOAK"))
+        #expect(AirportSearch.search("roissy", in: Self.db).first?.airport.ident == "LFPG")
+    }
+
+    @Test func onlyFlyableAirportsAreReturned() {
+        // 00A (heliport) and 0GA2 have no runways in the fixture; AR-0767 has none either.
+        let all = AirportSearch.search("", in: Self.db, limit: 1_000).map { $0.airport.ident }
+        #expect(!all.contains("00A") && !all.contains("0GA2") && !all.contains("AR-0767"))
+        #expect(Set(all) == ["EGLL", "KOAK", "KSFO", "LFPG", "RJTT"])
+        #expect(AirportSearch.search("airnautique", in: Self.db).isEmpty)
+    }
+
+    @Test func noMatchAndLimit() {
+        #expect(AirportSearch.search("zzqxv", in: Self.db).isEmpty)
+        #expect(AirportSearch.search("", in: Self.db, limit: 2).count == 2)
+        #expect(AirportSearch.search("", in: Self.db, limit: 0).isEmpty)
+    }
+
+    @Test func nearestIsSortedByDistance() throws {
+        let nearSFO = Geodetic(latitudeDegrees: 37.60, longitudeDegrees: -122.30, height: 0)
+        let near = AirportSearch.nearest(to: nearSFO, in: Self.db, limit: 3)
+        #expect(near.map { $0.airport.ident }.first == "KSFO")
+        #expect(near.count == 3)
+        for (a, b) in zip(near, near.dropFirst()) { #expect(a.distanceMetres <= b.distanceMetres) }
+        #expect(near[0].flyableRunways >= 1)
+    }
+}
