@@ -29,12 +29,13 @@ public struct CareerState: Codable, Sendable, Equatable {
     public var claimedCampaignStages: Set<String> = []
     public var activeJob: Job?
     public var log: [FlightLogEntry] = []        // most recent last, capped
+    public var firefighting = FirefightingRecord()
     public var airline = AirlineCareer()         // scheduled-route record: rank, reputation, on-time legs
     public init() {}
 
     enum CodingKeys: String, CodingKey {
         case version, pilotName, xp, credits, ownedAircraft, unlockedAchievements, stats, challenges
-        case completedMissions, completedJobIDs, claimedCampaignStages, activeJob, log, airline
+        case completedMissions, completedJobIDs, claimedCampaignStages, activeJob, log, firefighting, airline
     }
 
     /// Tolerant decoding: every field optional so old saves survive new fields; result is always sanitised.
@@ -54,6 +55,7 @@ public struct CareerState: Codable, Sendable, Equatable {
         claimedCampaignStages = try c.decodeIfPresent(Set<String>.self, forKey: .claimedCampaignStages) ?? []
         activeJob = try c.decodeIfPresent(Job.self, forKey: .activeJob)
         log = try c.decodeIfPresent([FlightLogEntry].self, forKey: .log) ?? []
+        firefighting = try c.decodeIfPresent(FirefightingRecord.self, forKey: .firefighting) ?? FirefightingRecord()
         airline = try c.decodeIfPresent(AirlineCareer.self, forKey: .airline) ?? AirlineCareer()
         sanitize()
     }
@@ -79,6 +81,7 @@ public struct CareerState: Codable, Sendable, Equatable {
         ownedAircraft = ownedAircraft.filter { Economy.spec($0) != nil }
         ownedAircraft.insert("org.skyforge.sf1")
         stats.sanitize()
+        firefighting.sanitize()
         airline.sanitize()
         // A tampered attempt count of Int.max would trap on the next `attempts += 1`; scores must stay finite.
         challenges = Dictionary(uniqueKeysWithValues: challenges.filter { Self.validID($0.key) }.prefix(500).map { entry -> (String, ChallengeRecord) in
