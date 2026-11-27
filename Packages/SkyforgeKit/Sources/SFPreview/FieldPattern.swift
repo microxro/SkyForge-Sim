@@ -210,7 +210,9 @@ public struct FieldPattern: Sendable, Equatable {
         let coord = (h >> 24) & 1 == 0 ? u : v
         let rowFade = min(1, max(0, 1 - max(0.05, footprint) * 2.5 / spacing))
         let rowAmp: Float = pasture ? 0.06 : 0.05 + 0.07 * Self.unit(h >> 16)   // contrast varies per field
-        col *= 1 + rowAmp * sin(coord / spacing * 6.2831853) * rowFade
+        // Row phase per parcel (terrain round): mirrors the GPU fieldFactor, so neighbouring fields do not stack into one pattern.
+        let rowPhase = Float(Self.unit((h &* 0x9E37_79B1) >> 8)) * 6.2831853
+        col *= 1 + rowAmp * sin(coord / spacing * 6.2831853 + rowPhase) * rowFade
         // Distance to the parcel border in metres; crisp hedgerow strip, anti-aliased by footprint.
         let edge = min(tu * Self.parcelU, (1 - tu) * Self.parcelU, tv * Self.parcelV, (1 - tv) * Self.parcelV)
         let fp = max(0.05, footprint)

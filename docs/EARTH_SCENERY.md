@@ -31,8 +31,21 @@ The optional, free whole-Earth scenery is a separate download. The base game sta
 - `ScenerySourceResolver`: installed segment, or procedural fallback. Flight never waits for the download.
 - `ScenerySyncNetworkPolicy`: Wi-Fi only unless the player allows cellular.
 
+## Install driver and UI
+
+- `SceneryInstaller` (actor): prepare (space, quota, network checks, then consent), consent, decline, pause, resume, remove. `updates()` streams phase changes.
+- Resume before consent repeats the checks with the current device state. The player is never asked to consent to a stale size or link.
+- `SceneryPackBackend`: the storage seam. Tests use an in-memory fake.
+- `SceneryDownloadView` (SFUI): status, progress, and the next action for each phase.
+
+## App Store Connect and Xcode setup (needed before Background Assets can download)
+
+1. In Xcode, add one Background Asset pack per catalog segment. Name each pack with the segment ID.
+2. Add a Background Asset Downloader extension target from Xcode's template.
+3. In App Store Connect, enable Apple-hosted asset packs for the app. Each release's packs are uploaded there, and the file list is printed for the upload.
+4. Confirm the catalog's `sha256` and `bytes` for each segment match the uploaded archives.
+
 ## Not in this milestone
 
-- Background Assets binding (needs the asset packs uploaded in App Store Connect and a downloader extension target, verified on Apple CI).
-- Download and resume UI in `SFUI`.
+- Background Assets binding (`SceneryPackBackend` for Apple). It needs the App Store Connect and Xcode setup above, and the Apple API calls can't be verified without CI.
 - Renderer and gameplay integration (owned by the Earth integration thread and the renderer owner).

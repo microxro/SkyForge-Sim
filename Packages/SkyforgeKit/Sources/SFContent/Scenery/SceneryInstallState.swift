@@ -52,10 +52,13 @@ public struct ScenerySyncMachine: Sendable, Equatable {
 
     static func next(from phase: ScenerySyncPhase, on event: ScenerySyncEvent) -> ScenerySyncPhase? {
         switch (phase, event) {
-        case (.notInstalled, .requestInstall(let n)) where n > 0:
+        case (.notInstalled, .requestInstall(let n)), (.failed, .requestInstall(let n)):
             return .awaitingConsent(requiredBytes: n)
-        case (.failed(_, _, _), .requestInstall(let n)) where n > 0:
-            return .awaitingConsent(requiredBytes: n)
+        case (.notInstalled, .failed(let f, let retry)):
+            return .failed(f, retryable: retry, totalBytes: 0)
+        case (.awaitingConsent(let n), .failed(let f, let retry)):
+            // A check before any download (storage, quota, network) can fail the request outright.
+            return .failed(f, retryable: retry, totalBytes: n)
 
         case (.awaitingConsent(let n), .consentGiven):
             return .downloading(completedBytes: 0, totalBytes: n)
