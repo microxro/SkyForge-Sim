@@ -7,7 +7,7 @@ import SFMath
 
 extension AircraftConfig {
     /// All flight-model aircraft in this catalog.
-    public static var catalog: [AircraftConfig] { [sf1Trainer, sf2Cruiser, sf3Twin, sf5Jet, sf9Fighter, sfBushcat, sfExecutive] }
+    public static var catalog: [AircraftConfig] { [sf1Trainer, sf2Cruiser, sf3Twin, sf5Jet, sf9Fighter, sfBushcat, sfNarrowbody, sfExecutive] }
 
     /// Looks up a catalog aircraft by id.
     public static func catalogEntry(id: String) -> AircraftConfig? { catalog.first { $0.id == id } }
@@ -186,6 +186,39 @@ extension AircraftConfig {
             propulsion: p,
             stall: StallBehavior(autorotation: 1.3, wingDropGain: 0.12, noseDrop: 0.10),
             retractableGear: false)
+    }()
+
+    /// SF-N Narrowbody (sfNarrowbody): ~58 t twin-turbofan airliner, 130 kN per engine, retractable gear.
+    public static let sfNarrowbody: AircraftConfig = {
+        var a = AeroCoefficients()
+        a.cL0 = 0.50; a.cLAlpha = 4.9; a.cLMaxClean = 1.50; a.cLMaxFlaps = 2.40
+        a.cLQ = 3.0; a.cLElevator = 0.40; a.cLFlap = 0.60
+        a.cD0 = 0.022; a.cDGear = 0.012; a.cDFlap = 0.060; a.cDSpeedbrake = 0.020; a.oswald = 0.82
+        a.cYBeta = -0.45; a.cYRudder = 0.16
+        a.cm0 = 0.0; a.cmAlpha = -1.00; a.cmQ = -15.0; a.cmAlphaDot = -4.0; a.cmElevator = -1.20; a.cmFlap = -0.05
+        a.clBeta = -0.09; a.clP = -0.38; a.clR = 0.08; a.clAileron = 0.14; a.clRudder = 0.012
+        a.cnBeta = 0.09; a.cnP = -0.025; a.cnR = -0.18; a.cnAileron = -0.02; a.cnRudder = -0.06
+        var p = PropulsionConfig(kind: .turbojet, engineCount: 2, engineSpanOffset: 5.0)
+        p.dryThrust = 130_000; p.idleFraction = 0.04; p.windmillDragArea = 0.20
+        return AircraftConfig(
+            id: "org.skyforge.sfn", name: "SF-N Narrowbody",
+            mass: 58_000, inertia: SIMD3(720_000, 2_200_000, 2_800_000), ixz: 0,
+            wingArea: 122, wingSpan: 34, chord: 3.9,
+            aero: a,
+            maxPower: 2_000_000, propDiameter: 1.0, maxRPM: 100,   // informational only (jets use `propulsion`)
+            staticThrustPerWatt: 0.02,
+            stallAlpha: 17 * .pi / 180,
+            elevatorMax: 25 * .pi / 180, aileronMax: 20 * .pi / 180, rudderMax: 25 * .pi / 180,
+            flapMax: 30 * .pi / 180,
+            gear: [
+                GearLeg(position: SIMD3(9.5, 0, 3.3), stiffness: 2_610_000, damping: 261_000, steerable: true, braked: false,
+                        steerAngleMax: 15 * .pi / 180),
+                GearLeg(position: SIMD3(-1.5, -4.8, 3.3), stiffness: 4_060_000, damping: 348_000, steerable: false, braked: true),
+                GearLeg(position: SIMD3(-1.5, 4.8, 3.3), stiffness: 4_060_000, damping: 348_000, steerable: false, braked: true),
+            ],
+            propulsion: p,
+            stall: StallBehavior(autorotation: 1.2, wingDropGain: 0.10, noseDrop: 0.15, buffetStartMargin: 5 * .pi / 180),
+            retractableGear: true)
     }()
 
     /// SF-E Executive (sfExecutive): ~9 t twin-jet business aircraft, 22 kN per engine, retractable gear.
