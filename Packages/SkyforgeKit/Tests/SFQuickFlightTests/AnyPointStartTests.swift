@@ -2,6 +2,7 @@
 import Testing
 import Foundation
 @testable import SFQuickFlight
+import SFImagery
 
 @Suite struct AnyPointStartTests {
     @Test func acceptsAnyPointInsideMercatorRange() throws {
