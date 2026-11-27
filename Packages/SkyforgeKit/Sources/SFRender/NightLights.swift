@@ -184,6 +184,17 @@ public enum AirportLighting {
         return out
     }
 
+    /// Lights for one runway: `threshold` is the low end, `direction` the unit course toward the high end, in
+    /// ENU metres (x east, y north). Lamps sit 0.5 m above the local ground origin.
+    public static func runwayLights(threshold: SIMD2<Float>, direction: SIMD2<Float>, length: Float, width: Float) -> [NightLight] {
+        let dl = (direction.x * direction.x + direction.y * direction.y).squareRoot()
+        guard dl > 0, length > 0, width > 0 else { return [] }
+        let unit = direction / dl
+        let centre = threshold + unit * (length / 2)
+        let heading = atan2(unit.x, unit.y)
+        return runway(centre: SIMD3(centre.x, centre.y, 0.5), headingRad: heading, length: length, width: width, approachSystem: true)
+    }
+
     /// PAPI bar: four lamps 9 m apart left of the runway, aimed along the approach.
     public static func papi(thresholdPoint: SIMD3<Float>, headingRad: Float, runwayHalfWidth: Float, glideDeg: Float = 3.0) -> [NightLight] {
         let fwd = SIMD3<Float>(sin(headingRad), cos(headingRad), 0), right = SIMD3<Float>(cos(headingRad), -sin(headingRad), 0)
