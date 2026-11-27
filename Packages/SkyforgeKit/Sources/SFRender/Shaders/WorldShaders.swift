@@ -547,10 +547,7 @@ public enum WorldShaders {
         float coord = ((h >> 24) & 1u) == 0u ? u : v;
         float rowFade = min(1.0, max(0.0, 1.0 - max(0.05, footprint) * 2.5 / spacing));
         float rowAmp = pasture ? 0.06 : 0.05 + 0.07 * fp_unit(h >> 16);
-        // Row phase per parcel (terrain round): every parcel's rows used to lock to the same world-space phase, so
-        // neighbouring fields stacked into one repeating stripe pattern (SkyWorld farmland). Mirrored in FieldPattern.factor.
-        float rowPhase = fp_unit((h * 0x9E3779B1u) >> 8) * 6.2831853;
-        col *= 1.0 + rowAmp * sin(coord / spacing * 6.2831853 + rowPhase) * rowFade;
+        col *= 1.0 + rowAmp * sin(coord / spacing * 6.2831853) * rowFade;
         float edge = min(min(tu * PU, (1.0 - tu) * PU), min(tv * PV, (1.0 - tv) * PV));
         float fp = max(0.05, footprint);
         float hw = min(HW, max(0.3, 1.5 * fp));
@@ -1929,8 +1926,11 @@ public enum WorldShaders {
             float3 rr = reflect(dir, nW);
             rr.z = abs(rr.z);
             // Open ocean: deep, no shoreline. Imagery lakes: depth and waterline distance from the water mask.
-            float depthM = imageryWater ? mix(0.3, 12.0, smoothstep(0.6, 1.0, shoreWm)) : 200.0;
-            float shoreDistM = imageryWater ? (1.0 - smoothstep(0.6, 0.97, shoreWm)) * 6.0 : 1.0e3;
+            float depthM = imageryWater ? mix(0.3, 25.0, smoothstep(0.6, 1.0, shoreWm)) : 200.0;
+            // shoreDist is 0 at the waterline and grows into the lake. The mask is 1 in the lake interior, so
+            // the ramp must rise with it: the old inverted ramp put shoreline foam over the whole lake (the
+            // white speckle in the NZQN and LSZS frames).
+            float shoreDistM = imageryWater ? smoothstep(0.6, 0.97, shoreWm) * 6.0 : 1.0e3;
             OWOut owo = owShade(fieldW, dir, toSun, ow, wakes, fieldFp, depthM, shoreDistM, float3(0.35, 0.30, 0.22),
                                 skyEnv(u, rr), u.sunColour.rgb, ambient, vis, imageryWater ? 1.0 : 0.0);
             col = owo.colour;
@@ -2044,6 +2044,13 @@ public enum WorldShaders {
                 // Seams stay subtle (they read as dashed road markings at 0.45 on the chase view, round 7).
                 albedo *= 1.0 - 0.22 * aircraftPanels(in.local, localFp);
                 albedo = mix(albedo, float3(0.012, 0.014, 0.022), registrationMark(in.local, localFp));
+                // Round 5 exterior detail (AircraftExteriorShaders): grime and exhaust soot, rivet domes that tilt
+                // the normal and darken their edges. Fuselage skin uses (x, z) metres, wings (x, y).
+                float2 axUV = abs(in.local.y) < 0.75 ? in.local.xz : in.local.xy;
+                albedo *= 1.0 - 0.55 * ax_dirt(in.local, 0.6, localFp);
+                float3 axRivet = ax_rivet(axUV, localFp);
+                n = normalize(ax_tilt(n, axRivet.xy * 0.5));
+                albedo *= 1.0 - 0.25 * axRivet.z;
             }
             float rough = m == 6.0 ? 0.24 : 0.06;   // glossy paint: a visible sun glint
             float3 env = mix(u.ambientGround.rgb, u.skyHorizon.rgb, saturate(reflect(dir, n).z * 0.5 + 0.5));
@@ -2061,6 +2068,11 @@ public enum WorldShaders {
             }
             col = pbrDielectric(albedo, n, -dir, toSun, rough, u.sunColour.rgb, env, vis) * mix(1.0, ao, 0.5)
                 + albedo * ambient * (m == 6.0 ? 1.0 : 0.3) * ao;
+            if (m == 6.0 && dist < 150.0) {
+                // Clearcoat over the paint (round 5): a tighter, lower-energy sun reflection on top of the base gloss.
+                float4 axCC = ax_clearcoat(n, -dir, toSun, u.sunColour.rgb, vis);
+                col = col * (1.0 - 0.5 * axCC.w) + 0.5 * axCC.xyz;
+            }
         } else {
             // Photo terrain in shadow (cast or self-shadowed) gets 35 % more sky light: under the 0.45 exposure,
             // shaded slopes read as featureless near-black masses (round 31: the LSZS high foreground slope).

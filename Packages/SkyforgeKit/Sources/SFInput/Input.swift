@@ -163,8 +163,9 @@ public struct BindingProfile: Codable, Sendable, Equatable {
         Binding(device: .gamepad, control: "gamepad.leftStick.x", target: .axis(.roll), axis: {
             var a = AxisSettings(); a.curve = .exponential(0.4); return a }()),
         Binding(device: .gamepad, control: "gamepad.rightStick.x", target: .axis(.yaw)),
+        // Triggers rest at -1; unipolar maps that rest to 0 so a released trigger never overrides other throttle sources.
         Binding(device: .gamepad, control: "gamepad.rightTrigger", target: .axis(.throttle), axis: {
-            var a = AxisSettings(); a.innerDeadZone = 0.02; return a }()),
+            var a = AxisSettings(); a.innerDeadZone = 0.02; a.unipolar = true; return a }()),
         Binding(device: .gamepad, control: "gamepad.buttonB", target: .action(.flapsDown)),
         Binding(device: .gamepad, control: "gamepad.buttonX", target: .action(.flapsUp)),
     ])

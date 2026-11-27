@@ -13,6 +13,7 @@ struct LogbookView: View {
             Section("Totals") {
                 stat("Flights", "\(logbook.totalFlights)")
                 stat("Hours flown", String(format: "%.1f", logbook.totalSeconds / 3600))
+                stat("Search and rescue missions", "\(logbook.rescues)")
             }
             Section("Aircraft") {
                 if logbook.aircraft.isEmpty {
