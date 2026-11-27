@@ -547,7 +547,10 @@ public enum WorldShaders {
         float coord = ((h >> 24) & 1u) == 0u ? u : v;
         float rowFade = min(1.0, max(0.0, 1.0 - max(0.05, footprint) * 2.5 / spacing));
         float rowAmp = pasture ? 0.06 : 0.05 + 0.07 * fp_unit(h >> 16);
-        col *= 1.0 + rowAmp * sin(coord / spacing * 6.2831853) * rowFade;
+        // Row phase per parcel (terrain round): every parcel's rows used to lock to the same world-space phase, so
+        // neighbouring fields stacked into one repeating stripe pattern (SkyWorld farmland). Mirrored in FieldPattern.factor.
+        float rowPhase = fp_unit((h * 0x9E3779B1u) >> 8) * 6.2831853;
+        col *= 1.0 + rowAmp * sin(coord / spacing * 6.2831853 + rowPhase) * rowFade;
         float edge = min(min(tu * PU, (1.0 - tu) * PU), min(tv * PV, (1.0 - tv) * PV));
         float fp = max(0.05, footprint);
         float hw = min(HW, max(0.3, 1.5 * fp));
