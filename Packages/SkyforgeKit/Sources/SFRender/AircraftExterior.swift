@@ -61,7 +61,7 @@ public enum AircraftExteriorLights {
         .init(name: "left strobe", kind: .strobe, position: SIMD3(-0.3, -5.5, -1.0), colour: white, phase: 0.00, peak: 60),
         .init(name: "right strobe", kind: .strobe, position: SIMD3(-0.3, 5.5, -1.0), colour: white, phase: 0.00, peak: 60),
         .init(name: "tail strobe", kind: .strobe, position: SIMD3(-5.7, 0, -0.55), colour: white, phase: 0.04, peak: 40),
-        .init(name: "beacon", kind: .beacon, position: SIMD3(-5.3, 0, -2.45), colour: red, phase: 0, peak: 25),
+        .init(name: "beacon", kind: .beacon, position: SIMD3(-5.3, 0, -1.90), colour: red, phase: 0, peak: 25),
     ]
 
     /// 0...1 emission of `light` at sim time `t` seconds (position lights are steady).
