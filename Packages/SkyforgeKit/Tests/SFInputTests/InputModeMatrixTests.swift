@@ -190,11 +190,8 @@ struct SimulatedInputHub: Sendable {
         hub.connect(SimulatedDevice(id: "pad", device: .gamepad, analog: ["gamepad.rightTrigger": -1]))
         var m = InputMapper(profiles: [.defaults, .touchDefaults])
         let throttle = m.evaluate(hub.frame()).axes[.throttle] ?? 0
-        // Known bug: the released trigger reads -1 and, having the larger magnitude, overrides the touch lever.
-        // Fix: mark the trigger binding `unipolar` so rest maps to 0. Remove this wrapper when fixed.
-        withKnownIssue("Released gamepad trigger (-1) overrides touch throttle (0.7)") {
-            #expect(abs(throttle - 0.7) < 1e-9)
-        }
+        // A released trigger maps to 0 (unipolar) on main, so the touch lever wins.
+        #expect(abs(throttle - 0.7) < 1e-9)
     }
 
     // MARK: Hot-plug
