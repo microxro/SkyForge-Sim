@@ -20,7 +20,8 @@ enum InputControlCatalog {
                           "gamepad.dpad.up", "gamepad.dpad.down", "gamepad.dpad.left", "gamepad.dpad.right",
                           "gamepad.leftStickButton", "gamepad.rightStickButton",
                           "gamepad.menu", "gamepad.options", "gamepad.home", "gamepad.share"]
-    static let touch = [TouchControls.stickX, TouchControls.stickY, TouchControls.throttle, TouchControls.rudder]
+    static let touch = [TouchControls.stickX, TouchControls.stickY, TouchControls.throttle, TouchControls.rudder,
+                        TouchControls.flapsDown, TouchControls.flapsUp]
     static let tilt = [TiltMapper.rollControl, TiltMapper.pitchControl]
 
     static let known: Set<String> = Set(keyLetters + keyDigits + keyNamed + gamepad + touch + tilt)
@@ -189,11 +190,8 @@ struct SimulatedInputHub: Sendable {
         hub.connect(SimulatedDevice(id: "pad", device: .gamepad, analog: ["gamepad.rightTrigger": -1]))
         var m = InputMapper(profiles: [.defaults, .touchDefaults])
         let throttle = m.evaluate(hub.frame()).axes[.throttle] ?? 0
-        // Known bug: the released trigger reads -1 and, having the larger magnitude, overrides the touch lever.
-        // Fix: mark the trigger binding `unipolar` so rest maps to 0. Remove this wrapper when fixed.
-        withKnownIssue("Released gamepad trigger (-1) overrides touch throttle (0.7)") {
-            #expect(abs(throttle - 0.7) < 1e-9)
-        }
+        // The released trigger rests at -1; its binding is `unipolar`, so rest maps to 0 and does not override the lever.
+        #expect(abs(throttle - 0.7) < 1e-9)
     }
 
     // MARK: Hot-plug
