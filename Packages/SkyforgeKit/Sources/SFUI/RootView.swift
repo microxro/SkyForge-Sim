@@ -110,12 +110,16 @@ public struct SkyforgeRootView: View {
                             SFHubRowLabel(title: "Controls and bindings", symbol: "gamepad")
                         }
                         .buttonStyle(.plain)
+                        Divider().padding(.leading, 60)
+                        NavigationLink {
+                            SettingsView()
+                        } label: {
+                            SFHubRowLabel(title: "Settings", subtitle: "Graphics, controls and accessibility", symbol: "slider.horizontal.3")
+                        }
+                        .buttonStyle(.plain)
                     }
                     SFHubSection(title: "Coming soon") {
                         SFHubRowLabel(title: "World map", subtitle: "Plan routes across the whole Earth", symbol: "map", showsChevron: false)
-                            .opacity(0.6)
-                        Divider().padding(.leading, 60)
-                        SFHubRowLabel(title: "Settings", subtitle: "Graphics, controls and accessibility", symbol: "slider.horizontal.3", showsChevron: false)
                             .opacity(0.6)
                     }
                     SFHubSection(title: "About") {

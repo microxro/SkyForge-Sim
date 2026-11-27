@@ -29,6 +29,8 @@ let package = Package(
         .target(name: "SFPreview", dependencies: ["SFMath", "SFTerrainCore", "SFWorldGen", "SFAtmosphere", "SFImagery"]),
         .target(name: "SFContent", dependencies: ["SFMath", .product(name: "Crypto", package: "swift-crypto")]),
         .target(name: "SFInput", dependencies: ["SFMath"]),
+        // Settings model: graphics, performance, audio, controls, gameplay, HUD, units, accessibility. Pure Swift.
+        .target(name: "SFSettings"),
         .target(name: "SFImagery", dependencies: ["SFMath", "SFContent", "SFTerrainCore"]),
         .target(name: "SFInstruments", dependencies: ["SFMath", "SFAtmosphere", "SFFlightModel"]),
         .target(name: "SFQuickFlight", dependencies: ["SFMath", "SFAtmosphere", "SFWeather", "SFFlightModel", "SFInstruments", "SFInput", "SFWorldGen", "SFPreview", "SFImagery", "SFNavData", "SFTerrainCore", "SFContent"], resources: [.copy("Resources")]),
@@ -52,7 +54,7 @@ let package = Package(
         .target(name: "SFRender", dependencies: ["SFPerf", "SFMath", "SFSim", "SFWeather", "SFTerrainCore", "SFWorldGen", "SFAtmosphere", "SFPreview", "SFQuickFlight"]),
         .target(name: "SFAudio", dependencies: ["SFSim", "SFMath", "SFFlightModel", "SFWeather"]),
         .target(name: "SFPlatform", dependencies: ["SFSim", "SFInput"]),
-        .target(name: "SFUI", dependencies: ["SFSim", "SFRender", "SFWorldGen", "SFPerf", "SFAudio", "SFPlatform", "SFNavData", "SFContent", "SFInstruments", "SFInput", "SFQuickFlight", "SFAtmosphere", "SFWeather", "SFImagery", "SFFlightModel", "SFGameplay", "SFGameplayUI", "SFCareer", "SFTraffic", "SFATC", "SFTutorial"]),
+        .target(name: "SFUI", dependencies: ["SFSim", "SFRender", "SFWorldGen", "SFPerf", "SFAudio", "SFPlatform", "SFNavData", "SFContent", "SFInstruments", "SFInput", "SFSettings", "SFQuickFlight", "SFAtmosphere", "SFWeather", "SFImagery", "SFFlightModel", "SFGameplay", "SFGameplayUI", "SFCareer", "SFTraffic", "SFATC", "SFTutorial"]),
         .executableTarget(name: "SFPreviewCLI", dependencies: ["SFPreview", "SFInstruments", "SFAtmosphere", "SFQuickFlight", "SFImagery", "SFContent", "SFWorldGen", "SFTerrainCore", "SFMath"]),
         // Tests (Swift Testing)
         .testTarget(name: "SFCareerTests", dependencies: ["SFCareer", "SFMath"]),
@@ -71,6 +73,7 @@ let package = Package(
         .testTarget(name: "SFWeatherTests", dependencies: ["SFWeather", "SFContent"]),
         .testTarget(name: "SFNavDataTests", dependencies: ["SFNavData", "SFContent"]),
         .testTarget(name: "SFInputTests", dependencies: ["SFInput"]),
+        .testTarget(name: "SFSettingsTests", dependencies: ["SFSettings"]),
         .testTarget(name: "SFImageryTests", dependencies: ["SFImagery", "SFContent"]),
         .testTarget(name: "SFInstrumentsTests", dependencies: ["SFInstruments", "SFFlightModel", "SFAtmosphere", "SFPreview"]),
         .testTarget(name: "SFQuickFlightTests", dependencies: ["SFQuickFlight", "SFWeather", "SFAtmosphere", "SFFlightModel", "SFInput", "SFPreview", "SFImagery", "SFContent"]),
