@@ -62,6 +62,7 @@ public enum Economy {
         .init(id: "org.skyforge.sff1", name: "SF-F1 Interceptor", seats: 1, payloadKg: 300, rangeKm: 1_900, cruiseKts: 480, minRunwayM: 1_500, purchasePrice: 3_500_000, rentalPerHour: 2_400, fuelBurnKgPerHour: 1_200, unlockLevel: 36, isMilitary: true),
         .init(id: "org.skyforge.sfb", name: "SF-B Bushcat", seats: 3, payloadKg: 500, rangeKm: 900, cruiseKts: 130, minRunwayM: 350, purchasePrice: 180_000, rentalPerHour: 160, fuelBurnKgPerHour: 60, unlockLevel: 7),
         .init(id: "org.skyforge.sfe", name: "SF-E Executive", seats: 8, payloadKg: 1_100, rangeKm: 6_000, cruiseKts: 410, minRunwayM: 1_000, purchasePrice: 6_000_000, rentalPerHour: 1_600, fuelBurnKgPerHour: 900, unlockLevel: 22),
+        .init(id: "org.skyforge.sfn", name: "SF-N Narrowbody", seats: 150, payloadKg: 16_000, rangeKm: 4_000, cruiseKts: 450, minRunwayM: 1_500, purchasePrice: 25_000_000, rentalPerHour: 4_500, fuelBurnKgPerHour: 2_600, unlockLevel: 26),
     ]
 
     /// Aircraft that were once sold but cannot be flown. Owners get the purchase price back on load.

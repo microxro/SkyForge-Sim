@@ -18,7 +18,7 @@ public struct AircraftVariantStyle: Sendable {
 public enum AircraftVariants {
     /// Aircraft ids this file can build (the SF-1 is built by `AircraftMesh`).
     public static let ids = ["org.skyforge.sfc", "org.skyforge.sfa", "org.skyforge.sft1", "org.skyforge.sff1",
-                                 "org.skyforge.sfb", "org.skyforge.sfe"]
+                                 "org.skyforge.sfb", "org.skyforge.sfn", "org.skyforge.sfe"]
 
     /// Wheel contact height below the CG (m) and wing half span, for tests and callers.
     public static func gearZ(for id: String) -> Double? { spec(for: id)?.gearZ }
@@ -196,6 +196,25 @@ public enum AircraftVariants {
                                        mainWidth: 0.22, attachY: 0.45, attachZ: 0.40),
                         style: AircraftVariantStyle(skin: SIMD3(0.78, 0.50, 0.10), surface: SIMD3(0.92, 0.92, 0.90),
                                                     canopy: SIMD3(0.015, 0.022, 0.030), hasPropeller: true))
+        case "org.skyforge.sfn":
+            // Twin-engine narrowbody: a long tube with a tapered tail cone, low swept wing, podded engines under it.
+            let keys: [Key] = [
+                (19.2, 0.60, -1.30, 1.10, 2.4), (17.5, 1.30, -1.85, 1.75, 2.7), (15.0, 1.80, -2.00, 1.95, 3.0),
+                (12.0, 1.95, -2.05, 2.05, 3.2), (4.0, 2.00, -2.10, 2.15, 3.3), (-4.0, 2.00, -2.10, 2.15, 3.3),
+                (-12.0, 1.90, -2.00, 2.10, 3.1), (-16.0, 1.45, -1.75, 1.90, 2.9), (-19.0, 0.55, -1.20, 1.20, 2.5)]
+            return Spec(keys: keys, capLen: 0.30, step: 0.45,
+                        wing: Planform(halfSpan: 17.0, rootLE: 3.5, z: 0.60, rootChord: 5.6, tipChord: 1.8, sweep: deg(28), dihedral: deg(5),
+                                       twistRoot: deg(1.0), twistTip: deg(-1.0)),
+                        wingThickness: 0.12, wingCamber: 0.02,
+                        htail: Planform(halfSpan: 6.5, rootLE: -15.0, z: -0.80, rootChord: 3.0, tipChord: 1.2, sweep: deg(30), dihedral: deg(2)),
+                        fin: Fin(rootLE: -12.5, baseZ: -1.90, height: 5.6, rootChord: 7.0, tipChord: 2.2, sweep: deg(35)),
+                        canopy: Canopy(x0: 17.0, x1: 13.0, width: 0.55, height: 0.35),
+                        power: .nacelles(x0: 3.2, x1: -4.5, y: 6.6, z: 1.20, radius: 1.05),
+                        gearZ: 3.30,
+                        gear: GearSpec(noseX: 9.5, mainX: -1.5, mainY: 4.8, noseRadius: 0.45, mainRadius: 0.70, noseWidth: 0.30,
+                                       mainWidth: 0.50, attachY: 4.2, attachZ: 1.60),
+                        style: AircraftVariantStyle(skin: SIMD3(0.90, 0.91, 0.93), surface: SIMD3(0.82, 0.84, 0.86),
+                                                    canopy: SIMD3(0.015, 0.022, 0.030), hasPropeller: false))
         case "org.skyforge.sfe":
             // Business jet: slim fuselage, low straight-ish wing, podded engines on the wing, T-less fin.
             let keys: [Key] = [
