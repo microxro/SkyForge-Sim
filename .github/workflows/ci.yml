@@ -20,6 +20,40 @@ permissions:
   contents: read
 
 jobs:
+  # Decides whether the macOS job (the scarce, queue-bound runner) is needed. Only pull requests that change
+  # nothing but Markdown skip it; every other change runs all macOS checks. A skipped job counts as passing.
+  changes:
+    runs-on: ubuntu-24.04
+    outputs:
+      apple: ${{ steps.decide.outputs.apple }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Decide whether macOS checks are needed
+        id: decide
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "apple=true" >> "$GITHUB_OUTPUT"
+            echo "Event $EVENT always runs macOS checks."
+            exit 0
+          fi
+          git diff --name-only "$BASE" "$HEAD" > changed.txt
+          # docs/perf_baseline.json is read by the macOS frame-time gate, so only *.md files skip macOS.
+          if [ ! -s changed.txt ] || grep -Evq '\.md$' changed.txt; then
+            echo "apple=true" >> "$GITHUB_OUTPUT"
+            echo "Non-Markdown files changed; macOS checks run."
+          else
+            echo "apple=false" >> "$GITHUB_OUTPUT"
+            echo "Markdown-only change; macOS checks skipped."
+          fi
+
   linux:
     runs-on: ubuntu-24.04
     container: swift:6.3
@@ -31,6 +65,8 @@ jobs:
         with:
           path: Packages/SkyforgeKit/.build
           key: linux-spm-${{ hashFiles('Packages/SkyforgeKit/Package.resolved') }}
+          restore-keys: |
+            linux-spm-
       - name: Build
         shell: bash
         run: |
@@ -46,13 +82,16 @@ jobs:
         run: swift test --disable-automatic-resolution --package-path Packages/SkyforgeKit --filter SoakTests
       - name: Project lint
         run: |
-          apt-get update -qq && apt-get install -y -qq python3 >/dev/null
+          command -v python3 >/dev/null || { apt-get update -qq && apt-get install -y -qq python3 >/dev/null; }
           python3 tools/lint_pbxproj.py
           python3 tools/check_licenses.py
+          python3 tools/region_packs/validate_regions.py
           python3 tools/appstore_preflight.py
           python3 tools/test_ci_frames.py
 
   apple:
+    needs: changes
+    if: ${{ needs.changes.outputs.apple == 'true' }}
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v7
@@ -62,8 +101,24 @@ jobs:
         run: |
           if [ -d /Applications/Xcode_26.6.app ]; then sudo xcode-select -s /Applications/Xcode_26.6.app; fi
           xcodebuild -version
+      # Caches are keyed on the Xcode build and the inputs that change the output. Restore keys fall back to the
+      # newest cache for the same toolchain, so an edit only rebuilds what changed.
+      - name: Cache SwiftPM build
+        uses: actions/cache@v6
+        with:
+          path: Packages/SkyforgeKit/.build
+          key: apple-spm-xcode26.6-${{ hashFiles('Packages/SkyforgeKit/Package.resolved') }}-${{ github.sha }}
+          restore-keys: |
+            apple-spm-xcode26.6-${{ hashFiles('Packages/SkyforgeKit/Package.resolved') }}-
+      - name: Cache Xcode DerivedData
+        uses: actions/cache@v6
+        with:
+          path: ~/Library/Developer/Xcode/DerivedData
+          key: apple-dd-xcode26.6-${{ hashFiles('App/**', 'Packages/SkyforgeKit/Sources/**', 'SKYFORGE.xcodeproj/**') }}-${{ github.sha }}
+          restore-keys: |
+            apple-dd-xcode26.6-
       - name: Metal toolchain (optional, shaders compile at runtime)
-        run: xcodebuild -downloadComponent MetalToolchain || echo "::warning::Metal toolchain download failed (shaders compile at runtime)"
+        run: xcrun metal --version >/dev/null 2>&1 || xcodebuild -downloadComponent MetalToolchain || echo "::warning::Metal toolchain download failed (shaders compile at runtime)"
       - name: plutil lint
         run: plutil -lint SKYFORGE.xcodeproj/project.pbxproj App/Info.plist App/PrivacyInfo.xcprivacy App/SKYFORGE.entitlements
       - name: Package tests (macOS, incl. offscreen Metal regression when a device exists)

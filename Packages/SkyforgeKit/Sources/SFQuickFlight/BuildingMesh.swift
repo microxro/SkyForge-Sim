@@ -273,6 +273,12 @@ public enum BuildingMeshBuilder {
                 let pal = pitched != nil ? roofPalette : flatRoofPalette
                 roof = pal[Int((h0 >> 16) % UInt64(pal.count))] * Float(0.9 + 0.2 * rnd(4))
             }
+            if pitched == nil && style != .tower {
+                // Flat roofs weather differently: tar-grey membrane, pale gravel or a warm coating. Each building's own
+                // hash picks one, so neighbouring flat roofs stop matching one grey (the KBFI and KMRY 2–6 km boxes).
+                let tints: [SIMD3<Float>] = [SIMD3(0.92, 0.92, 0.95), SIMD3(1.02, 1.0, 0.94), SIMD3(1.10, 0.94, 0.84)]
+                roof *= tints[Int((h0 >> 40) % UInt64(tints.count))]
+            }
             if style == .tower { roof = flatRoofPalette[Int((h0 >> 16) % UInt64(flatRoofPalette.count))] * 0.8 }
             let wallStyle = { (halfLen: Double) -> (UInt8, UInt8, UInt8, UInt8) in
                 (seed, style.rawValue, UInt8(max(1, min(255, (halfLen * 2).rounded()))), UInt8(min(255, storeys)))
