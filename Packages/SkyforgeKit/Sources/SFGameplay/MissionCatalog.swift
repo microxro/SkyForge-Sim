@@ -332,8 +332,45 @@ public enum MissionCatalog {
         parTime: 420, timeLimit: 900, areaRadius: 40_000, unlock: .mission("sar-medevac-strip"), surface: .grass,
         survivors: [SurvivorSpawn(id: "ridge", along: 2_000, right: 2_500), SurvivorSpawn(id: "creek", along: 4_500, right: -2_000)])
 
-    public static let all: [MissionDefinition] = [firstFlight, patternLanding, precisionLanding, wingman, intercept, gunnery, lowLevel, dogfight, coastalSurvey, twinBandits, bushStrip, airportTour, valleyRun, waterDropRun, rescuePickup, airshowLoop, radarIntercept, twoShipDefence, ifrApproach, cargoRun, engineOutLanding, scooperFirefight, sarGridSearch, sarMedevacStrip, sarTwoSurvivors]
+    public static let boomRefuel = MissionDefinition(
+        id: "boom-refuel", title: "Boom Refuel", category: .military,
+        briefing: "Catch the tanker on its racetrack and hold the boom envelope behind it until 800 kg has transferred. Stable contact only: a relative speed above 2 m/s drops the connection.",
+        difficulty: 3, recommendedAircraft: AircraftCatalog.sfT1Jet.id, allowedRoles: jets,
+        spawn: MissionSpawn(along: 2_000, up: 3_000, speed: .fixed(170)),
+        targets: [
+            TargetSpawn(id: "tanker", role: .friendly, along: 6_000, right: -2_500, up: 3_000, speed: 150,
+                        behavior: .route(points: [MissionWaypoint(6_000, -2_500, 3_000), MissionWaypoint(12_000, -2_500, 3_000),
+                                                   MissionWaypoint(12_000, 2_500, 3_000), MissionWaypoint(6_000, 2_500, 3_000)],
+                                         loop: true)),
+        ],
+        objectives: [
+            MissionObjective(id: "boom", title: "Take 800 kg on the boom", kind: .refuel(tankerID: "tanker", method: .boom, kilograms: 800), points: 400),
+        ],
+        parTime: 300, timeLimit: 900, areaRadius: 40_000, unlock: .mission("wingman-formation"))
+
+    public static let formationEscort = MissionDefinition(
+        id: "formation-escort", title: "Formation Escort", category: .military,
+        briefing: "Your flight lead and two AI wingmen fly the route. Join echelon right on the lead, then hold that slot through the turns. The AI wingmen keep their own slots.",
+        difficulty: 3, recommendedAircraft: AircraftCatalog.sfT1Jet.id, allowedRoles: jets,
+        spawn: MissionSpawn(along: 650, right: 90, up: 900, speed: .fixed(150)),
+        targets: [
+            TargetSpawn(id: "lead", role: .friendly, along: 1_000, right: 0, up: 900, speed: 140,
+                        behavior: .route(points: [MissionWaypoint(7_000, 0, 900), MissionWaypoint(9_000, 3_500, 1_000),
+                                                   MissionWaypoint(6_000, 7_000, 900), MissionWaypoint(-2_000, 5_000, 900)], loop: false)),
+            TargetSpawn(id: "wing-left", role: .friendly, along: 940, right: -60, up: 900, speed: 140,
+                        behavior: .follow(leaderID: "lead", slot: .echelonLeft, spacing: 60)),
+            TargetSpawn(id: "wing-trail", role: .friendly, along: 910, right: 0, up: 900, speed: 140,
+                        behavior: .follow(leaderID: "lead", slot: .trail, spacing: 60)),
+        ],
+        objectives: [
+            MissionObjective(id: "join", title: "Join echelon right", kind: .formation(leaderID: "lead", slot: .echelonRight, spacing: 60, tolerance: 45, hold: 30), points: 150),
+            MissionObjective(id: "turns", title: "Hold through the turns", kind: .formation(leaderID: "lead", slot: .echelonRight, spacing: 60, tolerance: 45, hold: 60), points: 250),
+        ],
+        parTime: 240, timeLimit: 600, areaRadius: 30_000, unlock: .mission("wingman-formation"))
+
 
     public static func mission(id: String) -> MissionDefinition? { all.first { $0.id == id } }
     public static func missions(in category: MissionCategory) -> [MissionDefinition] { all.filter { $0.category == category } }
+
+    public static let all: [MissionDefinition] = [firstFlight, patternLanding, precisionLanding, wingman, intercept, gunnery, lowLevel, dogfight, coastalSurvey, twinBandits, bushStrip, airportTour, valleyRun, waterDropRun, rescuePickup, airshowLoop, radarIntercept, twoShipDefence, ifrApproach, cargoRun, engineOutLanding, scooperFirefight, sarGridSearch, sarMedevacStrip, sarTwoSurvivors, boomRefuel, formationEscort]
 }

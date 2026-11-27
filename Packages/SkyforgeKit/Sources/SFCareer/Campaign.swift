@@ -36,7 +36,15 @@ public struct Campaign: Sendable, Equatable, Identifiable {
             .init(missionID: "air-combat-training", title: "Air Combat Training", rewardCredits: 6_000, rewardXP: 800),
         ], completionAircraftUnlock: "org.skyforge.sff1")
 
-    public static let all: [Campaign] = [flightSchool, airWing]
+    public static let searchAndRescue = Campaign(
+        id: "search-and-rescue", title: "Search and Rescue", summary: "Find people in the hills, bring them off the strip and fly them to hospital.",
+        stages: [
+            .init(missionID: "sar-grid-search", title: "Grid Search", rewardCredits: 1_200, rewardXP: 200),
+            .init(missionID: "sar-medevac-strip", title: "Medevac from the Strip", rewardCredits: 1_500, rewardXP: 250),
+            .init(missionID: "sar-two-survivors", title: "Two Survivors", rewardCredits: 2_500, rewardXP: 400),
+        ], completionAircraftUnlock: nil)
+
+    public static let all: [Campaign] = [flightSchool, airWing, searchAndRescue]
 }
 
 public struct CampaignProgress: Sendable, Equatable {

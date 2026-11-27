@@ -98,6 +98,8 @@ public enum ObjectiveKind: Sendable, Codable, Equatable {
     case ifrApproach(gateDistance: Double, glideslopeDeg: Double, tolerance: Double, graceTime: Double)
     /// Spot a survivor: stay within `within` metres horizontally of them, airborne and at or below `maxAGL`, for `hold` seconds.
     case spotSurvivor(survivorID: String, within: Double, maxAGL: Double, hold: Double)
+    /// Hook up to a tanker's boom or drogue and take `kilograms` of fuel while in stable contact (see Refueling).
+    case refuel(tankerID: String, method: RefuelMethod, kilograms: Double)
 }
 
 public struct MissionObjective: Sendable, Codable, Equatable, Identifiable {
@@ -152,6 +154,7 @@ public enum MissionTargetBehavior: Sendable, Codable, Equatable {
     case route(points: [MissionWaypoint], loop: Bool)
     case evade(maxTurnRate: Double)
     case dogfight(DogfightSettings)
+    case follow(leaderID: String, slot: FormationSlot, spacing: Double)
 }
 
 public struct TargetSpawn: Sendable, Codable, Equatable {
@@ -178,6 +181,7 @@ public struct TargetSpawn: Sendable, Codable, Equatable {
         case .route(let pts, let loop): b = .route(points: pts.map { $0.ned(f) }, loop: loop)
         case .evade(let r): b = .evade(maxTurnRate: r)
         case .dogfight(let settings): b = .dogfight(settings)
+        case .follow(let leader, let slot, let spacing): b = .follow(leaderID: leader, slot: slot, spacing: spacing)
         }
         return AITarget(id: id, role: role, position: f.ned(along: along, right: right, up: up),
                         heading: f.heading + headingOffset, speed: speed, behavior: b, health: health)
@@ -251,8 +255,17 @@ public struct MissionDefinition: Sendable, Codable, Equatable, Identifiable {
         let survivorIDs = Set(survivors.map(\.id))
         if survivorIDs.count != survivors.count { out.append("duplicate survivor ids") }
         if Set(objectives.map(\.id)).count != objectives.count { out.append("duplicate objective ids") }
+        for t in targets {
+            if case .follow(let leader, _, let spacing) = t.behavior {
+                if !ids.contains(leader) || leader == t.id { out.append("\(t.id): follows an unknown or own leader") }
+                if !(spacing > 0) { out.append("\(t.id): bad follow spacing") }
+            }
+        }
         for o in objectives {
             switch o.kind {
+            case .refuel(let tanker, _, let kilograms):
+                if !ids.contains(tanker) { out.append("\(o.id): unknown tanker id") }
+                if !(kilograms > 0) { out.append("\(o.id): bad fuel quantity") }
             case .destroy(let t):
                 if t.isEmpty { out.append("\(o.id): destroy with no targets") }
                 if !Set(t).isSubset(of: ids) { out.append("\(o.id): unknown target id") }

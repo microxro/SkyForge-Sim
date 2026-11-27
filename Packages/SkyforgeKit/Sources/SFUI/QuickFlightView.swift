@@ -23,6 +23,7 @@ import SFCareer
 import SFGameplayUI
 import SFTraffic
 import SFATC
+import SFTutorial
 
 /// Where Quick Flight takes place.
 public enum QuickFlightLocation: Hashable, Sendable {
@@ -113,6 +114,9 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
     @Published var missionResult: MissionResult?
     @Published var unlockMessage: String?
     private var touchdownDetector = TouchdownDetector()
+    /// The first-flight lessons, when this flight was started from the tutorial. Nil for ordinary flights.
+    @Published var tutorial: TutorialEngine?
+    private var tutorialElapsed: Double = 0
     /// A free flight is recorded to the career once, at its first landing or crash.
     private var careerRecorded = false
     /// AI traffic, the tower and ownship in the tower's picture, for free flight only (missions keep their own rules).
@@ -138,6 +142,9 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
     private var radarLockRequested = false
     private var flareRequested = false
     private var chaffRequested = false
+    let touchLayout = TouchSettingsStore.load()
+    /// Chase-camera pinch distance and two-finger orbit.
+    var chaseControl = ChaseCameraControl()
     var touch = InputMapper.DeviceState()
     private var renderer: WorldRenderer?
     private var governor: QualityGovernor?
@@ -148,11 +155,13 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
     private let start: QuickFlightStart
     let location: QuickFlightLocation
 
-    init(start: QuickFlightStart, location: QuickFlightLocation, aircraft: PlaneSpec, mission: MissionDefinition?) {
+    init(start: QuickFlightStart, location: QuickFlightLocation, aircraft: PlaneSpec, mission: MissionDefinition?,
+         tutorial withTutorial: Bool = false) {
         self.start = start
         self.location = location
         spec = aircraft
         self.mission = mission
+        tutorial = withTutorial ? TutorialEngine() : nil
         let filter = GameplayDirector.makeControlFilter(for: aircraft)
         controlFilter = filter
         let provisional = QuickFlightWorld()
@@ -185,6 +194,8 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
             s.place(state: state, inputs: inputs)
         }
         s.inputFilter = filter
+        // Touch layout (sensitivity, curve) and the player's saved bindings sit above the defaults.
+        s.mapper = InputMapper(profiles: [.defaults, TouchSettingsStore.load().profile, BindingsStore.load()])
         s.gearDownBelowSpeed = GameplayDirector.gearDownSpeed(for: spec)
         return (s, GameplayDirector(aircraft: spec, frame: frame, mission: mission))
     }
@@ -208,6 +219,8 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
     func lockRadarTarget() { radarLockRequested = true }
     func deployFlare() { flareRequested = true }
     func deployChaff() { chaffRequested = true }
+    func pinchChase(scale: Double) { chaseControl.pinch(scale: scale) }
+    func dragChase(points: Double) { chaseControl.drag(points: points) }
 
     func attach(_ view: MTKView) {
         guard let device = view.device ?? MTLCreateSystemDefaultDevice() else { status = .failed("No Metal device."); return }
@@ -326,6 +339,30 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
     func restart(_ s: QuickFlightStart) {
         resetFlight(mission == nil ? s : start)
         crashed = false
+        if var t = tutorial { t.restartLesson(); tutorial = t }   // a crash restarts the lesson, not the whole tutorial
+    }
+
+    /// Runs on the tutorial's own schedule (every other frame) so the prompts do not redraw every frame.
+    private func stepTutorial() {
+        guard var t = tutorial, !t.isFinished else { return }
+        t.update(tutorialSnapshot(), dt: tutorialElapsed)
+        tutorialElapsed = 0
+        tutorial = t
+    }
+
+    func tutorialGotIt() { guard var t = tutorial else { return }; t.confirm(); tutorial = t }
+    func tutorialSkip() { guard var t = tutorial else { return }; t.skip(); tutorial = t }
+
+    /// The aircraft state the lessons check, read from the same instruments the panel shows.
+    func tutorialSnapshot() -> TutorialSnapshot {
+        let d = session.data
+        return TutorialSnapshot(
+            indicatedAirspeedKt: d.indicatedAirspeedKt, groundSpeedKt: d.groundSpeedKt,
+            altitudeAGLFt: session.heightAboveGround * 3.28084, verticalSpeedFpm: d.verticalSpeedFpm,
+            pitchDeg: d.pitchDeg, rollDeg: d.rollDeg, headingDeg: d.headingDeg,
+            runwayHeadingDeg: world.runwayHeading * 180 / .pi,
+            onGround: session.lastOutputs?.weightOnWheels ?? (session.heightAboveGround < 1),
+            throttle: session.inputs.throttle, flapsFraction: d.flapsFraction)
     }
 
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) { depth = nil }
@@ -354,7 +391,7 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
             camera = WorldCamera(position: ck.position, target: ck.target, verticalFOVDeg: 62, up: ck.up, near: 0.05)
             if hudCounter % 4 == 0 { refreshCockpitPFD() }
         } else {
-            let cam = session.chaseCamera()
+            let cam = session.chaseCamera(distance: chaseControl.distance, orbit: chaseControl.orbit)
             camera = WorldCamera(position: cam.position, target: cam.target)
         }
         // Round 5 ocean inputs, live each frame: wind from the flight environment and this aircraft as a wake on
@@ -410,8 +447,10 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
             r.applyQuality(plan, base: qualityBase)
         }
         hudCounter += 1
+        tutorialElapsed += dt
         if hudCounter % 2 == 0 {
             hud = session.data; crashed = session.crashed
+            stepTutorial()
             if mission != nil || !spec.armament.isEmpty { gameplayHUD = director.hud(mach: machNumber, time: session.time) }
         }
         if hudCounter % 60 == 0 { refreshDetail() }
@@ -565,15 +604,26 @@ public struct QuickFlightView: View {
     @StateObject private var controller: QuickFlightController
     @Environment(\.dismiss) private var dismiss
 
+    private let onTutorialFinished: (() -> Void)?
+
     public init(start: QuickFlightStart = .runway, location: QuickFlightLocation = .skyWorld,
-                aircraft: PlaneSpec = AircraftCatalog.sf1Trainer, mission: MissionDefinition? = nil) {
+                aircraft: PlaneSpec = AircraftCatalog.sf1Trainer, mission: MissionDefinition? = nil,
+                tutorial: Bool = false, onTutorialFinished: (() -> Void)? = nil) {
         _controller = StateObject(wrappedValue: QuickFlightController(start: start, location: location,
-                                                                      aircraft: aircraft, mission: mission))
+                                                                      aircraft: aircraft, mission: mission,
+                                                                      tutorial: tutorial))
+        self.onTutorialFinished = onTutorialFinished
     }
 
     public var body: some View {
         ZStack {
             QuickFlightMetalView(controller: controller).ignoresSafeArea()
+            #if os(iOS)
+            CameraGestureSurface(onPinch: { controller.pinchChase(scale: $0) },
+                                 onDrag: { controller.dragChase(points: $0) },
+                                 onDoubleTap: { controller.cockpit.toggle() })
+                .ignoresSafeArea()
+            #endif
             VStack {
                 HStack(alignment: .top) {
                     Button("Close") { dismiss() }.buttonStyle(.borderedProminent)
@@ -639,13 +689,19 @@ public struct QuickFlightView: View {
                     WeaponButtons(controller: controller, hasMissiles: controller.spec.armament.contains(.heatMissile),
                                   hasRadarMissiles: controller.spec.armament.contains(.radarMissile))
                 }
+                if let t = controller.tutorial {
+                    TutorialCard(engine: t, gotIt: controller.tutorialGotIt, skip: controller.tutorialSkip,
+                                 finish: { onTutorialFinished?(); dismiss() })
+                        .frame(maxWidth: 420, alignment: .leading)
+                        .padding(.horizontal)
+                }
                 if !controller.attribution.isEmpty {
                     Text(controller.attribution.joined(separator: " · "))
                         .font(.caption2).padding(6).background(.black.opacity(0.45)).foregroundStyle(.white)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 #if os(iOS)
-                TouchFlightControls { controller.touch = $0 }
+                TouchFlightControls(layout: controller.touchLayout) { controller.touch = $0 }
                 #else
                 Text("W/S pitch · A/D roll · Q/E rudder · gamepad right trigger throttle · F/Shift+F flaps")
                     .font(.caption).padding(8).background(.black.opacity(0.4)).foregroundStyle(.white)
@@ -662,6 +718,7 @@ public struct QuickFlightView: View {
             } else if controller.crashed {
                 VStack(spacing: 12) {
                     Text("Crashed").font(.title.bold())
+                    if controller.tutorial != nil { Text("Your lesson restarts from the top.").font(.callout) }
                     Button("Restart on the runway") { controller.restart(.runway) }.buttonStyle(.borderedProminent)
                 }
                 .padding(24).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))

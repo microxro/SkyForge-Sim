@@ -74,6 +74,8 @@ public struct MissionRuntime: Sendable {
     private var errorSum = 0.0
     private var errorSamples = 0
     private var lostTime = 0.0
+    /// Fuel taken on the current refuel objective, kg.
+    private var transferred = 0.0
     /// Radar lock reported for the current update step only.
     private var currentLockID: String?
     private var initialDistance = 0.0
@@ -151,7 +153,7 @@ public struct MissionRuntime: Sendable {
     private mutating func beginObjective(sample: FlightSample, targets: [AITarget]) {
         hold = 0; routeIndex = 0; belowTime = 0; outOfBandTime = 0
         loopRef = nil; loopPrev = nil; loopAngle = 0; glideOutTime = 0
-        errorSum = 0; errorSamples = 0; lostTime = 0; progress = 0
+        errorSum = 0; errorSamples = 0; lostTime = 0; progress = 0; transferred = 0
         touchedDown = false; touchdownQuality = 1; bounces = 0
         if let obj = currentObjective, case .flyTo(let wp) = obj.kind {
             initialDistance = Self.distance(sample.positionNED, wp.ned(frame))
@@ -310,6 +312,16 @@ public struct MissionRuntime: Sendable {
             if inView { hold += dt } else { hold = 0 }
             progress = max(0, min(1, hold / max(0.1, holdTime)))
             return hold >= holdTime ? .completed(quality: 1) : .running
+        case .refuel(let tankerID, let method, let kilograms):
+            guard let tanker = targets.first(where: { $0.id == tankerID }), !tanker.destroyed else {
+                return .failed("Lost the tanker")
+            }
+            if Refueling.contact(method: method, tanker: tanker, receiverPosition: s.positionNED,
+                                 receiverVelocity: s.velocityNED) == .connected {
+                transferred += Refueling.transferRate(method) * dt
+            }
+            progress = max(0, min(1, transferred / max(1e-6, kilograms)))
+            return transferred >= kilograms ? .completed(quality: 1) : .running
 
         case .identify(let id, let within, let holdTime):
             guard let t = targets.first(where: { $0.id == id }) else { return .failed("Target lost") }
