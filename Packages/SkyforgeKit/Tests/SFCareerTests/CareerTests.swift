@@ -136,10 +136,16 @@ func isFailure(_ r: Result<Void, JobRejection>, _ e: JobRejection) -> Bool {
         let r = FlightReport(kind: .challenge(challengeID: "c1"), aircraftID: "org.skyforge.sf1", arrivalICAO: "KMRY", landed: true,
                              touchdownSinkFPM: 90, touchdownOffsetM: 0.5, touchdownDistancePastThresholdM: 300)
         let first = CareerEngine.apply(r, to: &s, challenge: c)
+        let levelBeforeSecond = s.level
         let second = CareerEngine.apply(r, to: &s, challenge: c)
         #expect(first.medal == .platinum)
         #expect(first.creditsDelta >= AwardMedal.platinum.credits)
-        #expect(second.creditsDelta < AwardMedal.bronze.credits)   // no second payout for the same medal
+        // Level-up credit bonuses are paid for any achievement XP the flight unlocks, so exclude them here:
+        // the challenge itself must pay nothing for the same medal.
+        let levelBonus = levelBeforeSecond < (second.leveledUpTo ?? levelBeforeSecond)
+            ? ((levelBeforeSecond + 1)...(second.leveledUpTo ?? levelBeforeSecond)).reduce(0) { $0 + Economy.levelUpCreditBonus($1) }
+            : 0
+        #expect(second.creditsDelta - levelBonus < AwardMedal.bronze.credits)   // no second payout for the same medal
         #expect(s.challenges["c1"]?.attempts == 2)
         #expect(s.stats.goldMedals == 1)
     }

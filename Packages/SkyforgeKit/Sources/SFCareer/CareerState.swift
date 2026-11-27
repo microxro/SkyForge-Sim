@@ -33,12 +33,13 @@ public struct CareerState: Codable, Sendable, Equatable {
     /// Discovery ids already paid out (see BushExploration). Paid once, ever.
     public var bushDiscoveries: Set<String> = []
     public var log: [FlightLogEntry] = []        // most recent last, capped
+    public var firefighting = FirefightingRecord()
     public var airline = AirlineCareer()         // scheduled-route record: rank, reputation, on-time legs
     public init() {}
 
     enum CodingKeys: String, CodingKey {
         case version, pilotName, xp, credits, ownedAircraft, unlockedAchievements, stats, challenges
-        case completedMissions, completedJobIDs, claimedCampaignStages, activeJob, log, airline
+        case completedMissions, completedJobIDs, claimedCampaignStages, activeJob, log, firefighting, airline
         case activeBushContract, bushDiscoveries
     }
 
@@ -61,6 +62,7 @@ public struct CareerState: Codable, Sendable, Equatable {
         activeBushContract = try? c.decodeIfPresent(BushContract.self, forKey: .activeBushContract)
         bushDiscoveries = try c.decodeIfPresent(Set<String>.self, forKey: .bushDiscoveries) ?? []
         log = try c.decodeIfPresent([FlightLogEntry].self, forKey: .log) ?? []
+        firefighting = try c.decodeIfPresent(FirefightingRecord.self, forKey: .firefighting) ?? FirefightingRecord()
         airline = try c.decodeIfPresent(AirlineCareer.self, forKey: .airline) ?? AirlineCareer()
         sanitize()
     }
@@ -86,6 +88,7 @@ public struct CareerState: Codable, Sendable, Equatable {
         ownedAircraft = ownedAircraft.filter { Economy.spec($0) != nil }
         ownedAircraft.insert("org.skyforge.sf1")
         stats.sanitize()
+        firefighting.sanitize()
         airline.sanitize()
         // A tampered attempt count of Int.max would trap on the next `attempts += 1`; scores must stay finite.
         challenges = Dictionary(uniqueKeysWithValues: challenges.filter { Self.validID($0.key) }.prefix(500).map { entry -> (String, ChallengeRecord) in
@@ -160,13 +163,16 @@ public struct FlightOutcome: Sendable, Equatable {
     public var settlement: JobSettlement?
     /// Discoveries made on this flight (already recorded in the career).
     public var bushDiscoveries: [BushDiscovery] = []
+    /// Discoveries first made by this flight (catalogue ids).
+    public var newDiscoveries: [String] = []
 }
 
 public enum CareerEngine {
     /// Applies one flight to the profile. Deterministic; rejects nothing (a bad report is sanitised, never trusted).
     @discardableResult
     public static func apply(_ raw: FlightReport, to state: inout CareerState,
-                             challenge: Challenge? = nil, catalog: [HangarAircraft] = Economy.catalog) -> FlightOutcome {
+                             challenge: Challenge? = nil, discoveriesReached: [String] = [],
+                             catalog: [HangarAircraft] = Economy.catalog) -> FlightOutcome {
         let r = raw.sanitized()
         let levelBefore = state.level
         var xp = 0, credits = 0
@@ -268,6 +274,13 @@ public enum CareerEngine {
             if let icao = r.arrivalICAO, !icao.isEmpty, icao.count <= 8, st.airportsVisited.count < 5_000 { st.airportsVisited.insert(icao) }
         }
         if credits > 0 { st.creditsEarned += credits }
+
+        // --- exploration: each landmark or scenic point pays out once, ever ---
+        let newDisc = Discoveries.newIDs(reached: discoveriesReached, known: st.discoveries)
+        for id in newDisc {
+            if let d = Discoveries.byID[id] { xp += d.xp }
+            st.discoveries.insert(id)
+        }
         state.stats = st
 
         xp = max(0, xp)
@@ -301,7 +314,8 @@ public enum CareerEngine {
         if state.log.count > CareerState.maxLogEntries { state.log.removeFirst(state.log.count - CareerState.maxLogEntries) }
 
         return FlightOutcome(xpGained: xp, creditsDelta: credits, leveledUpTo: levelAfter > levelBefore ? levelAfter : nil,
-                             newAchievements: newAch, medal: medal, score: score, settlement: settlement, bushDiscoveries: found)
+                             newAchievements: newAch, medal: medal, score: score, settlement: settlement,
+                             bushDiscoveries: found, newDiscoveries: newDisc)
     }
 
     static func updateStreak(_ s: inout CareerStats, day: Int) {

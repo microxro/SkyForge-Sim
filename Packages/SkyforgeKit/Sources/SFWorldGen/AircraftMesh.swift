@@ -31,7 +31,9 @@ public struct AircraftTriangle: Sendable {
 public struct AircraftMeshSpec: Sendable {
     public var span = 11.0, rootChord = 1.63, tipChord = 1.13, wingZ = -1.05, wingX = 0.25, dihedral = 1.6 * Double.pi / 180
     public var fuselageLength = 8.2, noseX = 2.55
-    public var tailSpan = 3.4, tailChord = 1.05, finHeight = 1.70
+    /// Fin height above the tail cone (m). A 172-class trainer has an overall height near 2.7 m, so the fin tip
+    /// sits about 2.9 m above the ground; the old 1.70 m read as a tall box on the chase frame.
+    public var tailSpan = 3.4, tailChord = 1.05, finHeight = 1.15
     /// Wheel contact height below the CG (the flight model's gear contact points).
     public var gearZ = 1.25
     public init() {}
@@ -358,8 +360,9 @@ public enum AircraftMesh {
             tube(SIMD3(0.10, side * 0.535, 0.20), SIMD3(-0.18, side * wy, s.wingZ - wy * tan(s.dihedral) + 0.085),
                  chord: 0.115, thickness: 0.038, part: .surface)
             // Main gear: tapered spring leaf, wheel and fairing.
-            let wc = SIMD3(-0.27, side * 1.27, s.gearZ - 0.22)
-            tube(SIMD3(-0.27, side * 0.42, 0.30), SIMD3(-0.27, side * 1.17, wc.z - 0.02), chord: 0.15, thickness: 0.036, part: .surface,
+            // Track about 2.7 m (a 172-class main gear), so the wheels sit under the wing rather than inboard of it.
+            let wc = SIMD3(-0.27, side * 1.36, s.gearZ - 0.22)
+            tube(SIMD3(-0.27, side * 0.42, 0.30), SIMD3(-0.27, side * 1.26, wc.z - 0.02), chord: 0.15, thickness: 0.036, part: .surface,
                  taper: 0.62, bow: SIMD3(0, side * 0.03, 0.10))
             wheel(wc, radius: 0.22, width: 0.16)
             fairing(wc, radius: 0.22)

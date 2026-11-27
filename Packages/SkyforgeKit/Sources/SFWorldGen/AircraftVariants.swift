@@ -17,7 +17,8 @@ public struct AircraftVariantStyle: Sendable {
 
 public enum AircraftVariants {
     /// Aircraft ids this file can build (the SF-1 is built by `AircraftMesh`).
-    public static let ids = ["org.skyforge.sfc", "org.skyforge.sfa", "org.skyforge.sft1", "org.skyforge.sff1"]
+    public static let ids = ["org.skyforge.sfc", "org.skyforge.sfa", "org.skyforge.sft1", "org.skyforge.sff1",
+                                 "org.skyforge.sfb", "org.skyforge.sfe"]
 
     /// Wheel contact height below the CG (m) and wing half span, for tests and callers.
     public static func gearZ(for id: String) -> Double? { spec(for: id)?.gearZ }
@@ -48,6 +49,10 @@ public enum AircraftVariants {
             for side in [-1.0, 1.0] {
                 intakeTube(intake, side: side, into: &t)
             }
+        case let .nacelles(x0, x1, y, z, radius):
+            for side in [-1.0, 1.0] {
+                nacelle(x0: x0, x1: x1, y: side * y, z: z, radius: radius, into: &t)
+            }
         }
 
         gear(s, into: &t)
@@ -75,6 +80,8 @@ public enum AircraftVariants {
     enum Power {
         case prop(x: Double, z: Double, radius: Double, spinner: Double)
         case jet(nozzleX: Double, z: Double, radius: Double, intake: Intake)
+        /// Twin podded engines at lateral offset `y`: intake at `x0`, nozzle at `x1` (both forward-positive).
+        case nacelles(x0: Double, x1: Double, y: Double, z: Double, radius: Double)
     }
     struct Spec {
         var keys: [Key]
@@ -169,6 +176,44 @@ public enum AircraftVariants {
                         gear: GearSpec(noseX: 3.2, mainX: -0.6, mainY: 1.2, noseRadius: 0.30, mainRadius: 0.40, noseWidth: 0.2,
                                        mainWidth: 0.26, attachY: 1.3, attachZ: 0.22),
                         style: AircraftVariantStyle(skin: SIMD3(0.16, 0.18, 0.21), surface: SIMD3(0.14, 0.16, 0.19),
+                                                    canopy: SIMD3(0.015, 0.022, 0.030), hasPropeller: false))
+        case "org.skyforge.sfb":
+            // High-wing utility single: a deep boxy cabin under a wing on the roof, short tail cone, balloon tyres.
+            let keys: [Key] = [
+                (3.60, 0.30, -0.62, 0.30, 2.6), (3.20, 0.46, -0.84, 0.42, 2.9), (2.00, 0.58, -0.96, 0.54, 3.1),
+                (0.50, 0.62, -0.98, 0.58, 3.2), (-1.00, 0.62, -0.95, 0.56, 3.2), (-2.50, 0.52, -0.88, 0.46, 3.0),
+                (-3.30, 0.36, -0.80, 0.34, 2.8), (-3.80, 0.18, -0.66, 0.22, 2.4)]
+            return Spec(keys: keys, capLen: 0.05, step: 0.07,
+                        wing: Planform(halfSpan: 5.8, rootLE: 0.95, z: -0.80, rootChord: 1.75, tipChord: 1.25, sweep: 0, dihedral: deg(3),
+                                       twistRoot: deg(1.5), twistTip: deg(-1.0)),
+                        wingThickness: 0.14, wingCamber: 0.03,
+                        htail: Planform(halfSpan: 1.7, rootLE: -3.3, z: -0.18, rootChord: 1.0, tipChord: 0.6, sweep: deg(12), dihedral: 0),
+                        fin: Fin(rootLE: -3.0, baseZ: -0.70, height: 1.35, rootChord: 1.4, tipChord: 0.7, sweep: deg(25)),
+                        canopy: Canopy(x0: 1.9, x1: -1.7, width: 0.52, height: 0.36),
+                        power: .prop(x: 3.63, z: -0.05, radius: 1.0, spinner: 0.17),
+                        gearZ: 1.30,
+                        gear: GearSpec(noseX: 1.25, mainX: -0.30, mainY: 1.10, noseRadius: 0.20, mainRadius: 0.27, noseWidth: 0.14,
+                                       mainWidth: 0.22, attachY: 0.45, attachZ: 0.40),
+                        style: AircraftVariantStyle(skin: SIMD3(0.78, 0.50, 0.10), surface: SIMD3(0.92, 0.92, 0.90),
+                                                    canopy: SIMD3(0.015, 0.022, 0.030), hasPropeller: true))
+        case "org.skyforge.sfe":
+            // Business jet: slim fuselage, low straight-ish wing, podded engines on the wing, T-less fin.
+            let keys: [Key] = [
+                (7.00, 0.10, -0.25, 0.20, 2.2), (6.50, 0.45, -0.55, 0.45, 2.6), (5.00, 0.80, -0.90, 0.75, 2.9),
+                (3.00, 0.98, -1.05, 0.95, 3.1), (0.00, 1.00, -1.08, 1.00, 3.2), (-3.00, 0.98, -1.04, 0.98, 3.1),
+                (-5.50, 0.85, -0.95, 0.85, 2.9), (-6.80, 0.55, -0.80, 0.60, 2.6), (-7.30, 0.25, -0.60, 0.40, 2.3)]
+            return Spec(keys: keys, capLen: 0.25, step: 0.14,
+                        wing: Planform(halfSpan: 8.4, rootLE: 1.6, z: 0.35, rootChord: 2.9, tipChord: 1.0, sweep: deg(25), dihedral: deg(4),
+                                       twistRoot: deg(1.0), twistTip: deg(-1.0)),
+                        wingThickness: 0.11, wingCamber: 0.01,
+                        htail: Planform(halfSpan: 4.8, rootLE: -5.4, z: -0.30, rootChord: 2.2, tipChord: 0.9, sweep: deg(30), dihedral: deg(3)),
+                        fin: Fin(rootLE: -4.6, baseZ: -0.95, height: 2.6, rootChord: 2.8, tipChord: 1.1, sweep: deg(38)),
+                        canopy: Canopy(x0: 5.8, x1: 2.4, width: 0.42, height: 0.32),
+                        power: .nacelles(x0: 1.0, x1: -3.2, y: 2.6, z: 0.90, radius: 0.60),
+                        gearZ: 1.60,
+                        gear: GearSpec(noseX: 5.2, mainX: -0.6, mainY: 2.0, noseRadius: 0.30, mainRadius: 0.42, noseWidth: 0.18,
+                                       mainWidth: 0.28, attachY: 1.1, attachZ: 0.90),
+                        style: AircraftVariantStyle(skin: SIMD3(0.14, 0.20, 0.36), surface: SIMD3(0.86, 0.87, 0.89),
                                                     canopy: SIMD3(0.015, 0.022, 0.030), hasPropeller: false))
         default:
             return nil
@@ -278,6 +323,22 @@ public enum AircraftVariants {
             rows.append(AircraftMesh.ring(x: x, w: w, top: roof - c.height * f, bot: roof + 0.10, n: 2.4, seg: 24, waterline: roof + 0.10))
         }
         AircraftMesh.loft(rows, closed: true, part: .glass, into: &t)
+    }
+
+    /// Podded engine under a wing: a metal tube from intake `x0` to nozzle `x1` at lateral `y`, dark face at each end.
+    static func nacelle(x0: Double, x1: Double, y: Double, z: Double, radius r: Double, into t: inout [AircraftTriangle]) {
+        var rows: [[SIMD3<Double>]] = []
+        let steps = 6
+        for k in 0...steps {
+            let u = Double(k) / Double(steps)
+            let x = x0 + (x1 - x0) * u
+            let rr = r * (1.0 - 0.12 * u)
+            rows.append(AircraftMesh.ring(x: x, w: rr, top: z - rr, bot: z + rr, n: 2.4, seg: 20, waterline: z)
+                .map { $0 + SIMD3(0, y, 0) })
+        }
+        AircraftMesh.loft(rows, closed: true, part: .metal, into: &t)
+        disc(x: x0, y: y, z: z, radius: r * 0.95, facing: 1, part: .tyre, into: &t)
+        disc(x: x1, y: y, z: z, radius: r * 0.84, facing: -1, part: .tyre, into: &t)
     }
 
     /// Flat disc facing along ±x (dark intake and nozzle interiors).
