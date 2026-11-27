@@ -155,6 +155,28 @@ import Foundation
         #expect(p.count == 4 && p.allSatisfy { $0.position.x < -22 })
     }
 
+    @Test func runwayLightsFollowTheRunwayDirection() {
+        // Runway 090: threshold at the origin, course due east (ENU x). Lights must lie along +x, centred 1200 m east.
+        let l = AirportLighting.runwayLights(threshold: SIMD2(0, 0), direction: SIMD2(1, 0), length: 2400, width: 45)
+        #expect(!l.isEmpty && l.count <= 512)   // NightLightPass.maxLights
+        let centre = l.filter { $0.kind == .centreline }.map(\.position.x)
+        #expect(abs((centre.min() ?? 0) - 0) < 1 && abs((centre.max() ?? 0) - 2400) < 1)
+        #expect(AirportLighting.runwayLights(threshold: .zero, direction: .zero, length: 2400, width: 45).isEmpty)
+    }
+
+    @Test func cityLightFieldLightsOnlyInsideZonesAndRespectsBudget() {
+        // One 1 km square of commercial land (region metres 0...1000), dark everywhere else.
+        let square: [SIMD2<Float>] = [SIMD2(0, 0), SIMD2(1000, 0), SIMD2(1000, 1000), SIMD2(0, 1000)]
+        let field = CityLightField(zones: [CityLightZone(density: 1, ring: square)])
+        #expect(!field.isEmpty)
+        #expect(field.density(of: CityLights.Cell(x: 1, y: 1)) == 1)          // centre (600, 600): inside
+        #expect(field.density(of: CityLights.Cell(x: 5, y: 5)) == 0)          // centre (2200, 2200): outside
+        let inside = field.lights(camera: SIMD2(600, 600), tier: .high, maxLights: 200)
+        #expect(!inside.isEmpty && inside.count <= 200)
+        #expect(field.lights(camera: SIMD2(600, 600), tier: .high, maxLights: 0).isEmpty)
+        #expect(field.lights(camera: SIMD2(9000, 9000), tier: .high, maxLights: 200).isEmpty)
+    }
+
     @Test func cityLightsDeterministicAndDensityOrdered() {
         let cell = CityLights.Cell(x: 3, y: -2)
         let a = CityLights.lights(cell: cell, density: 0.8), b = CityLights.lights(cell: cell, density: 0.8)
