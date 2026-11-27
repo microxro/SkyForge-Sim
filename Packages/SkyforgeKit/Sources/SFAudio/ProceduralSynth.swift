@@ -63,8 +63,9 @@ public struct ProceduralSynth: Sendable {
         smoothed.turbulence += (p.turbulence - smoothed.turbulence) * k
         smoothed.cabinOpenness += (p.cabinOpenness - smoothed.cabinOpenness) * k
         let running = smoothed.engineRPM > 50
-        let f0 = smoothed.engineRPM / 60 * 2
-        let fb = smoothed.engineRPM / 60 * 2
+        let f0 = p.profile.firingHz(smoothed.engineRPM)
+        let fb = p.profile.bladePassHz(smoothed.engineRPM)
+        let brightness = p.profile.exhaustBrightness
         // Cabin low-pass: headset-closed ~1.4 kHz … open ~6 kHz.
         let cutoff = 1_400 + 4_600 * smoothed.cabinOpenness
         let cabinA = 1 - exp(-twoPi * cutoff * dt)
@@ -81,7 +82,7 @@ public struct ProceduralSynth: Sendable {
                 var h = 1
                 while h <= nyquistHarmonics {
                     let hf = Double(h)
-                    let amp = Self.harmonicAmp[h - 1] * (h == 1 ? 1 : (0.55 + 0.45 * load))
+                    let amp = Self.harmonicAmp[h - 1] * (h == 1 ? 1 : (0.55 + 0.45 * load * brightness))
                     s += amp * sin(hf * enginePhase + 0.7 * hf * hf)
                     h += 1
                 }
