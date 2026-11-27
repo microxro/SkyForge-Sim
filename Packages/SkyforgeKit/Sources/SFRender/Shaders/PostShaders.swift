@@ -197,7 +197,8 @@ public enum PostShaders {
         float d3 = depth.sample(fxd, uv + float2(-1.0, 1.0) * drcp), d4 = depth.sample(fxd, uv + float2(1.0, 1.0) * drcp);
         float dMin = min(d0, min(min(d1, d2), min(d3, d4))), dMax = max(d0, max(max(d1, d2), max(d3, d4)));
         // Reversed-Z depth ∝ 1/distance, so the ratio is scale-free; sky is 0.
-        bool geomEdge = (dMin <= 0.0 && dMax > 0.0) || (dMin > 0.0 && dMax > dMin * 1.04);
+        // fp.y = 1 (wideEdgeAA) filters every pixel, not only geometric edges.
+        bool geomEdge = fp.y > 0.5 || (dMin <= 0.0 && dMax > 0.0) || (dMin > 0.0 && dMax > dMin * 1.04);
         if (!geomEdge) return float4(fx_sharpen(t, uv, rcp, rgbM, fp.x), 1.0);
         float3 rgbNW = t.sample(fx, uv + float2(-1.0, -1.0) * rcp).rgb;
         float3 rgbNE = t.sample(fx, uv + float2( 1.0, -1.0) * rcp).rgb;
