@@ -1,5 +1,6 @@
 // SKYFORGE — Apache-2.0
-// Polls GameController gamepads and keyboards into SFInput device state (Apple platforms only).
+// Reads every connected GameController pad (Xbox, DualSense/DualShock, 8BitDo, MFi, micro gamepads)
+// and the system keyboard into SFInput device state, and reports connect/disconnect (Apple platforms only).
 #if canImport(GameController)
 import GameController
 import SFInput
@@ -18,27 +19,12 @@ public enum GameControllerInput {
         ("key.pageUp", .pageUp), ("key.pageDown", .pageDown), ("key.home", .home), ("key.end", .end),
     ]
 
-    /// Reads the current state of the first extended gamepad and the system keyboard.
+    /// Combined state of every connected controller plus the keyboard, for one frame.
     @MainActor
     public static func poll() -> InputMapper.DeviceState {
         var state = InputMapper.DeviceState()
-        if let pad = GCController.controllers().first?.extendedGamepad {
-            state.analog["gamepad.leftStick.x"] = Double(pad.leftThumbstick.xAxis.value)
-            state.analog["gamepad.leftStick.y"] = Double(pad.leftThumbstick.yAxis.value)
-            state.analog["gamepad.rightStick.x"] = Double(pad.rightThumbstick.xAxis.value)
-            state.analog["gamepad.rightStick.y"] = Double(pad.rightThumbstick.yAxis.value)
-            state.analog["gamepad.rightTrigger"] = Double(pad.rightTrigger.value) * 2 - 1
-            state.analog["gamepad.leftTrigger"] = Double(pad.leftTrigger.value) * 2 - 1
-            if pad.buttonA.isPressed { state.pressed.insert("gamepad.buttonA") }
-            if pad.buttonB.isPressed { state.pressed.insert("gamepad.buttonB") }
-            if pad.buttonX.isPressed { state.pressed.insert("gamepad.buttonX") }
-            if pad.buttonY.isPressed { state.pressed.insert("gamepad.buttonY") }
-            if pad.leftShoulder.isPressed { state.pressed.insert("gamepad.leftShoulder") }
-            if pad.rightShoulder.isPressed { state.pressed.insert("gamepad.rightShoulder") }
-            if pad.dpad.up.isPressed { state.pressed.insert("gamepad.dpad.up") }
-            if pad.dpad.down.isPressed { state.pressed.insert("gamepad.dpad.down") }
-            if pad.dpad.left.isPressed { state.pressed.insert("gamepad.dpad.left") }
-            if pad.dpad.right.isPressed { state.pressed.insert("gamepad.dpad.right") }
+        for pad in GCController.controllers() {
+            state.merge(padState(pad))
         }
         if let kb = GCKeyboard.coalesced?.keyboardInput {
             for (name, code) in keys where kb.button(forKeyCode: code)?.isPressed == true { state.pressed.insert(name) }
@@ -56,6 +42,64 @@ public enum GameControllerInput {
             }
         }
         return state
+    }
+
+    /// State of one controller. Full gamepads use the extended profile; micro gamepads (A, X, menu,
+    /// d-pad) feed the left stick from the d-pad so they can still fly.
+    @MainActor
+    public static func padState(_ pad: GCController) -> InputMapper.DeviceState {
+        var s = InputMapper.DeviceState()
+        func axis(_ v: Float, _ c: GamepadControl) { s.analog[c.rawValue] = Double(v) }
+        func press(_ b: GCControllerButtonInput?, _ c: GamepadControl) {
+            if b?.isPressed == true { s.pressed.insert(c.rawValue) }
+        }
+        if let g = pad.extendedGamepad {
+            axis(g.leftThumbstick.xAxis.value, .leftStickX)
+            axis(g.leftThumbstick.yAxis.value, .leftStickY)
+            axis(g.rightThumbstick.xAxis.value, .rightStickX)
+            axis(g.rightThumbstick.yAxis.value, .rightStickY)
+            s.analog[GamepadControl.leftTrigger.rawValue] = GamepadControl.triggerFromUnit(Double(g.leftTrigger.value))
+            s.analog[GamepadControl.rightTrigger.rawValue] = GamepadControl.triggerFromUnit(Double(g.rightTrigger.value))
+            press(g.buttonA, .buttonA)
+            press(g.buttonB, .buttonB)
+            press(g.buttonX, .buttonX)
+            press(g.buttonY, .buttonY)
+            press(g.leftShoulder, .leftShoulder)
+            press(g.rightShoulder, .rightShoulder)
+            press(g.leftThumbstickButton, .leftStickButton)
+            press(g.rightThumbstickButton, .rightStickButton)
+            press(g.dpad.up, .dpadUp)
+            press(g.dpad.down, .dpadDown)
+            press(g.dpad.left, .dpadLeft)
+            press(g.dpad.right, .dpadRight)
+            press(g.buttonMenu, .menu)
+            press(g.buttonOptions, .options)
+            press(g.buttonHome, .home)
+        } else if let m = pad.microGamepad {
+            axis(m.dpad.xAxis.value, .leftStickX)
+            axis(m.dpad.yAxis.value, .leftStickY)
+            press(m.buttonA, .buttonA)
+            press(m.buttonX, .buttonX)
+            press(m.buttonMenu, .menu)
+            press(m.dpad.up, .dpadUp)
+            press(m.dpad.down, .dpadDown)
+            press(m.dpad.left, .dpadLeft)
+            press(m.dpad.right, .dpadRight)
+        }
+        return s
+    }
+
+    /// Calls `onChange` on the main actor whenever a controller connects or disconnects.
+    /// Keep the returned tokens alive for as long as you want the callbacks.
+    @MainActor
+    public static func observeConnections(_ onChange: @escaping @Sendable @MainActor () -> Void) -> [NSObjectProtocol] {
+        let center = NotificationCenter.default
+        let names: [NSNotification.Name] = [.GCControllerDidConnect, .GCControllerDidDisconnect]
+        return names.map { name in
+            center.addObserver(forName: name, object: nil, queue: .main) { _ in
+                Task { @MainActor in onChange() }
+            }
+        }
     }
 }
 #endif

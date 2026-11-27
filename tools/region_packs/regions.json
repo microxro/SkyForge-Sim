@@ -1,0 +1,227 @@
+{
+  "schema": "skyforge.region-packs/1",
+  "target_total_gb": 5.0,
+  "note": "Famous regions get 5.0 GB in the first wave, inside the 15 GB game total (PR #157). Later waves are optional packs. Sizes are planning estimates, not measurements. bbox values are approximate and must be confirmed before any fetch.",
+  "regions": [
+    {
+      "id": "nyc-manhattan",
+      "name": "New York City, Manhattan skyline",
+      "kind": "city",
+      "bbox": {
+        "min_lat": 40.695,
+        "max_lat": 40.885,
+        "min_lon": -74.03,
+        "max_lon": -73.9
+      },
+      "sources": {
+        "imagery": {
+          "provider": "usgs-orthoimagery",
+          "licence": "public-domain",
+          "res_m": 0.5
+        },
+        "elevation": {
+          "provider": "aws-terrarium-dem",
+          "licence": "see DATA_SOURCES"
+        },
+        "buildings": {
+          "provider": "openstreetmap",
+          "licence": "ODbL-1.0"
+        },
+        "landmarks": {
+          "provider": "original-models",
+          "licence": "Apache-2.0"
+        }
+      },
+      "target_gb": 1.5,
+      "landmarks": [
+        "Empire State Building",
+        "One World Trade Center",
+        "Central Park"
+      ],
+      "wave": "first"
+    },
+    {
+      "id": "grand-canyon-south-rim",
+      "name": "Grand Canyon, South Rim",
+      "kind": "landmark",
+      "bbox": {
+        "min_lat": 36.0,
+        "max_lat": 36.3,
+        "min_lon": -112.3,
+        "max_lon": -111.9
+      },
+      "sources": {
+        "imagery": {
+          "provider": "usgs-orthoimagery",
+          "licence": "public-domain",
+          "res_m": 0.5
+        },
+        "elevation": {
+          "provider": "aws-terrarium-dem",
+          "licence": "see DATA_SOURCES"
+        },
+        "buildings": {
+          "provider": "openstreetmap",
+          "licence": "ODbL-1.0"
+        },
+        "landmarks": {
+          "provider": "original-models",
+          "licence": "Apache-2.0"
+        }
+      },
+      "target_gb": 1.0,
+      "landmarks": [
+        "Grand Canyon Village",
+        "Desert View Watchtower"
+      ],
+      "wave": "first"
+    },
+    {
+      "id": "alps-engadin",
+      "name": "Swiss Alps, Engadin",
+      "kind": "mountains",
+      "bbox": {
+        "min_lat": 46.4,
+        "max_lat": 46.7,
+        "min_lon": 9.6,
+        "max_lon": 10.1
+      },
+      "sources": {
+        "imagery": {
+          "provider": "sentinel2-eox-cloudless",
+          "licence": "CC-BY-4.0",
+          "res_m": 10
+        },
+        "elevation": {
+          "provider": "aws-terrarium-dem",
+          "licence": "see DATA_SOURCES"
+        },
+        "buildings": {
+          "provider": "openstreetmap",
+          "licence": "ODbL-1.0"
+        },
+        "landmarks": {
+          "provider": "original-models",
+          "licence": "Apache-2.0"
+        }
+      },
+      "target_gb": 1.0,
+      "landmarks": [
+        "Samedan airfield (showcase)",
+        "St. Moritz",
+        "Piz Bernina"
+      ],
+      "wave": "first"
+    },
+    {
+      "id": "hawaii-big-island",
+      "name": "Hawaii, Big Island",
+      "kind": "island",
+      "bbox": {
+        "min_lat": 18.9,
+        "max_lat": 20.3,
+        "min_lon": -156.1,
+        "max_lon": -154.8
+      },
+      "sources": {
+        "imagery": {
+          "provider": "sentinel2-eox-cloudless",
+          "licence": "CC-BY-4.0",
+          "res_m": 10
+        },
+        "elevation": {
+          "provider": "aws-terrarium-dem",
+          "licence": "see DATA_SOURCES"
+        },
+        "buildings": {
+          "provider": "openstreetmap",
+          "licence": "ODbL-1.0"
+        },
+        "landmarks": {
+          "provider": "original-models",
+          "licence": "Apache-2.0"
+        }
+      },
+      "target_gb": 1.0,
+      "landmarks": [
+        "Kilauea caldera",
+        "Mauna Kea summit",
+        "Kona coast"
+      ],
+      "wave": "later"
+    },
+    {
+      "id": "norway-geirangerfjord",
+      "name": "Norwegian fjords, Geirangerfjord",
+      "kind": "fjord",
+      "bbox": {
+        "min_lat": 62.0,
+        "max_lat": 62.25,
+        "min_lon": 6.9,
+        "max_lon": 7.4
+      },
+      "sources": {
+        "imagery": {
+          "provider": "sentinel2-eox-cloudless",
+          "licence": "CC-BY-4.0",
+          "res_m": 10
+        },
+        "elevation": {
+          "provider": "aws-terrarium-dem",
+          "licence": "see DATA_SOURCES"
+        },
+        "buildings": {
+          "provider": "openstreetmap",
+          "licence": "ODbL-1.0"
+        },
+        "landmarks": {
+          "provider": "original-models",
+          "licence": "Apache-2.0"
+        }
+      },
+      "target_gb": 0.5,
+      "landmarks": [
+        "Geiranger village",
+        "Seven Sisters waterfall"
+      ],
+      "wave": "first"
+    },
+    {
+      "id": "nz-mount-cook",
+      "name": "New Zealand, Aoraki / Mount Cook",
+      "kind": "mountains",
+      "bbox": {
+        "min_lat": -43.9,
+        "max_lat": -43.4,
+        "min_lon": 169.8,
+        "max_lon": 170.6
+      },
+      "sources": {
+        "imagery": {
+          "provider": "linz-aerial",
+          "licence": "CC-BY-4.0",
+          "res_m": 0.3
+        },
+        "elevation": {
+          "provider": "aws-terrarium-dem",
+          "licence": "see DATA_SOURCES"
+        },
+        "buildings": {
+          "provider": "openstreetmap",
+          "licence": "ODbL-1.0"
+        },
+        "landmarks": {
+          "provider": "original-models",
+          "licence": "Apache-2.0"
+        }
+      },
+      "target_gb": 1.0,
+      "landmarks": [
+        "Aoraki / Mount Cook",
+        "Tasman Glacier",
+        "Mount Cook village"
+      ],
+      "wave": "first"
+    }
+  ]
+}

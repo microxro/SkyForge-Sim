@@ -49,6 +49,9 @@ public enum TouchControls {
     public static let stickY = "touch.stick.y"
     public static let throttle = "touch.throttle"
     public static let rudder = "touch.rudder"
+    /// Touch buttons are actions, so they can be rebound like any other control.
+    public static let flapsDown = "touch.button.flapsDown"
+    public static let flapsUp = "touch.button.flapsUp"
 
     public static func deviceState(stick: TouchStick, throttle: TouchThrottle, rudder: Double = 0) -> InputMapper.DeviceState {
         InputMapper.DeviceState(analog: [stickX: stick.x, stickY: stick.y, Self.throttle: throttle.value, Self.rudder: rudder])
@@ -129,6 +132,8 @@ extension BindingProfile {
             var a = AxisSettings(); a.innerDeadZone = 0; a.smoothing = 0.08; return a }()),
         Binding(device: .tilt, control: TiltMapper.pitchControl, target: .axis(.pitch), axis: {
             var a = AxisSettings(); a.innerDeadZone = 0; a.smoothing = 0.08; return a }()),
+        Binding(device: .touch, control: TouchControls.flapsDown, target: .action(.flapsDown)),
+        Binding(device: .touch, control: TouchControls.flapsUp, target: .action(.flapsUp)),
     ])
 }
 
