@@ -27,7 +27,7 @@ let package = Package(
         .target(name: "SFWorldGen", dependencies: ["SFMath", "SFTerrainCore"]),
         .target(name: "SFOriginalWorld", dependencies: ["SFMath"]),
         .target(name: "SFPreview", dependencies: ["SFMath", "SFTerrainCore", "SFWorldGen", "SFAtmosphere", "SFImagery"]),
-        .target(name: "SFContent", dependencies: ["SFMath", .product(name: "Crypto", package: "swift-crypto")]),
+        .target(name: "SFContent", dependencies: ["SFMath", .product(name: "Crypto", package: "swift-crypto")], swiftSettings: [.define("SCENERY_BACKGROUND_ASSETS")]),
         .target(name: "SFInput", dependencies: ["SFMath"]),
         .target(name: "SFImagery", dependencies: ["SFMath", "SFContent", "SFTerrainCore"]),
         .target(name: "SFInstruments", dependencies: ["SFMath", "SFAtmosphere", "SFFlightModel"]),
