@@ -301,6 +301,17 @@ public struct MissionRuntime: Sendable {
         case .land(let aim, let zone, let maxSink):
             return evaluateLanding(sample: s, aim: aim, zone: zone, maxSink: maxSink)
 
+        case .spotSurvivor(let survivorID, let within, let maxAGL, let holdTime):
+            guard let survivor = mission.survivors.first(where: { $0.id == survivorID }) else {
+                return .failed("Survivor not found")
+            }
+            let p = survivor.ned(frame)
+            // Horizontal distance only: a spotter overhead counts whatever the height, up to the ceiling.
+            let horizontal = Self.distance(SIMD3(s.positionNED.x, s.positionNED.y, 0), SIMD3(p.x, p.y, 0))
+            let inView = !s.onGround && s.heightAGL <= maxAGL && horizontal <= within
+            if inView { hold += dt } else { hold = 0 }
+            progress = max(0, min(1, hold / max(0.1, holdTime)))
+            return hold >= holdTime ? .completed(quality: 1) : .running
         case .refuel(let tankerID, let method, let kilograms):
             guard let tanker = targets.first(where: { $0.id == tankerID }), !tanker.destroyed else {
                 return .failed("Lost the tanker")
