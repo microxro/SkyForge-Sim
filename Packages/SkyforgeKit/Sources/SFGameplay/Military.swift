@@ -15,6 +15,7 @@ public enum TargetBehavior: Sendable, Codable, Equatable {
     case route(points: [SIMD3<Double>], loop: Bool)     // fly NED waypoints
     case evade(maxTurnRate: Double)                     // turn hard away from the threat inside 5 km, weaving
     case dogfight(DogfightSettings)                     // pursue and attack the threat (see Dogfight.steer)
+    case follow(leaderID: String, slot: FormationSlot, spacing: Double)   // hold a slot on a leader (see FormationFlight)
 }
 
 public enum TargetRole: String, Sendable, Codable {
@@ -102,6 +103,9 @@ public struct AITarget: Sendable, Codable, Equatable, Identifiable {
             heading = command.heading
             flightPath = command.flightPath
             speed = command.speed
+        case .follow:
+            // Followers are stepped by FormationFlight.step, after their leader, so this arm only coasts.
+            break
         }
         position += velocity * dt
     }

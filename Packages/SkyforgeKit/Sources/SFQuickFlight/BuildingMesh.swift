@@ -273,6 +273,12 @@ public enum BuildingMeshBuilder {
                 let pal = pitched != nil ? roofPalette : flatRoofPalette
                 roof = pal[Int((h0 >> 16) % UInt64(pal.count))] * Float(0.9 + 0.2 * rnd(4))
             }
+            if pitched == nil && style != .tower {
+                // Flat roofs weather differently: tar-grey membrane, pale gravel or a warm coating. Each building's own
+                // hash picks one, so neighbouring flat roofs stop matching one grey (the KBFI and KMRY 2–6 km boxes).
+                let tints: [SIMD3<Float>] = [SIMD3(0.92, 0.92, 0.95), SIMD3(1.02, 1.0, 0.94), SIMD3(1.10, 0.94, 0.84)]
+                roof *= tints[Int((h0 >> 40) % UInt64(tints.count))]
+            }
             if style == .tower { roof = flatRoofPalette[Int((h0 >> 16) % UInt64(flatRoofPalette.count))] * 0.8 }
             let wallStyle = { (halfLen: Double) -> (UInt8, UInt8, UInt8, UInt8) in
                 (seed, style.rawValue, UInt8(max(1, min(255, (halfLen * 2).rounded()))), UInt8(min(255, storeys)))
@@ -338,6 +344,27 @@ public enum BuildingMeshBuilder {
                     quad(v0, v1, v2, v3)
                 }
                 cap(pr.ring, z: top + pr.rise, colour: roof, st: st)
+                // Brick chimney stack on about 40 % of pitched houses, rising a metre above the ridge. Its corners
+                // must sit inside the roof ring, so a narrow house without room for one gets none.
+                if rnd(8) < 0.4 {
+                    let cc = it.centre, h = 0.45
+                    let stack = [SIMD2(cc.x - h, cc.y - h), SIMD2(cc.x + h, cc.y - h), SIMD2(cc.x + h, cc.y + h), SIMD2(cc.x - h, cc.y + h)]
+                    if stack.allSatisfy({ OSMGeometry.contains(pr.ring, $0) }) {
+                        let zTop = top + pr.rise + 1.0
+                        let brick = srgb(138, 86, 72) * Float(0.85 + 0.3 * rnd(9))
+                        let stackStyle = roofStyle(false, photo: false)
+                        for i in 0..<4 {
+                            let p = stack[i], pn = stack[(i + 1) % 4]
+                            let d = simdNormalize(pn - p), nrm = SIMD3(d.y, -d.x, 0)
+                            let a = vertex(SIMD3(p.x, p.y, top), nrm, brick, .roof, uv: p - it.centre, style: stackStyle)
+                            let b1 = vertex(SIMD3(pn.x, pn.y, top), nrm, brick, .roof, uv: pn - it.centre, style: stackStyle)
+                            let c1 = vertex(SIMD3(pn.x, pn.y, zTop), nrm, brick, .roof, uv: pn - it.centre, style: stackStyle)
+                            let e = vertex(SIMD3(p.x, p.y, zTop), nrm, brick, .roof, uv: p - it.centre, style: stackStyle)
+                            quad(a, b1, c1, e)
+                        }
+                        cap(stack, z: zTop, colour: brick * 0.7, st: stackStyle)
+                    }
+                }
             } else {
                 cap(ring, z: top, colour: roof, st: roofStyle(false, photo: photoRoof))
                 // Parapet coping: a lighter 0.35 m band on top of the parapet walls, so a flat roof reads as a built
