@@ -54,21 +54,27 @@ import Foundation
 @Suite struct ScenerySyncMachineTests {
     @Test func happyPathConsentDownloadVerifyInstall() {
         var m = ScenerySyncMachine()
-        #expect(m.apply(.requestInstall(requiredBytes: 100)))
+        let ok1 = m.apply(.requestInstall(requiredBytes: 100))
+        #expect(ok1)
         #expect(m.phase == .awaitingConsent(requiredBytes: 100))
-        #expect(m.apply(.consentGiven))
-        #expect(m.apply(.progress(completedBytes: 40)))
+        let ok2 = m.apply(.consentGiven)
+        #expect(ok2)
+        let ok3 = m.apply(.progress(completedBytes: 40))
+        #expect(ok3)
         #expect(m.phase == .downloading(completedBytes: 40, totalBytes: 100))
-        #expect(m.apply(.downloadsFinished))
+        let ok4 = m.apply(.downloadsFinished)
+        #expect(ok4)
         #expect(m.phase == .verifying(totalBytes: 100))
-        #expect(m.apply(.verified(release: "r1")))
+        let ok5 = m.apply(.verified(release: "r1"))
+        #expect(ok5)
         #expect(m.phase == .installed(release: "r1", bytes: 100))
     }
 
     @Test func consentDeclinedReturnsToNotInstalled() {
         var m = ScenerySyncMachine()
         m.apply(.requestInstall(requiredBytes: 5))
-        #expect(m.apply(.consentDeclined))
+        let ok6 = m.apply(.consentDeclined)
+        #expect(ok6)
         #expect(m.phase == .notInstalled)
     }
 
@@ -92,24 +98,30 @@ import Foundation
         var m = ScenerySyncMachine(phase: .downloading(completedBytes: 30, totalBytes: 100))
         m.apply(.failed(.network, retryable: true))
         #expect(m.phase == .failed(.network, retryable: true, totalBytes: 100))
-        #expect(m.apply(.resume))
+        let ok7 = m.apply(.resume)
+        #expect(ok7)
         var f = ScenerySyncMachine(phase: .downloading(completedBytes: 30, totalBytes: 100))
         f.apply(.failed(.integrity(segment: "eu-west-z6"), retryable: false))
-        #expect(!f.apply(.resume))
+        let ok8 = f.apply(.resume)
+        #expect(!ok8)
         #expect(f.phase == .failed(.integrity(segment: "eu-west-z6"), retryable: false, totalBytes: 100))
     }
 
     @Test func illegalEventsLeaveStateUnchanged() {
         var m = ScenerySyncMachine()
-        #expect(!m.apply(.consentGiven))
-        #expect(!m.apply(.pause))
-        #expect(!m.apply(.progress(completedBytes: 1)))
+        let ok9 = m.apply(.consentGiven)
+        #expect(!ok9)
+        let ok10 = m.apply(.pause)
+        #expect(!ok10)
+        let ok11 = m.apply(.progress(completedBytes: 1))
+        #expect(!ok11)
         #expect(m.phase == .notInstalled)
     }
 
     @Test func removeIsAlwaysAllowed() {
         var m = ScenerySyncMachine(phase: .installed(release: "r1", bytes: 9))
-        #expect(m.apply(.remove))
+        let ok12 = m.apply(.remove)
+        #expect(ok12)
         #expect(m.phase == .notInstalled)
     }
 }
