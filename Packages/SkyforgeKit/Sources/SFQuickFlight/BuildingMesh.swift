@@ -344,7 +344,8 @@ public enum BuildingMeshBuilder {
                     let p = ring[bi], pn = ring[(bi + 1) % n]
                     let d = simdNormalize(pn - p), out = SIMD2(d.y, -d.x)
                     let m = (p + pn) / 2, hw = 1.1, proj = 1.1
-                    let canopy = [m - d * hw, m + d * hw, m + d * hw + out * proj, m - d * hw + out * proj]
+                    // Counter-clockwise order (prism assumes it): inner edge first, then the outer edge.
+                    let canopy = [m - d * hw, m - d * hw + out * proj, m + d * hw + out * proj, m + d * hw]
                     prism(canopy, z0: base + 2.3, z1: base + 2.5, colour: roof * 0.9)
                 }
             }
