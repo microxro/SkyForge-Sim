@@ -56,6 +56,17 @@ public struct MissionWaypoint: Sendable, Codable, Equatable {
     public func ned(_ f: RunwayFrame) -> SIMD3<Double> { f.ned(along: along, right: right, up: up) }
 }
 
+/// A person on the ground who needs finding (search and rescue). Positioned like waypoints, in runway coordinates.
+public struct SurvivorSpawn: Sendable, Codable, Equatable, Identifiable {
+    public var id: String
+    public var along: Double
+    public var right: Double
+    public init(id: String, along: Double, right: Double) {
+        self.id = id; self.along = along; self.right = right
+    }
+    public func ned(_ f: RunwayFrame) -> SIMD3<Double> { f.ned(along: along, right: right, up: 0) }
+}
+
 public enum ObjectiveKind: Sendable, Codable, Equatable {
     /// Become airborne and reach this height above the ground.
     case takeoff(minHeightAGL: Double)
@@ -85,6 +96,14 @@ public enum ObjectiveKind: Sendable, Codable, Equatable {
     /// Fly a straight-in approach on a glidepath from `gateDistance` metres out to the threshold. Stay within
     /// `tolerance` metres of the centreline and the glidepath (`glideslopeDeg`); fail after `graceTime` seconds out of band.
     case ifrApproach(gateDistance: Double, glideslopeDeg: Double, tolerance: Double, graceTime: Double)
+    /// Pass through the disc of the waypoint's radius, in the plane perpendicular to `headingDeg` (direction of travel,
+    /// degrees from the runway heading, positive to the right). Crossing the plane outside the disc fails the mission.
+    case gate(MissionWaypoint, headingDeg: Double)
+    /// Roll through one full turn about the longitudinal axis, above `minAGL` and at or above `minSpeed` (m/s),
+    /// keeping the pitch drift under 30 degrees. Needs body rates in the flight sample.
+    case aileronRoll(minAGL: Double, minSpeed: Double)
+    /// Spot a survivor: stay within `within` metres horizontally of them, airborne and at or below `maxAGL`, for `hold` seconds.
+    case spotSurvivor(survivorID: String, within: Double, maxAGL: Double, hold: Double)
     /// Hook up to a tanker's boom or drogue and take `kilograms` of fuel while in stable contact (see Refueling).
     case refuel(tankerID: String, method: RefuelMethod, kilograms: Double)
 }
@@ -176,7 +195,7 @@ public struct TargetSpawn: Sendable, Codable, Equatable {
 }
 
 public enum MissionCategory: String, Sendable, Codable, CaseIterable {
-    case training, navigation, landing, military
+    case training, navigation, landing, military, rescue
 
     public var displayName: String { rawValue.prefix(1).uppercased() + rawValue.dropFirst() }
 }
@@ -205,13 +224,15 @@ public struct MissionDefinition: Sendable, Codable, Equatable, Identifiable {
     public var engineFailureAt: Double?
     /// True when the field has traffic and a tower: AI arrivals and departures, approach control, and readbacks.
     public var traffic: Bool
+    /// People to find on the ground (search and rescue). Referenced by `spotSurvivor` objectives.
+    public var survivors: [SurvivorSpawn]
 
     public init(id: String, title: String, category: MissionCategory, briefing: String, difficulty: Int,
                 recommendedAircraft: String, allowedRoles: [AircraftRole] = [], spawn: MissionSpawn,
                 wind: MissionWind = MissionWind(), targets: [TargetSpawn] = [], objectives: [MissionObjective],
                 parTime: Double, timeLimit: Double? = nil, areaRadius: Double? = 40_000, unlock: UnlockRequirement = .none,
                 payload: [PayloadStation] = [], surface: GroundSurface = .paved, engineFailureAt: Double? = nil,
-                traffic: Bool = false) {
+                traffic: Bool = false, survivors: [SurvivorSpawn] = []) {
         self.id = id; self.title = title; self.category = category; self.briefing = briefing
         self.difficulty = difficulty; self.recommendedAircraft = recommendedAircraft
         self.allowedRoles = allowedRoles; self.spawn = spawn; self.wind = wind; self.targets = targets
@@ -219,6 +240,7 @@ public struct MissionDefinition: Sendable, Codable, Equatable, Identifiable {
         self.areaRadius = areaRadius; self.unlock = unlock
         self.payload = payload; self.surface = surface
         self.engineFailureAt = engineFailureAt; self.traffic = traffic
+        self.survivors = survivors
     }
 
     public var isMilitary: Bool { category == .military }
@@ -236,6 +258,8 @@ public struct MissionDefinition: Sendable, Codable, Equatable, Identifiable {
         if let at = engineFailureAt, at < 0 { out.append("engine failure time is negative") }
         let ids = Set(targets.map(\.id))
         if ids.count != targets.count { out.append("duplicate target ids") }
+        let survivorIDs = Set(survivors.map(\.id))
+        if survivorIDs.count != survivors.count { out.append("duplicate survivor ids") }
         if Set(objectives.map(\.id)).count != objectives.count { out.append("duplicate objective ids") }
         for t in targets {
             if case .follow(let leader, _, let spacing) = t.behavior {
@@ -276,6 +300,13 @@ public struct MissionDefinition: Sendable, Codable, Equatable, Identifiable {
                 if gate <= 0 || slope <= 0 || slope > 6 || tol <= 0 || grace < 0 { out.append("\(o.id): bad approach limits") }
             case .loop(let minAGL, let minSpeed):
                 if minAGL <= 0 || minSpeed <= 0 { out.append("\(o.id): bad loop limits") }
+            case .gate(let wp, _):
+                if wp.radius <= 0 { out.append("\(o.id): bad gate radius") }
+            case .aileronRoll(let minAGL, let minSpeed):
+                if minAGL <= 0 || minSpeed <= 0 { out.append("\(o.id): bad roll limits") }
+            case .spotSurvivor(let s, let within, let maxAGL, let hold):
+                if !survivorIDs.contains(s) { out.append("\(o.id): unknown survivor id") }
+                if within <= 0 || maxAGL <= 0 || hold < 0 { out.append("\(o.id): bad spot limits") }
             case .takeoff, .flyTo: break
             }
         }
