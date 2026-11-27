@@ -12,11 +12,15 @@ public struct FlightSample: Sendable, Equatable {
     public var onGround: Bool
     public var crashed: Bool
     public var crashReason: String?
+    /// Body rates p, q, r (rad/s). Only the roll and pitch rates are used, by aileron-roll objectives.
+    public var bodyRates: SIMD3<Double>
 
     public init(time: Double, positionNED: SIMD3<Double>, velocityNED: SIMD3<Double>, heightAGL: Double,
-                onGround: Bool, crashed: Bool = false, crashReason: String? = nil) {
+                onGround: Bool, crashed: Bool = false, crashReason: String? = nil,
+                bodyRates: SIMD3<Double> = .zero) {
         self.time = time; self.positionNED = positionNED; self.velocityNED = velocityNED
         self.heightAGL = heightAGL; self.onGround = onGround; self.crashed = crashed; self.crashReason = crashReason
+        self.bodyRates = bodyRates
     }
 
     public var groundSpeed: Double { (velocityNED.x * velocityNED.x + velocityNED.y * velocityNED.y).squareRoot() }
@@ -68,6 +72,10 @@ public struct MissionRuntime: Sendable {
     private var loopRef: SIMD2<Double>?
     private var loopPrev: Double?
     private var loopAngle = 0.0
+    private var gatePrev: SIMD3<Double>?
+    private var rollAngle = 0.0
+    private var rollCross = 0.0
+    private static let rollPitchLimit = Double.pi / 6
     private var glideOutTime = 0.0
     private var belowTime = 0.0
     private var outOfBandTime = 0.0
@@ -153,9 +161,13 @@ public struct MissionRuntime: Sendable {
     private mutating func beginObjective(sample: FlightSample, targets: [AITarget]) {
         hold = 0; routeIndex = 0; belowTime = 0; outOfBandTime = 0
         loopRef = nil; loopPrev = nil; loopAngle = 0; glideOutTime = 0
+        gatePrev = nil; rollAngle = 0; rollCross = 0
         errorSum = 0; errorSamples = 0; lostTime = 0; progress = 0; transferred = 0
         touchedDown = false; touchdownQuality = 1; bounces = 0
         if let obj = currentObjective, case .flyTo(let wp) = obj.kind {
+            initialDistance = Self.distance(sample.positionNED, wp.ned(frame))
+        }
+        if let obj = currentObjective, case .gate(let wp, _) = obj.kind {
             initialDistance = Self.distance(sample.positionNED, wp.ned(frame))
         }
         // A landing objective that starts with the wheels already down counts the contact as made.
@@ -208,6 +220,16 @@ public struct MissionRuntime: Sendable {
 
     private enum Evaluation { case running, completed(quality: Double), failed(String) }
 
+    /// Unit normal of a gate plane: the direction of travel, `headingDeg` from the runway heading, in NED.
+    static func gateNormal(_ headingDeg: Double, frame: RunwayFrame) -> SIMD3<Double> {
+        let h = headingDeg * .pi / 180
+        let dir = frame.ned(along: cos(h), right: sin(h), up: 0) - frame.ned(along: 0, right: 0, up: 0)
+        let len = planeDot(dir, dir).squareRoot()
+        return len > 0 ? dir / len : SIMD3(1, 0, 0)
+    }
+
+    static func planeDot(_ a: SIMD3<Double>, _ b: SIMD3<Double>) -> Double { (a * b).sum() }
+
     static func distance(_ a: SIMD3<Double>, _ b: SIMD3<Double>) -> Double {
         let d = a - b
         return (d.x * d.x + d.y * d.y + d.z * d.z).squareRoot()
@@ -253,6 +275,35 @@ public struct MissionRuntime: Sendable {
             }
             progress = max(0, min(1, (l.along + gate) / gate))
             return .running
+        case .gate(let wp, let headingDeg):
+            let center = wp.ned(frame)
+            let normal = Self.gateNormal(headingDeg, frame: frame)
+            let p = s.positionNED
+            let prev = gatePrev ?? p
+            gatePrev = p
+            let d0 = Self.planeDot(prev - center, normal)
+            let d1 = Self.planeDot(p - center, normal)
+            progress = initialDistance > 1 ? max(0, min(1, 1 - Self.distance(p, center) / initialDistance)) : 0
+            // Only a crossing from behind the plane to in front of it counts.
+            guard d0 < 0, d1 >= 0 else { return .running }
+            let f = d0 / (d0 - d1)
+            let hit = prev + (p - prev) * f
+            let off = hit - center
+            let inPlane = off - normal * Self.planeDot(off, normal)
+            return Self.planeDot(inPlane, inPlane).squareRoot() <= wp.radius ? .completed(quality: 1) : .failed("Missed the gate")
+
+        case .aileronRoll(let minAGL, let minSpeed):
+            if !s.onGround && s.heightAGL < minAGL { return .failed("Too low for the roll") }
+            if Self.distance(s.velocityNED, .zero) < minSpeed { return .failed("Lost too much speed in the roll") }
+            let p = s.bodyRates.x, q = s.bodyRates.y
+            if abs(p) < 0.05 { rollAngle = 0; rollCross = 0; progress = 0; return .running }
+            if rollAngle * p < 0 { rollAngle = 0; rollCross = 0 }   // reversed roll: start again
+            rollAngle += p * dt
+            rollCross += q * dt
+            if abs(rollCross) > Self.rollPitchLimit { rollAngle = 0; rollCross = 0 }
+            progress = max(0, min(1, abs(rollAngle) / (2 * .pi)))
+            return abs(rollAngle) >= 2 * .pi * 0.9 ? .completed(quality: 1) : .running
+
         case .loop(let minAGL, let minSpeed):
             if !s.onGround && s.heightAGL < minAGL { return .failed("Too low for the loop") }
             if Self.distance(s.velocityNED, .zero) < minSpeed { return .failed("Lost too much speed in the loop") }
