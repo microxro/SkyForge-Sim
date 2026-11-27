@@ -167,7 +167,7 @@ public enum AircraftCatalog {
         config: .sfNarrowbody, role: .airliner,
         summary: "150-seat twin-jet narrowbody. Long range and high speed, and it needs a long runway.",
         limits: EnvelopeLimits(vne: 290, mmo: 0.82, vfe: 120, nzMax: 2.5, nzMin: -1.0, alphaLimit: 0.26),
-        cruiseSpeed: 230, approachSpeed: 76, rotateSpeed: 70, approachFlaps: 1.0,
+        cruiseSpeed: 230, approachSpeed: 76, rotateSpeed: 75, approachFlaps: 1.0,
         flyByWire: false, armament: [], unlock: .medals(12))
 
     /// Twin-jet business aircraft (org.skyforge.sfe): eight seats, smooth and fast.
