@@ -19,13 +19,37 @@ public struct SkyforgeRootView: View {
     @State private var showingInstruments = false
     @State private var flightAircraft = AircraftCatalog.sf1Trainer
     @State private var flightMission: MissionDefinition?
+    @State private var showingTutorial = false
+    /// Set when the tutorial is finished, so the Discovery Flight opens once the tutorial screen has closed.
+    @State private var startDiscoveryFlight = false
+    /// Remembered per device so the tutorial opens automatically only for a new player.
+    @AppStorage("skyforge.tutorial.completed") private var tutorialCompleted = false
 
     public init() {}
+
+    private var tutorialScreen: some View {
+        QuickFlightView(location: .defaultStart, aircraft: AircraftCatalog.sf1Trainer, tutorial: true,
+                        onTutorialFinished: { tutorialCompleted = true; startDiscoveryFlight = true })
+    }
+
+    /// Hands the finished tutorial to the flight school: the first lesson is the Discovery Flight.
+    private func startDiscoveryIfRequested() {
+        guard startDiscoveryFlight else { return }
+        startDiscoveryFlight = false
+        guard let lesson = FlightSchoolCurriculum.lesson(id: "fs-discovery"),
+              let mission = MissionCatalog.mission(id: lesson.missionID) else { return }
+        flightAircraft = AircraftCatalog.sf1Trainer
+        flightMission = mission
+        flightLocation = .defaultStart
+        showingFlight = true
+    }
 
     public var body: some View {
         NavigationStack {
             List {
                 Section {
+                    Button("Learn to fly: interactive tutorial") { showingTutorial = true }
+                        .font(.headline)
                     Button("Fly now: \(Showcase.defaultAirport.name) (real world, works offline)") {
                         flightLocation = .defaultStart; showingFlight = true
                     }
@@ -70,6 +94,12 @@ public struct SkyforgeRootView: View {
             .fullScreenCover(isPresented: $showingFlight) { QuickFlightView(location: flightLocation, aircraft: flightAircraft, mission: flightMission) }
             #else
             .sheet(isPresented: $showingFlight) { QuickFlightView(location: flightLocation, aircraft: flightAircraft, mission: flightMission).frame(minWidth: 1100, minHeight: 700) }
+            #endif
+            .onAppear { if !tutorialCompleted { showingTutorial = true } }
+            #if os(iOS)
+            .fullScreenCover(isPresented: $showingTutorial, onDismiss: startDiscoveryIfRequested) { tutorialScreen }
+            #else
+            .sheet(isPresented: $showingTutorial, onDismiss: startDiscoveryIfRequested) { tutorialScreen.frame(minWidth: 1100, minHeight: 700) }
             #endif
             .onChange(of: showingFlight) { _, isShowing in
                 if !isShowing { flightAircraft = AircraftCatalog.sf1Trainer; flightMission = nil }   // plain Quick Flight buttons fly the SF-1
