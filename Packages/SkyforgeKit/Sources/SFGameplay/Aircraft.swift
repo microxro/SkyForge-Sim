@@ -11,7 +11,7 @@ import SFAtmosphere
 import SFFlightModel
 
 public enum AircraftRole: String, Sendable, Codable, CaseIterable {
-    case lightTrainer, tourer, aerobatic, jetTrainer, fighter
+    case lightTrainer, tourer, aerobatic, jetTrainer, fighter, bush, airliner, businessJet
 
     public var isMilitary: Bool { self == .jetTrainer || self == .fighter }
 
@@ -22,6 +22,9 @@ public enum AircraftRole: String, Sendable, Codable, CaseIterable {
         case .aerobatic: return "Aerobatic"
         case .jetTrainer: return "Jet trainer"
         case .fighter: return "Fighter"
+        case .bush: return "Bush utility"
+        case .airliner: return "Airliner"
+        case .businessJet: return "Business jet"
         }
     }
 }
@@ -151,7 +154,23 @@ public enum AircraftCatalog {
         cruiseSpeed: 220, approachSpeed: 80, rotateSpeed: 80, approachFlaps: 1.0,
         flyByWire: true, armament: [.cannon, .heatMissile, .radarMissile], unlock: .mission("wingman-formation"))
 
-    public static let all: [PlaneSpec] = [sf1Trainer, sfCruiser, sfTwin, sfAerobat, sfT1Jet, sfF1Fighter]
+    /// High-wing bush utility (org.skyforge.sfb): short field, slow, carries three.
+    public static let sfBushcat = PlaneSpec(
+        config: .sfBushcat, role: .bush,
+        summary: "High-wing bush utility. Lands short and slow on rough strips, and carries three.",
+        limits: EnvelopeLimits(vne: 80, mmo: 0.3, vfe: 45, nzMax: 3.8, nzMin: -1.5, alphaLimit: 0.30),
+        cruiseSpeed: 50, approachSpeed: 33, rotateSpeed: 26, approachFlaps: 0.5,
+        flyByWire: false, armament: [], unlock: .medals(4))
+
+    /// Twin-jet business aircraft (org.skyforge.sfe): eight seats, smooth and fast.
+    public static let sfExecutive = PlaneSpec(
+        config: .sfExecutive, role: .businessJet,
+        summary: "Eight-seat business jet. Fast over long range, with a smooth ride.",
+        limits: EnvelopeLimits(vne: 270, mmo: 0.80, vfe: 130, nzMax: 2.5, nzMin: -1.0, alphaLimit: 0.26),
+        cruiseSpeed: 210, approachSpeed: 66, rotateSpeed: 60, approachFlaps: 1.0,
+        flyByWire: false, armament: [], unlock: .medals(8))
+
+    public static let all: [PlaneSpec] = [sf1Trainer, sfCruiser, sfTwin, sfAerobat, sfT1Jet, sfF1Fighter, sfBushcat, sfExecutive]
 
     public static func spec(id: String) -> PlaneSpec? { all.first { $0.id == id } }
     public static var civil: [PlaneSpec] { all.filter { !$0.isMilitary } }
