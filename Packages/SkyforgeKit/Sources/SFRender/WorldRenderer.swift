@@ -168,6 +168,9 @@ public final class WorldRenderer {
     }
     /// FXAA on the final frame (the scene renders into an internal texture first).
     public var antialiasing = true
+    /// Off by default. When on, the final FXAA pass also filters sky, cloud and shimmering edges that the
+    /// depth-edge test skips. Set per frame; the frames harness renders both states for comparison.
+    public var wideEdgeAA = false
     private let fxaaPipeline: MTLRenderPipelineState
     private var sceneTarget: MTLTexture?
     private var real: (vertices: MTLBuffer, indices: MTLBuffer, draws: [(indexOffset: Int, indexCount: Int, baseVertex: Int, min: SIMD3<Float>, max: SIMD3<Float>)])?
@@ -430,7 +433,7 @@ public final class WorldRenderer {
         // AAShadowShaders (Round 5: TAA/SMAA entry points and the tier cascade lookup) precedes WorldShaders, which calls it.
         // Round 5 vegetation: `common` helpers (and the veg_keep gate) precede WorldShaders; the vertex entry points follow it.
         // NightShaders (nt_ prefix) is library-only for now; its draw passes are a later milestone.
-        do { lib = try device.makeLibrary(source: CloudShaders.common + "\n" + MacroColourShaders.source + "\n" + OceanShaders.source + "\n" + AAShadowShaders.source + "\n" + VegetationShaders.common + "\n" + NightShaders.source + "\n" + WorldShaders.source + "\n" + VegetationShaders.source, options: nil) }
+        do { lib = try device.makeLibrary(source: CloudShaders.common + "\n" + MacroColourShaders.source + "\n" + OceanShaders.source + "\n" + AAShadowShaders.source + "\n" + VegetationShaders.common + "\n" + NightShaders.source + "\n" + AircraftExteriorShaders.source + "\n" + WorldShaders.source + "\n" + VegetationShaders.source, options: nil) }
         catch { throw RendererError.shaderCompile(String(describing: error)) }
         worldLibrary = lib
         guard let v = lib.makeFunction(name: "world_vertex"), let f = lib.makeFunction(name: "world_fragment") else {
@@ -747,6 +750,7 @@ public final class WorldRenderer {
         imageryMid = try data.mid.map { (try imageryTexture($0), $0.centre, $0.halfExtent) }
         try setBuildings(data.buildingMesh)
         runway = data.runway
+        cityLightField = data.cityLightZones.isEmpty ? nil : CityLightField(zones: data.cityLightZones)
         if let wm = data.waterMask {
             // Water in the red channel, road proximity (when there are roads) in the green.
             let roads = data.roadMask.flatMap { $0.count == wm.values.count ? $0 : nil }
@@ -931,7 +935,20 @@ public final class WorldRenderer {
     }
 
     /// The runway whose markings are painted on the real-world ground (nil = the photo only).
-    public var runway: RealWorldRenderData.Runway?
+    public var runway: RealWorldRenderData.Runway? {
+        didSet {
+            airportLights = runway.map {
+                AirportLighting.runwayLights(threshold: SIMD2(Float($0.threshold.x), Float($0.threshold.y)),
+                                             direction: SIMD2(Float($0.direction.x), Float($0.direction.y)),
+                                             length: Float($0.length), width: Float($0.width))
+            } ?? []
+        }
+    }
+    /// Runway edge, threshold, centreline and approach lights for `runway`, rebuilt when the runway changes.
+    /// Drawn by the night-light pass with the traffic lights.
+    public private(set) var airportLights: [NightLight] = []
+    /// Procedural city lights from the real-world land use, rebuilt per camera cell. Nil without land use.
+    private var cityLightField: CityLightField?
     public func setLighting(_ l: LightingSetup) { lighting = l; tables = nil }
     /// Multiplier on the lighting preset's exposure (see `encodeScene`).
     public var exposureScale: Float = 0.45
@@ -1022,10 +1039,17 @@ public final class WorldRenderer {
         // Night lights (traffic nav, strobe and beacon sprites): additive over the scene, depth-tested against it.
         // They fade in as the sun drops below about 7 degrees (toSun.z ≈ 0.12 → 0).
         let nightFade = min(1, max(0, (0.12 - lighting.toSun.z) / 0.15))
-        if nightFade > 0, !trafficLights.isEmpty {
+        let aircraftLights = trafficLights + airportLights
+        // City lights fill what the aircraft and runway lights leave of the pass budget (nearest cells first).
+        let cityLights = nightFade > 0
+            ? cityLightField?.lights(camera: SIMD2(Float(c.position.x), Float(c.position.y)), tier: .high,
+                                     maxLights: NightLightPass.maxLights - aircraftLights.count) ?? []
+            : []
+        let nightLights = aircraftLights + cityLights
+        if nightFade > 0, !nightLights.isEmpty {
             if nightLightPass == nil { nightLightPass = try NightLightPass(device: device, colorFormat: .rgba16Float) }
             try nightLightPass?.encode(cmd: cmd, device: device, colour: scene, depth: sceneDepth, camera: c,
-                                       lights: trafficLights, intensityScale: nightFade, time: Float(time))
+                                       lights: nightLights, intensityScale: nightFade, time: Float(time))
         }
         // Precipitation, wet-air veil and lightning over the HDR scene, after the cloud composite and before post.
         let lightning = weatherEffects.lightning(at: time)
@@ -1109,7 +1133,7 @@ public final class WorldRenderer {
             e.setFragmentBytes(&aoS, length: 16, index: 1)
         }
         if antialiasing {
-            var fp = SIMD4<Float>(sharpen, 0, 0, 0)
+            var fp = SIMD4<Float>(sharpen, wideEdgeAA ? 1 : 0, 0, 0)
             try pass(colour, load: .dontCare, label: "FXAA") { e in
                 e.setRenderPipelineState(aaTier == .low ? (aaPasses?.smaaPipeline ?? fxaaPipeline) : fxaaPipeline)   // Round 5 low tier: SMAA-lite
                 e.setFragmentTexture(toneOut, index: 0)
