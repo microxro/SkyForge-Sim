@@ -137,13 +137,16 @@ public struct FlightOutcome: Sendable, Equatable {
     public var medal: AwardMedal?
     public var score: Double?
     public var settlement: JobSettlement?
+    /// Discoveries first made by this flight (catalogue ids).
+    public var newDiscoveries: [String] = []
 }
 
 public enum CareerEngine {
     /// Applies one flight to the profile. Deterministic; rejects nothing (a bad report is sanitised, never trusted).
     @discardableResult
     public static func apply(_ raw: FlightReport, to state: inout CareerState,
-                             challenge: Challenge? = nil, catalog: [HangarAircraft] = Economy.catalog) -> FlightOutcome {
+                             challenge: Challenge? = nil, discoveriesReached: [String] = [],
+                             catalog: [HangarAircraft] = Economy.catalog) -> FlightOutcome {
         let r = raw.sanitized()
         let levelBefore = state.level
         var xp = 0, credits = 0
@@ -222,6 +225,13 @@ public enum CareerEngine {
             if let icao = r.arrivalICAO, !icao.isEmpty, icao.count <= 8, st.airportsVisited.count < 5_000 { st.airportsVisited.insert(icao) }
         }
         if credits > 0 { st.creditsEarned += credits }
+
+        // --- exploration: each landmark or scenic point pays out once, ever ---
+        let newDisc = Discoveries.newIDs(reached: discoveriesReached, known: st.discoveries)
+        for id in newDisc {
+            if let d = Discoveries.byID[id] { xp += d.xp }
+            st.discoveries.insert(id)
+        }
         state.stats = st
 
         xp = max(0, xp)
@@ -255,7 +265,8 @@ public enum CareerEngine {
         if state.log.count > CareerState.maxLogEntries { state.log.removeFirst(state.log.count - CareerState.maxLogEntries) }
 
         return FlightOutcome(xpGained: xp, creditsDelta: credits, leveledUpTo: levelAfter > levelBefore ? levelAfter : nil,
-                             newAchievements: newAch, medal: medal, score: score, settlement: settlement)
+                             newAchievements: newAch, medal: medal, score: score, settlement: settlement,
+                             newDiscoveries: newDisc)
     }
 
     static func updateStreak(_ s: inout CareerStats, day: Int) {
