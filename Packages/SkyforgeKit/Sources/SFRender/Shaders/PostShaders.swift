@@ -80,12 +80,15 @@ public enum PostShaders {
                                   constant AOParams& ap [[buffer(0)]]) {
         uint2 size = uint2(depth.get_width(), depth.get_height());
         uint2 px = uint2(min(in.position.xy, float2(size) - 1.0));
-        float d = depth.read(px);
-        if (d <= 0.0) return float4(1.0);                        // sky
+        float d0 = depth.read(px);
+        // Sky is handled after the derivatives: dfdx/dfdy under an early return are non-uniform control flow.
+        bool sky = d0 <= 0.0;
+        float d = sky ? 1.0 : d0;
         float4 p = ap.p;
         float z = p.x / d;
         float3 P = ao_view(in.uv, z, p);
         float3 N = normalize(cross(dfdx(P), dfdy(P)));
+        if (sky) return float4(1.0);                             // sky
         if (N.z > 0.0) N = -N;                                    // face the camera (camera looks along +z here)
         float radius = p.w;
         float rPx = radius / (z * p.z) * float(size.y) * 0.5;    // radius in pixels

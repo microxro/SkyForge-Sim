@@ -102,7 +102,7 @@ final class CDLODTerrain {
     private static func snorm(_ x: Float) -> Int8 { Int8(max(-127, min(127, (x * 127).rounded()))) }
 
     private static func makeBuffer<T>(_ a: [T], device: MTLDevice) throws -> MTLBuffer {
-        guard let b = a.withUnsafeBytes({ device.makeBuffer(bytes: $0.baseAddress!, length: $0.count, options: .storageModeShared) }) else {
+        guard !a.isEmpty, let b = a.withUnsafeBytes({ device.makeBuffer(bytes: $0.baseAddress!, length: $0.count, options: .storageModeShared) }) else {
             throw RendererError.commandQueue
         }
         return b
