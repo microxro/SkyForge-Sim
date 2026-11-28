@@ -147,8 +147,9 @@ public final class ProceduralAudioEngine {
         p.rainGain *= ambient
         p.rumbleGain *= ambient
         if !stallHornEnabled { p.stallHorn = false }
+        let params = p   // a `let` copy: the lock closure is Sendable and cannot capture a mutable var
         rs.shared.withLock { s in
-            s.params = p
+            s.params = params
             s.events.append(contentsOf: events)
             if s.events.count > 32 { s.events.removeFirst(s.events.count - 32) }
         }
