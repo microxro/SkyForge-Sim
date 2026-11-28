@@ -64,6 +64,12 @@ public final class ProceduralAudioEngine {
     private var wantsRunning = false
     /// Master volume 0…1 (the settings screen binds to this).
     public var masterVolume: Float = 0.8 { didSet { engine.mainMixerNode.outputVolume = masterVolume } }
+    /// Engine note level 0…1 (settings: audio.engineVolume).
+    public var engineVolume: Float = 1
+    /// Wind, rain and rumble level 0…1 (settings: audio.ambientVolume).
+    public var ambientVolume: Float = 1
+    /// False silences the stall horn (settings: gameplay.stallWarningAssist).
+    public var stallHornEnabled = true
 
     public init(config: AircraftConfig = .sf1Trainer) { model = AudioModel(config: config) }
 
@@ -134,7 +140,13 @@ public final class ProceduralAudioEngine {
         let dt = (lastTime == 0 || step <= 0 || step > 0.5) ? 1.0 / 60 : step
         lastTime = time
         let events = model.update(dt: dt, time: time, state: state, outputs: outputs, inputs: inputs, weather: weather)
-        let p = model.params
+        var p = model.params
+        p.engineGain *= Double(min(max(engineVolume, 0), 1))
+        let ambient = Double(min(max(ambientVolume, 0), 1))
+        p.windGain *= ambient
+        p.rainGain *= ambient
+        p.rumbleGain *= ambient
+        if !stallHornEnabled { p.stallHorn = false }
         rs.shared.withLock { s in
             s.params = p
             s.events.append(contentsOf: events)

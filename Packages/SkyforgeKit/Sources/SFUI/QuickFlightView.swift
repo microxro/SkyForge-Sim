@@ -24,6 +24,8 @@ import SFGameplayUI
 import SFTraffic
 import SFATC
 import SFTutorial
+import SFAudio
+import SFSettings
 
 /// Where Quick Flight takes place.
 public enum QuickFlightLocation: Hashable, Sendable {
@@ -151,6 +153,8 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
     var touch = InputMapper.DeviceState()
     /// Keyboard and mouse: held throttle and trim, mouse yoke, scroll, and mouse-look.
     let keyboardMouse = KeyboardMouseInput()
+    /// Procedural flight audio. Started on attach with the saved audio and gameplay settings.
+    private var audio: ProceduralAudioEngine?
     private var renderer: WorldRenderer?
     private var governor: QualityGovernor?
     private var qualityBase: WorldRenderer.Settings = .high
@@ -201,7 +205,13 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
         s.inputFilter = filter
         // Keyboard and mouse defaults sit above the flight defaults. Touch layout (sensitivity, curve) and the
         // player's saved bindings sit above those.
-        s.mapper = InputMapper(profiles: [.defaults, .keyboardMouseDefaults, TouchSettingsStore.load().profile, BindingsStore.load()])
+        // Controls settings (dead zones, pitch inversion, touch sensitivity) apply to the default and touch layers.
+        let controls = SettingsStore.current().controls
+        func tune(_ p: BindingProfile) -> BindingProfile {
+            p.tuned(invertPitch: controls.invertPitch, deadZoneScale: controls.deadZoneScale,
+                    touchSensitivity: controls.touchSensitivity)
+        }
+        s.mapper = InputMapper(profiles: [tune(.defaults), .keyboardMouseDefaults, tune(TouchSettingsStore.load().profile), BindingsStore.load()])
         s.gearDownBelowSpeed = GameplayDirector.gearDownSpeed(for: spec)
         return (s, GameplayDirector(aircraft: spec, frame: frame, mission: mission))
     }
@@ -254,6 +264,7 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
         qualityBase = tier == .low ? .low : (tier == .medium ? .medium : .high)
         renderer?.apply(qualityBase)
         governor = QualityGovernor(tier: PerfTier(deviceTier: tier), targetFPS: 60)
+        startAudio()
         switch location {
         case .skyWorld:
             let detail: QuickFlightDetail = tier == .low ? .phone : (tier == .medium ? .tablet : .desktop)
@@ -401,6 +412,7 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
         session.update(realDt: dt, device: device)
         stepGameplay(dt: dt)
         stepTraffic(dt: dt)
+        updateAudio()
         let tex = drawable.texture
         if depth == nil || depth!.width != tex.width || depth!.height != tex.height {
             depth = try? r.makeDepth(width: tex.width, height: tex.height)
@@ -534,6 +546,24 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
         if let outcome = SaveStore(url: SaveStore.defaultURL).record(report) {
             attribution.append("Career: +\(outcome.xpGained) XP\(outcome.leveledUpTo.map { ", level \($0)" } ?? "")")
         }
+    }
+
+    /// Starts the flight audio with the saved volumes. A failure (no output device) is noted and the flight goes on silent.
+    private func startAudio() {
+        let saved = SettingsStore.current()
+        let engine = ProceduralAudioEngine()
+        engine.masterVolume = Float(saved.audio.masterVolume)
+        engine.engineVolume = Float(saved.audio.engineVolume)
+        engine.ambientVolume = Float(saved.audio.ambientVolume)
+        engine.stallHornEnabled = saved.gameplay.stallWarningAssist
+        do { try engine.start(); audio = engine }
+        catch { attribution.append("Audio unavailable: \(error.localizedDescription)") }
+    }
+
+    private func updateAudio() {
+        guard let audio, let outputs = session.lastOutputs else { return }
+        audio.update(time: session.state.time, state: session.state, outputs: outputs,
+                     inputs: session.inputs, weather: .clear)
     }
 
     private func stepGameplay(dt: Double) {
