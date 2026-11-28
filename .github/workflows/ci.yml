@@ -101,6 +101,13 @@ jobs:
         run: |
           if [ -d /Applications/Xcode_26.6.app ]; then sudo xcode-select -s /Applications/Xcode_26.6.app; fi
           xcodebuild -version
+      # Spike only (branch claude/scenery-background-assets-spike): print the BackgroundAssets SDK interface to the log.
+      - name: Dump BackgroundAssets SDK interface
+        continue-on-error: true
+        run: |
+          SDK=$(xcrun --sdk iphoneos --show-sdk-path)
+          find "$SDK/System/Library/Frameworks/BackgroundAssets.framework" -name "*.swiftinterface" -print -exec cat {} \; | head -c 700000
+          find "$SDK/System/Library/Frameworks/BackgroundAssets.framework" -name "*.swiftinterface" | wc -l
       # Caches are keyed on the Xcode build and the inputs that change the output. Restore keys fall back to the
       # newest cache for the same toolchain, so an edit only rebuilds what changed.
       - name: Cache SwiftPM build

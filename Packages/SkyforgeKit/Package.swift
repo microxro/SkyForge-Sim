@@ -27,7 +27,7 @@ let package = Package(
         .target(name: "SFWorldGen", dependencies: ["SFMath", "SFTerrainCore"]),
         .target(name: "SFOriginalWorld", dependencies: ["SFMath"]),
         .target(name: "SFPreview", dependencies: ["SFMath", "SFTerrainCore", "SFWorldGen", "SFAtmosphere", "SFImagery"]),
-        .target(name: "SFContent", dependencies: ["SFMath", .product(name: "Crypto", package: "swift-crypto")]),
+        .target(name: "SFContent", dependencies: ["SFMath", .product(name: "Crypto", package: "swift-crypto")], swiftSettings: [.define("SCENERY_BACKGROUND_ASSETS")]),
         .target(name: "SFInput", dependencies: ["SFMath"]),
         // Settings model: graphics, performance, audio, controls, gameplay, HUD, units, accessibility. Pure Swift.
         .target(name: "SFSettings"),
