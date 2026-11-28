@@ -239,7 +239,11 @@ public struct InputMapper: Sendable {
                 if state.pressed.contains(b.control) && b.modifiers == state.modifiers { out.actions.insert(act) }
             }
         }
-        for ax in Set(analogBest.keys).union(digitalSum.keys) {
+        let active = Set(analogBest.keys).union(digitalSum.keys)
+        // Forget smoothing state for axes that are idle, so re-engaging one starts from its
+        // new target instead of gliding in from a stale value left over from earlier.
+        smoothed = smoothed.filter { active.contains($0.key) }
+        for ax in active {
             let target = min(1, max(-1, (analogBest[ax] ?? 0) + (digitalSum[ax] ?? 0)))
             let tau = smoothingFor[ax] ?? 0
             let prev = smoothed[ax] ?? target

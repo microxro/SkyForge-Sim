@@ -141,7 +141,9 @@ public final class KeyboardMouseInput {
     /// When true, mouse movement is mouse-look and the yoke is off. On macOS this also hides and
     /// detaches the cursor. On iPadOS it only changes the mode; the system pointer stays visible.
     public var pointerLocked = false {
-        didSet { applyPointerLock() }
+        // Only act on a real change: CGDisplayHideCursor is reference counted, so repeated
+        // hide calls would need as many show calls to bring the cursor back.
+        didSet { if oldValue != pointerLocked { applyPointerLock() } }
     }
 
     private let totals = PointerTotals()

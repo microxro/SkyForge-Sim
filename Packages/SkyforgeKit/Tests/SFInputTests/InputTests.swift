@@ -68,6 +68,16 @@ import Foundation
         #expect((next.axes[.pitch] ?? 0) < 0 && (next.axes[.pitch] ?? 0) > -1)   // smoothing lags
     }
 
+    @Test func smoothingRestartsWhenAxisIsIdle() {
+        var p = BindingProfile.defaults
+        p.bindings[10].axis.smoothing = 0.1
+        var m = InputMapper(profiles: [p])
+        _ = m.evaluate(.init(analog: ["gamepad.leftStick.y": 1]), dt: 1.0 / 60)   // pitch settles at -1
+        _ = m.evaluate(.init(), dt: 1.0 / 60)                                     // nothing drives pitch
+        let again = m.evaluate(.init(analog: ["gamepad.leftStick.y": 1]), dt: 1.0 / 60)
+        #expect(again.axes[.pitch] == -1)   // re-engaging starts at the target, not a stale value
+    }
+
     @Test func jsonRoundTripAndSchemaGuard() throws {
         let data = try BindingProfile.defaults.exportJSON()
         #expect(try BindingProfile.importJSON(data) == .defaults)

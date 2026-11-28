@@ -98,6 +98,8 @@ public enum ImageryDelighting {
     /// Push-pull fill of a `width` × `height` RGB image: pixels keep `1 − mask` of their own colour and take
     /// the rest from the known pixels around them, found through a pyramid of weighted 2 × 2 averages.
     public static func inpaint(rgb: inout [UInt8], width sw: Int, height sh: Int, mask: [Float]) {
+        // An empty image has nothing to fill, and the pull pass below reads the top level's first pixel.
+        guard sw > 0, sh > 0, rgb.count >= 3 * sw * sh, mask.count >= sw * sh else { return }
         var levels: [(w: Int, h: Int, col: [SIMD3<Float>], wt: [Float])] = []
         var col = [SIMD3<Float>](repeating: .zero, count: sw * sh), wt = [Float](repeating: 0, count: sw * sh)
         for p in 0..<(sw * sh) {
