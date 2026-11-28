@@ -238,7 +238,9 @@ public enum OceanShaders {
         float3 light = ambient * 0.5 + sunRad * max(0.0, toSun.z) * 0.18 * sunVis;
         // Lakes: a dark silt bed, not the sandy tan that read as grey-white speckle over shallow water.
         float3 bedL = mix(bed, float3(0.06, 0.09, 0.10), lake);
-        float3 body = owDepthColour(depth, bedL, light, float3(0.004, 0.026, 0.034));   // darker deep-water tint
+        // Lakes: a brighter teal in-scatter. The ocean tint (0.004, 0.026, 0.034) left deep lakes near black in LSZS high.
+        float3 deepTint = mix(float3(0.004, 0.026, 0.034), float3(0.015, 0.07, 0.085), lake);
+        float3 body = owDepthColour(depth, bedL, light, deepTint);
         body += owCrestSSS(dir, toSun, n, crest, height, sunRad * sunVis, float3(0.02, 0.14, 0.10));
 
         float3 col = mix(body, skyRefl, F);
