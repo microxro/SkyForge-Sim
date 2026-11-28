@@ -66,7 +66,7 @@ public enum VegetationShaders {
         float4 board;       // billboard half width, half height (per unit tree height), crown centre y (0…1), crown radius y
         float4 barkLeaf;    // xyz = leaf albedo for this species, w unused
         float4 grass;       // rgb base blade colour, radius (m)
-        float4 grassParams; // keep-fraction start (0…1 of radius), dryness 0…1, blade width scale, unused
+        float4 grassParams; // keep-fraction start (0…1 of radius), dryness 0…1, blade width scale, tree density keep fraction (veg_vertex; 1 = all)
     };
 
     /// Same maths as WindSway.offset on the CPU. `local` is unit-height tree space.
@@ -117,6 +117,8 @@ public enum VegetationShaders {
         // Fallen leaves: whole cards drop by a per-card hash (6 vertices per quad).
         bool leaf = w.card > 0.5;
         if (leaf && vu.species.z > 0.5 && vegUnit((vid / 6u) * 2654435761u ^ th) < vu.season.y) alive = 0.0;
+        // Quality-ladder density: a per-tree hash keeps a stable subset, so a higher density keeps a superset of trees.
+        if (vu.grassParams.w < 1.0 && vegUnit(th ^ 0x51ED270Bu) >= vu.grassParams.w) alive = 0.0;
         WorldVarying o;
         o.position = alive > 0.5 ? u.viewProj * p : float4(0.0, 0.0, 2.0, 1.0);   // outside the clip volume: culled
         o.rel = p.xyz;
