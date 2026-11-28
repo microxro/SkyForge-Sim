@@ -150,6 +150,9 @@ struct AirportPickerView: View {
     @State private var ident = ""
     @State private var pending: (ident: String, name: String)?
     @State private var message: String?
+    @State private var latText = ""
+    @State private var lonText = ""
+    @State private var pendingPoint: (lat: Double, lon: Double)?
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -178,8 +181,29 @@ struct AirportPickerView: View {
             } header: { Text("Any airport") } footer: {
                 Text("Free imagery (USGS, Sentinel-2) and elevation (Terrarium) download once, about 5–15 MB, and are cached.")
             }
+            Section {
+                TextField("Latitude, e.g. 36.6", text: $latText)
+                    #if os(iOS)
+                    .keyboardType(.numbersAndPunctuation)
+                    #endif
+                TextField("Longitude, e.g. -121.9", text: $lonText)
+                    #if os(iOS)
+                    .keyboardType(.numbersAndPunctuation)
+                    #endif
+                Button("Fly from this point", action: lookUpPoint).disabled(parsedPoint == nil)
+            } header: { Text("Any point on Earth") } footer: {
+                Text("Start anywhere. Terrain and imagery stream in as you fly, and the same free download applies.")
+            }
         }
         .navigationTitle("Choose an airport")
+        .alert("Download scenery?", isPresented: Binding(get: { pendingPoint != nil }, set: { if !$0 { pendingPoint = nil } })) {
+            Button("Download and fly") {
+                if let p = pendingPoint { onPick(.anyPoint(latitude: p.lat, longitude: p.lon)); dismiss() }
+            }
+            Button("Cancel", role: .cancel) { pendingPoint = nil }
+        } message: {
+            Text("This point needs about 5–15 MB of free imagery and elevation tiles. They are cached for next time.")
+        }
         .alert("Download scenery?", isPresented: Binding(get: { pending != nil }, set: { if !$0 { pending = nil } })) {
             Button("Download and fly") {
                 if let p = pending { onPick(.realAirport(ident: p.ident, name: p.name)); dismiss() }
@@ -188,6 +212,18 @@ struct AirportPickerView: View {
         } message: {
             Text("\(pending?.name ?? "") needs about 5–15 MB of free imagery and elevation tiles. They are cached for next time.")
         }
+    }
+
+    private var parsedPoint: (lat: Double, lon: Double)? {
+        guard let lat = Double(latText.trimmingCharacters(in: .whitespaces)),
+              let lon = Double(lonText.trimmingCharacters(in: .whitespaces)),
+              (try? AnyPointStart(latitude: lat, longitude: lon)) != nil else { return nil }
+        return (lat, lon)
+    }
+
+    private func lookUpPoint() {
+        guard let p = parsedPoint else { message = "Enter a latitude between −85 and 85 and a longitude."; return }
+        pendingPoint = p
     }
 
     private func lookUp() {

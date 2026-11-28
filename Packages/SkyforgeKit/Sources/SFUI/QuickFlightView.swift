@@ -31,6 +31,8 @@ public enum QuickFlightLocation: Hashable, Sendable {
     case skyWorld
     /// A real airport with free orthoimagery and elevation tiles (network once, then cached).
     case realAirport(ident: String, name: String)
+    /// Any point on Earth, with no airport: a zero-length frame at the point (terrain, imagery and buildings stream in).
+    case anyPoint(latitude: Double, longitude: Double)
 
     public static let merrittIsland = QuickFlightLocation.realAirport(ident: "KCOI", name: "Merritt Island, Florida")
     /// The default start: the first showcase airport (imagery and elevation ship in the app).
@@ -39,7 +41,7 @@ public enum QuickFlightLocation: Hashable, Sendable {
     /// METAR stations for the live sky, nearest first (KCOI itself does not report; Titusville and Melbourne do).
     public var metarStations: [String] {
         switch self {
-        case .skyWorld: []
+        case .skyWorld, .anyPoint: []
         case .realAirport(let ident, _): Showcase.airports.first { $0.ident == ident }?.metarStations ?? [ident]
         }
     }
@@ -48,6 +50,7 @@ public enum QuickFlightLocation: Hashable, Sendable {
         switch self {
         case .skyWorld: "SkyWorld airfield (procedural)"
         case .realAirport(let ident, let name): "\(name) (\(ident), real imagery)"
+        case .anyPoint(let lat, let lon): String(format: "%.3f, %.3f (any point, real imagery)", lat, lon)
         }
     }
 }
@@ -233,7 +236,7 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
         let tier = DeviceTierDetector.detect(device: device)
         skyWorldDetail = tier == .low ? .phone : (tier == .medium ? .tablet : .desktop)
         let real: Bool
-        if case .realAirport = location { real = true } else { real = false }
+        if case .skyWorld = location { real = false } else { real = true }
         lightingAzimuth = real ? 200 : 255
         lightingHeight = real ? 300 : world.runwayElevation + 50
         timeOfDay = real ? .day : .dusk
@@ -254,6 +257,9 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
         case .realAirport(let ident, let name):
             let detail: RealWorldDetail = tier == .low ? .phone : (tier == .medium ? .tablet : .desktop)
             loadRealAirport(ident: ident, name: name, detail: detail)
+        case .anyPoint(let lat, let lon):
+            let detail: RealWorldDetail = tier == .low ? .phone : (tier == .medium ? .tablet : .desktop)
+            loadRealAirport(ident: "", name: String(format: "%.3f, %.3f", lat, lon), detail: detail, point: (lat, lon))
         }
     }
 
@@ -275,7 +281,7 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
         }
     }
 
-    private func loadRealAirport(ident: String, name: String, detail: RealWorldDetail) {
+    private func loadRealAirport(ident: String, name: String, detail: RealWorldDetail, point: (Double, Double)? = nil) {
         status = .loading("Loading \(name)…")
         let start = self.start
         let aircraftID = spec.id
@@ -286,9 +292,16 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
                 let cache = try? KeyedCache(root: caches.appendingPathComponent("SkyforgeTiles", isDirectory: true))
                 // Bundled showcase tiles first (offline), then the network, then the on-disk cache.
                 let transport = Showcase.transport(for: ident, fallback: URLSessionTransport())
-                let region = try await RealWorldRegion.load(airport: ident, detail: detail, transport: transport,
-                                                            cache: cache) { msg in
+                let progress: @Sendable (String) -> Void = { msg in
                     Task { @MainActor in self.status = .loading(msg) }
+                }
+                let region: RealWorldRegion
+                if let point {
+                    region = try await RealWorldRegion.load(latitude: point.0, longitude: point.1, detail: detail,
+                                                            transport: transport, cache: cache, progress: progress)
+                } else {
+                    region = try await RealWorldRegion.load(airport: ident, detail: detail, transport: transport,
+                                                            cache: cache, progress: progress)
                 }
                 await MainActor.run { self.status = .loading("Building terrain and trees…") }
                 let data = RealWorldRenderData(region: region)

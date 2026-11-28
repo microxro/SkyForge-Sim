@@ -153,10 +153,36 @@ public struct RealWorldRegion: FlightWorld {
         let a = origin.local(latitude: lo.latitude * 180 / .pi, longitude: lo.longitude * 180 / .pi)
         let b = origin.local(latitude: hi.latitude * 180 / .pi, longitude: hi.longitude * 180 / .pi)
         let thr = SIMD2(a.east, a.north), end = SIMD2(b.east, b.north)
+        let elevFt = rwy.low.elevationFeet ?? apt.elevationFeet ?? 0
+        return try await assemble(name: apt.name, ident: ident, origin: origin, thr: thr, end: end,
+                                  elevation: elevFt * Units.feetToMetres, widthMetres: rwy.widthMetres,
+                                  lowNumber: Int(rwy.low.ident.prefix { $0.isNumber }) ?? 0, detail: detail,
+                                  transport: transport, cache: cache, bundledBuildings: bundledBuildings,
+                                  bundledLandCover: bundledLandCover, progress: progress)
+    }
+
+    /// Loads a region at any point on Earth, with no airport: a zero-length frame at the point, the ground height
+    /// there as the field elevation. Same terrain, imagery and buildings as an airport region; no runway pavement.
+    public static func load(latitude: Double, longitude: Double, name: String? = nil, detail: RealWorldDetail,
+                            transport: any HTTPTransport, cache: KeyedCache?,
+                            progress: @escaping @Sendable (String) -> Void = { _ in }) async throws -> RealWorldRegion {
+        let start = try AnyPointStart(latitude: latitude, longitude: longitude)
+        let label = name ?? String(format: "%.3f, %.3f", start.latitude, start.longitude)
+        return try await assemble(name: label, ident: "", origin: start.origin, thr: .zero, end: .zero, elevation: nil,
+                                  widthMetres: 0, lowNumber: 0, detail: detail, transport: transport, cache: cache,
+                                  bundledBuildings: false, bundledLandCover: false, progress: progress)
+
+    /// The shared region build: terrain, imagery, buildings, land cover and the runway frame for an origin. An airport
+    /// passes its runway; a free point passes a zero-length frame at the origin. A nil `elevation` takes the ground
+    /// height at the threshold.
+    static func assemble(name: String, ident: String, origin: GeoOrigin, thr: SIMD2<Double>, end: SIMD2<Double>,
+                         elevation: Double?, widthMetres: Double, lowNumber: Int, detail: RealWorldDetail,
+                         transport: any HTTPTransport, cache: KeyedCache?, bundledBuildings: Bool, bundledLandCover: Bool,
+                         progress: @escaping @Sendable (String) -> Void) async throws -> RealWorldRegion {
+        let latC = origin.latitude, lonC = origin.longitude
         let v = end - thr
         let len = (v * v).sum().squareRoot()
         let heading = atan2(v.x, v.y)
-        let elevFt = rwy.low.elevationFeet ?? apt.elevationFeet ?? 0
         progress("Elevation")
         let ts = TerrainStreamer(transport: transport, cache: cache, baseline: try? GlobalDEM.bundled())
         // The sharp near layer sits 900 m toward the approach, so both the final-approach start
@@ -259,8 +285,9 @@ public struct RealWorldRegion: FlightWorld {
         // A mid layer with no coverage (offline pack without those tiles) is dropped; otherwise it is
         // graded like the far layer so the three photo layers meet without a tone step.
         if let m = imd, !m.coverage.contains(where: { $0 > 0 }) { imd = nil }
-        var region = RealWorldRegion(name: apt.name, airportIdent: ident, origin: origin, runwayThreshold: thr, runwayHeading: heading,
-                               runwayLengthMetres: len, runwayWidthMetres: rwy.widthMetres, runwayElevation: elevFt * Units.feetToMetres,
+        let elev = elevation ?? max(0, hn.height(thr.x, thr.y))
+        var region = RealWorldRegion(name: name, airportIdent: ident, origin: origin, runwayThreshold: thr, runwayHeading: heading,
+                               runwayLengthMetres: len, runwayWidthMetres: widthMetres, runwayElevation: elev,
                                nearHeights: hn, farHeights: hf, ground: ImageryGround(near: inr, far: ifr, detail: idt, grade: true), attribution: attribution, detail: detail)
         // Dark runway and apron asphalt reads as water by colour; real water is flat and sizeable.
         region.ground = region.ground.cleaningWater(exclude: region.pavedArea) { x, y in max(0, hn.height(x, y)) }
@@ -271,7 +298,7 @@ public struct RealWorldRegion: FlightWorld {
            let polygons = try? LandUsePack.parse(packed, origin: origin) { region.landUse = polygons }
         region.midHeights = hm
         if wantDetail { region.detailProvider = detailProvider }
-        region.runwayLowNumber = Int(rwy.low.ident.prefix { $0.isNumber }) ?? 0
+        region.runwayLowNumber = lowNumber
         if let cover {
             region.landCover = cover
             region.ground = region.ground.refiningWater(with: cover)
@@ -292,6 +319,8 @@ public struct RealWorldRegion: FlightWorld {
             region.fallbackBuildings = region.proceduralBuildings()
         }
         return region
+    }
+
     }
 
     /// The ground photo's colour at a point as the terrain shader's albedo (nil where there is no imagery).
