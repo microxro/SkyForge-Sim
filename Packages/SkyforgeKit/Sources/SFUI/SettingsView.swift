@@ -12,7 +12,12 @@ public final class SettingsStore {
     private static let key = "skyforge.settings.v1"
 
     public init() {
-        settings = SettingsCodec.decode(UserDefaults.standard.data(forKey: Self.key))
+        settings = Self.current()
+    }
+
+    /// The saved settings, or defaults when none are saved or the data is unreadable. Read by flight code at launch.
+    public static func current() -> SkySettings {
+        SettingsCodec.decode(UserDefaults.standard.data(forKey: key))
     }
 
     public func save() {
