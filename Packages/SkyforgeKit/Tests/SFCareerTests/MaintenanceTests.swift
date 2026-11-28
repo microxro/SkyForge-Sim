@@ -173,6 +173,15 @@ private func ownedCareer() -> CareerState {
         #expect(throws: MaintenanceError.self) { try state.sell(aircraftID: MaintenanceRules.starterAircraftID) }
     }
 
+    @Test func resaleLosesFortyFivePercentAtEightThousandHours() {
+        var state = ownedCareer()
+        let fresh = state.resaleValue(for: sfc) ?? 0
+        state.maintenance[sfc] = AircraftMaintenance(totalHours: 8_000)
+        let value = state.resaleValue(for: sfc) ?? 0
+        // 45% off the reference price at 8,000 hours, so 55% remains (rounding may differ by one).
+        #expect(abs(value - Int((Double(fresh) * 0.55).rounded())) <= 1)
+    }
+
     @Test func resaleFallsWithHoursAndDefects() {
         var state = ownedCareer()
         let fresh = state.resaleValue(for: sfc) ?? 0

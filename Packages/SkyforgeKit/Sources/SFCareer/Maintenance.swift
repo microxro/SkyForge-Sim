@@ -198,7 +198,7 @@ extension CareerState {
         guard ownedAircraft.contains(aircraftID), let spec = Economy.spec(aircraftID, in: catalog) else { return nil }
         let m = maintenanceState(for: aircraftID)
         let reference = Double(MaintenanceRules.referencePrice(for: spec))
-        let hoursFactor = max(0.15, 1 - m.totalHours / 8_000)
+        let hoursFactor = max(0.15, 1 - 0.45 * m.totalHours / 8_000)
         let wearFactor = max(0.2, 1 - 0.5 * m.averageWear)
         let defectFactor = m.hasDefect ? 0.9 : 1.0
         return Int((reference * hoursFactor * wearFactor * defectFactor).rounded())
