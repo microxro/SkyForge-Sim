@@ -321,7 +321,6 @@ public struct RealWorldRegion: FlightWorld {
         return region
     }
 
-    }
 
     /// The ground photo's colour at a point as the terrain shader's albedo (nil where there is no imagery).
     public func photoAlbedo(_ p: SIMD2<Double>) -> SIMD3<Float>? {
