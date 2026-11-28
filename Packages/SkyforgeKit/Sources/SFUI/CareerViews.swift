@@ -2,6 +2,7 @@
 // Career hub: profile, hangar, achievements and campaigns. Logic lives in SFCareer (tested on Linux);
 // these views only present a CareerState and report purchases back through `onChange`.
 #if canImport(SwiftUI)
+import Foundation
 import SwiftUI
 import SFCareer
 
@@ -26,6 +27,8 @@ public struct CareerHubView: View {
                 .tabItem { Label("Logbook", systemImage: "book.closed") }
             CampaignListView(career: career)
                 .tabItem { Label("Campaigns", systemImage: "flag.checkered") }
+            AirlineView(career: $career, onChange: onChange)
+                .tabItem { Label("Airline", systemImage: "airplane.departure") }
             AchievementListView(career: career)
                 .tabItem { Label("Awards", systemImage: "rosette") }
         }
@@ -119,6 +122,56 @@ struct HangarView: View {
         do { try career.buy(aircraftID: a.id); message = "Bought \(a.name)"; onChange() }
         catch CareerState.PurchaseError.insufficientFunds(let short) { message = "Need \(short) more credits" }
         catch { message = "Cannot buy \(a.name) right now" }
+    }
+}
+
+/// Today's scheduled airline legs. Accepting one makes it the active job; flying it is handled by the flight.
+struct AirlineView: View {
+    @Binding var career: CareerState
+    var onChange: () -> Void
+    @State private var message: String?
+
+    var body: some View {
+        let routes = AirlineNetwork.schedule(for: career, dayIndex: Int(Date().timeIntervalSince1970 / 86_400))
+        List {
+            Section {
+                Text("\(career.airline.rank.title) · \(career.airline.legsFlown) legs · reputation \(Int(career.airline.reputation))")
+                    .font(.callout)
+                if let route = career.activeAirlineRoute {
+                    Label("Active: \(route.origin.icao) to \(route.destination.icao)", systemImage: "airplane")
+                }
+                if let message { Text(message).font(.callout) }
+            }
+            Section("Today's legs from \(AirlineNetwork.hub.icao)") {
+                if routes.isEmpty { Text("No legs today.").foregroundStyle(.secondary) }
+                ForEach(routes) { route in
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("\(route.origin.icao) to \(route.destination.icao)").font(.headline)
+                            Spacer()
+                            Button("Accept") { accept(route) }
+                                .buttonStyle(.borderedProminent)
+                                .disabled(career.activeAirlineRoute != nil || career.activeJob != nil)
+                        }
+                        Text("\(route.passengers) passengers · \(Int(route.distanceKm)) km · \(route.basePay) credits · min \(route.minimumRank.title)")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Accepts the leg with the first aircraft the pilot can use that the leg allows.
+    func accept(_ route: AirlineRoute) {
+        let pilotRank = career.rank
+        for a in Economy.catalog where career.canUse(aircraftID: a.id) {
+            if case .success = career.accept(airline: route, aircraft: a, pilotRank: pilotRank) {
+                message = "Accepted \(route.destination.icao) in the \(a.name)"
+                onChange()
+                return
+            }
+        }
+        message = "No aircraft you can fly fits this leg yet"
     }
 }
 
