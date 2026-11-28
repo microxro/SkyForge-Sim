@@ -62,7 +62,9 @@ def extract(log_path, out_dir):
 
 def comment(repo, branch, pr, sha, run_id, run_url, frames_dir):
     """Markdown for the PR comment: one image per frame, two per row, each linking to the full PNG."""
-    names = sorted(p.stem for p in pathlib.Path(frames_dir).glob('*.png'))
+    # Names come from the PR's own artifact, so they are untrusted: only names that pass the same rule
+    # `extract` applies may reach the comment (no markdown, HTML or URL characters).
+    names = sorted(p.stem for p in pathlib.Path(frames_dir).glob('*.png') if p.is_file() and NAME.match(p.stem))
     base = f'https://raw.githubusercontent.com/{repo}/{branch}/pr-{pr}'
     lines = [
         MARKER,
