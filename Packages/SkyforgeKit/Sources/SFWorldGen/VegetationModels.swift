@@ -327,7 +327,7 @@ public struct ImpostorLayout: Sendable {
     /// The two nearest bake views to a camera-to-tree bearing (radians) and the blend toward the second.
     public func views(forBearing a: Float) -> (first: Int, second: Int, blend: Float) {
         let step = 2 * Float.pi / Float(views)
-        var t = a / step
+        var t = (a.isFinite ? a : 0) / step   // a NaN or infinite bearing would trap in Int(...) below
         t -= (t / Float(views)).rounded(.down) * Float(views)
         let i = Int(t.rounded(.down)) % views
         return (i, (i + 1) % views, t - t.rounded(.down))

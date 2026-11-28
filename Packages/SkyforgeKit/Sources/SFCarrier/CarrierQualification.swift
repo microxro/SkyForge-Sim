@@ -1,6 +1,6 @@
 // SKYFORGE — Apache-2.0
-// Carrier qualification: a run of traps graded by the LSO. Bolters and wave-offs are attempts,
-// and only landings the hook catches are graded. The run ends after four graded traps or eight attempts.
+// Carrier qualification: a run of traps graded by the LSO. Bolters and wave-offs are attempts;
+// caught wires and overruns are graded. The run ends after four graded traps or eight attempts.
 import Foundation
 
 public struct CarrierQualification: Sendable, Codable, Equatable {
@@ -17,7 +17,15 @@ public struct CarrierQualification: Sendable, Codable, Equatable {
 
     public init() {}
 
-    public var gradedAttempts: [Attempt] { attempts.filter { if case .wire = $0.outcome { true } else { false } } }
+    /// Traps the hook caught, and overruns (too fast or past the stern), which the LSO grades Unsat.
+    public var gradedAttempts: [Attempt] {
+        attempts.filter {
+            switch $0.outcome {
+            case .wire, .overrun: return true
+            case .bolter, .waveOff: return false
+            }
+        }
+    }
 
     public var isFinished: Bool {
         gradedAttempts.count >= Self.gradedTrapsRequired || attempts.count >= Self.maxAttempts

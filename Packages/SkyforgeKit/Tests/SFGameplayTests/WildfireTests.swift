@@ -20,6 +20,27 @@ import Foundation
         #expect(f.everBurned >= f.burningCount)
     }
 
+    @Test func fireBurnsOutWhenItsFuelIsGone() {
+        var f = Wildfire()
+        f.ignite(east: 25, north: 25)
+        var steps = 0
+        while !f.isOut && steps < 2_000 {
+            f.step(dt: 60)
+            steps += 1
+        }
+        // Without water the fire runs through its fuel patch and goes out, instead of burning forever.
+        #expect(f.isOut)
+        #expect(f.everBurned <= (2 * Wildfire.fuelRadiusCells + 1) * (2 * Wildfire.fuelRadiusCells + 1))
+    }
+
+    @Test func fireDoesNotSpreadBeyondFuel() {
+        var f = Wildfire()
+        // Ignite well outside the fuel patch: the one cell burns, but nothing spreads from it.
+        f.ignite(east: 5_000, north: 5_000)
+        for _ in 0..<100 { f.step(dt: 1) }
+        #expect(f.everBurned == 1)
+    }
+
     @Test func fireRunsDownwind() {
         var f = Wildfire(windEast: 8, windNorth: 0)
         f.ignite(east: 25, north: 25)

@@ -540,7 +540,8 @@ public struct QuickFlightSession: Sendable {
 
     /// Advances real time `dt` with the given device state (fixed 120 Hz steps, at most 8 per call).
     public mutating func update(realDt: Double, device: InputMapper.DeviceState) {
-        guard !crashed else { return }
+        // A NaN frame time would make the accumulator NaN for good (the fixed-step loop never runs again).
+        guard !crashed, realDt.isFinite else { return }
         let out = mapper.evaluate(device, dt: realDt)
         // Elevator trim (held keys or scroll with Option) offsets the pitch command.
         inputs.elevator = min(1, max(-1, (out.axes[.pitch] ?? 0) + 0.5 * (out.axes[.elevatorTrim] ?? 0)))
