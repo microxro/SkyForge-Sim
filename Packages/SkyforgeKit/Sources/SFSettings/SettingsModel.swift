@@ -13,8 +13,35 @@ public enum AntiAliasing: String, Codable, Sendable, CaseIterable {
     case off, fxaa, smaa, taa
 }
 
+/// Overall ray tracing intensity. The renderer clamps this to what the device supports (unsupported devices get `off`).
 public enum RayTracingMode: String, Codable, Sendable, CaseIterable {
-    case off, reflections, full
+    case off
+    /// Hardware ray traced shadows, reflections, ambient occlusion (per-feature toggles below).
+    case rayTraced
+    /// Path traced: adds global illumination on top of the ray traced features.
+    case pathTraced
+
+    public var isEnabled: Bool { self != .off }
+
+    /// Older builds stored "reflections" and "full" before this setting existed; both now mean ray traced.
+    public init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        switch raw {
+        case "rayTraced", "reflections", "full": self = .rayTraced
+        case "pathTraced": self = .pathTraced
+        default: self = .off
+        }
+    }
+}
+
+/// Which ray traced features are on when `RayTracingMode` is enabled.
+public struct RayTracingFeatures: Codable, Sendable, Equatable {
+    public var shadows = true
+    public var reflections = true
+    public var ambientOcclusion = true
+    /// Only applies at `pathTraced`; ignored at `rayTraced`.
+    public var globalIllumination = true
+    public init() {}
 }
 
 public enum FrameRateCap: Int, Codable, Sendable, CaseIterable {
@@ -56,11 +83,37 @@ public struct GraphicsSettings: Codable, Sendable, Equatable {
     public var buildingDensity: Double = 1.0
     /// Level-of-detail distance multiplier (0.25 ... 2.0). Higher means detail holds further out.
     public var lodDistance: Double = 1.0
-    /// Ray tracing is opt-in and off in every preset. The renderer behind it lands in the ray-tracing thread.
+    /// Ray tracing is opt-in and off in every preset.
     public var rayTracing: RayTracingMode = .off
+    /// Per-feature ray tracing toggles. Only read when `rayTracing` is enabled.
+    public var rayTracingFeatures = RayTracingFeatures()
     public var frameRateCap: FrameRateCap = .fps60
     public var vsync = true
     public init() {}
+
+    private enum CodingKeys: String, CodingKey {
+        case preset, resolutionScale, antialiasing, wideEdgeAA, shadows, clouds, water
+        case vegetationDensity, buildingDensity, lodDistance, rayTracing, rayTracingFeatures, frameRateCap, vsync
+    }
+
+    /// Settings files written before ray tracing features existed have no `rayTracingFeatures` key; they get the defaults.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        preset = try c.decode(GraphicsPreset.self, forKey: .preset)
+        resolutionScale = try c.decode(Double.self, forKey: .resolutionScale)
+        antialiasing = try c.decode(AntiAliasing.self, forKey: .antialiasing)
+        wideEdgeAA = try c.decode(Bool.self, forKey: .wideEdgeAA)
+        shadows = try c.decode(QualityLevel.self, forKey: .shadows)
+        clouds = try c.decode(QualityLevel.self, forKey: .clouds)
+        water = try c.decode(QualityLevel.self, forKey: .water)
+        vegetationDensity = try c.decode(Double.self, forKey: .vegetationDensity)
+        buildingDensity = try c.decode(Double.self, forKey: .buildingDensity)
+        lodDistance = try c.decode(Double.self, forKey: .lodDistance)
+        rayTracing = try c.decodeIfPresent(RayTracingMode.self, forKey: .rayTracing) ?? .off
+        rayTracingFeatures = try c.decodeIfPresent(RayTracingFeatures.self, forKey: .rayTracingFeatures) ?? RayTracingFeatures()
+        frameRateCap = try c.decode(FrameRateCap.self, forKey: .frameRateCap)
+        vsync = try c.decode(Bool.self, forKey: .vsync)
+    }
 }
 
 public struct PerformanceSettings: Codable, Sendable, Equatable {

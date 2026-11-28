@@ -85,10 +85,18 @@ public struct SettingsView: View {
             slider("Level of detail distance", $store.settings.graphics.lodDistance, 0.25...2.0)
             Picker("Ray tracing", selection: $store.settings.graphics.rayTracing) {
                 Text("Off").tag(RayTracingMode.off)
-                Text("Reflections").tag(RayTracingMode.reflections)
-                Text("Full").tag(RayTracingMode.full)
+                Text("Ray traced").tag(RayTracingMode.rayTraced)
+                Text("Path traced").tag(RayTracingMode.pathTraced)
             }
             .disabled(!SettingsAvailability.rayTracing)
+            if store.settings.graphics.rayTracing.isEnabled {
+                Toggle("RT shadows", isOn: $store.settings.graphics.rayTracingFeatures.shadows)
+                Toggle("RT reflections", isOn: $store.settings.graphics.rayTracingFeatures.reflections)
+                Toggle("RT ambient occlusion", isOn: $store.settings.graphics.rayTracingFeatures.ambientOcclusion)
+                if store.settings.graphics.rayTracing == .pathTraced {
+                    Toggle("Global illumination", isOn: $store.settings.graphics.rayTracingFeatures.globalIllumination)
+                }
+            }
             if !SettingsAvailability.rayTracing {
                 Text("Ray tracing needs the ray-tracing renderer, which is not in this build.")
                     .font(.footnote).foregroundStyle(.secondary)
