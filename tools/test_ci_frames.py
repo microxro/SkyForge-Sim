@@ -73,5 +73,17 @@ class CommentTests(unittest.TestCase):
         self.assertNotIn('<img', text)
 
 
+class CommentNameTests(unittest.TestCase):
+    def test_untrusted_frame_names_stay_out_of_the_comment(self):
+        tmp = pathlib.Path(tempfile.mkdtemp())
+        (tmp / 'ok_1.png').write_bytes(PNG)
+        (tmp / 'bad)](https_evil.png').write_bytes(PNG)
+        (tmp / 'a b.png').write_bytes(PNG)
+        text = ci_frames.comment('o/r', 'ci-frames', 1, 'abcdef1234', '9', 'u', tmp)
+        self.assertIn('ok_1', text)
+        self.assertNotIn('evil', text)
+        self.assertNotIn('a b', text)
+
+
 if __name__ == '__main__':
     unittest.main()
