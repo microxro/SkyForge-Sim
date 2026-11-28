@@ -1527,7 +1527,7 @@ public final class WorldRenderer {
                     board: .zero,
                     barkLeaf: SIMD4<Float>(kind.leafColour, 0),
                     grass: .zero,
-                    grassParams: .zero)
+                    grassParams: SIMD4<Float>(0, 0, 0, min(1, max(0, vegetationDensity))))
                 enc.setVertexBuffer(b.mesh, offset: 0, index: 0)
                 enc.setVertexBuffer(b.instances, offset: 0, index: 2)
                 enc.setVertexBytes(&vu, length: MemoryLayout<VegUniformsCPU>.stride, index: 3)
