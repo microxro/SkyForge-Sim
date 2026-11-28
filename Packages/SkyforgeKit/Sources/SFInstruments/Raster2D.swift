@@ -90,7 +90,8 @@ public enum Raster2D {
     static func fill(_ img: inout Image2D, contours: [[Point2]], color: RGBA, clips: [ClipShape]) {
         var edges: [Edge] = []
         var minX = Double.infinity, maxX = -Double.infinity, minY = Double.infinity, maxY = -Double.infinity
-        for poly in contours where poly.count >= 3 {
+        // Contours with a NaN or infinite vertex are skipped: Int(floor(NaN)) below would trap.
+        for poly in contours where poly.count >= 3 && poly.allSatisfy({ $0.x.isFinite && $0.y.isFinite }) {
             // Normalize each contour to the same orientation so overlapping pieces union.
             var area = 0.0
             for i in 0..<poly.count {

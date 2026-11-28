@@ -18,7 +18,28 @@ public enum PFD {
     static let magenta = RGBA(hex: 0xE04FD6)
     static let tapeBG = RGBA(0.06, 0.07, 0.09, 0.55)
 
-    public static func draw(_ d: InstrumentData, options o: PFDOptions = PFDOptions(), width: Double = 1280, height: Double = 800) -> DrawList {
+    /// Non-finite indications read as zero and the rest are clamped, so the Int conversions below cannot trap.
+    static func sanitized(_ d: InstrumentData) -> InstrumentData {
+        func clean(_ x: Double) -> Double { x.isFinite ? max(-1e7, min(1e7, x)) : 0 }
+        var s = d
+        s.indicatedAirspeedKt = clean(d.indicatedAirspeedKt)
+        s.trueAirspeedKt = clean(d.trueAirspeedKt)
+        s.indicatedAltitudeFt = clean(d.indicatedAltitudeFt)
+        s.verticalSpeedFpm = clean(d.verticalSpeedFpm)
+        s.pitchDeg = clean(d.pitchDeg)
+        s.rollDeg = clean(d.rollDeg)
+        s.headingDeg = clean(d.headingDeg)
+        s.turnRateDegPerSec = clean(d.turnRateDegPerSec)
+        s.slipBall = clean(d.slipBall)
+        s.rpm = clean(d.rpm)
+        s.kollsmanInHg = clean(d.kollsmanInHg)
+        s.flapsFraction = clean(d.flapsFraction)
+        s.groundSpeedKt = clean(d.groundSpeedKt)
+        return s
+    }
+
+    public static func draw(_ input: InstrumentData, options o: PFDOptions = PFDOptions(), width: Double = 1280, height: Double = 800) -> DrawList {
+        let d = sanitized(input)
         var b = DrawBuilder(width: width, height: height)
         let cx = width / 2, cy = height * 0.54
         let ppd = height / 88   // pixels per degree of pitch

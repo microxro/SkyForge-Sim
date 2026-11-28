@@ -208,6 +208,7 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
         session = built.session
         director = built.director
         touchdownDetector = TouchdownDetector()
+        careerRecorded = false   // a restarted free flight is a new flight, recorded at its own landing or crash
         gameplayHUD = nil; missionResult = nil; unlockMessage = nil; resultSaved = false
         fireHeld = false
         tower = Self.makeTower(world: world, mission: mission, onRunway: start == .runway)
