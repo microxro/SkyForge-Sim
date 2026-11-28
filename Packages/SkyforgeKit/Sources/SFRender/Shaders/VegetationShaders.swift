@@ -161,6 +161,7 @@ public enum VegetationShaders {
         float phase = vegUnit(th) * 6.2831853;
         float3 sw = veg_sway(local, w.sway, vu.timeFade.x, phase, vu.wind, vu.species.y, vu.season.w);
         float3 pw = (sl + sw * float3(crownW, crownW, 1.0)) * t.height + float3(t.position);
+        if (vu.grassParams.w < 1.0 && vegUnit(th ^ 0x51ED270Bu) >= vu.grassParams.w) return float4(0.0, 0.0, 2.0, 1.0);   // same density keep set as veg_vertex
         if (w.card > 0.5 && vu.species.z > 0.5 && vegUnit((vid / 6u) * 2654435761u ^ th) < vu.season.y) return float4(0.0, 0.0, 2.0, 1.0);
         return u.lightViewProj * (u.model * float4(pw, 1.0));
     }
