@@ -27,7 +27,9 @@ final class CDLODTerrain {
     let indexCount: Int
 
     private struct Key: Hashable { let lod: Int; let x: Int; let y: Int }
-    /// Node meshes kept on the GPU. The cache is dropped whole past this size; a node rebuilds in well under a millisecond.
+    /// A cached node and the last frame that drew it (for eviction).
+    private struct Entry { let node: Node; var stamp: Int }
+    /// Node meshes kept on the GPU. Past this size, nodes unused for two frames are evicted; a node rebuilds in well under a millisecond.
     private static let cacheLimit = 1_500
 
     private let device: MTLDevice
@@ -39,7 +41,9 @@ final class CDLODTerrain {
     /// Finest-level distance (m) at full quality; the morph bands follow it.
     private let baseFinestRange: Double
     private let bounds: ConstantBounds
-    private var cache: [Key: Node] = [:]
+    private var cache: [Key: Entry] = [:]
+    /// Incremented once per `draws` call; used as the recency stamp of cached nodes.
+    private var frame = 0
 
     init(device: MTLDevice, field: TerrainHeightField, layout: CDLODLayout, finestRange: Double) throws {
         self.device = device
@@ -59,6 +63,7 @@ final class CDLODTerrain {
     /// and morph bands shrink by it, so the same nodes are used nearer the camera.
     func draws(camera: SIMD3<Double>, sseScale: Double) -> [Draw] {
         let scale = sseScale.isFinite && sseScale > 0 ? sseScale : 1
+        frame &+= 1
         if scale != treeScale {
             tree = Self.makeTree(layout: layout, finestRange: baseFinestRange / scale)
             treeScale = scale
@@ -69,8 +74,15 @@ final class CDLODTerrain {
         for n in selected {
             // Node origins are whole multiples of the leaf size, so rounding gives an exact key.
             let key = Key(lod: n.lod, x: Int((n.minX / layout.leafSize).rounded()), y: Int((n.minY / layout.leafSize).rounded()))
-            let node = cache[key] ?? build(n, key: key)
-            guard let node else { continue }
+            let node: Node
+            if var entry = cache[key] {
+                entry.stamp = frame
+                cache[key] = entry
+                node = entry.node
+            } else {
+                guard let built = build(n, key: key) else { continue }
+                node = built
+            }
             out.append(Draw(node: node, morphStart: Float(n.morphStart), morphEnd: Float(n.morphEnd)))
         }
         return out
@@ -89,9 +101,18 @@ final class CDLODTerrain {
         guard let vb = try? Self.makeBuffer(verts, device: device),
               let mb = try? Self.makeBuffer(mesh.morphHeights, device: device) else { return nil }
         let node = Node(vertices: vb, morph: mb, boundsMin: mesh.boundsMin, boundsMax: mesh.boundsMax)
-        if cache.count >= Self.cacheLimit { cache.removeAll(keepingCapacity: true) }
-        cache[key] = node
+        if cache.count >= Self.cacheLimit { evictStale() }
+        cache[key] = Entry(node: node, stamp: frame)
         return node
+    }
+
+    /// Keeps the cache under its limit without dropping nodes the last frame drew. Removes nodes unused for two or more
+    /// frames; if still full, removes the least recently used half. Dropped meshes stay alive while a command buffer uses them.
+    private func evictStale() {
+        cache = cache.filter { $0.value.stamp >= frame - 1 }
+        guard cache.count >= Self.cacheLimit else { return }
+        let oldest = cache.sorted { $0.value.stamp < $1.value.stamp }.prefix(cache.count / 2)
+        for entry in oldest { cache.removeValue(forKey: entry.key) }
     }
 
     private static func makeTree(layout: CDLODLayout, finestRange: Double) -> CDLODQuadtree {
