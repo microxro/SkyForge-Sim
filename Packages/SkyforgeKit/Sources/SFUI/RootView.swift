@@ -89,6 +89,14 @@ public struct SkyforgeRootView: View {
                         }
                         .buttonStyle(.plain)
                     }
+                    SFHubSection(title: "Multiplayer") {
+                        NavigationLink {
+                            MultiplayerLobbyView()
+                        } label: {
+                            SFHubRowLabel(title: "Multiplayer", subtitle: "Free Game Center sessions, up to 16 pilots", symbol: "person.3")
+                        }
+                        .buttonStyle(.plain)
+                    }
                     SFHubSection(title: "Tools") {
                         Button {
                             showingSky = true
