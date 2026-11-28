@@ -47,6 +47,11 @@ public final class GameKitTransport: NSObject, MultiplayerTransport, GKMatchDele
     }
 
     public func currentPeers() async -> [PeerID] {
+        connectedPeers()
+    }
+
+    /// Sorted peer IDs. Synchronous so the lock is never taken from an async context.
+    private func connectedPeers() -> [PeerID] {
         lock.lock()
         defer { lock.unlock() }
         return players.keys.sorted { $0.rawValue < $1.rawValue }
