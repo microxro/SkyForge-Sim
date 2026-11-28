@@ -230,9 +230,9 @@ public enum OceanShaders {
         // Imagery lakes (lake = 1): a reflectance floor and a wider glint lobe, so the sky and sun show on flat water.
         // The ocean (lake = 0) keeps the physical Fresnel and slope variance.
         // The reflectance rises only at grazing angles, so mid-lake stays deep and the far shore mirrors.
-        // Lake reflectance: about 6% at mid-angles rising toward grazing, so the sky shows in the surface.
-        // Round 64 measured the old floor (0.30 * (1-cosT)^4, about 3% at a 30-degree view) as no visible sky.
-        float F = max(owFresnel(cosT), lake * (0.06 + 0.5 * pow(1.0 - cosT, 3.0)));
+        // Lake reflectance: about 10% straight down and about 17% at a 30-degree view, rising toward grazing.
+        // PR #185 (6% floor) left the sky reflection too faint to see in the LSZS high frame.
+        float F = max(owFresnel(cosT), lake * (0.10 + 0.6 * pow(1.0 - cosT, 3.0)));
         slopeVar += 0.12 * lake;
 
         float3 light = ambient * 0.5 + sunRad * max(0.0, toSun.z) * 0.18 * sunVis;
