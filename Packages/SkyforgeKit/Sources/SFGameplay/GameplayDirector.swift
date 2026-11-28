@@ -130,6 +130,13 @@ public struct GameplayDirector: Sendable {
             }
         }
 
+        // 4b. Midair contact with a live AI aircraft. The target is destroyed and the airframe takes one collision hit.
+        for i in targets.indices where !targets[i].destroyed && Self.inContact(position: s.positionNED, target: targets[i]) {
+            let id = targets[i].id
+            targets[i].health = 0
+            applyHit(source: .collision, amount: AircraftDamage.collisionDamage, sourceID: id)
+        }
+
         // 5. Hostile fire at the player.
         let hostile: [HostileWeaponEvent] = hostileWeapons.update(dt: dt, targets: targets, player: own,
                                                                   decoys: countermeasures.decoys)
@@ -170,6 +177,16 @@ public struct GameplayDirector: Sendable {
                                                                 towerErrors: towerErrors)
             for e in missionEvents { pendingEvents.append(.mission(e)) }
         }
+    }
+
+    /// Ownship contact radius (m), added to a target's hit sphere to decide a midair collision.
+    public static let contactRadius = 8.0
+
+    /// True when the ownship at `position` is inside a target's hit sphere plus the contact radius.
+    static func inContact(position: SIMD3<Double>, target: AITarget) -> Bool {
+        let d = target.position - position
+        let reach = target.radius + contactRadius
+        return (d.x * d.x + d.y * d.y + d.z * d.z) <= reach * reach
     }
 
     /// "Shot down by <id>" when the destroying hit's source is known, else "Shot down".
