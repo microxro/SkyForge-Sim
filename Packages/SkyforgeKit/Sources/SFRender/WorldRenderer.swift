@@ -179,6 +179,9 @@ public final class WorldRenderer {
     /// Tree cells nearer than this draw the full mesh; farther cells (and the outer shadow cascades) the
     /// crown-only LOD. 105k SkyWorld desktop trees at full detail cost ~11 ms on the CI GPU.
     static let treeLODDistance: Float = 350
+    /// Tree cull radius (m) at drawDistanceScale 1. Below 1 the radius shrinks with the scale; at 1 only the
+    /// frustum culls, so full-quality output is unchanged.
+    static let treeBaseCullDistance: Float = 5_000
     /// Within the near shadow cascade, full meshes cast only from cells this close (crown silhouettes in the
     /// shadow map matter near the camera; farther, the LOD crown casts the same blob).
     static let treeShadowFullDistance: Float = 200   // 250: SkyWorld high shadows 3.25 ms (run 42724229611)
@@ -1541,12 +1544,21 @@ public final class WorldRenderer {
             var cellsDrawn = 0
             let eye = SIMD3<Float>(Float(c.position.x), Float(c.position.y), Float(c.position.z))
             let lod2 = Self.treeLODDistance * Self.treeLODDistance
+            // Quality ladder levers: density keeps a prefix of each cell's contiguous instances (cells are 400 m, so the
+            // thinning stays local), and draw distance below 1 shrinks the cull radius.
+            let density = min(1, max(0, vegetationDensity))
+            let cullRadius = drawDistanceScale < 1 ? Self.treeBaseCullDistance * max(0.25, drawDistanceScale) : Float.infinity
+            let cull2 = cullRadius * cullRadius
             var lodCells = 0
             for cell in treeCells where Self.boxVisible(planes, cell.min + o, cell.max + o) {
-                let full = Self.boxDistance2(eye, cell.min, cell.max) < lod2
+                let dist2 = Self.boxDistance2(eye, cell.min, cell.max)
+                if dist2 > cull2 { continue }
+                let full = dist2 < lod2
+                let count = density >= 1 ? cell.count : Int((Float(cell.count) * density).rounded())
+                if count == 0 { continue }
                 let range = treeRange(kind: cell.kind, full: full)
                 enc.setVertexBufferOffset(cell.start * MemoryLayout<PackedTreeInstance>.stride, index: 2)   // not baseInstance (ignored on the CI GPU)
-                enc.drawPrimitives(type: .triangle, vertexStart: range.start, vertexCount: range.count, instanceCount: cell.count)
+                enc.drawPrimitives(type: .triangle, vertexStart: range.start, vertexCount: range.count, instanceCount: count)
                 cellsDrawn += 1
                 if !full { lodCells += 1 }
             }
