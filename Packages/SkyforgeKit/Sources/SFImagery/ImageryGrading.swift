@@ -36,7 +36,12 @@ public enum ImageryGrading {
     /// Per-channel (mean, variance) of `near` block-averaged to `far`'s resolution, and of `far`, over
     /// their overlap; nil when they barely overlap.
     static func overlapStats(_ near: ImageryMosaic, _ far: ImageryMosaic) -> (near: [(Double, Double)], far: [(Double, Double)])? {
-        let ratio = max(1, Int((far.metresPerPixel / near.metresPerPixel).rounded()))
+        // Degenerate mosaics (no size, zero or infinite extent) would make the ratio non-finite, and Int() would trap.
+        guard near.size > 1, far.size > 1, near.metresPerPixel > 0, far.metresPerPixel > 0,
+              near.metresPerPixel.isFinite, far.metresPerPixel.isFinite else { return nil }
+        let rawRatio = (far.metresPerPixel / near.metresPerPixel).rounded()
+        guard rawRatio.isFinite else { return nil }
+        let ratio = max(1, Int(min(rawRatio, Double(near.size + 1))))
         let step = max(ratio, near.size / 256)
         var sn = [Double](repeating: 0, count: 3), sf = sn, qn = sn, qf = sn
         var n = 0.0

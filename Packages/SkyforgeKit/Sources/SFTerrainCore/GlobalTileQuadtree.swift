@@ -102,7 +102,9 @@ public enum GlobalTileQuadtree {
 
         let root = GlobalTileID.containing(latitude: lat, longitude: lon, zoom: lo)
         let n = 1 << lo
-        let span = Int(ceil(radiusMeters / root.widthMeters)) + 1
+        // Clamped to the tile count at this level: beyond it every wrapped tile is already visited, and an
+        // unbounded Double here would trap on Int conversion for a huge radius.
+        let span = Int(min(ceil(radiusMeters / root.widthMeters) + 1, Double(n)))
 
         var stack: [GlobalTileID] = []
         var seenRoots = Set<GlobalTileID>()

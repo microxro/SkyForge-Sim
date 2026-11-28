@@ -14,6 +14,8 @@ public struct GradientNoise2D: Sendable {
 
     /// Returns approximately [-1, 1].
     public func sample(_ x: Double, _ y: Double) -> Double {
+        // Int(_:) traps on NaN, infinity and out-of-range values, so such coordinates sample as zero.
+        guard x.isFinite, y.isFinite, abs(x) < 1e15, abs(y) < 1e15 else { return 0 }
         let x0 = Int((x).rounded(.down)), y0 = Int((y).rounded(.down))
         let fx = x - Double(x0), fy = y - Double(y0)
         let u = Self.fade(fx), v = Self.fade(fy)

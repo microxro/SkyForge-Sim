@@ -57,7 +57,9 @@ public enum WeatherPreset: String, Sendable, CaseIterable {
     case clear, scattered, overcast, storm, gustyCrosswind
 
     public func state(seed: UInt64) -> WeatherState {
-        var rng = Xoshiro256(seed: Hash.combine(seed, UInt64(rawValue.hashValue & 0xFFFF)))
+        // A fixed hash of the name: String.hashValue is seeded per process, which made presets differ between launches and peers.
+        let nameHash = rawValue.utf8.reduce(UInt32(0)) { $0 &* 31 &+ UInt32($1) } & 0xFFFF
+        var rng = Xoshiro256(seed: Hash.combine(seed, UInt64(nameHash)))
         func windFrom(_ deg: Double, _ kt: Double) -> SIMD3<Double> {
             let to = (deg + 180) * Units.degToRad
             return SIMD3(cos(to), sin(to), 0) * kt * Units.knotsToMps
