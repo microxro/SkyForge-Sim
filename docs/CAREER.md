@@ -34,3 +34,14 @@ try SaveStore(url: saveURL).save(career)
 1. Fill `FlightReport` from the sim at touchdown/shutdown (sink rate, offset, g, bank, fuel).
 2. Career hub screens in SFUI: profile, hangar, job board, challenge list, achievements.
 3. Feed `AirportRef` from SFNavData and gameplay mission results into `.mission(id)`.
+
+## Aircraft maintenance (`Maintenance.swift`)
+Extends the existing career. It adds no module and no second wallet: servicing spends `CareerState.credits`, and sales refund into them.
+- **State**: `CareerState.maintenance`, keyed by owned aircraft id. Each entry holds six components (engine, propeller, brakes, tires, airframe, avionics) with wear (0 to 1), hours since service and a defect flag, plus a capped history. Saves that predate it load with an empty map.
+- **Wear**: `CareerEngine.apply` calls `FlightWear.apply` for owned aircraft. Wear comes from flight hours, landings (not crashes), and hard landings (sink above 600 fpm, airframe). A crash adds airframe wear and a defect.
+- **Failures**: above 0.8 wear, each flight hour risks a failure, capped at 5%. Rolls are seeded from the flight's `endedAt` and aircraft id, so the same flight always rolls the same way. Failures appear in `FlightOutcome.maintenanceFailures`.
+- **Service**: inspection (resets interval, 8% of overhaul), repair (clears defect, -0.25 wear, 50%), overhaul (full reset, 100%). Costs are a share of the component's overhaul fraction of the reference price (catalogue price, or 30,000 for the starter).
+- **Dispatch**: `CareerState.dispatchStatus(for:)` returns serviceable, warning or grounded. It is advisory. Flights are not blocked yet. The job-accept and free-flight UI should check it before dispatch.
+- **Sales**: `CareerState.sell(aircraftID:)` refunds resale value (reference price, less hours, wear and defects). The starter cannot be sold.
+
+Not yet built: hangar or tie-down rent, fuel, the dispatch gate in the UI, and wiring SFGameplay engine failures to component wear.

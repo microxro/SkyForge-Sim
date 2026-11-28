@@ -33,13 +33,14 @@ public struct CareerState: Codable, Sendable, Equatable {
     /// Discovery ids already paid out (see BushExploration). Paid once, ever.
     public var bushDiscoveries: Set<String> = []
     public var log: [FlightLogEntry] = []        // most recent last, capped
+    public var maintenance: [String: AircraftMaintenance] = [:]   // keyed by owned aircraft id
     public var firefighting = FirefightingRecord()
     public var airline = AirlineCareer()         // scheduled-route record: rank, reputation, on-time legs
     public init() {}
 
     enum CodingKeys: String, CodingKey {
         case version, pilotName, xp, credits, ownedAircraft, unlockedAchievements, stats, challenges
-        case completedMissions, completedJobIDs, claimedCampaignStages, activeJob, log, firefighting, airline
+        case completedMissions, completedJobIDs, claimedCampaignStages, activeJob, log, maintenance, firefighting, airline
         case activeBushContract, bushDiscoveries
     }
 
@@ -62,6 +63,7 @@ public struct CareerState: Codable, Sendable, Equatable {
         activeBushContract = try? c.decodeIfPresent(BushContract.self, forKey: .activeBushContract)
         bushDiscoveries = try c.decodeIfPresent(Set<String>.self, forKey: .bushDiscoveries) ?? []
         log = try c.decodeIfPresent([FlightLogEntry].self, forKey: .log) ?? []
+        maintenance = try c.decodeIfPresent([String: AircraftMaintenance].self, forKey: .maintenance) ?? [:]
         firefighting = try c.decodeIfPresent(FirefightingRecord.self, forKey: .firefighting) ?? FirefightingRecord()
         airline = try c.decodeIfPresent(AirlineCareer.self, forKey: .airline) ?? AirlineCareer()
         sanitize()
@@ -87,6 +89,7 @@ public struct CareerState: Codable, Sendable, Equatable {
         unlockedAchievements = unlockedAchievements.filter { id in AchievementCatalog.all.contains { $0.id == id } }
         ownedAircraft = ownedAircraft.filter { Economy.spec($0) != nil }
         ownedAircraft.insert("org.skyforge.sf1")
+        maintenance = Self.sanitizedMaintenance(maintenance, owned: ownedAircraft)
         stats.sanitize()
         firefighting.sanitize()
         airline.sanitize()
@@ -161,6 +164,8 @@ public struct FlightOutcome: Sendable, Equatable {
     public var medal: AwardMedal?
     public var score: Double?
     public var settlement: JobSettlement?
+    /// Components that failed in flight on this flight (owned aircraft only).
+    public var maintenanceFailures: [AircraftComponent] = []
     /// Discoveries made on this flight (already recorded in the career).
     public var bushDiscoveries: [BushDiscovery] = []
     /// Discoveries first made by this flight (catalogue ids).
@@ -310,12 +315,13 @@ public enum CareerEngine {
 
         state.xp = min(state.xp, CareerState.maxXP)
         state.credits = min(state.credits, CareerState.maxCredits)
+        let failures = FlightWear.apply(r, to: &state)
         state.log.append(FlightLogEntry(report: r, xpGained: xp, creditsDelta: credits))
         if state.log.count > CareerState.maxLogEntries { state.log.removeFirst(state.log.count - CareerState.maxLogEntries) }
 
         return FlightOutcome(xpGained: xp, creditsDelta: credits, leveledUpTo: levelAfter > levelBefore ? levelAfter : nil,
                              newAchievements: newAch, medal: medal, score: score, settlement: settlement,
-                             bushDiscoveries: found, newDiscoveries: newDisc)
+                             maintenanceFailures: failures, bushDiscoveries: found, newDiscoveries: newDisc)
     }
 
     static func updateStreak(_ s: inout CareerStats, day: Int) {
