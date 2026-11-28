@@ -62,15 +62,9 @@ public struct URLSessionTransport: HTTPTransport {
         defer { session.finishTasksAndInvalidate() }
         var req = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: timeout)
         req.setValue(userAgent, forHTTPHeaderField: "User-Agent")
-        // Stream the body and stop at the cap, so an oversized response is never fully buffered.
-        let (bytes, response) = try await session.bytes(for: req)
+        let (data, response) = try await session.data(for: req)
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) { throw TransportError.status(http.statusCode) }
-        if response.expectedContentLength > Int64(maxBytes) { throw TransportError.tooLarge }
-        var data = Data()
-        for try await byte in bytes {
-            data.append(byte)
-            if data.count > maxBytes { throw TransportError.tooLarge }
-        }
+        guard data.count <= maxBytes else { throw TransportError.tooLarge }
         return data
     }
 }
