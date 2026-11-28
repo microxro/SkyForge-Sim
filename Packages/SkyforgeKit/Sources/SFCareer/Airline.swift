@@ -218,6 +218,10 @@ public enum AirlineRejection: Error, Sendable, Equatable {
     case aircraftNotAllowed
     case notEnoughSeats
     case pilotRankTooLow(needed: PilotRank)
+    /// Another job or scheduled leg is already active.
+    case jobInProgress
+    /// This leg was flown already.
+    case alreadyFlown
 }
 
 public enum AirlineSchedule {
