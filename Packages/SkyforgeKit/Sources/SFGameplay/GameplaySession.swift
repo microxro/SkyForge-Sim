@@ -102,11 +102,12 @@ public struct GameplaySession: Sendable {
         var env = FlightEnvironment(windNED: wind, terrain: FlightWorldTerrain(world))
         env.surface = mission?.surface ?? .paved
         environment = env
-        controlFilter = GameplayDirector.makeControlFilter(for: aircraft)
-        director = GameplayDirector(aircraft: aircraft, frame: frame, mission: mission)
+        // Use the loaded spec throughout, so the load factor, the control law and the spawn trim see the payload mass.
+        controlFilter = GameplayDirector.makeControlFilter(for: loaded)
+        director = GameplayDirector(aircraft: loaded, frame: frame, mission: mission)
 
         let spawn = mission?.spawn ?? MissionSpawn(along: 60, onRunway: true)
-        let (s, trimmed) = Self.makeInitialState(spawn: spawn, aircraft: aircraft, frame: frame, wind: wind, terrain: env.terrain)
+        let (s, trimmed) = Self.makeInitialState(spawn: spawn, aircraft: loaded, frame: frame, wind: wind, terrain: env.terrain)
         state = s
         trimmedInputs = trimmed
         effectiveInputs = trimmed
