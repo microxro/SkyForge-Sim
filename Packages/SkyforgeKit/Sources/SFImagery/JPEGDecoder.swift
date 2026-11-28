@@ -183,7 +183,7 @@ public enum JPEGDecoder {
                 let nc = Int(bytes[seg + 5])
                 guard nc == 1 || nc == 3 else { throw JPEGError.unsupported("\(nc) components") }
                 guard end - seg >= 6 + 3 * nc else { throw JPEGError.corrupt("sof truncated") }
-                guard width > 0, height > 0, width * height <= 64_000_000 else { throw JPEGError.corrupt("image size") }
+                guard width > 0, height > 0, width * height <= 25_000_000 else { throw JPEGError.corrupt("image size") }
                 comps.removeAll()
                 for i in 0..<nc {
                     let b = seg + 6 + 3 * i
