@@ -56,7 +56,8 @@ public struct TerrainRecipe: Sendable {
 
     /// Distance (m) from a point to the river centre-line, or +inf without a river.
     public func riverDistance(_ x: Double, _ y: Double) -> Double {
-        guard let r = river else { return .infinity }
+        // A non-finite y would trap in the Int conversion below (terrain is queried with flight-model positions).
+        guard let r = river, y.isFinite else { return .infinity }
         // Points are uniformly spaced in y; search a small window.
         let last = r.points.count - 2
         let idx = Int(((y - r.points[0].y) / 75).rounded())

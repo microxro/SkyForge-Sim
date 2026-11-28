@@ -84,7 +84,7 @@ public struct InstrumentDemoView: View {
     private func advance(to now: Date) {
         defer { lastTick = now }
         guard let last = lastTick else { return }
-        let steps = min(30, Int((now.timeIntervalSince(last) * 120).rounded()))
+        let steps = max(0, min(30, Int((now.timeIntervalSince(last) * 120).rounded())))   // a backwards date must not give a negative range
         for _ in 0..<steps { scenario.step() }
     }
 }

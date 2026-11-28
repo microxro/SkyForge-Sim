@@ -61,8 +61,8 @@ public actor TerrainStreamer {
     }
 
     func remember(_ t: TileCoord, _ g: HeightGrid) {
-        memory[t] = g
-        memoryOrder.append(t)
+        // Concurrent loads of one tile can both reach here; only a new key may join the eviction order.
+        if memory.updateValue(g, forKey: t) == nil { memoryOrder.append(t) }
         if memoryOrder.count > memoryLimit { memory[memoryOrder.removeFirst()] = nil }
     }
 

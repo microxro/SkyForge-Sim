@@ -138,10 +138,10 @@ public enum Inflate {
         var r = BitReader(input, start: 2)
         let out = try inflate(&r, expectedSize: min(expectedSize, maxOutput), maxOutput: maxOutput)
         let p = r.pos - r.bitCount / 8
-        if p + 4 <= input.count {
-            let adler = UInt32(input[p]) << 24 | UInt32(input[p + 1]) << 16 | UInt32(input[p + 2]) << 8 | UInt32(input[p + 3])
-            guard adler == adler32(out) else { throw InflateError.checksumMismatch }
-        }
+        // The Adler-32 trailer is mandatory (RFC 1950); a stream cut before it must not pass as valid.
+        guard p + 4 <= input.count else { throw InflateError.truncated }
+        let adler = UInt32(input[p]) << 24 | UInt32(input[p + 1]) << 16 | UInt32(input[p + 2]) << 8 | UInt32(input[p + 3])
+        guard adler == adler32(out) else { throw InflateError.checksumMismatch }
         return out
     }
 

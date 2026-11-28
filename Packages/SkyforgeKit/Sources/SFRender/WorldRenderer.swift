@@ -735,7 +735,9 @@ public final class WorldRenderer {
             cdlodTerrain = try CDLODTerrain(device: device, field: field, layout: layout, finestRange: data.terrainFinestRange)
         } else {
             cdlodTerrain = nil
-            real = (try buf(verts), try buf(idx), draws.map { (indexOffset: $0.0, indexCount: $0.1, baseVertex: $0.2, min: $0.3, max: $0.4) })
+            // No chunks (empty world): nothing to draw. buf() throws on an empty array, so skip the buffers.
+            real = try verts.isEmpty ? nil
+                : (buf(verts), buf(idx), draws.map { (indexOffset: $0.0, indexCount: $0.1, baseVertex: $0.2, min: $0.3, max: $0.4) })
         }
         try setTrees(data.trees)
         func imageryTexture(_ i: RealWorldRenderData.Imagery) throws -> MTLTexture {
@@ -975,6 +977,7 @@ public final class WorldRenderer {
         desc.width = w; desc.height = h; desc.depth = d
         desc.usage = [.shaderRead]
         desc.storageMode = .shared
+        guard w > 0, h > 0, d > 0, data.count >= w * h * d else { throw RendererError.commandQueue }
         guard let t = device.makeTexture(descriptor: desc) else { throw RendererError.commandQueue }
         data.withUnsafeBytes { buf in
             t.replace(region: MTLRegionMake3D(0, 0, 0, w, h, d), mipmapLevel: 0, slice: 0, withBytes: buf.baseAddress!,

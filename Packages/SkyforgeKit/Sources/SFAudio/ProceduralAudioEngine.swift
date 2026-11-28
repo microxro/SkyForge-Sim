@@ -128,7 +128,10 @@ public final class ProceduralAudioEngine {
     /// Feed the latest simulation state (once per frame). Ignored while stopped, so no stale events pile up.
     public func update(time: Double, state: AircraftState, outputs: FlightOutputs, inputs: ControlInputs, weather: WeatherEffects) {
         guard isRunning, let rs = renderState else { return }
-        let dt = lastTime == 0 ? 1.0 / 60 : time - lastTime
+        // A new flight restarts simulation time at zero, so a backwards step (or a long gap after a
+        // restart) must not feed the model a negative or huge dt. Fall back to one frame instead.
+        let step = time - lastTime
+        let dt = (lastTime == 0 || step <= 0 || step > 0.5) ? 1.0 / 60 : step
         lastTime = time
         let events = model.update(dt: dt, time: time, state: state, outputs: outputs, inputs: inputs, weather: weather)
         let p = model.params

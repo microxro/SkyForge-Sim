@@ -204,6 +204,20 @@ private func near(_ a: Double, _ b: Double, _ tol: Double = 1e-6) -> Bool { abs(
         #expect(!q.isFinished)
     }
 
+    @Test func overrunIsAGradedUnsatTrap() {
+        var q = CarrierQualification()
+        // Too fast for the gear: the trap is an overrun, which counts as a graded Unsat.
+        let fast = TrapApproach(touchdownAft: 118, groundSpeed: 100, sinkRate: 2, glideslopeError: 0, lineupError: 0, hookDown: true)
+        q.record(fast, result: ArrestedLanding.trap(fast, deck: deck))
+        #expect(q.gradedAttempts.count == 1)
+        #expect(q.gradedAttempts[0].grade == .unsat)
+        run(&q, wire: 3)
+        run(&q, wire: 3)
+        run(&q, wire: 3)
+        #expect(q.isFinished)
+        #expect(!q.qualified)
+    }
+
     @Test func runEndsAfterEightAttemptsWithoutQualifying() {
         var q = CarrierQualification()
         let bolter = TrapApproach(touchdownAft: 118, groundSpeed: 60, sinkRate: 2, glideslopeError: 0, lineupError: 0, hookDown: false)

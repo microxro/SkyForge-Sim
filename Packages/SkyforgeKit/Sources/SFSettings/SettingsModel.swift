@@ -188,11 +188,31 @@ public enum SettingsCodec {
     }
 
     public static func decode(_ data: Data?) -> SkySettings {
-        guard let data, let s = try? JSONDecoder().decode(SkySettings.self, from: data),
-              s.schemaVersion <= SkySettings.schemaVersion else {
+        // The saved object is merged over the defaults before decoding. A plain decode throws on any key the
+        // file predates, which would discard every setting; with the merge, only the missing fields take defaults.
+        guard let data,
+              let saved = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              (saved["schemaVersion"] as? Int ?? 1) <= SkySettings.schemaVersion,
+              let defaultsData = try? JSONEncoder().encode(SkySettings()),
+              let defaults = (try? JSONSerialization.jsonObject(with: defaultsData)) as? [String: Any],
+              let merged = try? JSONSerialization.data(withJSONObject: mergeSettings(defaults, over: saved)),
+              let s = try? JSONDecoder().decode(SkySettings.self, from: merged) else {
             return SkySettings()
         }
         return s.clamped()
+    }
+
+    /// Overlays `saved` on `base`, recursing into nested objects so a missing nested key keeps its default.
+    private static func mergeSettings(_ base: [String: Any], over saved: [String: Any]) -> [String: Any] {
+        var out = base
+        for (key, value) in saved {
+            if let inner = value as? [String: Any], let baseInner = base[key] as? [String: Any] {
+                out[key] = mergeSettings(baseInner, over: inner)
+            } else {
+                out[key] = value
+            }
+        }
+        return out
     }
 }
 

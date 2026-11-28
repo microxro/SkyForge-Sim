@@ -187,11 +187,14 @@ public enum METARParser {
     static func parseStatuteMiles(_ s: String) -> Double? {
         var body = s
         if body.hasPrefix("P") || body.hasPrefix("M") { body.removeFirst() }
+        // Reports come from the network: "nan" and "inf" parse as Doubles but are not visibilities.
         if let slash = body.firstIndex(of: "/") {
-            guard let n = Double(body[..<slash]), let d = Double(body[body.index(after: slash)...]), d > 0 else { return nil }
+            guard let n = Double(body[..<slash]), let d = Double(body[body.index(after: slash)...]),
+                  n.isFinite, n >= 0, d.isFinite, d > 0 else { return nil }
             return n / d
         }
-        return Double(body)
+        guard let v = Double(body), v.isFinite, v >= 0 else { return nil }
+        return v
     }
 
     static func parseRVR(_ t: String) -> RunwayVisualRange? {

@@ -104,7 +104,8 @@ public struct TutorialEngine: Sendable {
 
     private mutating func advance(from lesson: TutorialLesson? = nil) {
         guard let done = lesson ?? current else { return }
-        completed.append(done)
+        // A lesson re-flown after a go-around is completed again; it is listed once.
+        if !completed.contains(done) { completed.append(done) }
         index += 1
         resetLessonMemory()
     }

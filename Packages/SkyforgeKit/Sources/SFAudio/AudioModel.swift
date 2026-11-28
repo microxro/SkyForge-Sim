@@ -145,7 +145,7 @@ public struct AudioModel: Sendable {
         if w.thunderstorm {
             if let f = w.nextLightning(after: time, seed: eventSeed), f > lastScheduledFlash {
                 lastScheduledFlash = f
-                let dist = 1_000 + 5_000 * WeatherEffects.unit(eventSeed ^ 0xA5A5, UInt64(f * 10))
+                let dist = 1_000 + 5_000 * WeatherEffects.unit(eventSeed ^ 0xA5A5, UInt64(max(0, f * 10)))
                 if thunderQueue.count < 8 { thunderQueue.append((f + dist / 343, dist)) }
             }
             while let first = thunderQueue.first, time >= first.time {

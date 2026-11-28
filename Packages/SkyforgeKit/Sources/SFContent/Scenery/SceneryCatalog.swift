@@ -48,6 +48,7 @@ public enum SceneryCatalogError: Error, Equatable {
     case duplicateSegment(String)
     case invalidSegmentID(String)
     case nonPositiveSize(String)
+    case sizeOutOfRange(String)
     case invalidHash(String)
     case invalidBounds(String)
 }
@@ -81,6 +82,9 @@ public struct SceneryCatalog: Codable, Sendable, Equatable {
             guard SceneryCatalog.isValidID(s.id) else { throw SceneryCatalogError.invalidSegmentID(s.id) }
             guard seen.insert(s.id).inserted else { throw SceneryCatalogError.duplicateSegment(s.id) }
             guard s.bytes > 0 else { throw SceneryCatalogError.nonPositiveSize(s.id) }
+            // A segment above the largest quota can never install, and capping each one keeps the Int64 sums of
+            // segment sizes (totalBytes, installer progress) from overflowing on a hostile catalog.
+            guard s.bytes <= ScenerySpace.quotaRange.upperBound else { throw SceneryCatalogError.sizeOutOfRange(s.id) }
             guard TilePack.isValidHash(s.sha256) else { throw SceneryCatalogError.invalidHash(s.id) }
             guard s.bounds.isValid else { throw SceneryCatalogError.invalidBounds(s.id) }
         }

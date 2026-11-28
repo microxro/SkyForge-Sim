@@ -143,8 +143,8 @@ public actor ImageryStreamer {
     }
 
     private func remember(_ t: TileCoord, _ img: RGBImage) {
-        memory[t] = img
-        order.append(t)
+        // Concurrent loads of one tile can both reach here; only a new key may join the eviction order.
+        if memory.updateValue(img, forKey: t) == nil { order.append(t) }
         if order.count > memoryLimit { memory[order.removeFirst()] = nil }
     }
 }

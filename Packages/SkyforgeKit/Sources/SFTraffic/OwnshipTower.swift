@@ -130,7 +130,7 @@ public struct OwnshipTracker: Sendable, Equatable {
         let touchdown = system.runway.ned(along: system.pattern.touchdownAlong, right: 0, up: 0)
         let d = touchdown - report.positionNED
         return TrafficSnapshot(id: TrafficOwnship.id, callsign: TrafficOwnship.callsign,
-                               typeName: report.config.name, kind: awaitingTakeoff ? .departure : .arrival,
+                               typeName: report.config.name, kind: (awaitingTakeoff || climbingOut) ? .departure : .arrival,
                                phase: current, positionNED: report.positionNED,
                                heading: atan2(report.velocityNED.y, report.velocityNED.x),
                                speed: report.groundSpeed,

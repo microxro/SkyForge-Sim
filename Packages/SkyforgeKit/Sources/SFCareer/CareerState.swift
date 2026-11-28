@@ -234,7 +234,7 @@ public enum CareerEngine {
                 settlement = s
                 credits += s.net
                 if s.success {
-                    xp += 90 + Int(min(max(c.distanceKm, 0), 20_000) / 4)
+                    xp += 90 + Int((c.distanceKm.isFinite ? min(max(c.distanceKm, 0), 20_000) : 0) / 4)
                     state.stats.jobsCompleted += 1
                 } else {
                     state.stats.jobsFailed += 1

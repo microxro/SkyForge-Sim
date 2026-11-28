@@ -124,6 +124,7 @@ public final class CloudRenderer {
                           toSun: SIMD3<Float>, sun: SIMD3<Float>, skyAmbient: SIMD3<Float>, groundAmbient: SIMD3<Float>,
                           steps: Int) throws -> [CloudSample] {
         let n = origins.count
+        guard n > 0 else { return [] }     // makeBuffer(length: 0) returns nil, which would throw
         var rays = [SIMD4<Float>](repeating: .zero, count: 2 * n)
         for i in 0..<n {
             rays[2 * i] = SIMD4(origins[i], maxDist[i]); rays[2 * i + 1] = SIMD4(dirs[i], jitter[i])

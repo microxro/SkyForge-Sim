@@ -48,6 +48,15 @@ public struct Wildfire: Sendable, Equatable {
     public static let kgPerCellHeat = 800.0
     /// Base spread rate (neighbour-widths per second) with no wind.
     public static let baseSpreadRate = 0.02
+    /// Heat a burning cell loses per second as its fuel burns off. A full cell goes out after about 7 minutes.
+    public static let burnOffRate = 1.0 / 400
+    /// Fuel covers a disc of this many cells around the grid origin. Fire cannot spread onto bare ground beyond it.
+    public static let fuelRadiusCells = 30
+
+    /// True when a cell has fuel to burn.
+    static func hasFuel(_ c: FireCell) -> Bool {
+        c.i * c.i + c.j * c.j <= fuelRadiusCells * fuelRadiusCells
+    }
 
     /// Wind carrying the fire, as the speed (m/s) it blows toward east and north.
     public var windEast: Double
@@ -110,6 +119,11 @@ public struct Wildfire: Sendable, Equatable {
     public mutating func step(dt: Double) {
         guard dt.isFinite, dt > 0, dt <= 60, !isOut else { return }
         elapsed += dt
+        // Fuel burns off: every burning cell loses heat at a slow steady rate, and goes out at zero.
+        for (c, h) in heat {
+            let left = h - Self.burnOffRate * dt
+            heat[c] = left > 0 ? left : nil
+        }
         var spreading: [(FireCell, Double)] = []
         for (cell, h) in heat where h >= Self.spreadThreshold {
             spreading.append((cell, h))
@@ -120,7 +134,7 @@ public struct Wildfire: Sendable, Equatable {
             for di in -1...1 {
                 for dj in -1...1 where !(di == 0 && dj == 0) {
                     let next = FireCell(cell.i + di, cell.j + dj)
-                    guard heat[next] == nil else { continue }
+                    guard heat[next] == nil, Self.hasFuel(next) else { continue }
                     pressure[next, default: 0] += spreadRate(di: di, dj: dj) * h * dt
                 }
             }
