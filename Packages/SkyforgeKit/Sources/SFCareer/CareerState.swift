@@ -28,6 +28,8 @@ public struct CareerState: Codable, Sendable, Equatable {
     public var completedJobIDs: Set<String> = []
     public var claimedCampaignStages: Set<String> = []
     public var activeJob: Job?
+    /// The scheduled airline leg accepted as the active job, if any. Its job id equals the route id.
+    public var activeAirlineRoute: AirlineRoute?
     /// The bush contract the pilot has accepted, if any. Only one at a time, like jobs.
     public var activeBushContract: BushContract?
     /// Discovery ids already paid out (see BushExploration). Paid once, ever.
@@ -40,7 +42,7 @@ public struct CareerState: Codable, Sendable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case version, pilotName, xp, credits, ownedAircraft, unlockedAchievements, stats, challenges
-        case completedMissions, completedJobIDs, claimedCampaignStages, activeJob, log, maintenance, firefighting, airline
+        case completedMissions, completedJobIDs, claimedCampaignStages, activeJob, activeAirlineRoute, log, maintenance, firefighting, airline
         case activeBushContract, bushDiscoveries
     }
 
@@ -60,6 +62,7 @@ public struct CareerState: Codable, Sendable, Equatable {
         completedJobIDs = try c.decodeIfPresent(Set<String>.self, forKey: .completedJobIDs) ?? []
         claimedCampaignStages = try c.decodeIfPresent(Set<String>.self, forKey: .claimedCampaignStages) ?? []
         activeJob = try c.decodeIfPresent(Job.self, forKey: .activeJob)
+        activeAirlineRoute = try? c.decodeIfPresent(AirlineRoute.self, forKey: .activeAirlineRoute)
         activeBushContract = try? c.decodeIfPresent(BushContract.self, forKey: .activeBushContract)
         bushDiscoveries = try c.decodeIfPresent(Set<String>.self, forKey: .bushDiscoveries) ?? []
         log = try c.decodeIfPresent([FlightLogEntry].self, forKey: .log) ?? []
@@ -93,6 +96,8 @@ public struct CareerState: Codable, Sendable, Equatable {
         stats.sanitize()
         firefighting.sanitize()
         airline.sanitize()
+        // A route only stays active while its job is the active job.
+        if activeAirlineRoute != nil, activeJob?.id != activeAirlineRoute?.id { activeAirlineRoute = nil }
         // A tampered attempt count of Int.max would trap on the next `attempts += 1`; scores must stay finite.
         challenges = Dictionary(uniqueKeysWithValues: challenges.filter { Self.validID($0.key) }.prefix(500).map { entry -> (String, ChallengeRecord) in
             var r = entry.value
@@ -144,6 +149,19 @@ public struct CareerState: Codable, Sendable, Equatable {
         case .success: activeJob = job; return .success(())
         case .failure(let e): return .failure(e)
         }
+    }
+
+    /// Accept a scheduled airline leg. It becomes the active job, so the job settlement pays it, and the airline
+    /// record (legs, reputation, rank) is updated when the flight is applied.
+    public mutating func accept(airline route: AirlineRoute, aircraft: HangarAircraft, pilotRank: PilotRank) -> Result<Void, AirlineRejection> {
+        if activeJob != nil || activeAirlineRoute != nil { return .failure(.jobInProgress) }
+        if completedJobIDs.contains(route.id) { return .failure(.alreadyFlown) }
+        if let problem = AirlineSchedule.canAccept(route, aircraft: aircraft, career: airline, pilotRank: pilotRank) {
+            return .failure(problem)
+        }
+        activeJob = route.asJob()
+        activeAirlineRoute = route
+        return .success(())
     }
 
     /// Accept a bush contract. Fails if one is already active or the aircraft cannot reach the strip.
@@ -203,6 +221,10 @@ public enum CareerEngine {
                 credits += s.net
                 if s.success { state.completedJobIDs.insert(job.id); xp += 80 + Int((job.distanceKm.isFinite ? min(max(job.distanceKm, 0), 20_000) : 0) / 4); state.stats.jobsCompleted += 1 } else { state.stats.jobsFailed += 1 }
                 state.activeJob = nil
+                if let route = state.activeAirlineRoute, route.id == job.id {
+                    AirlineEngine.settle(report: r, route: route, career: &state.airline)
+                    state.activeAirlineRoute = nil
+                }
             }
         case .challenge:
             if let c = challenge, case .challenge(let cid) = r.kind, cid == c.id {
