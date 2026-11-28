@@ -29,6 +29,10 @@ public struct TrafficSystem: Sendable {
 
     /// Seconds between wake pairs from a heavy aircraft (about 170 to 240 m of track at heavy approach speeds).
     public static let wakeInterval = 4.0
+    /// Along-runway distance (m) behind the threshold where a departure's gate is. Departures taxi from here.
+    public static let gateDistance = 300.0
+    /// Taxi speed (m/s) from the gate to the hold line.
+    public static let taxiSpeed = 15.0
     /// Along-runway distance (m) at which a departure is handed from the tower to departure control. The same
     /// distance ends ownship's climb out in `OwnshipTracker`.
     public static let departureHandoffDistance = 3_000.0
@@ -65,7 +69,7 @@ public struct TrafficSystem: Sendable {
                                distanceToTouchdown: (dn * dn + de * de + dd * dd).squareRoot(),
                                isHeavy: TrafficPerformance.isHeavy(a.config),
                                clearedToLand: a.clearedToLand, clearedToTakeoff: a.clearedToTakeoff,
-                               takeoffFits: departureFits(a.config), facility: a.facility,
+                               takeoffFits: departureFits(a.config) && a.taxiRemaining == 0, facility: a.facility,
                                holding: a.holding, vectored: a.vectorHeading != nil,
                                distanceToApproachFix: distanceToApproachFix(a.position),
                                bearingToApproachFix: bearingToApproachFix(a.position))
@@ -151,7 +155,7 @@ public struct TrafficSystem: Sendable {
             return true
         case .takeoff:
             guard aircraft[index].kind == .departure, aircraft[index].phase == .holdShort,
-                  departureFits(aircraft[index].config) else { return false }
+                  aircraft[index].taxiRemaining == 0, departureFits(aircraft[index].config) else { return false }
             aircraft[index].clearedToTakeoff = true
             return true
         }
@@ -211,11 +215,12 @@ public struct TrafficSystem: Sendable {
 
     private mutating func spawnDeparture() {
         let config = pickConfig()
-        let start = runway.ned(along: 0, right: 0, up: 0)
+        let start = runway.ned(along: -Self.gateDistance, right: 0, up: 0)
         let id = nextID()
         let callsign = nextCallsign()
-        let departure = TrafficAircraft(id: id, callsign: callsign, config: config, kind: .departure, phase: .holdShort,
+        var departure = TrafficAircraft(id: id, callsign: callsign, config: config, kind: .departure, phase: .holdShort,
                                         position: start, heading: runway.heading, speed: 0)
+        departure.taxiRemaining = Self.gateDistance
         aircraft.append(departure)
         pendingEvents.append(.spawned(id: id, kind: .departure))
     }
@@ -306,6 +311,15 @@ public struct TrafficSystem: Sendable {
             return rollOut(&a, dt: dt, runway: runway)
         case .holdShort:
             a.speed = 0
+            if a.taxiRemaining > 0 {
+                // Taxi along the runway from the gate to the hold line, at taxi speed.
+                let step = min(a.taxiRemaining, Self.taxiSpeed * dt)
+                a.taxiRemaining -= step
+                a.position = runway.ned(along: runway.local(a.position).x + step, right: 0, up: 0)
+                a.heading = runway.heading
+                a.speed = a.taxiRemaining > 0 ? Self.taxiSpeed : 0
+                return nil
+            }
             if a.clearedToTakeoff { a.phase = .takeoffRoll }
             return nil
         case .takeoffRoll:

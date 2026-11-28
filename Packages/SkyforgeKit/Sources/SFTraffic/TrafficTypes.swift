@@ -119,6 +119,9 @@ public struct TrafficAircraft: Sendable, Equatable, Identifiable {
     public internal(set) var age = 0.0
     /// Seconds since this aircraft last shed a wake pair.
     public internal(set) var sinceWake = 0.0
+    /// Metres still to taxi to the hold line. A departure spawns at its gate, behind the threshold, and cannot be
+    /// cleared for takeoff until this reaches zero.
+    public internal(set) var taxiRemaining = 0.0
     /// The controller that has this aircraft now.
     public internal(set) var facility: TrafficFacility
     /// True while approach control holds this arrival in an orbit around the approach fix.
