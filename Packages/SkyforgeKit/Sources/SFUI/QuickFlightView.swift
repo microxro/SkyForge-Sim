@@ -262,6 +262,10 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
         // Fair-weather cumulus; march quality by device tier (the march runs at half resolution).
         renderer?.clouds = .fairWeather
         qualityBase = tier == .low ? .low : (tier == .medium ? .medium : .high)
+        // Saved scene density: vegetation density (trees) and the level-of-detail distance (tree draw distance).
+        let graphics = SettingsStore.current().graphics
+        qualityBase.vegetationDensity = Float(graphics.vegetationDensity)
+        qualityBase.drawDistanceScale = Float(graphics.lodDistance)
         renderer?.apply(qualityBase)
         governor = QualityGovernor(tier: PerfTier(deviceTier: tier), targetFPS: 60)
         startAudio()
