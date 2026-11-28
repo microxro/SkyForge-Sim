@@ -37,7 +37,7 @@ public actor MultiplayerSession {
         let events = transport.events
         eventTask = Task {
             for await event in events {
-                await self.handle(event)
+                self.handle(event)
             }
         }
     }
