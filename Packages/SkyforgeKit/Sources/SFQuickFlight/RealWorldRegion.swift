@@ -171,6 +171,7 @@ public struct RealWorldRegion: FlightWorld {
         return try await assemble(name: label, ident: "", origin: start.origin, thr: .zero, end: .zero, elevation: nil,
                                   widthMetres: 0, lowNumber: 0, detail: detail, transport: transport, cache: cache,
                                   bundledBuildings: false, bundledLandCover: false, progress: progress)
+    }
 
     /// The shared region build: terrain, imagery, buildings, land cover and the runway frame for an origin. An airport
     /// passes its runway; a free point passes a zero-length frame at the origin. A nil `elevation` takes the ground
