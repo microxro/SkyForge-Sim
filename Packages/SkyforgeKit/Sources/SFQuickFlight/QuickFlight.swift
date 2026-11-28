@@ -460,7 +460,23 @@ public struct QuickFlightSession: Sendable {
     public private(set) var state: AircraftState
     public private(set) var inputs = ControlInputs()
     public private(set) var instruments = InstrumentSystem()
-    public var mapper = InputMapper(profiles: [.defaults, .touchDefaults])
+    public var mapper = InputMapper(profiles: [.defaults, .touchDefaults, .keyboardMouseDefaults])
+    /// Mouse-look offsets for the chase camera (radians, and a fraction of view pitch). Decay to forward when released.
+    public var lookYaw = 0.0
+    public var lookPitch = 0.0
+
+    /// Applies one frame of mouse-look. `delta` is nil when look is off, so the view eases back to forward.
+    public mutating func applyLook(_ delta: (dx: Double, dy: Double)?, dt: Double) {
+        guard dt.isFinite, dt >= 0 else { return }
+        guard let d = delta, d.dx.isFinite, d.dy.isFinite else {
+            let k = min(1, 3 * dt)
+            lookYaw -= lookYaw * k
+            lookPitch -= lookPitch * k
+            return
+        }
+        lookYaw = min(0.9 * .pi, max(-0.9 * .pi, lookYaw + d.dx * 0.004))
+        lookPitch = min(0.6, max(-0.6, lookPitch + d.dy * 0.003))
+    }
     public private(set) var crashed = false
     public private(set) var time = 0.0
     private var accumulator = 0.0
@@ -526,7 +542,8 @@ public struct QuickFlightSession: Sendable {
     public mutating func update(realDt: Double, device: InputMapper.DeviceState) {
         guard !crashed else { return }
         let out = mapper.evaluate(device, dt: realDt)
-        inputs.elevator = out.axes[.pitch] ?? 0
+        // Elevator trim (held keys or scroll with Option) offsets the pitch command.
+        inputs.elevator = min(1, max(-1, (out.axes[.pitch] ?? 0) + 0.5 * (out.axes[.elevatorTrim] ?? 0)))
         inputs.aileron = out.axes[.roll] ?? 0
         inputs.rudder = out.axes[.yaw] ?? 0
         if let t = out.axes[.throttle] { inputs.throttle = max(0, min(1, t)) }
@@ -604,15 +621,18 @@ public struct QuickFlightSession: Sendable {
     /// `orbit` swings the camera around the aircraft (radians, 0 = directly behind).
     public func chaseCamera(distance: Double = 22, height: Double = 5, orbit: Double = 0) -> (position: SIMD3<Double>, target: SIMD3<Double>) {
         let e = state.attitude.euler
-        let fwd = SIMD3(sin(e.yaw), cos(e.yaw), 0)
+        // Mouse-look (lookYaw) adds to the track heading, so orbit and look compose.
+        let yaw = e.yaw + lookYaw
+        let fwd = SIMD3(sin(yaw), cos(yaw), 0)
         let p = positionENU
-        let a = e.yaw + orbit
+        let a = yaw + orbit
         let behind = SIMD3(sin(a), cos(a), 0)
         var cam = p - behind * distance + SIMD3(0, 0, height)
         let ground = world.height(cam.x, cam.y) + 2
         cam.z = max(cam.z, ground)
         // Look ahead along the track when behind the aircraft; when swung to the side, look at the aircraft.
+        // Mouse-look pitch raises or lowers the target.
         let ahead = max(0, cos(orbit)) * 30
-        return (cam, p + fwd * ahead + SIMD3(0, 0, 1))
+        return (cam, p + fwd * ahead + SIMD3(0, 0, 1 + lookPitch * 30))
     }
 }

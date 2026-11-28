@@ -27,12 +27,16 @@ let package = Package(
         .target(name: "SFWorldGen", dependencies: ["SFMath", "SFTerrainCore"]),
         .target(name: "SFOriginalWorld", dependencies: ["SFMath"]),
         .target(name: "SFPreview", dependencies: ["SFMath", "SFTerrainCore", "SFWorldGen", "SFAtmosphere", "SFImagery"]),
-        .target(name: "SFContent", dependencies: ["SFMath", .product(name: "Crypto", package: "swift-crypto")]),
+        .target(name: "SFContent", dependencies: ["SFMath", .product(name: "Crypto", package: "swift-crypto")], swiftSettings: [.define("SCENERY_BACKGROUND_ASSETS")]),
         .target(name: "SFInput", dependencies: ["SFMath"]),
+        // Settings model: graphics, performance, audio, controls, gameplay, HUD, units, accessibility. Pure Swift.
+        .target(name: "SFSettings"),
         .target(name: "SFImagery", dependencies: ["SFMath", "SFContent", "SFTerrainCore"]),
         .target(name: "SFInstruments", dependencies: ["SFMath", "SFAtmosphere", "SFFlightModel"]),
         .target(name: "SFQuickFlight", dependencies: ["SFMath", "SFAtmosphere", "SFWeather", "SFFlightModel", "SFInstruments", "SFInput", "SFWorldGen", "SFPreview", "SFImagery", "SFNavData", "SFTerrainCore", "SFContent"], resources: [.copy("Resources")]),
         .target(name: "SFCareer", dependencies: ["SFMath"]),
+        // Multiplayer core: transport protocol, wire format, remote aircraft interpolation. Pure Swift.
+        .target(name: "SFNetcode"),
         // First-flight lessons for new players. Pure Swift; the UI overlays the prompts and feeds the checks.
         .target(name: "SFTutorial"),
         // Missions, aircraft selection and military flight. Pure Swift on top of the flight model and Quick Flight worlds.
@@ -50,10 +54,11 @@ let package = Package(
         .target(name: "SFRender", dependencies: ["SFPerf", "SFMath", "SFSim", "SFWeather", "SFTerrainCore", "SFWorldGen", "SFAtmosphere", "SFPreview", "SFQuickFlight"]),
         .target(name: "SFAudio", dependencies: ["SFSim", "SFMath", "SFFlightModel", "SFWeather"]),
         .target(name: "SFPlatform", dependencies: ["SFSim", "SFInput"]),
-        .target(name: "SFUI", dependencies: ["SFSim", "SFRender", "SFWorldGen", "SFPerf", "SFAudio", "SFPlatform", "SFNavData", "SFContent", "SFInstruments", "SFInput", "SFQuickFlight", "SFAtmosphere", "SFWeather", "SFImagery", "SFFlightModel", "SFGameplay", "SFGameplayUI", "SFCareer", "SFTraffic", "SFATC", "SFTutorial"]),
+        .target(name: "SFUI", dependencies: ["SFSim", "SFRender", "SFWorldGen", "SFPerf", "SFAudio", "SFPlatform", "SFNavData", "SFContent", "SFInstruments", "SFInput", "SFSettings", "SFQuickFlight", "SFAtmosphere", "SFWeather", "SFImagery", "SFFlightModel", "SFGameplay", "SFGameplayUI", "SFCareer", "SFTraffic", "SFATC", "SFTutorial"]),
         .executableTarget(name: "SFPreviewCLI", dependencies: ["SFPreview", "SFInstruments", "SFAtmosphere", "SFQuickFlight", "SFImagery", "SFContent", "SFWorldGen", "SFTerrainCore", "SFMath"]),
         // Tests (Swift Testing)
         .testTarget(name: "SFCareerTests", dependencies: ["SFCareer", "SFMath"]),
+        .testTarget(name: "SFNetcodeTests", dependencies: ["SFNetcode"]),
         .testTarget(name: "SFTutorialTests", dependencies: ["SFTutorial"]),
         .testTarget(name: "SFMathTests", dependencies: ["SFMath"]),
         .testTarget(name: "SFAtmosphereTests", dependencies: ["SFAtmosphere"]),
@@ -68,6 +73,7 @@ let package = Package(
         .testTarget(name: "SFWeatherTests", dependencies: ["SFWeather", "SFContent"]),
         .testTarget(name: "SFNavDataTests", dependencies: ["SFNavData", "SFContent"]),
         .testTarget(name: "SFInputTests", dependencies: ["SFInput"]),
+        .testTarget(name: "SFSettingsTests", dependencies: ["SFSettings"]),
         .testTarget(name: "SFImageryTests", dependencies: ["SFImagery", "SFContent"]),
         .testTarget(name: "SFInstrumentsTests", dependencies: ["SFInstruments", "SFFlightModel", "SFAtmosphere", "SFPreview"]),
         .testTarget(name: "SFQuickFlightTests", dependencies: ["SFQuickFlight", "SFWeather", "SFAtmosphere", "SFFlightModel", "SFInput", "SFPreview", "SFImagery", "SFContent"]),

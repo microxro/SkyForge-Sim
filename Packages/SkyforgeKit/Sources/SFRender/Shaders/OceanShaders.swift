@@ -170,7 +170,7 @@ public enum OceanShaders {
 
     // Wake foam from up to 8 sources: a V of two arms plus a turbulent centre trail, widening and decaying
     // behind each source. Also writes the surface-slope perturbation through `slopeOut`.
-    static float owWakeFoam(float2 p, float t, constant OWWake* wakes, int count, thread float2& slopeOut) {
+    static float owWakeFoam(float2 p, float t, constant OWWake* wakes, int count, float footprint, thread float2& slopeOut) {
         float foam = 0.0;
         for (int i = 0; i < 8; i++) {
             if (i >= count) break;
@@ -183,7 +183,10 @@ public enum OceanShaders {
             float len = max(w.params.y, 1.0);
             if (along < -w.posRadius.w || along > len) continue;
             float u = saturate(along / len);              // 0 at the source, 1 at the tail
-            float spread = w.posRadius.w * (1.0 + 2.2 * u);
+            // Floor the wake half-width at a few pixels: a real wake is ~1 m wide, which is sub-pixel from
+            // cruise altitude, so the trail vanished in the showcase frames (round 64: no wake visible).
+            float halfW = max(w.posRadius.w, 4.0 * footprint);
+            float spread = halfW * (1.0 + 2.2 * u);
             float arm = abs(abs(across) - spread * 0.9);  // Kelvin-like arms
             float armFoam = (1.0 - smoothstep(0.0, 0.25 * spread + 0.3, arm)) * (1.0 - u);
             float centre = (1.0 - smoothstep(0.0, spread * 0.8, abs(across))) * pow(1.0 - u, 1.5);
@@ -221,17 +224,21 @@ public enum OceanShaders {
         float height, crest, slopeVar;
         float3 n = owWaveNormal(p, P, footprint, height, crest, slopeVar);
         float2 wakeSlope = float2(0.0);
-        float wake = owWakeFoam(p, P.time, wakes, P.wakeCount, wakeSlope);
+        float wake = owWakeFoam(p, P.time, wakes, P.wakeCount, footprint, wakeSlope);
         n = normalize(n + float3(-wakeSlope, 0.0));
         float cosT = max(0.0, -dot(dir, n));
         // Imagery lakes (lake = 1): a reflectance floor and a wider glint lobe, so the sky and sun show on flat water.
         // The ocean (lake = 0) keeps the physical Fresnel and slope variance.
         // The reflectance rises only at grazing angles, so mid-lake stays deep and the far shore mirrors.
-        float F = max(owFresnel(cosT), 0.30 * lake * pow(1.0 - cosT, 4.0));
+        // Lake reflectance: about 6% at mid-angles rising toward grazing, so the sky shows in the surface.
+        // Round 64 measured the old floor (0.30 * (1-cosT)^4, about 3% at a 30-degree view) as no visible sky.
+        float F = max(owFresnel(cosT), lake * (0.06 + 0.5 * pow(1.0 - cosT, 3.0)));
         slopeVar += 0.12 * lake;
 
         float3 light = ambient * 0.5 + sunRad * max(0.0, toSun.z) * 0.18 * sunVis;
-        float3 body = owDepthColour(depth, bed, light, float3(0.004, 0.026, 0.034));   // darker deep-water tint
+        // Lakes: a dark silt bed, not the sandy tan that read as grey-white speckle over shallow water.
+        float3 bedL = mix(bed, float3(0.06, 0.09, 0.10), lake);
+        float3 body = owDepthColour(depth, bedL, light, float3(0.004, 0.026, 0.034));   // darker deep-water tint
         body += owCrestSSS(dir, toSun, n, crest, height, sunRad * sunVis, float3(0.02, 0.14, 0.10));
 
         float3 col = mix(body, skyRefl, F);

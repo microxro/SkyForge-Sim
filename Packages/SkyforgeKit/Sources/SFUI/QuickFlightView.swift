@@ -149,6 +149,8 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
     /// Chase-camera pinch distance and two-finger orbit.
     var chaseControl = ChaseCameraControl()
     var touch = InputMapper.DeviceState()
+    /// Keyboard and mouse: held throttle and trim, mouse yoke, scroll, and mouse-look.
+    let keyboardMouse = KeyboardMouseInput()
     private var renderer: WorldRenderer?
     private var governor: QualityGovernor?
     private var qualityBase: WorldRenderer.Settings = .high
@@ -197,8 +199,9 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
             s.place(state: state, inputs: inputs)
         }
         s.inputFilter = filter
-        // Touch layout (sensitivity, curve) and the player's saved bindings sit above the defaults.
-        s.mapper = InputMapper(profiles: [.defaults, TouchSettingsStore.load().profile, BindingsStore.load()])
+        // Keyboard and mouse defaults sit above the flight defaults. Touch layout (sensitivity, curve) and the
+        // player's saved bindings sit above those.
+        s.mapper = InputMapper(profiles: [.defaults, .keyboardMouseDefaults, TouchSettingsStore.load().profile, BindingsStore.load()])
         s.gearDownBelowSpeed = GameplayDirector.gearDownSpeed(for: spec)
         return (s, GameplayDirector(aircraft: spec, frame: frame, mission: mission))
     }
@@ -389,6 +392,11 @@ final class QuickFlightController: NSObject, ObservableObject, MTKViewDelegate {
         var device = GameControllerInput.poll()
         device.analog.merge(touch.analog) { a, b in abs(a) > abs(b) ? a : b }
         device.pressed.formUnion(touch.pressed)
+        let km = keyboardMouse.poll(dt: dt)
+        device.analog.merge(km.state.analog) { a, b in abs(a) > abs(b) ? a : b }
+        device.pressed.formUnion(km.state.pressed)
+        device.modifiers.formUnion(km.state.modifiers)
+        session.applyLook(km.look, dt: dt)
         session.update(realDt: dt, device: device)
         stepGameplay(dt: dt)
         stepTraffic(dt: dt)

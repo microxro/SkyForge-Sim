@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-40 -60 1200 920" font-family="Georgia, serif">
+<defs><filter id="ridge"><feGaussianBlur stdDeviation="3"/></filter></defs>
+<rect x="-40" y="-60" width="1200" height="920" fill="#9fc4d6"/>
+<line x1="0" y1="0" x2="0" y2="800" stroke="#ffffff55" stroke-width="1"/>
+<line x1="160" y1="0" x2="160" y2="800" stroke="#ffffff55" stroke-width="1"/>
+<line x1="320" y1="0" x2="320" y2="800" stroke="#ffffff55" stroke-width="1"/>
+<line x1="480" y1="0" x2="480" y2="800" stroke="#ffffff55" stroke-width="1"/>
+<line x1="640" y1="0" x2="640" y2="800" stroke="#ffffff55" stroke-width="1"/>
+<line x1="800" y1="0" x2="800" y2="800" stroke="#ffffff55" stroke-width="1"/>
+<line x1="960" y1="0" x2="960" y2="800" stroke="#ffffff55" stroke-width="1"/>
+<line x1="1120" y1="0" x2="1120" y2="800" stroke="#ffffff55" stroke-width="1"/>
+<line x1="0" y1="800" x2="1120" y2="800" stroke="#ffffff55" stroke-width="1"/>
+<line x1="0" y1="640" x2="1120" y2="640" stroke="#ffffff55" stroke-width="1"/>
+<line x1="0" y1="480" x2="1120" y2="480" stroke="#ffffff55" stroke-width="1"/>
+<line x1="0" y1="320" x2="1120" y2="320" stroke="#ffffff55" stroke-width="1"/>
+<line x1="0" y1="160" x2="1120" y2="160" stroke="#ffffff55" stroke-width="1"/>
+<line x1="0" y1="0" x2="1120" y2="0" stroke="#ffffff55" stroke-width="1"/>
+<clipPath id="land"><polygon points="144.0,96.0 360.0,32.0 560.0,64.0 736.0,24.0 944.0,80.0 1056.0,224.0 1024.0,360.0 1088.0,480.0 992.0,624.0 864.0,736.0 672.0,768.0 480.0,720.0 320.0,768.0 160.0,688.0 64.0,528.0 96.0,336.0 32.0,224.0"/></clipPath>
+<polygon points="144.0,96.0 360.0,32.0 560.0,64.0 736.0,24.0 944.0,80.0 1056.0,224.0 1024.0,360.0 1088.0,480.0 992.0,624.0 864.0,736.0 672.0,768.0 480.0,720.0 320.0,768.0 160.0,688.0 64.0,528.0 96.0,336.0 32.0,224.0" fill="#e8dfc4"/>
+<g clip-path="url(#land)">
+<rect x="144" y="464" width="272" height="208" fill="#d9c98a" opacity="0.75"/>
+<rect x="832" y="352" width="240" height="240" fill="#b9cf8f" opacity="0.75"/>
+<rect x="640" y="336" width="240" height="192" fill="#a7c47a" opacity="0.75"/>
+<rect x="352" y="160" width="320" height="240" fill="#8fa58a" opacity="0.75"/>
+<rect x="320" y="16" width="480" height="160" fill="#7fae7a" opacity="0.75"/>
+<rect x="64" y="128" width="208" height="224" fill="#a9b98f" opacity="0.75"/>
+<polyline points="208.0,576.0 352.0,432.0 464.0,304.0 608.0,240.0 784.0,176.0" fill="none" stroke="#7d6e5c" stroke-width="72" stroke-linecap="round" opacity="0.25" filter="url(#ridge)"/>
+</g>
+<polygon points="144.0,96.0 360.0,32.0 560.0,64.0 736.0,24.0 944.0,80.0 1056.0,224.0 1024.0,360.0 1088.0,480.0 992.0,624.0 864.0,736.0 672.0,768.0 480.0,720.0 320.0,768.0 160.0,688.0 64.0,528.0 96.0,336.0 32.0,224.0" fill="none" stroke="#5b4a33" stroke-width="2.5"/>
+<polyline points="496.0,96.0 528.0,240.0 576.0,400.0 720.0,480.0 832.0,560.0 880.0,672.0 896.0,768.0" fill="none" stroke="#4f8fb8" stroke-width="3.0" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="80.0,336.0 208.0,368.0 320.0,400.0 448.0,480.0 528.0,576.0 608.0,688.0 672.0,768.0" fill="none" stroke="#4f8fb8" stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round"/>
+<ellipse cx="464" cy="480" rx="48" ry="32" fill="#4f8fb8" stroke="#2f6a92"/>
+<path d="M455,310 L464,294 L473,310 Z" fill="#8a7b6a" stroke="#4b4236"/>
+<text x="475" y="306" font-size="9" fill="#3b3226">Mount Ardent 2870 m</text>
+<path d="M599,246 L608,230 L617,246 Z" fill="#8a7b6a" stroke="#4b4236"/>
+<text x="619" y="242" font-size="9" fill="#3b3226">Sable Peak 2650 m</text>
+<path d="M343,438 L352,422 L361,438 Z" fill="#8a7b6a" stroke="#4b4236"/>
+<text x="363" y="434" font-size="9" fill="#3b3226">Cold Tor 2410 m</text>
+<path d="M231,550 L240,534 L249,550 Z" fill="#8a7b6a" stroke="#4b4236"/>
+<text x="251" y="546" font-size="9" fill="#3b3226">Harrow Crest 2100 m</text>
+<path d="M775,182 L784,166 L793,182 Z" fill="#8a7b6a" stroke="#4b4236"/>
+<text x="795" y="178" font-size="9" fill="#3b3226">Greywether 1640 m</text>
+<polyline points="240.0,128.0 480.0,96.0 736.0,112.0 944.0,240.0 1008.0,384.0 944.0,480.0" fill="none" stroke="#b5654a" stroke-width="3.5" stroke-dasharray=""/>
+<polyline points="480.0,560.0 640.0,480.0 768.0,432.0 896.0,480.0 944.0,512.0" fill="none" stroke="#b5654a" stroke-width="3.5" stroke-dasharray=""/>
+<polyline points="272.0,336.0 352.0,400.0 464.0,448.0 576.0,480.0 672.0,560.0" fill="none" stroke="#b5654a" stroke-width="2.5" stroke-dasharray="5 3"/>
+<circle cx="768" cy="432" r="9" fill="#2b2b2b" stroke="#fff" stroke-width="1.5"/>
+<text x="780" y="436" font-size="12" font-weight="bold" fill="#1d1d1d">Caldera</text>
+<circle cx="944" cy="512" r="6" fill="#2b2b2b" stroke="#fff" stroke-width="1.5"/>
+<text x="953" y="516" font-size="10" font-weight="normal" fill="#1d1d1d">Port Serrin</text>
+<circle cx="560" cy="128" r="6" fill="#2b2b2b" stroke="#fff" stroke-width="1.5"/>
+<text x="569" y="132" font-size="10" font-weight="normal" fill="#1d1d1d">Northgate</text>
+<circle cx="272" cy="272" r="6" fill="#2b2b2b" stroke="#fff" stroke-width="1.5"/>
+<text x="281" y="276" font-size="10" font-weight="normal" fill="#1d1d1d">Brightwater</text>
+<circle cx="224" cy="608" r="4" fill="#2b2b2b" stroke="#fff" stroke-width="1.5"/>
+<text x="231" y="612" font-size="10" font-weight="normal" fill="#1d1d1d">Ashwold</text>
+<circle cx="672" cy="560" r="4" fill="#2b2b2b" stroke="#fff" stroke-width="1.5"/>
+<text x="679" y="564" font-size="10" font-weight="normal" fill="#1d1d1d">Millbrook</text>
+<circle cx="800" cy="640" r="4" fill="#2b2b2b" stroke="#fff" stroke-width="1.5"/>
+<text x="807" y="644" font-size="10" font-weight="normal" fill="#1d1d1d">Tessel Falls</text>
+<circle cx="432" cy="224" r="4" fill="#2b2b2b" stroke="#fff" stroke-width="1.5"/>
+<text x="439" y="228" font-size="10" font-weight="normal" fill="#1d1d1d">Greyhaven</text>
+<circle cx="928" cy="304" r="4" fill="#2b2b2b" stroke="#fff" stroke-width="1.5"/>
+<text x="935" y="308" font-size="10" font-weight="normal" fill="#1d1d1d">Kestrel Cross</text>
+<circle cx="176" cy="464" r="3" fill="#2b2b2b" stroke="#fff" stroke-width="1.5"/>
+<text x="182" y="468" font-size="10" font-weight="normal" fill="#1d1d1d">Saltmarsh</text>
+<rect x="732" y="460" width="8" height="8" fill="#c0392b" stroke="#fff"/>
+<text x="743" y="474" font-size="8.5" fill="#c0392b">HRCI Caldera International</text>
+<rect x="924" y="476" width="8" height="8" fill="#8e44ad" stroke="#fff"/>
+<text x="935" y="490" font-size="8.5" fill="#8e44ad">HRPS Port Serrin Regional</text>
+<rect x="572" y="156" width="8" height="8" fill="#8e44ad" stroke="#fff"/>
+<text x="583" y="170" font-size="8.5" fill="#8e44ad">HRNG Northgate Field</text>
+<rect x="236" y="300" width="8" height="8" fill="#2c6fbb" stroke="#fff"/>
+<text x="247" y="314" font-size="8.5" fill="#2c6fbb">HRBW Brightwater Strip</text>
+<rect x="204" y="636" width="8" height="8" fill="#b9770e" stroke="#fff"/>
+<text x="215" y="650" font-size="8.5" fill="#b9770e">HRAH Ashwold Hangar Strip</text>
+<rect x="396" y="348" width="8" height="8" fill="#b9770e" stroke="#fff"/>
+<text x="407" y="362" font-size="8.5" fill="#b9770e">HRKT Kestrel Tor</text>
+<rect x="508" y="364" width="8" height="8" fill="#922b21" stroke="#fff"/>
+<text x="519" y="378" font-size="8.5" fill="#922b21">HRAR Ardent Rest</text>
+<rect x="860" y="668" width="8" height="8" fill="#b9770e" stroke="#fff"/>
+<text x="871" y="682" font-size="8.5" fill="#b9770e">HRTS Tessel Strip</text>
+<rect x="460" y="508" width="8" height="8" fill="#117a65" stroke="#fff"/>
+<text x="471" y="522" font-size="8.5" fill="#117a65">HRYS Lake Ysolde Water Base</text>
+<rect x="908" y="268" width="8" height="8" fill="#2c6fbb" stroke="#fff"/>
+<text x="919" y="282" font-size="8.5" fill="#2c6fbb">HRKX Kestrel Cross Field</text>
+<rect x="0" y="0" width="1120" height="800" fill="none" stroke="#333" stroke-width="1.5"/>
+<text x="0" y="-22" font-size="26" font-weight="bold" fill="#1d1d1d">Halden Reach</text>
+<text x="0" y="-4" font-size="11" fill="#333">Original SkyWorld region, 140 x 100 km. Airports marked by class, not to scale for runway length.</text>
+<rect x="950" y="822" width="160" height="5" fill="#222"/><rect x="1110" y="822" width="160" height="5" fill="#fff" stroke="#222"/>
+<text x="950" y="840" font-size="10" fill="#222">0 — 20 — 40 km</text>
+<text x="1090" y="-30" font-size="14" fill="#222" text-anchor="middle">N ▲</text>
+<rect x="0" y="822" width="10" height="10" fill="#c0392b"/><text x="14" y="832" font-size="10" fill="#222">Hub airport</text>
+<rect x="150" y="822" width="10" height="10" fill="#8e44ad"/><text x="164" y="832" font-size="10" fill="#222">Regional</text>
+<rect x="300" y="822" width="10" height="10" fill="#2c6fbb"/><text x="314" y="832" font-size="10" fill="#222">General aviation</text>
+<rect x="450" y="822" width="10" height="10" fill="#b9770e"/><text x="464" y="832" font-size="10" fill="#222">Bush strip</text>
+<rect x="600" y="822" width="10" height="10" fill="#922b21"/><text x="614" y="832" font-size="10" fill="#222">Mountain strip</text>
+<rect x="750" y="822" width="10" height="10" fill="#117a65"/><text x="764" y="832" font-size="10" fill="#222">Seaplane base</text>
+</svg>
