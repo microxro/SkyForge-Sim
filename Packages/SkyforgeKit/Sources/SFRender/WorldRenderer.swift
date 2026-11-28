@@ -673,6 +673,20 @@ public final class WorldRenderer {
         }
     }
 
+    /// Per-batch vegetation uniforms, shared by the colour and shadow passes.
+    private func makeVegUniforms(_ b: VegBatch) -> VegUniformsCPU {
+        let kind = SpeciesKind(rawValue: b.species) ?? .birch
+        return VegUniformsCPU(
+            wind: vegetationWind,
+            timeFade: SIMD4<Float>(0, VegetationTier.high.cardStart, VegetationTier.high.billboardStart, VegetationTier.high.fadeWidth),
+            season: SIMD4<Float>(0, 0, 0, 1),
+            species: SIMD4<Float>(Float(b.species), kind.stiffness, kind.deciduous ? 1 : 0, 0),
+            board: .zero,
+            barkLeaf: SIMD4<Float>(kind.leafColour, 0),
+            grass: .zero,
+            grassParams: SIMD4<Float>(0, 0, 0, min(1, max(0, vegetationDensity))))
+    }
+
     /// Uploads instanced trees, binned by kind and 400 m cell so each cell is one contiguous instance range
     /// (culled per view and per shadow cascade). An empty list removes them.
     public func setTrees(_ list: [RealWorldRenderData.Tree]) throws {
@@ -1280,6 +1294,20 @@ public final class WorldRenderer {
                     }
                     se.setRenderPipelineState(shadowPipeline)
                 }
+                // Vegetation batches (full-detail crowns) cast into the near cascade only, to cap the shadow cost.
+                if !vegBatches.isEmpty, ci == 1 {
+                    var su = ShadowUniforms(lightViewProj: cascades[ci], model: Self.translation(-c.position))
+                    se.setRenderPipelineState(shadowVegPipeline)
+                    se.setVertexBytes(&su, length: MemoryLayout<ShadowUniforms>.stride, index: 1)
+                    for b in vegBatches {
+                        var vu = makeVegUniforms(b)
+                        se.setVertexBuffer(b.mesh, offset: 0, index: 0)
+                        se.setVertexBuffer(b.instances, offset: 0, index: 2)
+                        se.setVertexBytes(&vu, length: MemoryLayout<VegUniformsCPU>.stride, index: 3)
+                        se.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: b.meshCount, instanceCount: b.instanceCount)
+                    }
+                    se.setRenderPipelineState(shadowPipeline)
+                }
                 // Without a hero cascade (no aircraft position) nothing else casts the airframe's shadow.
             }
             // Round 5 tier cascades have no hero column: the airframe casts into every cascade instead.
@@ -1518,16 +1546,7 @@ public final class WorldRenderer {
             enc.setVertexBytes(&uu, length: MemoryLayout<WorldUniforms>.stride, index: 1)
             enc.setFragmentBytes(&uu, length: MemoryLayout<WorldUniforms>.stride, index: 1)
             for b in vegBatches {
-                let kind = SpeciesKind(rawValue: b.species) ?? .birch
-                var vu = VegUniformsCPU(
-                    wind: vegetationWind,
-                    timeFade: SIMD4<Float>(0, VegetationTier.high.cardStart, VegetationTier.high.billboardStart, VegetationTier.high.fadeWidth),
-                    season: SIMD4<Float>(0, 0, 0, 1),
-                    species: SIMD4<Float>(Float(b.species), kind.stiffness, kind.deciduous ? 1 : 0, 0),
-                    board: .zero,
-                    barkLeaf: SIMD4<Float>(kind.leafColour, 0),
-                    grass: .zero,
-                    grassParams: SIMD4<Float>(0, 0, 0, min(1, max(0, vegetationDensity))))
+                var vu = makeVegUniforms(b)
                 enc.setVertexBuffer(b.mesh, offset: 0, index: 0)
                 enc.setVertexBuffer(b.instances, offset: 0, index: 2)
                 enc.setVertexBytes(&vu, length: MemoryLayout<VegUniformsCPU>.stride, index: 3)
