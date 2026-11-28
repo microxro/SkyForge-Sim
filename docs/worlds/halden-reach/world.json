@@ -1,0 +1,523 @@
+{
+  "name": "Halden Reach",
+  "worldgenVersion": 1,
+  "frameKm": [
+    140,
+    100
+  ],
+  "originNote": "x east, y north, km; origin = south-west corner of the frame",
+  "island": [
+    [
+      18,
+      88
+    ],
+    [
+      45,
+      96
+    ],
+    [
+      70,
+      92
+    ],
+    [
+      92,
+      97
+    ],
+    [
+      118,
+      90
+    ],
+    [
+      132,
+      72
+    ],
+    [
+      128,
+      55
+    ],
+    [
+      136,
+      40
+    ],
+    [
+      124,
+      22
+    ],
+    [
+      108,
+      8
+    ],
+    [
+      84,
+      4
+    ],
+    [
+      60,
+      10
+    ],
+    [
+      40,
+      4
+    ],
+    [
+      20,
+      14
+    ],
+    [
+      8,
+      34
+    ],
+    [
+      12,
+      58
+    ],
+    [
+      4,
+      72
+    ]
+  ],
+  "seaLevelM": 0,
+  "peaks": [
+    {
+      "name": "Mount Ardent",
+      "x": 58,
+      "y": 62,
+      "m": 2870
+    },
+    {
+      "name": "Sable Peak",
+      "x": 76,
+      "y": 70,
+      "m": 2650
+    },
+    {
+      "name": "Cold Tor",
+      "x": 44,
+      "y": 46,
+      "m": 2410
+    },
+    {
+      "name": "Harrow Crest",
+      "x": 30,
+      "y": 32,
+      "m": 2100
+    },
+    {
+      "name": "Greywether",
+      "x": 98,
+      "y": 78,
+      "m": 1640
+    }
+  ],
+  "ridges": [
+    [
+      [
+        26,
+        28
+      ],
+      [
+        44,
+        46
+      ],
+      [
+        58,
+        62
+      ],
+      [
+        76,
+        70
+      ],
+      [
+        98,
+        78
+      ]
+    ]
+  ],
+  "rivers": [
+    {
+      "name": "Tessel River",
+      "widthM": 180,
+      "points": [
+        [
+          62,
+          88
+        ],
+        [
+          66,
+          70
+        ],
+        [
+          72,
+          50
+        ],
+        [
+          90,
+          40
+        ],
+        [
+          104,
+          30
+        ],
+        [
+          110,
+          16
+        ],
+        [
+          112,
+          4
+        ]
+      ]
+    },
+    {
+      "name": "Orra River",
+      "widthM": 90,
+      "points": [
+        [
+          10,
+          58
+        ],
+        [
+          26,
+          54
+        ],
+        [
+          40,
+          50
+        ],
+        [
+          56,
+          40
+        ],
+        [
+          66,
+          28
+        ],
+        [
+          76,
+          14
+        ],
+        [
+          84,
+          4
+        ]
+      ]
+    }
+  ],
+  "lakes": [
+    {
+      "name": "Lake Ysolde",
+      "x": 58,
+      "y": 40,
+      "rx": 6,
+      "ry": 4
+    }
+  ],
+  "regions": [
+    {
+      "name": "Ashwold Steppe",
+      "biome": "dry_grassland",
+      "x": 18,
+      "y": 16,
+      "w": 34,
+      "h": 26
+    },
+    {
+      "name": "Serrin Coast",
+      "biome": "coastal_farmland",
+      "x": 104,
+      "y": 26,
+      "w": 30,
+      "h": 30
+    },
+    {
+      "name": "Caldera Plain",
+      "biome": "temperate_farmland",
+      "x": 80,
+      "y": 34,
+      "w": 30,
+      "h": 24
+    },
+    {
+      "name": "Ardent Highlands",
+      "biome": "alpine_conifer",
+      "x": 44,
+      "y": 50,
+      "w": 40,
+      "h": 30
+    },
+    {
+      "name": "Northern Woods",
+      "biome": "mixed_forest",
+      "x": 40,
+      "y": 78,
+      "w": 60,
+      "h": 20
+    },
+    {
+      "name": "Brightwater Downs",
+      "biome": "wet_heath",
+      "x": 8,
+      "y": 56,
+      "w": 26,
+      "h": 28
+    }
+  ],
+  "cities": [
+    {
+      "name": "Caldera",
+      "x": 96,
+      "y": 46,
+      "pop": 320000,
+      "tier": "hub"
+    },
+    {
+      "name": "Port Serrin",
+      "x": 118,
+      "y": 36,
+      "pop": 110000,
+      "tier": "city"
+    },
+    {
+      "name": "Northgate",
+      "x": 70,
+      "y": 84,
+      "pop": 60000,
+      "tier": "city"
+    },
+    {
+      "name": "Brightwater",
+      "x": 34,
+      "y": 66,
+      "pop": 45000,
+      "tier": "city"
+    },
+    {
+      "name": "Ashwold",
+      "x": 28,
+      "y": 24,
+      "pop": 12000,
+      "tier": "town"
+    },
+    {
+      "name": "Millbrook",
+      "x": 84,
+      "y": 30,
+      "pop": 8000,
+      "tier": "town"
+    },
+    {
+      "name": "Tessel Falls",
+      "x": 100,
+      "y": 20,
+      "pop": 6000,
+      "tier": "town"
+    },
+    {
+      "name": "Greyhaven",
+      "x": 54,
+      "y": 72,
+      "pop": 4000,
+      "tier": "town"
+    },
+    {
+      "name": "Kestrel Cross",
+      "x": 116,
+      "y": 62,
+      "pop": 3000,
+      "tier": "town"
+    },
+    {
+      "name": "Saltmarsh",
+      "x": 22,
+      "y": 42,
+      "pop": 2000,
+      "tier": "village"
+    }
+  ],
+  "airports": [
+    {
+      "id": "HRCI",
+      "name": "Caldera International",
+      "x": 92,
+      "y": 42,
+      "elevM": 40,
+      "runwayM": 3600,
+      "surface": "asphalt",
+      "class": "hub"
+    },
+    {
+      "id": "HRPS",
+      "name": "Port Serrin Regional",
+      "x": 116,
+      "y": 40,
+      "elevM": 15,
+      "runwayM": 1800,
+      "surface": "asphalt",
+      "class": "regional"
+    },
+    {
+      "id": "HRNG",
+      "name": "Northgate Field",
+      "x": 72,
+      "y": 80,
+      "elevM": 210,
+      "runwayM": 1400,
+      "surface": "asphalt",
+      "class": "regional"
+    },
+    {
+      "id": "HRBW",
+      "name": "Brightwater Strip",
+      "x": 30,
+      "y": 62,
+      "elevM": 60,
+      "runwayM": 900,
+      "surface": "asphalt",
+      "class": "ga"
+    },
+    {
+      "id": "HRAH",
+      "name": "Ashwold Hangar Strip",
+      "x": 26,
+      "y": 20,
+      "elevM": 480,
+      "runwayM": 700,
+      "surface": "dirt",
+      "class": "bush"
+    },
+    {
+      "id": "HRKT",
+      "name": "Kestrel Tor",
+      "x": 50,
+      "y": 56,
+      "elevM": 1120,
+      "runwayM": 620,
+      "surface": "gravel",
+      "class": "bush"
+    },
+    {
+      "id": "HRAR",
+      "name": "Ardent Rest",
+      "x": 64,
+      "y": 54,
+      "elevM": 1900,
+      "runwayM": 800,
+      "surface": "gravel",
+      "class": "mountain"
+    },
+    {
+      "id": "HRTS",
+      "name": "Tessel Strip",
+      "x": 108,
+      "y": 16,
+      "elevM": 35,
+      "runwayM": 500,
+      "surface": "grass",
+      "class": "bush"
+    },
+    {
+      "id": "HRYS",
+      "name": "Lake Ysolde Water Base",
+      "x": 58,
+      "y": 36,
+      "elevM": 180,
+      "runwayM": 1200,
+      "surface": "water",
+      "class": "seaplane"
+    },
+    {
+      "id": "HRKX",
+      "name": "Kestrel Cross Field",
+      "x": 114,
+      "y": 66,
+      "elevM": 90,
+      "runwayM": 1000,
+      "surface": "grass",
+      "class": "ga"
+    }
+  ],
+  "roads": [
+    {
+      "name": "Coast Highway",
+      "class": "highway",
+      "points": [
+        [
+          30,
+          84
+        ],
+        [
+          60,
+          88
+        ],
+        [
+          92,
+          86
+        ],
+        [
+          118,
+          70
+        ],
+        [
+          126,
+          52
+        ],
+        [
+          118,
+          40
+        ]
+      ]
+    },
+    {
+      "name": "Caldera Expressway",
+      "class": "highway",
+      "points": [
+        [
+          60,
+          30
+        ],
+        [
+          80,
+          40
+        ],
+        [
+          96,
+          46
+        ],
+        [
+          112,
+          40
+        ],
+        [
+          118,
+          36
+        ]
+      ]
+    },
+    {
+      "name": "Ridge Road",
+      "class": "arterial",
+      "points": [
+        [
+          34,
+          58
+        ],
+        [
+          44,
+          50
+        ],
+        [
+          58,
+          44
+        ],
+        [
+          72,
+          40
+        ],
+        [
+          84,
+          30
+        ]
+      ]
+    }
+  ]
+}

@@ -103,7 +103,7 @@ public struct GameplayDirector: Sendable {
         }
 
         // 2. AI aircraft, reacting to the player's position and velocity.
-        for i in targets.indices { targets[i].step(dt: dt, threat: s.positionNED, threatVelocity: s.velocityNED) }
+        FormationFlight.step(&targets, dt: dt, threat: s.positionNED, threatVelocity: s.velocityNED)
 
         // 3. Radar, blinded by live chaff.
         let radarEvents: [RadarEvent] = radar.update(dt: dt, ownship: own, targets: targets, input: radarInput,
@@ -163,7 +163,7 @@ public struct GameplayDirector: Sendable {
             let sample = FlightSample(time: snapshot.time, positionNED: s.positionNED, velocityNED: s.velocityNED,
                                       heightAGL: snapshot.heightAGL - aircraft.gearHeight, onGround: o.weightOnWheels,
                                       crashed: snapshot.crashed || failed || shotDown,
-                                      crashReason: reason)
+                                      crashReason: reason, bodyRates: s.bodyRates)
             let missionEvents: [MissionEvent] = runtime!.update(sample: sample, targets: targets,
                                                                 overstressSeconds: monitor.overstressSeconds,
                                                                 combat: combat, radarLockedID: radar.lockedTargetID,

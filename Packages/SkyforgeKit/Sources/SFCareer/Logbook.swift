@@ -19,8 +19,22 @@ public struct Logbook: Codable, Sendable, Equatable {
     public var aircraft: [String: AircraftLogTotals] = [:]
     /// Flights that departed from or landed at each airport, counted once per flight.
     public var airportVisits: [String: Int] = [:]
+    /// Search and rescue missions completed successfully (a casualty found, reached or brought home).
+    public var rescues = 0
+
+    /// Mission ids that count as rescues in the logbook. Kept as strings, like the career campaigns.
+    public static let rescueMissionIDs: Set<String> = ["sar-grid-search", "sar-medevac-strip", "sar-two-survivors"]
 
     public init() {}
+
+    /// Hand-written so logbooks saved before `rescues` existed still load instead of being refused.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        version = try c.decodeIfPresent(Int.self, forKey: .version) ?? Logbook.currentVersion
+        aircraft = try c.decodeIfPresent([String: AircraftLogTotals].self, forKey: .aircraft) ?? [:]
+        airportVisits = try c.decodeIfPresent([String: Int].self, forKey: .airportVisits) ?? [:]
+        rescues = try c.decodeIfPresent(Int.self, forKey: .rescues) ?? 0
+    }
 
     public var totalFlights: Int { aircraft.values.reduce(0) { $0 + $1.flights } }
     public var totalSeconds: Double { aircraft.values.reduce(0) { $0 + $1.seconds } }
@@ -39,6 +53,10 @@ public struct Logbook: Codable, Sendable, Equatable {
         if !report.departureICAO.isEmpty { airports.insert(report.departureICAO) }
         if let arrival = report.arrivalICAO, !arrival.isEmpty { airports.insert(arrival) }
         for icao in airports { airportVisits[icao, default: 0] += 1 }
+
+        if case .mission(let missionID) = report.kind, report.missionSuccess, Self.rescueMissionIDs.contains(missionID) {
+            rescues += 1
+        }
     }
 
     static func nonNegative(_ value: Double) -> Double {

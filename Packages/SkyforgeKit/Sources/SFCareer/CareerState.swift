@@ -28,13 +28,20 @@ public struct CareerState: Codable, Sendable, Equatable {
     public var completedJobIDs: Set<String> = []
     public var claimedCampaignStages: Set<String> = []
     public var activeJob: Job?
+    /// The bush contract the pilot has accepted, if any. Only one at a time, like jobs.
+    public var activeBushContract: BushContract?
+    /// Discovery ids already paid out (see BushExploration). Paid once, ever.
+    public var bushDiscoveries: Set<String> = []
     public var log: [FlightLogEntry] = []        // most recent last, capped
     public var maintenance: [String: AircraftMaintenance] = [:]   // keyed by owned aircraft id
+    public var firefighting = FirefightingRecord()
+    public var airline = AirlineCareer()         // scheduled-route record: rank, reputation, on-time legs
     public init() {}
 
     enum CodingKeys: String, CodingKey {
         case version, pilotName, xp, credits, ownedAircraft, unlockedAchievements, stats, challenges
-        case completedMissions, completedJobIDs, claimedCampaignStages, activeJob, log, maintenance
+        case completedMissions, completedJobIDs, claimedCampaignStages, activeJob, log, maintenance, firefighting, airline
+        case activeBushContract, bushDiscoveries
     }
 
     /// Tolerant decoding: every field optional so old saves survive new fields; result is always sanitised.
@@ -53,8 +60,12 @@ public struct CareerState: Codable, Sendable, Equatable {
         completedJobIDs = try c.decodeIfPresent(Set<String>.self, forKey: .completedJobIDs) ?? []
         claimedCampaignStages = try c.decodeIfPresent(Set<String>.self, forKey: .claimedCampaignStages) ?? []
         activeJob = try c.decodeIfPresent(Job.self, forKey: .activeJob)
+        activeBushContract = try? c.decodeIfPresent(BushContract.self, forKey: .activeBushContract)
+        bushDiscoveries = try c.decodeIfPresent(Set<String>.self, forKey: .bushDiscoveries) ?? []
         log = try c.decodeIfPresent([FlightLogEntry].self, forKey: .log) ?? []
         maintenance = try c.decodeIfPresent([String: AircraftMaintenance].self, forKey: .maintenance) ?? [:]
+        firefighting = try c.decodeIfPresent(FirefightingRecord.self, forKey: .firefighting) ?? FirefightingRecord()
+        airline = try c.decodeIfPresent(AirlineCareer.self, forKey: .airline) ?? AirlineCareer()
         sanitize()
     }
 
@@ -80,6 +91,8 @@ public struct CareerState: Codable, Sendable, Equatable {
         ownedAircraft.insert("org.skyforge.sf1")
         maintenance = Self.sanitizedMaintenance(maintenance, owned: ownedAircraft)
         stats.sanitize()
+        firefighting.sanitize()
+        airline.sanitize()
         // A tampered attempt count of Int.max would trap on the next `attempts += 1`; scores must stay finite.
         challenges = Dictionary(uniqueKeysWithValues: challenges.filter { Self.validID($0.key) }.prefix(500).map { entry -> (String, ChallengeRecord) in
             var r = entry.value
@@ -95,6 +108,11 @@ public struct CareerState: Codable, Sendable, Equatable {
         }
         if log.count > Self.maxLogEntries { log.removeFirst(log.count - Self.maxLogEntries) }
         if let j = activeJob, !(j.distanceKm.isFinite && j.basePay >= 0 && j.basePay < 10_000_000 && j.deadlineMinutes.isFinite) { activeJob = nil }
+        if let b = activeBushContract, !(b.distanceKm.isFinite && b.basePay >= 0 && b.basePay < 10_000_000 && b.deadlineMinutes.isFinite
+                                          && b.weatherRisk.isFinite && (0...1).contains(b.weatherRisk) && b.passengers >= 0 && b.cargoKg.isFinite) {
+            activeBushContract = nil
+        }
+        bushDiscoveries = Set(bushDiscoveries.filter { $0.utf8.count <= 64 }.prefix(500))
     }
 
     public var level: Int { Progression.level(forXP: xp) }
@@ -127,6 +145,15 @@ public struct CareerState: Codable, Sendable, Equatable {
         case .failure(let e): return .failure(e)
         }
     }
+
+    /// Accept a bush contract. Fails if one is already active or the aircraft cannot reach the strip.
+    public mutating func accept(bush contract: BushContract, aircraft: HangarAircraft) -> Result<Void, BushRejection> {
+        if activeBushContract != nil { return .failure(.alreadyHaveContract) }
+        switch BushRules.canFly(contract, with: aircraft, level: level) {
+        case .success: activeBushContract = contract; return .success(())
+        case .failure(let e): return .failure(e)
+        }
+    }
 }
 
 public struct FlightOutcome: Sendable, Equatable {
@@ -139,13 +166,18 @@ public struct FlightOutcome: Sendable, Equatable {
     public var settlement: JobSettlement?
     /// Components that failed in flight on this flight (owned aircraft only).
     public var maintenanceFailures: [AircraftComponent] = []
+    /// Discoveries made on this flight (already recorded in the career).
+    public var bushDiscoveries: [BushDiscovery] = []
+    /// Discoveries first made by this flight (catalogue ids).
+    public var newDiscoveries: [String] = []
 }
 
 public enum CareerEngine {
     /// Applies one flight to the profile. Deterministic; rejects nothing (a bad report is sanitised, never trusted).
     @discardableResult
     public static func apply(_ raw: FlightReport, to state: inout CareerState,
-                             challenge: Challenge? = nil, catalog: [HangarAircraft] = Economy.catalog) -> FlightOutcome {
+                             challenge: Challenge? = nil, discoveriesReached: [String] = [],
+                             catalog: [HangarAircraft] = Economy.catalog) -> FlightOutcome {
         let r = raw.sanitized()
         let levelBefore = state.level
         var xp = 0, credits = 0
@@ -194,6 +226,21 @@ public enum CareerEngine {
                 state.stats.challengesPlayed += 1
                 if m != .none, c.id.hasPrefix("daily-"), let day = Int(c.id.dropFirst(6)) { updateStreak(&state.stats, day: day) }
             }
+        case .bush(let cid):
+            if let c = state.activeBushContract, c.id == cid {
+                let owned = state.ownedAircraft.contains(r.aircraftID)
+                let rent = Economy.spec(r.aircraftID, in: catalog)?.rentalPerHour ?? 0
+                let s = BushSettler.settle(contract: c, report: r, owned: owned, rentalPerHour: rent)
+                settlement = s
+                credits += s.net
+                if s.success {
+                    xp += 90 + Int(min(max(c.distanceKm, 0), 20_000) / 4)
+                    state.stats.jobsCompleted += 1
+                } else {
+                    state.stats.jobsFailed += 1
+                }
+                state.activeBushContract = nil
+            }
         case .mission(let id):
             score = r.rawScore
             if CareerState.validID(id) && r.missionSuccess && !r.crashed && r.durationS >= 15 && (state.completedMissions.contains(id) || state.completedMissions.count < 1_000) {
@@ -202,6 +249,14 @@ public enum CareerEngine {
                 credits += first ? 1_500 : 150
                 state.stats.missionsWon += 1
             }
+        }
+
+        // --- bush exploration: first landings, unpaved, deep bush, short field. Each is paid once. ---
+        let found = BushExploration.discoveries(for: r, known: state.bushDiscoveries)
+        for d in found {
+            state.bushDiscoveries.insert(d.id)
+            xp += d.xp
+            credits += d.credits
         }
 
         // --- combat ---
@@ -224,6 +279,13 @@ public enum CareerEngine {
             if let icao = r.arrivalICAO, !icao.isEmpty, icao.count <= 8, st.airportsVisited.count < 5_000 { st.airportsVisited.insert(icao) }
         }
         if credits > 0 { st.creditsEarned += credits }
+
+        // --- exploration: each landmark or scenic point pays out once, ever ---
+        let newDisc = Discoveries.newIDs(reached: discoveriesReached, known: st.discoveries)
+        for id in newDisc {
+            if let d = Discoveries.byID[id] { xp += d.xp }
+            st.discoveries.insert(id)
+        }
         state.stats = st
 
         xp = max(0, xp)
@@ -259,7 +321,7 @@ public enum CareerEngine {
 
         return FlightOutcome(xpGained: xp, creditsDelta: credits, leveledUpTo: levelAfter > levelBefore ? levelAfter : nil,
                              newAchievements: newAch, medal: medal, score: score, settlement: settlement,
-                             maintenanceFailures: failures)
+                             maintenanceFailures: failures, bushDiscoveries: found, newDiscoveries: newDisc)
     }
 
     static func updateStreak(_ s: inout CareerStats, day: Int) {

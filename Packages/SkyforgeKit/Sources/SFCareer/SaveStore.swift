@@ -18,9 +18,9 @@ public struct SaveStore: Sendable {
     /// Applies one finished flight to the saved career and writes it back. Returns nil if the save could not be
     /// read or written (a newer-version or unreadable save is never overwritten).
     @discardableResult
-    public func record(_ report: FlightReport, challenge: Challenge? = nil) -> FlightOutcome? {
+    public func record(_ report: FlightReport, challenge: Challenge? = nil, discoveriesReached: [String] = []) -> FlightOutcome? {
         guard var career = try? load() else { return nil }
-        let outcome = CareerEngine.apply(report, to: &career, challenge: challenge)
+        let outcome = CareerEngine.apply(report, to: &career, challenge: challenge, discoveriesReached: discoveriesReached)
         do { try save(career) } catch { return nil }
         return outcome
     }

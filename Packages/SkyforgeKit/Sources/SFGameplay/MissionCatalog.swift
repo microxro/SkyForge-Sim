@@ -290,8 +290,110 @@ public enum MissionCatalog {
         parTime: 300, timeLimit: 600, areaRadius: 20_000, unlock: .mission("engine-out-landing"),
         surface: .water)
 
-    public static let all: [MissionDefinition] = [firstFlight, patternLanding, precisionLanding, wingman, intercept, gunnery, lowLevel, dogfight, coastalSurvey, twinBandits, bushStrip, airportTour, valleyRun, waterDropRun, rescuePickup, airshowLoop, radarIntercept, twoShipDefence, ifrApproach, cargoRun, engineOutLanding, scooperFirefight]
+    public static let gateRun = MissionDefinition(
+        id: "gate-run", title: "Gate Run", category: .training,
+        briefing: "Fly three gates in order. Pass through each ring at height; missing a gate ends the run.",
+        difficulty: 3, recommendedAircraft: AircraftCatalog.sfAerobat.id, allowedRoles: civil,
+        spawn: MissionSpawn(along: -1_000, up: 300, speed: .cruise),
+        objectives: [
+            MissionObjective(id: "gate-1", title: "Gate 1", kind: .gate(MissionWaypoint(2_000, 0, 300, radius: 150), headingDeg: 0), points: 150),
+            MissionObjective(id: "gate-2", title: "Gate 2", kind: .gate(MissionWaypoint(3_000, 600, 350, radius: 150), headingDeg: 20), points: 150),
+            MissionObjective(id: "gate-3", title: "Gate 3", kind: .gate(MissionWaypoint(4_000, -300, 300, radius: 150), headingDeg: -20), points: 200),
+        ],
+        parTime: 240, timeLimit: 480, areaRadius: 20_000, unlock: .mission("airshow-loop"))
+
+    public static let aileronRollPractice = MissionDefinition(
+        id: "aileron-roll", title: "Aileron Roll", category: .training,
+        briefing: "Set up on the display line at 2 km, then fly one aileron roll. Keep at least 150 m of height and 40 m/s of speed through it.",
+        difficulty: 2, recommendedAircraft: AircraftCatalog.sfAerobat.id, allowedRoles: civil,
+        spawn: MissionSpawn(along: -1_000, up: 300, speed: .cruise),
+        objectives: [
+            MissionObjective(id: "setup", title: "Set up on the display line", kind: .flyTo(MissionWaypoint(2_000, 0, 300, radius: 400)), points: 150),
+            MissionObjective(id: "roll", title: "Fly one aileron roll", kind: .aileronRoll(minAGL: 150, minSpeed: 40), points: 300),
+        ],
+        parTime: 240, timeLimit: 480, areaRadius: 20_000, unlock: .mission("airshow-loop"))
+
+    /// Search and rescue line: find a missing hiker, bring a casualty off a field strip, then find two people in one sortie.
+    public static let sarGridSearch = MissionDefinition(
+        id: "sar-grid-search", title: "Grid Search", category: .rescue,
+        briefing: "A hiker is missing in the hills 3 km out. Sweep the search box at 150 to 400 m, get down to 200 m over the hiker for five seconds, then land back at the field. The hiker is in view only inside 150 m horizontally.",
+        difficulty: 3, recommendedAircraft: AircraftCatalog.sfCruiser.id, allowedRoles: civil,
+        spawn: MissionSpawn(along: -3_000, up: 600, speed: .cruise),
+        objectives: [
+            MissionObjective(id: "search", title: "Fly the search pattern", kind: .lowLevelRoute(
+                points: [MissionWaypoint(2_000, 2_000, 0, radius: 300), MissionWaypoint(2_000, -2_000, 0, radius: 300),
+                         MissionWaypoint(4_000, -2_000, 0, radius: 300), MissionWaypoint(4_000, 2_000, 0, radius: 300)],
+                minAGL: 150, maxAGL: 400), points: 200),
+            MissionObjective(id: "spot", title: "Spot the hiker below 200 m", kind: .spotSurvivor(survivorID: "hiker", within: 150, maxAGL: 200, hold: 5), points: 400, timeLimit: 300),
+            MissionObjective(id: "land", title: "Land back at the field", kind: .land(aimAlong: 300, zoneHalfLength: 250, maxSinkRate: 3.0), points: 200),
+        ],
+        parTime: 420, timeLimit: 900, areaRadius: 30_000, unlock: .mission("rescue-pickup"),
+        survivors: [SurvivorSpawn(id: "hiker", along: 3_000, right: 0)])
+
+    public static let sarMedevacStrip = MissionDefinition(
+        id: "sar-medevac-strip", title: "Medevac from the Strip", category: .rescue,
+        briefing: "A climber with a broken leg is on a grass strip 2.5 km out, 300 m right of the centreline. Land off-field, stop beside the casualty for three seconds, then fly them to the hospital at the far end. The casualty must be off the strip within four minutes.",
+        difficulty: 3, recommendedAircraft: AircraftCatalog.sfCruiser.id, allowedRoles: civil,
+        spawn: MissionSpawn(along: -2_500, up: 200, speed: .approach),
+        objectives: [
+            MissionObjective(id: "strip", title: "Land and stop beside the casualty", kind: .pickup(MissionWaypoint(2_500, 300, 0, radius: 60), maxSpeed: 8, hold: 3), points: 300, timeLimit: 240),
+            MissionObjective(id: "hospital", title: "Fly to the hospital", kind: .flyTo(MissionWaypoint(8_000, -600, 400, radius: 500)), points: 300, timeLimit: 300),
+        ],
+        parTime: 300, timeLimit: 600, areaRadius: 30_000, unlock: .mission("sar-grid-search"), surface: .grass)
+
+    public static let sarTwoSurvivors = MissionDefinition(
+        id: "sar-two-survivors", title: "Two Survivors", category: .rescue,
+        briefing: "A ridge walker and a hiker are down in separate spots. Each spot must be made within four minutes of the last objective. Then land on the creek meadow to collect the hiker and fly them to the hospital. A spot needs 150 m or less horizontally and 200 m or below.",
+        difficulty: 4, recommendedAircraft: AircraftCatalog.sfCruiser.id, allowedRoles: civil,
+        spawn: MissionSpawn(along: -3_000, up: 500, speed: .cruise),
+        objectives: [
+            MissionObjective(id: "spot-ridge", title: "Spot the ridge walker", kind: .spotSurvivor(survivorID: "ridge", within: 150, maxAGL: 200, hold: 5), points: 300, timeLimit: 240),
+            MissionObjective(id: "spot-creek", title: "Spot the hiker at the creek", kind: .spotSurvivor(survivorID: "creek", within: 150, maxAGL: 200, hold: 5), points: 300, timeLimit: 240),
+            MissionObjective(id: "pickup", title: "Land and stop beside the hiker", kind: .pickup(MissionWaypoint(4_500, -2_000, 0, radius: 80), maxSpeed: 8, hold: 3), points: 300, timeLimit: 300),
+            MissionObjective(id: "hospital", title: "Fly to the hospital", kind: .flyTo(MissionWaypoint(9_000, 0, 400, radius: 500)), points: 250),
+        ],
+        parTime: 420, timeLimit: 900, areaRadius: 40_000, unlock: .mission("sar-medevac-strip"), surface: .grass,
+        survivors: [SurvivorSpawn(id: "ridge", along: 2_000, right: 2_500), SurvivorSpawn(id: "creek", along: 4_500, right: -2_000)])
+
+    public static let boomRefuel = MissionDefinition(
+        id: "boom-refuel", title: "Boom Refuel", category: .military,
+        briefing: "Catch the tanker on its racetrack and hold the boom envelope behind it until 800 kg has transferred. Stable contact only: a relative speed above 2 m/s drops the connection.",
+        difficulty: 3, recommendedAircraft: AircraftCatalog.sfT1Jet.id, allowedRoles: jets,
+        spawn: MissionSpawn(along: 2_000, up: 3_000, speed: .fixed(170)),
+        targets: [
+            TargetSpawn(id: "tanker", role: .friendly, along: 6_000, right: -2_500, up: 3_000, speed: 150,
+                        behavior: .route(points: [MissionWaypoint(6_000, -2_500, 3_000), MissionWaypoint(12_000, -2_500, 3_000),
+                                                   MissionWaypoint(12_000, 2_500, 3_000), MissionWaypoint(6_000, 2_500, 3_000)],
+                                         loop: true)),
+        ],
+        objectives: [
+            MissionObjective(id: "boom", title: "Take 800 kg on the boom", kind: .refuel(tankerID: "tanker", method: .boom, kilograms: 800), points: 400),
+        ],
+        parTime: 300, timeLimit: 900, areaRadius: 40_000, unlock: .mission("wingman-formation"))
+
+    public static let formationEscort = MissionDefinition(
+        id: "formation-escort", title: "Formation Escort", category: .military,
+        briefing: "Your flight lead and two AI wingmen fly the route. Join echelon right on the lead, then hold that slot through the turns. The AI wingmen keep their own slots.",
+        difficulty: 3, recommendedAircraft: AircraftCatalog.sfT1Jet.id, allowedRoles: jets,
+        spawn: MissionSpawn(along: 650, right: 90, up: 900, speed: .fixed(150)),
+        targets: [
+            TargetSpawn(id: "lead", role: .friendly, along: 1_000, right: 0, up: 900, speed: 140,
+                        behavior: .route(points: [MissionWaypoint(7_000, 0, 900), MissionWaypoint(9_000, 3_500, 1_000),
+                                                   MissionWaypoint(6_000, 7_000, 900), MissionWaypoint(-2_000, 5_000, 900)], loop: false)),
+            TargetSpawn(id: "wing-left", role: .friendly, along: 940, right: -60, up: 900, speed: 140,
+                        behavior: .follow(leaderID: "lead", slot: .echelonLeft, spacing: 60)),
+            TargetSpawn(id: "wing-trail", role: .friendly, along: 910, right: 0, up: 900, speed: 140,
+                        behavior: .follow(leaderID: "lead", slot: .trail, spacing: 60)),
+        ],
+        objectives: [
+            MissionObjective(id: "join", title: "Join echelon right", kind: .formation(leaderID: "lead", slot: .echelonRight, spacing: 60, tolerance: 45, hold: 30), points: 150),
+            MissionObjective(id: "turns", title: "Hold through the turns", kind: .formation(leaderID: "lead", slot: .echelonRight, spacing: 60, tolerance: 45, hold: 60), points: 250),
+        ],
+        parTime: 240, timeLimit: 600, areaRadius: 30_000, unlock: .mission("wingman-formation"))
+
 
     public static func mission(id: String) -> MissionDefinition? { all.first { $0.id == id } }
     public static func missions(in category: MissionCategory) -> [MissionDefinition] { all.filter { $0.category == category } }
+
+    public static let all: [MissionDefinition] = [firstFlight, patternLanding, precisionLanding, wingman, intercept, gunnery, lowLevel, dogfight, coastalSurvey, twinBandits, bushStrip, airportTour, valleyRun, waterDropRun, rescuePickup, airshowLoop, radarIntercept, twoShipDefence, ifrApproach, cargoRun, engineOutLanding, scooperFirefight, gateRun, aileronRollPractice, sarGridSearch, sarMedevacStrip, sarTwoSurvivors, boomRefuel, formationEscort]
 }
