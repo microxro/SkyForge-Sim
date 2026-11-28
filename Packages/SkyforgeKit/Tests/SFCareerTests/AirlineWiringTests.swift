@@ -69,3 +69,20 @@ struct AirlineWiringTests {
         #expect(s.activeAirlineRoute == nil)
     }
 }
+
+@Suite("Airline route menu")
+struct AirlineRouteMenuTests {
+    @Test func todaysLegsLeaveTheHubAndRepeatForTheSameDay() {
+        for rank in AirlineRank.allCases {
+            var s = CareerState()
+            s.airline.rank = rank
+            let legs = AirlineNetwork.schedule(for: s, dayIndex: 20_000)
+            #expect(legs.count <= 6)
+            for leg in legs {
+                #expect(leg.origin.icao == AirlineNetwork.hub.icao)
+                #expect(leg.destination.icao != AirlineNetwork.hub.icao)
+            }
+            #expect(legs == AirlineNetwork.schedule(for: s, dayIndex: 20_000))
+        }
+    }
+}

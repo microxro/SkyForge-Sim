@@ -356,3 +356,23 @@ public enum AirlineEngine {
         return AirlineSettlement(score: s, reputationDelta: delta, promotedTo: promoted)
     }
 }
+
+// MARK: - Route network
+
+/// The airports a player's airline flies between. Monterey is the hub; the rest are the nearby fields the
+/// showcase packs already cover, so the same routes work on every device.
+public enum AirlineNetwork {
+    public static let hub = AirportRef(icao: "KMRY", name: "Monterey", latitudeDeg: 36.587, longitudeDeg: -121.843, longestRunwayM: 2_100)
+    public static let airports: [AirportRef] = [
+        hub,
+        AirportRef(icao: "KSFO", name: "San Francisco", latitudeDeg: 37.619, longitudeDeg: -122.375, longestRunwayM: 3_600),
+        AirportRef(icao: "KSJC", name: "San Jose", latitudeDeg: 37.363, longitudeDeg: -121.929, longestRunwayM: 3_000),
+        AirportRef(icao: "KSBP", name: "San Luis Obispo", latitudeDeg: 35.237, longitudeDeg: -120.642, longestRunwayM: 1_900),
+        AirportRef(icao: "KLAX", name: "Los Angeles", latitudeDeg: 33.942, longitudeDeg: -118.408, longestRunwayM: 3_700),
+    ]
+
+    /// Today's scheduled legs from the hub for the pilot's airline rank. Deterministic for a day index.
+    public static func schedule(for career: CareerState, dayIndex: Int) -> [AirlineRoute] {
+        AirlineSchedule.generate(hub: hub, airports: airports, dayIndex: dayIndex, rank: career.airline.rank)
+    }
+}
